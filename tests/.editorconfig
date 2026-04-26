@@ -1,0 +1,12 @@
+# テストプロジェクトでは xUnit の慣習に合わせて以下のルールを緩和する
+
+[*.cs]
+# テストメソッド名でアンダースコアを許可（Given_When_Then 記法のため）
+dotnet_diagnostic.CA1707.severity = none
+# xUnit IAsyncLifetime を使うため IDisposable 警告は不要
+dotnet_diagnostic.CA1001.severity = none
+# ConfigureAwait はテストで不要（同期コンテキストが無い）
+dotnet_diagnostic.CA2007.severity = none
+# テストでは静的クラスの非利用や命名を許容
+dotnet_diagnostic.CA1052.severity = none
+dotnet_diagnostic.CA1515.severity = none

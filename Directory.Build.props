@@ -1,0 +1,27 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- NuGet \u811a\u5f31\u6027\u30c1\u30a7\u30c3\u30af\u306f\u76f4\u63a5\u4f9d\u5b58\u306e\u307f\u5bfe\u8c61\uff08\u63a8\u79fb\u7684\u4f9d\u5b58\u306f\u4e0a\u6d41\u306e\u66f4\u65b0\u5f85\u3061\uff09 -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>direct</NuGetAuditMode>
+    <NeutralLanguage>ja-JP</NeutralLanguage>
+    <Company>ViewGrid</Company>
+    <Product>ViewGrid</Product>
+    <Copyright>Copyright (c) $([System.DateTime]::Now.Year)</Copyright>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.Linq" />
+    <Using Include="System.Threading" />
+    <Using Include="System.Threading.Tasks" />
+  </ItemGroup>
+</Project>

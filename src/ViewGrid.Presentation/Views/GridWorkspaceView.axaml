@@ -1,0 +1,158 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
+             xmlns:views="clr-namespace:ViewGrid.Presentation.Views"
+             xmlns:conv="clr-namespace:ViewGrid.Presentation.Converters"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="ViewGrid.Presentation.Views.GridWorkspaceView"
+             x:DataType="vm:GridWorkspaceViewModel">
+
+    <UserControl.Resources>
+        <conv:FilePathToBitmapConverter x:Key="PathToBitmap" />
+    </UserControl.Resources>
+
+    <Grid ColumnDefinitions="*,300">
+        <!-- 中央: キャンバス -->
+        <DockPanel Grid.Column="0">
+            <Border DockPanel.Dock="Top"
+                    Padding="12,8"
+                    IsVisible="{Binding HasGrid}">
+                <StackPanel DataContext="{Binding CurrentGrid}"
+                            x:DataType="vm:GridCanvasItemViewModel">
+                    <TextBlock FontWeight="SemiBold" FontSize="14">
+                        <Run Text="{Binding Name}" />
+                        <Run Text=" — " />
+                        <Run Text="{Binding GridSizeLabel}" />
+                        <Run Text=" / " />
+                        <Run Text="{Binding CanvasSizeLabel}" />
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <!-- ステータスは高さ固定（テキスト有無で中央領域が伸縮するのを防ぐ） -->
+            <Border DockPanel.Dock="Bottom"
+                    Padding="12,4"
+                    MinHeight="22">
+                <TextBlock Text="{Binding StatusMessage}"
+                           Opacity="0.7"
+                           FontSize="11"
+                           VerticalAlignment="Center" />
+            </Border>
+
+            <Border IsVisible="{Binding !HasGrid}"
+                    Padding="24">
+                <StackPanel Spacing="6"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="グリッドが選択されていません"
+                               Opacity="0.7" HorizontalAlignment="Center" />
+                    <TextBlock Text="左側の一覧から作成・選択してください。"
+                               Opacity="0.55" FontSize="12" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+
+            <views:GridCanvasView IsVisible="{Binding HasGrid}"
+                                  Margin="12,0,12,12" />
+        </DockPanel>
+
+        <!-- 右: 配置候補 + 操作。GridSplitter で「候補リスト」と「インスペクタ」を上下分割 -->
+        <Border Grid.Column="1"
+                BorderBrush="{DynamicResource SystemBaseLowColor}"
+                BorderThickness="1,0,0,0"
+                Padding="12">
+            <Grid RowDefinitions="Auto,3*,Auto,4*">
+
+                <!-- Row 0: ヘッダと操作ボタン群（固定高さ） -->
+                <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,8">
+                    <TextBlock Text="配置元（論理コピー）"
+                               FontWeight="SemiBold"
+                               FontSize="14" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="配置"
+                                Command="{Binding PlaceSelectedToFirstFreeCellCommand}"
+                                IsEnabled="{Binding SelectedCandidate, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                Classes="accent" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="PreviewButton"
+                                Content="プレビュー"
+                                Click="OnPreviewClicked"
+                                IsEnabled="{Binding HasGrid}" />
+                        <Button Content="PNG 出力"
+                                Command="{Binding ExportToPngCommand}"
+                                IsEnabled="{Binding HasGrid}" />
+                    </StackPanel>
+                    <Separator />
+                </StackPanel>
+
+                <!-- Row 1: 候補リスト（伸縮可、最低 120px） -->
+                <ListBox x:Name="CandidateList"
+                         Grid.Row="1"
+                         MinHeight="120"
+                         ItemsSource="{Binding Candidates}"
+                         SelectedItem="{Binding SelectedCandidate}"
+                         Background="Transparent">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:CopyCandidateViewModel">
+                            <Grid ColumnDefinitions="48,*" Margin="2" ColumnSpacing="8">
+                                <Border Grid.Column="0"
+                                        Width="48" Height="48"
+                                        Background="{DynamicResource SystemChromeMediumLowColor}"
+                                        CornerRadius="3">
+                                    <Image Source="{Binding ThumbnailPath, Converter={StaticResource PathToBitmap}}"
+                                           Stretch="UniformToFill" />
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding AssetFilename}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding CopyDisplayName}" FontSize="10" Opacity="0.7" />
+                                    <TextBlock Text="{Binding SummaryLine}" FontSize="10" Opacity="0.55" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- Row 2: 上下分割スプリッター -->
+                <GridSplitter Grid.Row="2"
+                              Height="4"
+                              HorizontalAlignment="Stretch"
+                              ResizeDirection="Rows"
+                              Background="{DynamicResource SystemBaseLowColor}"
+                              Margin="0,4" />
+
+                <!-- Row 3: インスペクタとアクション（伸縮可、最低 160px、Inspector 内 ScrollViewer が効く） -->
+                <DockPanel Grid.Row="3" MinHeight="160" LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top"
+                               FontSize="11"
+                               Opacity="0.75"
+                               Margin="0,0,0,4">
+                        <Run Text="配置済み:" />
+                        <Run Text="{Binding Placements.Count}" />
+                        <Run Text="件" />
+                    </TextBlock>
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="キャンバス上のアイテムをクリックで選択"
+                               FontSize="10"
+                               Opacity="0.55"
+                               Margin="0,0,0,4"
+                               IsVisible="{Binding SelectedPlacement, Converter={x:Static ObjectConverters.IsNull}}" />
+
+                    <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0">
+                        <Button Content="配置を削除"
+                                HorizontalAlignment="Stretch"
+                                Command="{Binding RemoveSelectedPlacementCommand}"
+                                IsEnabled="{Binding SelectedPlacement, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                        <ProgressBar Height="3"
+                                     IsIndeterminate="True"
+                                     IsVisible="{Binding IsBusy}" />
+                    </StackPanel>
+
+                    <views:PlacementInspectorView DataContext="{Binding Inspector}" />
+                </DockPanel>
+
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

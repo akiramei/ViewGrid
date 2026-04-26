@@ -1,0 +1,32 @@
+# Build
+bin/
+obj/
+out/
+publish/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider / VS
+.vs/
+.idea/
+*.DotSettings.user
+
+# Test results
+[Tt]est[Rr]esult*/
+coverage/
+*.coverage
+*.coveragexml
+
+# Logs / local DB
+*.log
+*.db
+*.db-*
+local-data/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,69 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
+        xmlns:views="clr-namespace:ViewGrid.Presentation.Views"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="720"
+        x:Class="ViewGrid.Presentation.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding Title}"
+        Width="1200" Height="720"
+        MinWidth="900" MinHeight="540"
+        WindowStartupLocation="CenterScreen"
+        DragDrop.AllowDrop="True">
+
+    <Grid RowDefinitions="Auto,*">
+        <Border Grid.Row="0"
+                Padding="16,12"
+                Background="{DynamicResource SystemChromeLowColor}">
+            <StackPanel>
+                <TextBlock Text="{Binding Title}"
+                           FontSize="22"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="2 フェーズワークフロー（準備 → 配置）"
+                           Opacity="0.65"
+                           FontSize="12" />
+            </StackPanel>
+        </Border>
+
+        <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedTabIndex}" Padding="0">
+            <TabItem Header="準備">
+                <Grid ColumnDefinitions="*,380">
+                    <views:AssetLibraryView Grid.Column="0"
+                                            DataContext="{Binding AssetLibrary}" />
+
+                    <Border Grid.Column="1"
+                            BorderBrush="{DynamicResource SystemBaseLowColor}"
+                            BorderThickness="1,0,0,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="3*" MinHeight="120" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="4*" MinHeight="200" />
+                            </Grid.RowDefinitions>
+                            <views:CopyListView Grid.Row="0"
+                                                DataContext="{Binding CopyList}" />
+                            <GridSplitter Grid.Row="1"
+                                          Height="4"
+                                          HorizontalAlignment="Stretch"
+                                          ResizeDirection="Rows"
+                                          Background="{DynamicResource SystemBaseLowColor}" />
+                            <views:CopyPropertiesView Grid.Row="2"
+                                                      DataContext="{Binding CopyProperties}" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="配置">
+                <Grid ColumnDefinitions="300,*">
+                    <views:GridCanvasListView Grid.Column="0"
+                                              DataContext="{Binding GridList}" />
+                    <views:GridWorkspaceView Grid.Column="1"
+                                             DataContext="{Binding GridWorkspace}" />
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

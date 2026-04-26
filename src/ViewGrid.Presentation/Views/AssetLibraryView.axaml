@@ -1,0 +1,104 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
+             xmlns:conv="clr-namespace:ViewGrid.Presentation.Converters"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
+             x:Class="ViewGrid.Presentation.Views.AssetLibraryView"
+             x:DataType="vm:AssetLibraryViewModel">
+
+    <UserControl.Resources>
+        <conv:FilePathToBitmapConverter x:Key="PathToBitmap" />
+    </UserControl.Resources>
+
+    <DockPanel LastChildFill="True">
+        <!-- ツールバー -->
+        <Border DockPanel.Dock="Top"
+                BorderBrush="{DynamicResource SystemBaseLowColor}"
+                BorderThickness="0,0,0,1"
+                Padding="12,8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="画像を追加..."
+                        Command="{Binding PickFilesAndImportCommand}"
+                        IsEnabled="{Binding !IsBusy}" />
+                <Button Content="選択を削除"
+                        Command="{Binding DeleteSelectedCommand}"
+                        IsEnabled="{Binding SelectedAsset, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                <Button Content="再読み込み"
+                        Command="{Binding LoadCommand}"
+                        IsEnabled="{Binding !IsBusy}" />
+                <ProgressBar IsIndeterminate="True"
+                             IsVisible="{Binding IsBusy}"
+                             Width="120"
+                             VerticalAlignment="Center"
+                             Margin="8,0,0,0" />
+            </StackPanel>
+        </Border>
+
+        <!-- ステータスバー -->
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="{DynamicResource SystemBaseLowColor}"
+                BorderThickness="0,1,0,0"
+                Padding="12,6">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding StatusMessage}"
+                           Opacity="0.75"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding Assets.Count, StringFormat='{}{0} 件'}"
+                           Opacity="0.75"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <!-- アセット一覧 -->
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <ListBox ItemsSource="{Binding Assets}"
+                     SelectedItem="{Binding SelectedAsset}"
+                     SelectionMode="Single"
+                     Background="Transparent"
+                     Padding="12">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="vm:AssetItemViewModel">
+                        <Border Width="180"
+                                Padding="8"
+                                Margin="4"
+                                CornerRadius="6"
+                                Background="{DynamicResource SystemListLowColor}">
+                            <StackPanel Spacing="6">
+                                <Border Width="160" Height="160"
+                                        Background="{DynamicResource SystemAltMediumLowColor}"
+                                        CornerRadius="4"
+                                        ClipToBounds="True">
+                                    <Image Source="{Binding ThumbnailAbsolutePath, Converter={StaticResource PathToBitmap}}"
+                                           Stretch="Uniform"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock Text="{Binding DisplayName}"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip.Tip="{Binding DisplayName}" />
+                                <TextBlock Text="{Binding Dimensions}"
+                                           Opacity="0.7"
+                                           FontSize="11" />
+                                <TextBlock Text="{Binding FileSizeDisplay}"
+                                           Opacity="0.7"
+                                           FontSize="11" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

@@ -1,0 +1,235 @@
+using System.IO;
+using CommunityToolkit.Mvvm.Messaging;
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
+using ViewGrid.Application.Messages;
+using ViewGrid.Application.Tests.TestSupport;
+using ViewGrid.Application.UseCases;
+using ViewGrid.Application.ViewModels;
+using ViewGrid.Core.Services;
+using ViewGrid.Infrastructure.Services;
+using Xunit;
+
+namespace ViewGrid.Application.Tests.ViewModels;
+
+public sealed class AssetLibraryViewModelTests : IAsyncLifetime
+{
+    private UseCaseFixture _fx = null!;
+    private AssetLibraryViewModel _vm = null!;
+    private IFilePickerService _picker = null!;
+    private WeakReferenceMessenger _messenger = null!;
+
+    public async Task InitializeAsync()
+    {
+        _fx = await UseCaseFixture.CreateAsync();
+        _picker = Substitute.For<IFilePickerService>();
+
+        var import = new ImportImageUseCase(
+            hasher: new Sha256ImageHasher(),
+            prober: new SkiaImageProber(),
+            storage: _fx.Storage,
+            thumbnailService: _fx.Thumbnails,
+            assetRepository: _fx.AssetRepository,
+            copyRepository: _fx.CopyRepository,
+            logger: NullLogger<ImportImageUseCase>.Instance);
+
+        var delete = new DeleteImageAssetUseCase(_fx.AssetRepository, _fx.Storage, _fx.Thumbnails);
+
+        _messenger = new WeakReferenceMessenger();
+        _vm = new AssetLibraryViewModel(
+            import,
+            delete,
+            _fx.AssetRepository,
+            _fx.Thumbnails,
+            _picker,
+            _messenger,
+            NullLogger<AssetLibraryViewModel>.Instance);
+    }
+
+    public async Task DisposeAsync() => await _fx.DisposeAsync();
+
+    [Fact]
+    public async Task LoadAsync_Populates_Assets_From_Repository()
+    {
+        await _fx.SeedAssetAsync(fileHash: "a".PadRight(64, '0'));
+        await _fx.SeedAssetAsync(fileHash: "b".PadRight(64, '0'));
+
+        await _vm.LoadAsync();
+
+        _vm.Assets.Should().HaveCount(2);
+        _vm.IsBusy.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AddFilesAsync_Imports_New_Files_And_Refreshes_List()
+    {
+        var file = TestImageFactory.WritePngToTempFile(100, 100);
+        try
+        {
+            await _vm.AddFilesAsync([file]);
+
+            _vm.Assets.Should().HaveCount(1);
+            _vm.StatusMessage.Should().Contain("1 件追加");
+            _vm.Assets[0].Width.Should().Be(100);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task AddFilesAsync_Reports_Duplicates_For_Identical_Files()
+    {
+        var file = TestImageFactory.WritePngToTempFile(100, 100);
+        try
+        {
+            await _vm.AddFilesAsync([file]);
+            await _vm.AddFilesAsync([file]);
+
+            _vm.Assets.Should().HaveCount(1);
+            _vm.StatusMessage.Should().Contain("重複");
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task AddFilesAsync_Counts_Failures_For_Invalid_Files()
+    {
+        var bogus = Path.Combine(Path.GetTempPath(), $"viewgrid-bogus-{Guid.NewGuid():N}.png");
+        await File.WriteAllTextAsync(bogus, "not an image");
+        try
+        {
+            await _vm.AddFilesAsync([bogus]);
+
+            _vm.Assets.Should().BeEmpty();
+            _vm.StatusMessage.Should().Contain("失敗");
+        }
+        finally
+        {
+            File.Delete(bogus);
+        }
+    }
+
+    [Fact]
+    public async Task PickFilesAndImportAsync_Delegates_To_FilePickerService()
+    {
+        var file = TestImageFactory.WritePngToTempFile(80, 80);
+        try
+        {
+            _picker.PickImagesAsync(Arg.Any<CancellationToken>()).Returns([file]);
+
+            await _vm.PickFilesAndImportAsync();
+
+            await _picker.Received(1).PickImagesAsync(Arg.Any<CancellationToken>());
+            _vm.Assets.Should().HaveCount(1);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task PickFilesAndImportAsync_Noop_When_User_Cancels()
+    {
+        _picker.PickImagesAsync(Arg.Any<CancellationToken>()).Returns([]);
+
+        await _vm.PickFilesAndImportAsync();
+
+        _vm.Assets.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task DeleteSelectedAsync_Removes_Selected_Asset()
+    {
+        var file = TestImageFactory.WritePngToTempFile(100, 100);
+        try
+        {
+            await _vm.AddFilesAsync([file]);
+            _vm.SelectedAsset = _vm.Assets[0];
+
+            await _vm.DeleteSelectedAsync();
+
+            _vm.Assets.Should().BeEmpty();
+            _vm.SelectedAsset.Should().BeNull();
+            _vm.StatusMessage.Should().Contain("削除しました");
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task AddFilesAsync_Sends_CopyLibraryChangedMessage_On_Success()
+    {
+        var receivedCount = 0;
+        var listener = new object();
+        _messenger.Register<CopyLibraryChangedMessage>(listener, (_, _) => receivedCount++);
+
+        var file = TestImageFactory.WritePngToTempFile(100, 100);
+        try
+        {
+            await _vm.AddFilesAsync([file]);
+            receivedCount.Should().Be(1);
+        }
+        finally
+        {
+            File.Delete(file);
+            _messenger.UnregisterAll(listener);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteSelectedAsync_Sends_CopyLibraryChangedMessage()
+    {
+        var file = TestImageFactory.WritePngToTempFile(100, 100);
+        try
+        {
+            await _vm.AddFilesAsync([file]);
+            _vm.SelectedAsset = _vm.Assets[0];
+
+            var receivedCount = 0;
+            var listener = new object();
+            _messenger.Register<CopyLibraryChangedMessage>(listener, (_, _) => receivedCount++);
+
+            try
+            {
+                await _vm.DeleteSelectedAsync();
+                receivedCount.Should().Be(1);
+            }
+            finally
+            {
+                _messenger.UnregisterAll(listener);
+            }
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteSelectedAsync_NoOp_When_No_Selection()
+    {
+        var file = TestImageFactory.WritePngToTempFile(100, 100);
+        try
+        {
+            await _vm.AddFilesAsync([file]);
+            _vm.SelectedAsset = null;
+
+            await _vm.DeleteSelectedAsync();
+
+            _vm.Assets.Should().HaveCount(1);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+}

@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="600"
+             x:Class="ViewGrid.Presentation.Views.GridCanvasView"
+             x:DataType="vm:GridWorkspaceViewModel">
+
+    <Border BorderBrush="{DynamicResource SystemBaseLowColor}"
+            BorderThickness="1"
+            Background="{DynamicResource SystemChromeMediumLowColor}">
+        <Viewbox Stretch="Uniform" StretchDirection="Both">
+            <Grid Width="600" Height="600">
+                <!-- 配置・セル本体 -->
+                <Grid x:Name="CanvasGrid" Background="White" />
+                <!-- 境界ドラッグ用ハンドル（A2）。Canvas 上に絶対配置。
+                     Background は付けない（Background があると Canvas 全体が hit-test 対象になり、
+                     配置 Border の D&D を奪ってしまう）。子の Rectangle ハンドルだけが hit-test。 -->
+                <Canvas x:Name="BoundaryOverlay" IsHitTestVisible="True" />
+            </Grid>
+        </Viewbox>
+    </Border>
+</UserControl>

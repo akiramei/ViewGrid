@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+        x:Class="ViewGrid.Presentation.Views.PreviewWindow"
+        Title="出力プレビュー"
+        Width="900" Height="680"
+        MinWidth="480" MinHeight="360"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid RowDefinitions="*,Auto">
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemChromeMediumLowColor}"
+                Margin="12,12,12,6">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto">
+                <Image x:Name="PreviewImage"
+                       Stretch="Uniform"
+                       StretchDirection="DownOnly"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Margin="8" />
+            </ScrollViewer>
+        </Border>
+
+        <Grid Grid.Row="1"
+              Margin="12,6,12,12"
+              ColumnDefinitions="*,Auto,Auto">
+            <TextBlock x:Name="InfoText"
+                       Grid.Column="0"
+                       VerticalAlignment="Center"
+                       Opacity="0.7"
+                       FontSize="11" />
+            <Button x:Name="SaveButton"
+                    Grid.Column="1"
+                    Content="PNG として保存"
+                    Classes="accent"
+                    Margin="0,0,8,0"
+                    Click="OnSaveClicked" />
+            <Button Grid.Column="2"
+                    Content="閉じる"
+                    Click="OnCloseClicked" />
+        </Grid>
+    </Grid>
+</Window>

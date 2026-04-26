@@ -1,0 +1,183 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
+             xmlns:conv="clr-namespace:ViewGrid.Presentation.Converters"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="640"
+             x:Class="ViewGrid.Presentation.Views.PlacementInspectorView"
+             x:DataType="vm:PlacementInspectorViewModel">
+
+    <UserControl.Resources>
+        <conv:ScalingModeLabelConverter x:Key="ScalingModeLabel" />
+    </UserControl.Resources>
+
+    <Border Padding="10,8"
+            CornerRadius="4"
+            Background="{DynamicResource SystemChromeLowColor}"
+            IsVisible="{Binding HasPlacement}">
+        <DockPanel LastChildFill="True">
+
+            <!-- ヘッダ -->
+            <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,8">
+                <TextBlock Text="{Binding HeaderLabel}"
+                           FontWeight="SemiBold"
+                           FontSize="12"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding PositionLabel}"
+                           FontSize="10"
+                           Opacity="0.7" />
+            </StackPanel>
+
+            <!-- 共有特性の波及バナー -->
+            <Border DockPanel.Dock="Top"
+                    IsVisible="{Binding HasSharedPlacements}"
+                    Background="#33FFC107"
+                    BorderBrush="#FFC107"
+                    BorderThickness="1"
+                    CornerRadius="3"
+                    Padding="8,6"
+                    Margin="0,0,0,8">
+                <TextBlock FontSize="10" TextWrapping="Wrap">
+                    <Run Text="この特性は同じ論理コピーを参照する" />
+                    <Run Text="{Binding SharedPlacementCount}" FontWeight="SemiBold" />
+                    <Run Text=" 件の配置すべてに反映されます。" />
+                </TextBlock>
+            </Border>
+
+            <!-- アクション -->
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
+                <Button Content="保存"
+                        Command="{Binding SaveCommand}"
+                        Classes="accent" />
+                <Button Content="リセット"
+                        Command="{Binding RevertCommand}" />
+                <TextBlock Text="*"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource SystemAccentColor}"
+                           VerticalAlignment="Center"
+                           IsVisible="{Binding IsDirty}"
+                           ToolTip.Tip="未保存の変更があります" />
+            </StackPanel>
+
+            <TextBlock DockPanel.Dock="Bottom"
+                       Text="{Binding StatusMessage}"
+                       Opacity="0.7"
+                       FontSize="10"
+                       Margin="0,6,0,0"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <!-- 編集フォーム -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="8">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="回転" FontSize="10" Opacity="0.75" />
+                        <ComboBox ItemsSource="{Binding RotationOptions}"
+                                  SelectedItem="{Binding Rotation}"
+                                  HorizontalAlignment="Stretch" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="反転" FontSize="10" Opacity="0.75" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <CheckBox Content="水平" IsChecked="{Binding FlipX}" FontSize="11" />
+                            <CheckBox Content="垂直" IsChecked="{Binding FlipY}" FontSize="11" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="スケーリング" FontSize="10" Opacity="0.75" />
+                        <ComboBox ItemsSource="{Binding ScalingModeOptions}"
+                                  SelectedItem="{Binding ScalingMode}"
+                                  HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource ScalingModeLabel}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="トリミング基準" FontSize="10" Opacity="0.75" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
+                            <ComboBox Grid.Column="0"
+                                      ItemsSource="{Binding AnchorXOptions}"
+                                      SelectedItem="{Binding TrimAnchorX}"
+                                      HorizontalAlignment="Stretch" />
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding AnchorYOptions}"
+                                      SelectedItem="{Binding TrimAnchorY}"
+                                      HorizontalAlignment="Stretch" />
+                        </Grid>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="アライメント" FontSize="10" Opacity="0.75" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
+                            <ComboBox Grid.Column="0"
+                                      ItemsSource="{Binding AnchorXOptions}"
+                                      SelectedItem="{Binding AlignX}"
+                                      HorizontalAlignment="Stretch" />
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding AnchorYOptions}"
+                                      SelectedItem="{Binding AlignY}"
+                                      HorizontalAlignment="Stretch" />
+                        </Grid>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="占有セル (W×H)" FontSize="10" Opacity="0.75" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
+                            <NumericUpDown Grid.Column="0"
+                                           Value="{Binding OccupyWidth}"
+                                           Minimum="1" Maximum="20"
+                                           FormatString="0" />
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding OccupyHeight}"
+                                           Minimum="1" Maximum="20"
+                                           FormatString="0" />
+                        </Grid>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0"
+                                       Text="ピクセル微調整 (ΔX/ΔY)"
+                                       FontSize="10"
+                                       Opacity="0.75"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Content="0 にリセット"
+                                    FontSize="10"
+                                    Padding="6,2"
+                                    Command="{Binding ResetPixelOffsetCommand}" />
+                        </Grid>
+                        <TextBlock Text="{Binding ImageDrawSizeLabel}"
+                                   FontSize="10"
+                                   Opacity="0.6"
+                                   IsVisible="{Binding ImageDrawSizeLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
+                            <NumericUpDown Grid.Column="0"
+                                           Value="{Binding PixelOffsetX}"
+                                           Minimum="-4096" Maximum="4096"
+                                           Increment="1"
+                                           FormatString="0" />
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding PixelOffsetY}"
+                                           Minimum="-4096" Maximum="4096"
+                                           Increment="1"
+                                           FormatString="0" />
+                        </Grid>
+                        <TextBlock Text="ヒント: キャンバス上で Shift+ドラッグでも微調整可能"
+                                   FontSize="9"
+                                   Opacity="0.5"
+                                   FontStyle="Italic" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
+        </DockPanel>
+    </Border>
+</UserControl>
