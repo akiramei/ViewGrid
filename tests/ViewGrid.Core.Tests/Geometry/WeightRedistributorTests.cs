@@ -278,4 +278,96 @@ public sealed class WeightRedistributorTests
             start, 1, 1, leftPad: 30, occupantInner: 140, rightPad: 30);
         result.Should().NotEqual(start);
     }
+
+    // ----- ロック配列対応のテスト -----
+
+    /// <summary>占有セルがロックされていればフィット対象外、入力をそのまま返す。</summary>
+    [Fact]
+    public void FitToOccupant_OccupantLocked_ReturnsStartUnchanged()
+    {
+        var start = new[] { 1, 1, 1 };
+        var locked = new[] { false, true, false };
+        var result = WeightRedistributor.FitToOccupant(
+            start, 1, 1, leftPad: 50, occupantInner: 100, rightPad: 50, locked);
+        result.Should().Equal(start);
+    }
+
+    /// <summary>
+    /// 4 列、列 1 ロック、列 2 をフィット → 左隣 (列 1) はロックなのでスキップ、
+    /// その左の列 0 に leftPad を分配。右隣 (列 3) は通常通り rightPad を受ける。
+    /// </summary>
+    [Fact]
+    public void FitToOccupant_LeftNeighborLocked_SkipsToNextUnlocked()
+    {
+        var start = new[] { 1, 1, 1, 1 };
+        var locked = new[] { false, true, false, false };
+        var result = WeightRedistributor.FitToOccupant(
+            start, occupantStart: 2, occupantSpan: 1,
+            leftPad: 50, occupantInner: 100, rightPad: 50, locked);
+
+        // ロック列 1 の **比率** は元のまま 1/4 を保つ
+        var sum = (double)result.Sum();
+        var lockedRatio = result[1] / sum;
+        var col0Ratio = result[0] / sum;
+        var col2Ratio = result[2] / sum;
+        var col3Ratio = result[3] / sum;
+
+        // 元 [200, 200, 200, 200] (合計 800)
+        // フィット後: 列 0 += leftPad → 250、列 1 ロック → 200、列 2 内側 → 100、列 3 += rightPad → 250
+        lockedRatio.Should().BeApproximately(200.0 / 800.0, 0.02);
+        col0Ratio.Should().BeApproximately(250.0 / 800.0, 0.02);
+        col2Ratio.Should().BeApproximately(100.0 / 800.0, 0.02);
+        col3Ratio.Should().BeApproximately(250.0 / 800.0, 0.02);
+    }
+
+    /// <summary>
+    /// 連続したロックセルがあれば、さらに飛ばして次のアンロックセルに分配する。
+    /// 5 列、列 1, 2 ロック、列 3 をフィット → leftPad は列 0 に分配。
+    /// </summary>
+    [Fact]
+    public void FitToOccupant_MultipleLockedNeighbors_SkipsToFirstUnlocked()
+    {
+        var start = new[] { 1, 1, 1, 1, 1 };
+        var locked = new[] { false, true, true, false, false };
+        var result = WeightRedistributor.FitToOccupant(
+            start, occupantStart: 3, occupantSpan: 1,
+            leftPad: 60, occupantInner: 120, rightPad: 60, locked);
+
+        // 元 [200, 200, 200, 200, 200] (合計 1000、 1 列 = 200)
+        // フィット後: 列 0 += leftPad → 260、列 1, 2 ロック → 200, 200、列 3 内側 → 120、列 4 += rightPad → 260
+        var sum = (double)result.Sum();
+        (result[0] / sum).Should().BeApproximately(260.0 / 1040.0, 0.02);
+        (result[1] / sum).Should().BeApproximately(200.0 / 1040.0, 0.02);
+        (result[2] / sum).Should().BeApproximately(200.0 / 1040.0, 0.02);
+        (result[3] / sum).Should().BeApproximately(120.0 / 1040.0, 0.02);
+        (result[4] / sum).Should().BeApproximately(260.0 / 1040.0, 0.02);
+    }
+
+    /// <summary>
+    /// 全ての隣接セルがロックされていて分配先がない場合は何もしない。
+    /// 3 列、列 0, 2 ロック、列 1 をフィット → 両隣ロックで分配先なし。
+    /// </summary>
+    [Fact]
+    public void FitToOccupant_AllNeighborsLocked_ReturnsStartUnchanged()
+    {
+        var start = new[] { 1, 1, 1 };
+        var locked = new[] { true, false, true };
+        var result = WeightRedistributor.FitToOccupant(
+            start, 1, 1, leftPad: 50, occupantInner: 100, rightPad: 50, locked);
+        result.Should().Equal(start);
+    }
+
+    /// <summary>locked 配列の長さが startWeights と不一致なら無視（全アンロック扱い）。</summary>
+    [Fact]
+    public void FitToOccupant_LockArrayLengthMismatch_TreatedAsAllUnlocked()
+    {
+        var start = new[] { 1, 1, 1 };
+        var locked = new[] { false, true }; // 長さ不一致
+        var result = WeightRedistributor.FitToOccupant(
+            start, 1, 1, leftPad: 50, occupantInner: 100, rightPad: 50, locked);
+
+        // 全アンロック扱いなので通常のフィット結果
+        var sum = (double)result.Sum();
+        (result[1] / sum).Should().BeApproximately(100.0 / 600.0, 0.02);
+    }
 }

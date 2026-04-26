@@ -11,13 +11,25 @@
             BorderThickness="1"
             Background="{DynamicResource SystemChromeMediumLowColor}">
         <Viewbox Stretch="Uniform" StretchDirection="Both">
-            <Grid Width="600" Height="600">
-                <!-- 配置・セル本体 -->
-                <Grid x:Name="CanvasGrid" Background="White" />
-                <!-- 境界ドラッグ用ハンドル（A2）。Canvas 上に絶対配置。
-                     Background は付けない（Background があると Canvas 全体が hit-test 対象になり、
-                     配置 Border の D&D を奪ってしまう）。子の Rectangle ハンドルだけが hit-test。 -->
-                <Canvas x:Name="BoundaryOverlay" IsHitTestVisible="True" />
+            <!-- 全体 624×624: 上端/左端 24px のヘッダバー + 600×600 のキャンバス本体 -->
+            <Grid Width="624" Height="624"
+                  RowDefinitions="24,*" ColumnDefinitions="24,*">
+                <!-- (0,1): 列ヘッダバー（列ロック切替） -->
+                <Grid x:Name="ColHeaderBar"
+                      Grid.Row="0" Grid.Column="1"
+                      Background="{DynamicResource SystemChromeMediumColor}" />
+                <!-- (1,0): 行ヘッダバー（行ロック切替） -->
+                <Grid x:Name="RowHeaderBar"
+                      Grid.Row="1" Grid.Column="0"
+                      Background="{DynamicResource SystemChromeMediumColor}" />
+                <!-- (1,1): キャンバス本体 -->
+                <Grid Grid.Row="1" Grid.Column="1" Width="600" Height="600">
+                    <Grid x:Name="CanvasGrid" Background="White" />
+                    <!-- 境界ドラッグ用ハンドル（A2）。Canvas 上に絶対配置。
+                         Background は付けない（Background があると Canvas 全体が hit-test 対象になり、
+                         配置 Border の D&D を奪ってしまう）。子の Rectangle ハンドルだけが hit-test。 -->
+                    <Canvas x:Name="BoundaryOverlay" IsHitTestVisible="True" />
+                </Grid>
             </Grid>
         </Viewbox>
     </Border>

@@ -87,7 +87,8 @@ public sealed partial class FitGridWeightToPlacementUseCase(
             var newColWeights = WeightRedistributor.FitToOccupant(
                 grid.ColWeights,
                 placement.Position.X, copy.OccupySize.Width,
-                leftPad, inner, rightPad);
+                leftPad, inner, rightPad,
+                grid.ColLocked.IsDefaultOrEmpty ? null : grid.ColLocked);
 
             var result = await updateWeights.ExecuteAsync(grid.Id, newColWeights, null, ct);
             return result.IsError ? result.Errors : Result.Success;
@@ -112,7 +113,8 @@ public sealed partial class FitGridWeightToPlacementUseCase(
             var newRowWeights = WeightRedistributor.FitToOccupant(
                 grid.RowWeights,
                 placement.Position.Y, copy.OccupySize.Height,
-                topPad, inner, bottomPad);
+                topPad, inner, bottomPad,
+                grid.RowLocked.IsDefaultOrEmpty ? null : grid.RowLocked);
 
             var result = await updateWeights.ExecuteAsync(grid.Id, null, newRowWeights, ct);
             return result.IsError ? result.Errors : Result.Success;

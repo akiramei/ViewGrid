@@ -31,6 +31,17 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
     [ObservableProperty]
     public partial ImmutableArray<int> RowWeights { get; set; }
 
+    /// <summary>
+    /// 各列のロック状態（要素数 = <see cref="Cols"/>）。ロック中の列はフィット動作で
+    /// 重みが変動しない。空配列なら全列アンロック扱い（旧グリッドとの後方互換）。
+    /// </summary>
+    [ObservableProperty]
+    public partial ImmutableArray<bool> ColLocked { get; set; }
+
+    /// <summary>各行のロック状態（要素数 = <see cref="Rows"/>）。</summary>
+    [ObservableProperty]
+    public partial ImmutableArray<bool> RowLocked { get; set; }
+
     public string GridSizeLabel => $"{Cols}×{Rows} セル";
     public string CanvasSizeLabel => $"{CanvasWidth}×{CanvasHeight} px";
 
@@ -46,5 +57,12 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
         CanvasHeight = grid.CanvasSize.Height;
         ColWeights = grid.ColWeights;
         RowWeights = grid.RowWeights;
+        // 旧 DB の grid だと空配列の可能性あり。AllUnlocked で要素数を揃える。
+        ColLocked = grid.ColLocked.Length == grid.GridCols
+            ? grid.ColLocked
+            : GridCanvas.AllUnlocked(grid.GridCols);
+        RowLocked = grid.RowLocked.Length == grid.GridRows
+            ? grid.RowLocked
+            : GridCanvas.AllUnlocked(grid.GridRows);
     }
 }

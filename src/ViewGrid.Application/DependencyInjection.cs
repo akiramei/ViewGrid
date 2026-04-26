@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<ExportGridUseCase>();
         services.AddScoped<UpdatePlacementOffsetUseCase>();
         services.AddScoped<UpdateGridWeightsUseCase>();
+        services.AddScoped<UpdateGridLocksUseCase>();
         services.AddScoped<FitGridWeightToPlacementUseCase>();
 
         // ViewModels

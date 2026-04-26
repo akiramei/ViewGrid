@@ -27,6 +27,18 @@ public sealed class GridCanvas
     /// <summary>各行の高さ比率（要素数 = <see cref="GridRows"/>）。すべて正の整数。</summary>
     public required ImmutableArray<int> RowWeights { get; init; }
 
+    /// <summary>
+    /// 各列のロック状態（要素数 = <see cref="GridCols"/>）。
+    /// ロック中の列はフィット動作で重みが変動せず、フィット時の余白分配でもスキップされる。
+    /// 空配列または要素数不一致なら全列アンロックとして扱う（旧データとの後方互換）。
+    /// </summary>
+    public ImmutableArray<bool> ColLocked { get; init; } = [];
+
+    /// <summary>
+    /// 各行のロック状態（要素数 = <see cref="GridRows"/>）。<see cref="ColLocked"/> と同じ意味。
+    /// </summary>
+    public ImmutableArray<bool> RowLocked { get; init; } = [];
+
     /// <summary>最終出力サイズ（ピクセル）。</summary>
     public required PixelSize CanvasSize { get; init; }
 
@@ -40,5 +52,12 @@ public sealed class GridCanvas
     {
         if (count <= 0) throw new ArgumentOutOfRangeException(nameof(count), count, "count must be positive.");
         return [.. Enumerable.Repeat(1, count)];
+    }
+
+    /// <summary>すべての列・行をアンロック（false）にする既定のロック配列を返す。</summary>
+    public static ImmutableArray<bool> AllUnlocked(int count)
+    {
+        if (count <= 0) throw new ArgumentOutOfRangeException(nameof(count), count, "count must be positive.");
+        return [.. Enumerable.Repeat(false, count)];
     }
 }

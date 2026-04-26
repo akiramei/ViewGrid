@@ -168,10 +168,85 @@ public partial class GridCanvasView : UserControl
         // Layer 3: 境界ドラッグハンドル（A2: 列・行比率の動的調整）
         BuildBoundaryHandles(grid);
 
+        // ヘッダバー: 行/列ロック切替トグル
+        BuildHeaderBars(grid);
+
         // 環境差（PowerShell 親プロセスから起動した場合等）で RowDefinitions/ColumnDefinitions
         // の Clear/Add が自動レイアウト更新を発火しないケースの保険として、明示的に
         // InvalidateMeasure を呼んで Star Sizing の再計算を強制する。
         CanvasGrid.InvalidateMeasure();
+    }
+
+    /// <summary>
+    /// 列・行ヘッダバーを再構築する。各セルにロック切替ボタンを配置し、
+    /// CanvasGrid と同じ Star 重みで列/行幅を揃える（クリック位置と意味が一致）。
+    /// </summary>
+    private void BuildHeaderBars(GridCanvasItemViewModel grid)
+    {
+        // 列ヘッダバー
+        ColHeaderBar.Children.Clear();
+        ColHeaderBar.RowDefinitions.Clear();
+        ColHeaderBar.ColumnDefinitions.Clear();
+        for (var c = 0; c < grid.Cols; c++)
+        {
+            var weight = c < grid.ColWeights.Length ? Math.Max(1, grid.ColWeights[c]) : 1;
+            ColHeaderBar.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(weight, GridUnitType.Star)));
+        }
+        for (var c = 0; c < grid.Cols; c++)
+        {
+            var locked = c < grid.ColLocked.Length && grid.ColLocked[c];
+            var btn = BuildHeaderToggle(c, locked, isCol: true);
+            Grid.SetColumn(btn, c);
+            ColHeaderBar.Children.Add(btn);
+        }
+
+        // 行ヘッダバー
+        RowHeaderBar.Children.Clear();
+        RowHeaderBar.RowDefinitions.Clear();
+        RowHeaderBar.ColumnDefinitions.Clear();
+        for (var r = 0; r < grid.Rows; r++)
+        {
+            var weight = r < grid.RowWeights.Length ? Math.Max(1, grid.RowWeights[r]) : 1;
+            RowHeaderBar.RowDefinitions.Add(new RowDefinition(new GridLength(weight, GridUnitType.Star)));
+        }
+        for (var r = 0; r < grid.Rows; r++)
+        {
+            var locked = r < grid.RowLocked.Length && grid.RowLocked[r];
+            var btn = BuildHeaderToggle(r, locked, isCol: false);
+            Grid.SetRow(btn, r);
+            RowHeaderBar.Children.Add(btn);
+        }
+    }
+
+    private Button BuildHeaderToggle(int index, bool locked, bool isCol)
+    {
+        var btn = new Button
+        {
+            Content = locked ? "🔒" : index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            FontSize = 10,
+            Padding = new Thickness(0),
+            Margin = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Background = locked
+                ? new SolidColorBrush(Color.FromArgb(0xFF, 0xFF, 0xA5, 0x00)) // ロック中: オレンジ
+                : new SolidColorBrush(Color.FromArgb(0x40, 0x88, 0x88, 0x88)),
+            Foreground = locked ? Brushes.White : Brushes.Black,
+            BorderThickness = new Thickness(0),
+            MinWidth = 0,
+            MinHeight = 0,
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        // クリックでロック切替（fire-and-forget で OK、結果は VM のステータスに反映）
+        btn.Click += (_, _) =>
+        {
+            if (_vm is null) return;
+            if (isCol) _ = _vm.ToggleColLockAsync(index);
+            else _ = _vm.ToggleRowLockAsync(index);
+        };
+        return btn;
     }
 
     // ---------- A2: 境界ドラッグで列・行重みを動的調整 ----------

@@ -46,6 +46,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             NullLogger<PlacementInspectorViewModel>.Instance);
 
         var updateWeights = new UpdateGridWeightsUseCase(_fx.GridRepository);
+        var updateLocks = new UpdateGridLocksUseCase(_fx.GridRepository);
         var fitWeight = new FitGridWeightToPlacementUseCase(
             _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository, _fx.AssetRepository, updateWeights,
             NullLogger<FitGridWeightToPlacementUseCase>.Instance);
@@ -63,6 +64,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             render,
             export,
             updateWeights,
+            updateLocks,
             offset,
             fitWeight,
             picker,

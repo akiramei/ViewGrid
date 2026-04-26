@@ -178,6 +178,42 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// 行 1 をロックしてから行 2 をフィットすると、行 1 の比率は維持され、
+    /// 余白は行 0（ロック行を飛ばした次のアンロック行）に分配される。
+    /// </summary>
+    [Fact]
+    public async Task FitRow_With_LockedNeighbor_Skips_To_NextUnlocked()
+    {
+        var (placementId, gridId) = await SeedAsync(
+            assetWidth: 200, assetHeight: 100,
+            cols: 3, rows: 3,
+            placementCol: 1, placementRow: 2,
+            scalingMode: ScalingMode.UniformContain);
+
+        // 行 1 をロック
+        var locks = new UpdateGridLocksUseCase(_fx.GridRepository);
+        var lockResult = await locks.ExecuteAsync(gridId, colLocked: null, rowLocked: [false, true, false]);
+        lockResult.IsError.Should().BeFalse();
+
+        var result = await _useCase.ExecuteAsync(placementId, FitAxis.Row);
+        result.IsError.Should().BeFalse();
+
+        var grid = await _fx.GridRepository.FindByIdAsync(gridId);
+        var rw = grid!.RowWeights;
+        var sum = (double)rw.Sum();
+
+        // 元 [200, 200, 200] (合計 600)
+        // 行 2 をフィット (横長画像 200x100 → 上下に 50 ずつ余白)
+        // 行 1 ロック → 行 1 の比率は元のまま 1/3 (200/600)
+        // 行 2 内側 → 100、上 pad 50 は行 1 を飛ばして行 0 に分配 → 行 0 = 250
+        // 下 pad 50 は破棄 (行 3 がない)
+        // 結果: [250, 200, 100] 合計 550
+        (rw[1] / sum).Should().BeApproximately(200.0 / 550.0, 0.02);
+        (rw[0] / sum).Should().BeApproximately(250.0 / 550.0, 0.02);
+        (rw[2] / sum).Should().BeApproximately(100.0 / 550.0, 0.02);
+    }
+
+    /// <summary>
     /// asset / copy / grid / placement を作成し、copy の ScalingMode のみ任意指定可能。
     /// グリッドは均等 [1,...,1]、CanvasSize=600x600 の cols×rows (各セル 200×200 想定)。
     /// </summary>

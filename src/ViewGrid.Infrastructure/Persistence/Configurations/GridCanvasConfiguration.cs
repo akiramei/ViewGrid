@@ -52,6 +52,29 @@ internal sealed class GridCanvasConfiguration : IEntityTypeConfiguration<GridCan
             .HasConversion(weightsConverter, weightsComparer)
             .IsRequired();
 
+        // ImmutableArray<bool> をカンマ区切り 0/1 文字列で永続化。
+        // 空文字列は空配列に戻る（要素数 0 = 全列アンロック扱い、後方互換）。
+        var locksConverter = new ValueConverter<ImmutableArray<bool>, string>(
+            v => string.Join(',', v.Select(b => b ? "1" : "0")),
+            v => string.IsNullOrEmpty(v)
+                ? ImmutableArray<bool>.Empty
+                : ImmutableArray.CreateRange(v.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s == "1")));
+        var locksComparer = new ValueComparer<ImmutableArray<bool>>(
+            (a, b) => a.SequenceEqual(b),
+            v => v.Aggregate(0, (h, x) => HashCode.Combine(h, x)),
+            v => ImmutableArray.CreateRange(v));
+
+        builder.Property(x => x.ColLocked)
+            .HasColumnName("col_locked")
+            .HasMaxLength(256)
+            .HasConversion(locksConverter, locksComparer)
+            .IsRequired();
+        builder.Property(x => x.RowLocked)
+            .HasColumnName("row_locked")
+            .HasMaxLength(256)
+            .HasConversion(locksConverter, locksComparer)
+            .IsRequired();
+
         builder.HasIndex(x => x.IsActive);
         builder.HasIndex(x => x.UpdatedAt);
     }

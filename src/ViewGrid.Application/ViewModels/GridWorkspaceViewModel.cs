@@ -36,6 +36,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly RenderGridUseCase _renderUseCase;
     private readonly ExportGridUseCase _exportUseCase;
     private readonly UpdateGridWeightsUseCase _updateWeightsUseCase;
+    private readonly UpdateGridLocksUseCase _updateLocksUseCase;
     private readonly UpdatePlacementOffsetUseCase _updateOffsetUseCase;
     private readonly FitGridWeightToPlacementUseCase _fitWeightUseCase;
     private readonly IFilePickerService _filePicker;
@@ -77,6 +78,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         RenderGridUseCase renderUseCase,
         ExportGridUseCase exportUseCase,
         UpdateGridWeightsUseCase updateWeightsUseCase,
+        UpdateGridLocksUseCase updateLocksUseCase,
         UpdatePlacementOffsetUseCase updateOffsetUseCase,
         FitGridWeightToPlacementUseCase fitWeightUseCase,
         IFilePickerService filePicker,
@@ -96,6 +98,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _renderUseCase = renderUseCase;
         _exportUseCase = exportUseCase;
         _updateWeightsUseCase = updateWeightsUseCase;
+        _updateLocksUseCase = updateLocksUseCase;
         _updateOffsetUseCase = updateOffsetUseCase;
         _fitWeightUseCase = fitWeightUseCase;
         _filePicker = filePicker;
@@ -577,6 +580,66 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         StatusMessage = changed
             ? (axis == FitAxis.Column ? "列幅を画像にフィットしました。" : "行高を画像にフィットしました。")
             : "フィット対象なし（余白がない、または計算範囲外）。";
+        return true;
+    }
+
+    /// <summary>
+    /// 指定列のロック状態を反転する（true ↔ false）。
+    /// 成功時は <see cref="CurrentGrid"/> の <see cref="GridCanvasItemViewModel.ColLocked"/>
+    /// も更新して View を再構築させる。
+    /// </summary>
+    public async Task<bool> ToggleColLockAsync(int colIndex, CancellationToken ct = default)
+    {
+        var grid = CurrentGrid;
+        if (grid is null) return false;
+        if (colIndex < 0 || colIndex >= grid.Cols) return false;
+
+        var newLocks = grid.ColLocked.ToBuilder();
+        if (newLocks.Count != grid.Cols)
+        {
+            newLocks.Clear();
+            for (var i = 0; i < grid.Cols; i++) newLocks.Add(false);
+        }
+        newLocks[colIndex] = !newLocks[colIndex];
+
+        var result = await _updateLocksUseCase.ExecuteAsync(grid.GridId, newLocks, rowLocked: null, ct);
+        if (result.IsError)
+        {
+            StatusMessage = string.Join(", ", result.Errors);
+            return false;
+        }
+
+        grid.ColLocked = result.Value.ColLocked;
+        OnPropertyChanged(nameof(CurrentGrid));
+        StatusMessage = newLocks[colIndex] ? $"列 {colIndex} をロックしました。" : $"列 {colIndex} のロックを解除しました。";
+        return true;
+    }
+
+    /// <summary>指定行のロック状態を反転する。</summary>
+    public async Task<bool> ToggleRowLockAsync(int rowIndex, CancellationToken ct = default)
+    {
+        var grid = CurrentGrid;
+        if (grid is null) return false;
+        if (rowIndex < 0 || rowIndex >= grid.Rows) return false;
+
+        var newLocks = grid.RowLocked.ToBuilder();
+        if (newLocks.Count != grid.Rows)
+        {
+            newLocks.Clear();
+            for (var i = 0; i < grid.Rows; i++) newLocks.Add(false);
+        }
+        newLocks[rowIndex] = !newLocks[rowIndex];
+
+        var result = await _updateLocksUseCase.ExecuteAsync(grid.GridId, colLocked: null, newLocks, ct);
+        if (result.IsError)
+        {
+            StatusMessage = string.Join(", ", result.Errors);
+            return false;
+        }
+
+        grid.RowLocked = result.Value.RowLocked;
+        OnPropertyChanged(nameof(CurrentGrid));
+        StatusMessage = newLocks[rowIndex] ? $"行 {rowIndex} をロックしました。" : $"行 {rowIndex} のロックを解除しました。";
         return true;
     }
 

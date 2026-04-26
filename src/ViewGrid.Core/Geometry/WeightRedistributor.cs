@@ -92,6 +92,23 @@ public static class WeightRedistributor
         long leftPad,
         long occupantInner,
         long rightPad)
+        => FitToOccupant(startWeights, occupantStart, occupantSpan, leftPad, occupantInner, rightPad, locked: null);
+
+    /// <summary>
+    /// ロック配列付きオーバーロード。<paramref name="locked"/> が <c>true</c> のセルは
+    /// 重みが変動せず、左右の余白分配でも「飛ばして」次のアンロックセルに分配する
+    /// （連続したロックセルがあれば、その向こう側の最初のアンロックセルに分配）。
+    /// 占有セル群のいずれかがロックされている場合はフィット対象外（入力をそのまま返す）。
+    /// <paramref name="locked"/> が null または要素数不一致の場合は全アンロック扱い。
+    /// </summary>
+    public static int[] FitToOccupant(
+        IReadOnlyList<int> startWeights,
+        int occupantStart,
+        int occupantSpan,
+        long leftPad,
+        long occupantInner,
+        long rightPad,
+        IReadOnlyList<bool>? locked)
     {
         ArgumentNullException.ThrowIfNull(startWeights);
         if (startWeights.Count == 0) return [.. startWeights];
@@ -101,9 +118,40 @@ public static class WeightRedistributor
         if (leftPad < 0 || rightPad < 0) return [.. startWeights];
         if (leftPad == 0 && rightPad == 0) return [.. startWeights]; // 余白なし → 何もしない
 
-        var hasLeft = occupantStart > 0;
-        var hasRight = occupantStart + occupantSpan < startWeights.Count;
-        if (!hasLeft && !hasRight) return [.. startWeights]; // 全列占有 → 分配先なし
+        var hasLockArray = locked is not null && locked.Count == startWeights.Count;
+
+        // 占有セル群のいずれかがロックされていればフィット対象外
+        if (hasLockArray)
+        {
+            for (var i = occupantStart; i < occupantStart + occupantSpan; i++)
+            {
+                if (locked![i]) return [.. startWeights];
+            }
+        }
+
+        // 左隣の最初のアンロックセルを探す（ロック中はスキップ）
+        int? leftNeighbor = null;
+        for (var i = occupantStart - 1; i >= 0; i--)
+        {
+            if (!hasLockArray || !locked![i])
+            {
+                leftNeighbor = i;
+                break;
+            }
+        }
+
+        // 右隣の最初のアンロックセルを探す
+        int? rightNeighbor = null;
+        for (var i = occupantStart + occupantSpan; i < startWeights.Count; i++)
+        {
+            if (!hasLockArray || !locked![i])
+            {
+                rightNeighbor = i;
+                break;
+            }
+        }
+
+        if (leftNeighbor is null && rightNeighbor is null) return [.. startWeights]; // 分配先なし
 
         var occupantPxTotal = leftPad + occupantInner + rightPad;
         if (occupantPxTotal <= 0) return [.. startWeights];
@@ -130,10 +178,10 @@ public static class WeightRedistributor
         for (var i = occupantStart; i < occupantStart + occupantSpan; i++)
             weights[i] = (long)Math.Round((double)weights[i] * newOccupantTotal / occupantWeightTotal);
 
-        if (hasLeft)
-            weights[occupantStart - 1] += leftPadWeight;
-        if (hasRight)
-            weights[occupantStart + occupantSpan] += rightPadWeight;
+        if (leftNeighbor is int li)
+            weights[li] += leftPadWeight;
+        if (rightNeighbor is int ri)
+            weights[ri] += rightPadWeight;
 
         for (var i = 0; i < weights.Length; i++)
             if (weights[i] < 1) weights[i] = 1;
