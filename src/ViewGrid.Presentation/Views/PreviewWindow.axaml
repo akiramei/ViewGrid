@@ -13,8 +13,10 @@
         <Border Grid.Row="0"
                 Background="{DynamicResource SystemChromeMediumLowColor}"
                 Margin="12,12,12,6">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Auto">
+            <ScrollViewer x:Name="PreviewScrollViewer"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto"
+                          Cursor="Hand">
                 <Image x:Name="PreviewImage"
                        Stretch="Uniform"
                        StretchDirection="DownOnly"
