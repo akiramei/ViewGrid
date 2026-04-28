@@ -54,6 +54,26 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     [ObservableProperty] public partial int OccupyWidth { get; set; } = 1;
     [ObservableProperty] public partial int OccupyHeight { get; set; } = 1;
 
+    /// <summary>
+    /// <see cref="ScalingMode.None"/> のときだけ <see cref="TrimAnchorX"/> /
+    /// <see cref="TrimAnchorY"/> が renderer に効く。それ以外のモード（Uniform 系・Cover・Fill）では
+    /// 効かないため、UI でも IsEnabled で連動グレーアウトして「いまどっちが効いているか」を可視化する。
+    /// </summary>
+    public bool IsTrimAnchorActive => ScalingMode == ScalingMode.None;
+
+    /// <summary>
+    /// <see cref="ScalingMode.None"/> 以外のときだけ <see cref="AlignX"/> / <see cref="AlignY"/> が
+    /// renderer に効く（None では <see cref="TrimAnchorX"/> / <see cref="TrimAnchorY"/> が効くため
+    /// Alignment は効かない）。<see cref="IsTrimAnchorActive"/> の対称。
+    /// </summary>
+    public bool IsAlignmentActive => ScalingMode != ScalingMode.None;
+
+    partial void OnScalingModeChanged(ScalingMode value)
+    {
+        OnPropertyChanged(nameof(IsTrimAnchorActive));
+        OnPropertyChanged(nameof(IsAlignmentActive));
+    }
+
     // XAML バインディング用の選択肢
     public IReadOnlyList<Rotation> RotationOptions { get; } =
         [Rotation.None, Rotation.Cw90, Rotation.Cw180, Rotation.Cw270];

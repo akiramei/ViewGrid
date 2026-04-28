@@ -1,13 +1,24 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Messaging;
+using ViewGrid.Application.Messages;
 
 namespace ViewGrid.Application.ViewModels;
 
-public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
+public sealed partial class MainWindowViewModel
+    : ViewModelBase, IDisposable, IRecipient<NavigateToCopyPropertiesMessage>
 {
+    /// <summary>準備タブのインデックス。<see cref="NavigateAsync"/> でタブを切り替える際に使う。</summary>
+    public const int PreparationTabIndex = 0;
+
+    /// <summary>配置タブのインデックス（参考）。</summary>
+    public const int LayoutTabIndex = 1;
+
+    private readonly IMessenger _messenger;
     /// <summary>
     /// 現在進行中の CopyList ロードを中断するための CTS。
     /// マルチセレクト中の <c>SelectedAssets</c> の Clear/Add 連鎖で本ハンドラが
@@ -42,17 +53,83 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         CopyListViewModel copyList,
         CopyPropertiesViewModel copyProperties,
         GridCanvasListViewModel gridList,
-        GridWorkspaceViewModel gridWorkspace)
+        GridWorkspaceViewModel gridWorkspace,
+        IMessenger messenger)
     {
         AssetLibrary = assetLibrary;
         CopyList = copyList;
         CopyProperties = copyProperties;
         GridList = gridList;
         GridWorkspace = gridWorkspace;
+        _messenger = messenger;
 
         AssetLibrary.PropertyChanged += OnAssetLibraryPropertyChanged;
         CopyList.PropertyChanged += OnCopyListPropertyChanged;
         GridList.PropertyChanged += OnGridListPropertyChanged;
+
+        _messenger.Register(this);
+    }
+
+    /// <summary>
+    /// 配置タブの Inspector から「特性を編集 →」で送られてくるナビゲーション要求を処理する。
+    /// async void にしないために <see cref="NavigateAsync"/> をテスト用 internal で公開し、
+    /// Receive 自体は fire-and-forget で起動する（テストではこの経路を使わない）。
+    /// </summary>
+    public void Receive(NavigateToCopyPropertiesMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        _ = NavigateAsync(message.AssetId, message.CopyId);
+    }
+
+    /// <summary>
+    /// 準備タブに切り替え、指定アセット + 指定コピーを単一選択にする。
+    /// <para>
+    /// <see cref="AssetLibraryViewModel.SelectedAsset"/> /
+    /// <see cref="AssetLibraryViewModel.SelectedAssets"/> の更新で
+    /// <see cref="OnAssetLibraryPropertyChanged"/> が起動し、<see cref="_copyLoadGate"/> 経由で
+    /// <see cref="CopyListViewModel.LoadForAssetAsync"/> が実行される。NavigateAsync 自身は
+    /// **直接ロードを行わず**、同じ gate を <see cref="SemaphoreSlim.WaitAsync(CancellationToken)"/>
+    /// で待つことで自動ロードの完了後に <see cref="CopyListViewModel.SelectedCopy"/> を設定する。
+    /// これにより共有 <c>ViewGridDbContext</c> での同時クエリ例外
+    /// （"A second operation was started on this context"）を確実に回避する。
+    /// </para>
+    /// </summary>
+    public async Task NavigateAsync(Guid assetId, Guid copyId, CancellationToken ct = default)
+    {
+        SelectedTabIndex = PreparationTabIndex;
+
+        var asset = AssetLibrary.Assets.FirstOrDefault(a => a.AssetId == assetId);
+        if (asset is null) return;
+
+        // SelectedAssets 経由でマルチセレクト集合も同期（既存ハンドラの選択経路と一致させる）。
+        // この 2 行で OnAssetLibraryPropertyChanged が 2 回起動するが、内部の
+        // _copyLoadCts.Cancel + 新 cts + gate 待機によって最後の起動だけが実ロードを行う。
+        AssetLibrary.UpdateSelectedAssets(new[] { asset });
+        AssetLibrary.SelectedAsset = asset;
+
+        // 自動ロードの完了を待つ。OnAssetLibraryPropertyChanged は WaitAsync を先に呼び出し済みのため、
+        // SemaphoreSlim の順序により自動ロード → NavigateAsync のこの待機 → 解放、の順で進む。
+        try
+        {
+            await _copyLoadGate.WaitAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        try
+        {
+            var copy = CopyList.Copies.FirstOrDefault(c => c.CopyId == copyId);
+            if (copy is null) return;
+
+            CopyList.UpdateSelectedCopies(new[] { copy });
+            CopyList.SelectedCopy = copy;
+        }
+        finally
+        {
+            _copyLoadGate.Release();
+        }
     }
 
     private async void OnAssetLibraryPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -148,6 +225,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        _messenger.UnregisterAll(this);
         _copyLoadCts?.Cancel();
         _copyLoadCts?.Dispose();
         _copyLoadCts = null;

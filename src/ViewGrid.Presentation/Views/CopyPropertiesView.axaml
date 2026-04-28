@@ -15,9 +15,8 @@
     <Border Padding="12">
         <DockPanel LastChildFill="True">
             <TextBlock DockPanel.Dock="Top"
+                       Classes="SectionHeader"
                        Text="特性編集"
-                       FontWeight="SemiBold"
-                       FontSize="14"
                        Margin="0,0,0,8" />
 
             <TextBlock DockPanel.Dock="Top"
@@ -27,11 +26,7 @@
 
             <!-- マルチセレクト中の案内（編集は 1 件選択時のみ可能） -->
             <Border DockPanel.Dock="Top"
-                    Background="#22FFA500"
-                    BorderBrush="#FFA500"
-                    BorderThickness="1"
-                    CornerRadius="4"
-                    Padding="8,4"
+                    Classes="WarningBanner"
                     Margin="0,4,0,8"
                     IsVisible="{Binding MultiSelectMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                 <TextBlock Text="{Binding MultiSelectMessage}"
@@ -60,29 +55,29 @@
                        IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
             <ScrollViewer VerticalScrollBarVisibility="Auto" IsEnabled="{Binding HasCopy}">
-                <StackPanel Spacing="10">
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="名前" FontSize="11" Opacity="0.75" />
+                <StackPanel Classes="FormGroup">
+                    <StackPanel Classes="FormSection">
+                        <TextBlock Classes="FieldLabel" Text="名前" />
                         <TextBox Text="{Binding CopyName}" PlaceholderText="（既定）" />
                     </StackPanel>
 
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="回転" FontSize="11" Opacity="0.75" />
+                    <StackPanel Classes="FormSection">
+                        <TextBlock Classes="FieldLabel" Text="回転" />
                         <ComboBox ItemsSource="{Binding RotationOptions}"
                                   SelectedItem="{Binding Rotation}"
                                   HorizontalAlignment="Stretch" />
                     </StackPanel>
 
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="反転" FontSize="11" Opacity="0.75" />
+                    <StackPanel Classes="FormSection">
+                        <TextBlock Classes="FieldLabel" Text="反転" />
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <CheckBox Content="水平 (H)" IsChecked="{Binding FlipX}" />
                             <CheckBox Content="垂直 (V)" IsChecked="{Binding FlipY}" />
                         </StackPanel>
                     </StackPanel>
 
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="スケーリング" FontSize="11" Opacity="0.75" />
+                    <StackPanel Classes="FormSection">
+                        <TextBlock Classes="FieldLabel" Text="スケーリング" />
                         <ComboBox ItemsSource="{Binding ScalingModeOptions}"
                                   SelectedItem="{Binding ScalingMode}"
                                   HorizontalAlignment="Stretch">
@@ -94,8 +89,9 @@
                         </ComboBox>
                     </StackPanel>
 
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="トリミング基準" FontSize="11" Opacity="0.75" />
+                    <!-- ScalingMode=None のときのみ TrimmingAnchor が renderer に効く -->
+                    <StackPanel Classes="FormSection" IsEnabled="{Binding IsTrimAnchorActive}">
+                        <TextBlock Classes="FieldLabel" Text="トリミング基準" />
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                             <ComboBox Grid.Column="0"
                                       ItemsSource="{Binding AnchorXOptions}"
@@ -108,8 +104,9 @@
                         </Grid>
                     </StackPanel>
 
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="アライメント" FontSize="11" Opacity="0.75" />
+                    <!-- ScalingMode!=None のときのみ Alignment が renderer に効く -->
+                    <StackPanel Classes="FormSection" IsEnabled="{Binding IsAlignmentActive}">
+                        <TextBlock Classes="FieldLabel" Text="アライメント" />
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                             <ComboBox Grid.Column="0"
                                       ItemsSource="{Binding AnchorXOptions}"
@@ -122,8 +119,8 @@
                         </Grid>
                     </StackPanel>
 
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="占有セル (W×H)" FontSize="11" Opacity="0.75" />
+                    <StackPanel Classes="FormSection">
+                        <TextBlock Classes="FieldLabel" Text="占有セル (W×H)" />
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                             <NumericUpDown Grid.Column="0"
                                            Value="{Binding OccupyWidth}"

@@ -12,6 +12,12 @@ using Xunit;
 
 namespace ViewGrid.Application.Tests.ViewModels;
 
+/// <summary>
+/// PlacementInspectorViewModel は配置固有の <see cref="PlacementItemViewModel.PixelOffsetX"/> /
+/// <see cref="PlacementItemViewModel.PixelOffsetY"/> のみを編集する。
+/// 共有特性（Rotation/Flip/Scaling/Trim/Align/Occupy）の編集は CopyPropertiesViewModel に移譲され、
+/// Inspector からは「特性を編集 →」コマンドで <see cref="NavigateToCopyPropertiesMessage"/> を送る。
+/// </summary>
 public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
 {
     private UseCaseFixture _fx = null!;
@@ -23,13 +29,9 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     {
         _fx = await UseCaseFixture.CreateAsync();
         _messenger = new WeakReferenceMessenger();
-        var update = new UpdateImageCopyUseCase(_fx.CopyRepository);
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
         _vm = new PlacementInspectorViewModel(
-            update,
             offset,
-            _fx.CopyRepository,
-            _fx.PlacementRepository,
             _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);
         _place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
@@ -43,7 +45,10 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         await _vm.AttachAsync(null);
 
         _vm.HasPlacement.Should().BeFalse();
-        _vm.SharedPlacementCount.Should().Be(0);
+        _vm.HeaderLabel.Should().BeEmpty();
+        _vm.PositionLabel.Should().BeEmpty();
+        _vm.PixelOffsetX.Should().Be(0);
+        _vm.PixelOffsetY.Should().Be(0);
         _vm.IsDirty.Should().BeFalse();
     }
 
@@ -56,51 +61,57 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
 
         _vm.HasPlacement.Should().BeTrue();
         _vm.IsDirty.Should().BeFalse();
-        _vm.Rotation.Should().Be(item.Rotation);
-        _vm.ScalingMode.Should().Be(item.ScalingMode);
-        _vm.OccupyWidth.Should().Be(item.OccupySize.Width);
+        _vm.PixelOffsetX.Should().Be(item.PixelOffsetX);
+        _vm.PixelOffsetY.Should().Be(item.PixelOffsetY);
+        _vm.HeaderLabel.Should().Be(item.Label);
     }
 
     [Fact]
-    public async Task Editing_A_Field_Marks_Dirty_And_Enables_Save()
+    public async Task Editing_PixelOffset_Marks_Dirty_And_Enables_Save()
     {
         var (item, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
-        _vm.ScalingMode = ScalingMode.Fill;
+        _vm.PixelOffsetX = 50;
 
         _vm.IsDirty.Should().BeTrue();
         _vm.SaveCommand.CanExecute(null).Should().BeTrue();
     }
 
     [Fact]
-    public async Task SaveAsync_Persists_Changes_And_Sends_Message()
+    public async Task SaveAsync_Persists_PixelOffset_To_Placement()
     {
-        var (item, copy) = await SeedAndPlaceAsync();
+        var (item, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
-        var receivedCount = 0;
-        var listener = new object();
-        _messenger.Register<CopyLibraryChangedMessage>(listener, (_, _) => receivedCount++);
+        _vm.PixelOffsetX = 100;
+        _vm.PixelOffsetY = -25;
 
-        try
-        {
-            _vm.ScalingMode = ScalingMode.UniformCover;
-            _vm.Rotation = Rotation.Cw90;
+        await _vm.SaveAsync();
 
-            await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+        var reloaded = await _fx.PlacementRepository.FindByIdAsync(item.PlacementId);
+        reloaded!.PixelOffsetX.Should().Be(100);
+        reloaded.PixelOffsetY.Should().Be(-25);
+        // VM 上の source 側にも同期されている
+        item.PixelOffsetX.Should().Be(100);
+        item.PixelOffsetY.Should().Be(-25);
+    }
 
-            _vm.IsDirty.Should().BeFalse();
-            receivedCount.Should().Be(1);
+    [Fact]
+    public async Task SaveAsync_Clamps_PixelOffset_To_Max()
+    {
+        var (item, _) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item);
 
-            var reloaded = await _fx.CopyRepository.FindByIdAsync(copy.Id);
-            reloaded!.ScalingMode.Should().Be(ScalingMode.UniformCover);
-            reloaded.Transform.Rotation.Should().Be(Rotation.Cw90);
-        }
-        finally
-        {
-            _messenger.UnregisterAll(listener);
-        }
+        _vm.PixelOffsetX = 99_999;
+        _vm.PixelOffsetY = -99_999;
+
+        await _vm.SaveAsync();
+
+        var reloaded = await _fx.PlacementRepository.FindByIdAsync(item.PlacementId);
+        reloaded!.PixelOffsetX.Should().Be(PlacementInspectorViewModel.MaxPixelOffset);
+        reloaded.PixelOffsetY.Should().Be(-PlacementInspectorViewModel.MaxPixelOffset);
     }
 
     [Fact]
@@ -109,42 +120,58 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         var (item, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
-        _vm.Rotation = Rotation.Cw180;
+        _vm.PixelOffsetX = 200;
         _vm.IsDirty.Should().BeTrue();
 
         await _vm.RevertAsync();
 
-        _vm.Rotation.Should().Be(item.Rotation);
+        _vm.PixelOffsetX.Should().Be(item.PixelOffsetX);
         _vm.IsDirty.Should().BeFalse();
     }
 
     [Fact]
-    public async Task SharedPlacementCount_Reflects_Multiple_Placements_Of_Same_Copy()
-    {
-        var asset = await _fx.SeedAssetAsync();
-        var copy = await _fx.SeedCopyAsync(asset.Id);
-        var grid = await SeedGridAsync(2, 2);
-
-        var p1 = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
-        var p2 = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(1, 0));
-        p1.IsError.Should().BeFalse();
-        p2.IsError.Should().BeFalse();
-
-        var item = new PlacementItemViewModel(p1.Value, copy, asset, null);
-        await _vm.AttachAsync(item);
-
-        _vm.SharedPlacementCount.Should().Be(2);
-        _vm.HasSharedPlacements.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task SharedPlacementCount_Is_One_For_Solo_Placement()
+    public async Task ResetPixelOffsetCommand_Sets_Both_Axes_To_Zero()
     {
         var (item, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
-        _vm.SharedPlacementCount.Should().Be(1);
-        _vm.HasSharedPlacements.Should().BeFalse();
+        _vm.PixelOffsetX = 50;
+        _vm.PixelOffsetY = 75;
+
+        _vm.ResetPixelOffsetCommand.Execute(null);
+
+        _vm.PixelOffsetX.Should().Be(0);
+        _vm.PixelOffsetY.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task EditCopyPropertiesCommand_Sends_Navigate_Message_With_Asset_And_Copy_Ids()
+    {
+        var (item, copy) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item);
+
+        NavigateToCopyPropertiesMessage? received = null;
+        var listener = new object();
+        _messenger.Register<NavigateToCopyPropertiesMessage>(listener, (_, m) => received = m);
+
+        try
+        {
+            _vm.EditCopyPropertiesCommand.Execute(null);
+
+            received.Should().NotBeNull();
+            received!.AssetId.Should().Be(copy.AssetId);
+            received.CopyId.Should().Be(copy.Id);
+        }
+        finally
+        {
+            _messenger.UnregisterAll(listener);
+        }
+    }
+
+    [Fact]
+    public void EditCopyPropertiesCommand_Is_Disabled_When_No_Placement_Attached()
+    {
+        _vm.EditCopyPropertiesCommand.CanExecute(null).Should().BeFalse();
     }
 
     private async Task<(PlacementItemViewModel item, ImageCopy copy)> SeedAndPlaceAsync()

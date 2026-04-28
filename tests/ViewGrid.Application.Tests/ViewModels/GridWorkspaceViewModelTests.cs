@@ -35,13 +35,9 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             _fx.AssetRepository, _fx.Storage, new SkiaGridImageRenderer());
         var export = new ExportGridUseCase(render);
         var picker = Substitute.For<IFilePickerService>();
-        var update = new UpdateImageCopyUseCase(_fx.CopyRepository);
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
         var inspector = new PlacementInspectorViewModel(
-            update,
             offset,
-            _fx.CopyRepository,
-            _fx.PlacementRepository,
             _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);
 

@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -11,23 +9,28 @@ using Microsoft.Extensions.Logging;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
-using ViewGrid.Core.Interfaces;
 using ViewGrid.Core.UseCases;
 
 namespace ViewGrid.Application.ViewModels;
 
 /// <summary>
-/// 配置タブで選択された <see cref="PlacementItemViewModel"/> の特性を編集する。
-/// 共有特性（Rotation/Flip/Scaling/Trim/Align/Occupy）は <see cref="UpdateImageCopyUseCase"/> 経由で
-/// <see cref="ImageCopy"/> を更新する。同じ論理コピーを複数セルに配置している場合は変更が全配置に波及するため、
-/// <see cref="SharedPlacementCount"/> と <see cref="HasSharedPlacements"/> でその旨を UI に伝える。
+/// 配置タブで選択された <see cref="PlacementItemViewModel"/> の<b>配置固有プロパティ</b>を編集する。
+/// <para>
+/// 配置固有プロパティは現状 <see cref="PlacementItemViewModel.PixelOffsetX"/> /
+/// <see cref="PlacementItemViewModel.PixelOffsetY"/> のみ。共有特性（Rotation/Flip/Scaling/
+/// Trim/Align/Occupy）は <see cref="ImageCopy"/> 単位で持つため、
+/// 「特性を編集 →」コマンドで <see cref="NavigateToCopyPropertiesMessage"/> を送出し、
+/// 準備タブの <c>CopyPropertiesView</c> に編集を委譲する。
+/// </para>
+/// <para>
+/// この設計により、配置タブの Inspector と準備タブの CopyProperties で共有特性を
+/// 二重に編集できる従来構造（共有バナーが必要だった原因）を解消し、
+/// Inspector を「配置固有の微調整」だけの最小構成に絞れる。
+/// </para>
 /// </summary>
 public sealed partial class PlacementInspectorViewModel : ObservableObject
 {
-    private readonly UpdateImageCopyUseCase _updateUseCase;
     private readonly UpdatePlacementOffsetUseCase _offsetUseCase;
-    private readonly IImageCopyRepository _copyRepository;
-    private readonly IGridPlacementRepository _placementRepository;
     private readonly IMessenger _messenger;
     private readonly ILogger<PlacementInspectorViewModel> _logger;
 
@@ -61,58 +64,16 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     [ObservableProperty]
     public partial string ImageDrawSizeLabel { get; set; } = string.Empty;
 
-    /// <summary>同じ論理コピーを参照している配置の総数（自分自身含む）。</summary>
-    [ObservableProperty]
-    public partial int SharedPlacementCount { get; set; }
-
-    public bool HasSharedPlacements => SharedPlacementCount > 1;
-
-    // 編集バッファ
-    [ObservableProperty] public partial Rotation Rotation { get; set; }
-    [ObservableProperty] public partial bool FlipX { get; set; }
-    [ObservableProperty] public partial bool FlipY { get; set; }
-    [ObservableProperty] public partial ScalingMode ScalingMode { get; set; } = ScalingMode.UniformContain;
-    [ObservableProperty] public partial AnchorX TrimAnchorX { get; set; } = AnchorX.Center;
-    [ObservableProperty] public partial AnchorY TrimAnchorY { get; set; } = AnchorY.Center;
-    [ObservableProperty] public partial AnchorX AlignX { get; set; } = AnchorX.Center;
-    [ObservableProperty] public partial AnchorY AlignY { get; set; } = AnchorY.Center;
-    [ObservableProperty] public partial int OccupyWidth { get; set; } = 1;
-    [ObservableProperty] public partial int OccupyHeight { get; set; } = 1;
+    // 編集バッファ（配置固有のみ）
     [ObservableProperty] public partial int PixelOffsetX { get; set; }
     [ObservableProperty] public partial int PixelOffsetY { get; set; }
 
-    // XAML バインディング用
-    public IReadOnlyList<Rotation> RotationOptions { get; } =
-        [Rotation.None, Rotation.Cw90, Rotation.Cw180, Rotation.Cw270];
-
-    public IReadOnlyList<AnchorX> AnchorXOptions { get; } =
-        [AnchorX.Left, AnchorX.Center, AnchorX.Right];
-
-    public IReadOnlyList<AnchorY> AnchorYOptions { get; } =
-        [AnchorY.Top, AnchorY.Center, AnchorY.Bottom];
-
-    public IReadOnlyList<ScalingMode> ScalingModeOptions { get; } =
-    [
-        ScalingMode.None,
-        ScalingMode.UniformContain,
-        ScalingMode.UniformContainShrinkOnly,
-        ScalingMode.UniformContainEnlargeOnly,
-        ScalingMode.UniformCover,
-        ScalingMode.Fill,
-    ];
-
     public PlacementInspectorViewModel(
-        UpdateImageCopyUseCase updateUseCase,
         UpdatePlacementOffsetUseCase offsetUseCase,
-        IImageCopyRepository copyRepository,
-        IGridPlacementRepository placementRepository,
         IMessenger messenger,
         ILogger<PlacementInspectorViewModel> logger)
     {
-        _updateUseCase = updateUseCase;
         _offsetUseCase = offsetUseCase;
-        _copyRepository = copyRepository;
-        _placementRepository = placementRepository;
         _messenger = messenger;
         _logger = logger;
         PropertyChanged += OnAnyPropertyChanged;
@@ -123,7 +84,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     /// を計算する（null なら空ラベル）。新しい source の <c>PropertyChanged</c> を購読し、
     /// 外部（Shift+ドラッグ等）から <see cref="PlacementItemViewModel.PixelOffsetX"/> /
     /// <c>Y</c> が変更されたら Inspector の表示にも追従させる。</summary>
-    public async Task AttachAsync(
+    public Task AttachAsync(
         PlacementItemViewModel? source,
         GridCanvasItemViewModel? grid = null,
         CancellationToken ct = default)
@@ -146,8 +107,8 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
                 HeaderLabel = string.Empty;
                 PositionLabel = string.Empty;
                 ImageDrawSizeLabel = string.Empty;
-                SharedPlacementCount = 0;
-                ResetBuffer();
+                PixelOffsetX = 0;
+                PixelOffsetY = 0;
             }
             else
             {
@@ -155,23 +116,8 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
                 HeaderLabel = source.Label;
                 PositionLabel = $"位置: ({source.GridX},{source.GridY}) / 占有: {source.OccupyWidth}×{source.OccupyHeight}";
                 ImageDrawSizeLabel = ComputeImageDrawSizeLabel(source, grid);
-                Rotation = source.Rotation;
-                FlipX = source.FlipX;
-                FlipY = source.FlipY;
-                ScalingMode = source.ScalingMode;
-                TrimAnchorX = source.TrimmingAnchor.X;
-                TrimAnchorY = source.TrimmingAnchor.Y;
-                AlignX = source.Alignment.X;
-                AlignY = source.Alignment.Y;
-                OccupyWidth = source.OccupySize.Width;
-                OccupyHeight = source.OccupySize.Height;
                 PixelOffsetX = source.PixelOffsetX;
                 PixelOffsetY = source.PixelOffsetY;
-
-                // 同じ論理コピーを参照する配置数を計算
-                var siblings = await _placementRepository.FindByGridIdAsync(source.GridId, ct);
-                SharedPlacementCount = siblings.Count(p => p.CopyId == source.CopyId);
-                OnPropertyChanged(nameof(HasSharedPlacements));
             }
             IsDirty = false;
             StatusMessage = null;
@@ -180,6 +126,9 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         {
             _suppressDirty = false;
         }
+
+        EditCopyPropertiesCommand.NotifyCanExecuteChanged();
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -205,35 +154,10 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanSave))]
     public async Task SaveAsync(CancellationToken ct = default)
     {
-        // _source は messenger 受信に伴う再ロードで null 化される可能性があるため、
-        // メソッド冒頭でローカルにキャプチャしてレース条件を回避する。
+        // _source は外部要因で null 化される可能性があるためローカルキャプチャ。
         var source = _source;
         if (source is null || !IsDirty) return;
 
-        var current = await _copyRepository.FindByIdAsync(source.CopyId, ct);
-        if (current is null)
-        {
-            StatusMessage = "対象の論理コピーが見つかりません。";
-            return;
-        }
-
-        var changes = new UpdateImageCopyChanges
-        {
-            Transform = new ImageTransform(Rotation, FlipX, FlipY),
-            ScalingMode = ScalingMode,
-            TrimmingAnchor = new TrimmingAnchor(TrimAnchorX, TrimAnchorY),
-            Alignment = new Alignment(AlignX, AlignY),
-            OccupySize = new OccupySize(Math.Max(1, OccupyWidth), Math.Max(1, OccupyHeight)),
-        };
-
-        var result = await _updateUseCase.ExecuteAsync(source.CopyId, changes, ct);
-        if (result.IsError)
-        {
-            StatusMessage = string.Join(", ", result.Errors);
-            return;
-        }
-
-        // 配置別の PixelOffset は ImageCopy ではなく GridPlacement に持つので別 use case で保存。
         var clampedX = Math.Clamp(PixelOffsetX, -MaxPixelOffset, MaxPixelOffset);
         var clampedY = Math.Clamp(PixelOffsetY, -MaxPixelOffset, MaxPixelOffset);
         var offsetResult = await _offsetUseCase.ExecuteAsync(source.PlacementId, clampedX, clampedY, ct);
@@ -243,23 +167,23 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
             return;
         }
 
-        var sharedCount = SharedPlacementCount;
+        // VM 側の表示用 PlacementItemViewModel にも同期。Shift+ドラッグ系で
+        // 既に同値ならイベント連鎖はないため、再入の懸念はない。
+        source.PixelOffsetX = clampedX;
+        source.PixelOffsetY = clampedY;
+
         _suppressDirty = true;
         try
         {
             IsDirty = false;
-            StatusMessage = sharedCount > 1
-                ? $"保存しました。{sharedCount} 件の配置に反映されます。"
-                : "保存しました。";
+            StatusMessage = "保存しました。";
         }
         finally
         {
             _suppressDirty = false;
         }
 
-        LogSaved(_logger, source.CopyId);
-        // メッセージ送信は最後（受信側の再ロードで _source が null 化される可能性があるため）
-        _messenger.Send(new CopyLibraryChangedMessage());
+        LogSaved(_logger, source.PlacementId);
     }
 
     [RelayCommand(CanExecute = nameof(CanRevert))]
@@ -267,22 +191,6 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
 
     private bool CanSave() => HasPlacement && IsDirty;
     private bool CanRevert() => HasPlacement && IsDirty;
-
-    private void ResetBuffer()
-    {
-        Rotation = Rotation.None;
-        FlipX = false;
-        FlipY = false;
-        ScalingMode = ScalingMode.UniformContain;
-        TrimAnchorX = AnchorX.Center;
-        TrimAnchorY = AnchorY.Center;
-        AlignX = AnchorX.Center;
-        AlignY = AnchorY.Center;
-        OccupyWidth = 1;
-        OccupyHeight = 1;
-        PixelOffsetX = 0;
-        PixelOffsetY = 0;
-    }
 
     /// <summary>
     /// ΔX/ΔY を 0 に戻す。「0 にリセット」ボタン用。値を 0 に戻すだけの操作なので
@@ -295,6 +203,21 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         PixelOffsetX = 0;
         PixelOffsetY = 0;
     }
+
+    /// <summary>
+    /// 「特性を編集 →」コマンド。準備タブに切り替えて当該論理コピーを編集する画面に
+    /// 飛ばすため、<see cref="NavigateToCopyPropertiesMessage"/> を送る。
+    /// 受信側は <c>MainWindowViewModel</c>。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEditCopyProperties))]
+    public void EditCopyProperties()
+    {
+        var source = _source;
+        if (source is null) return;
+        _messenger.Send(new NavigateToCopyPropertiesMessage(source.AssetId, source.CopyId));
+    }
+
+    private bool CanEditCopyProperties() => HasPlacement;
 
     /// <summary>
     /// 外部（Shift+ドラッグ等）からの <see cref="PlacementItemViewModel.PixelOffsetX"/> /
@@ -321,8 +244,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         if (_suppressDirty) return;
         if (e.PropertyName is nameof(IsDirty) or nameof(HasPlacement)
             or nameof(StatusMessage) or nameof(HeaderLabel) or nameof(PositionLabel)
-            or nameof(ImageDrawSizeLabel)
-            or nameof(SharedPlacementCount) or nameof(HasSharedPlacements))
+            or nameof(ImageDrawSizeLabel))
             return;
 
         if (!IsDirty) IsDirty = true;
@@ -331,6 +253,6 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     }
 
     [LoggerMessage(EventId = 5101, Level = LogLevel.Information,
-        Message = "配置インスペクタから論理コピー特性を保存: {CopyId}")]
-    private static partial void LogSaved(ILogger logger, Guid copyId);
+        Message = "配置インスペクタからピクセル微調整を保存: {PlacementId}")]
+    private static partial void LogSaved(ILogger logger, Guid placementId);
 }

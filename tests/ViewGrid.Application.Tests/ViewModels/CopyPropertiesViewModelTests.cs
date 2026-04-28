@@ -38,6 +38,33 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ScalingMode_None_Activates_TrimAnchor_And_Deactivates_Alignment()
+    {
+        // ScalingMode.None ではトリミング基準が renderer に効き、Alignment は効かない。
+        // UI 側で IsEnabled に Bind してグレーアウト切替する。
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+
+        _vm.ScalingMode = ScalingMode.None;
+
+        _vm.IsTrimAnchorActive.Should().BeTrue();
+        _vm.IsAlignmentActive.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ScalingMode_NonNone_Activates_Alignment_And_Deactivates_TrimAnchor()
+    {
+        // ScalingMode.None 以外（Uniform 系・Cover・Fill）では Alignment が renderer に効く。
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+
+        _vm.ScalingMode = ScalingMode.UniformCover;
+
+        _vm.IsTrimAnchorActive.Should().BeFalse();
+        _vm.IsAlignmentActive.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Attach_Loads_Source_Values_Without_Marking_Dirty()
     {
         var source = await SeedSourceAsync();

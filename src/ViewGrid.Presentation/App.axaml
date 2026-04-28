@@ -6,5 +6,6 @@
 
     <Application.Styles>
         <FluentTheme />
+        <StyleInclude Source="avares://ViewGrid.Presentation/Styles/CommonStyles.axaml" />
     </Application.Styles>
 </Application>

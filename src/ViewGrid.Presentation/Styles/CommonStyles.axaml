@@ -1,0 +1,66 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        ViewGrid 共通スタイル。
+        FontSize / Opacity / Margin / 色をハードコードしてきた各ビューを Class 適用に置換し、
+        視覚階層を統一する。色や数値を変えたい場合はここを 1 箇所修正すれば全画面に反映される。
+
+        使い方:
+            <TextBlock Classes="SectionHeader" Text="特性編集" />
+            <TextBlock Classes="FieldLabel" Text="名前" />
+            <TextBlock Classes="HintText" Text="..." />
+            <Border Classes="WarningBanner">...</Border>
+            <Border Classes="InfoBanner">...</Border>
+            <StackPanel Classes="FormSection">...</StackPanel>
+            <StackPanel Classes="FormGroup">...</StackPanel>
+    -->
+
+    <!-- セクション見出し（パネル単位、サブグループ単位の小見出し共通） -->
+    <Style Selector="TextBlock.SectionHeader">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+
+    <!-- 入力欄のラベル（コンボ・テキストボックスの上に置く） -->
+    <Style Selector="TextBlock.FieldLabel">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Opacity" Value="0.7" />
+        <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+
+    <!-- 補足ヒント（小さい説明文） -->
+    <Style Selector="TextBlock.HintText">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="Opacity" Value="0.55" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- 黄色い注意バナー -->
+    <Style Selector="Border.WarningBanner">
+        <Setter Property="Background" Value="#22FFC107" />
+        <Setter Property="BorderBrush" Value="#FFC107" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="8,6" />
+    </Style>
+
+    <!-- 青い情報バナー -->
+    <Style Selector="Border.InfoBanner">
+        <Setter Property="Background" Value="#223399FF" />
+        <Setter Property="BorderBrush" Value="#3399FF" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="8,6" />
+    </Style>
+
+    <!-- フォーム内 1 セクション（ラベル + 入力 1 行） -->
+    <Style Selector="StackPanel.FormSection">
+        <Setter Property="Spacing" Value="4" />
+    </Style>
+
+    <!-- フォームのセクション群（セクション間の余白） -->
+    <Style Selector="StackPanel.FormGroup">
+        <Setter Property="Spacing" Value="12" />
+    </Style>
+</Styles>

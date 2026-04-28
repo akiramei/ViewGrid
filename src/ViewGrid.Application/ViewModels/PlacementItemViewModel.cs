@@ -16,6 +16,13 @@ public sealed partial class PlacementItemViewModel : ObservableObject
     public Guid GridId { get; }
     public Guid CopyId { get; }
 
+    /// <summary>
+    /// この配置が参照する論理コピーの基となるアセット ID。Inspector から
+    /// 「特性を編集 →」で <see cref="ViewGrid.Application.Messages.NavigateToCopyPropertiesMessage"/>
+    /// を送る際に必要となる（受信側で準備タブのアセット選択を伴うため）。
+    /// </summary>
+    public Guid AssetId { get; }
+
     [ObservableProperty]
     public partial CellPosition Position { get; set; }
 
@@ -68,6 +75,7 @@ public sealed partial class PlacementItemViewModel : ObservableObject
         PlacementId = placement.Id;
         GridId = placement.GridId;
         CopyId = placement.CopyId;
+        AssetId = copy.AssetId;
         Position = placement.Position;
         PixelOffsetX = placement.PixelOffsetX;
         PixelOffsetY = placement.PixelOffsetY;

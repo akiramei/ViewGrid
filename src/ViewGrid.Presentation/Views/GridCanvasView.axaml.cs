@@ -99,8 +99,43 @@ public partial class GridCanvasView : UserControl
 
     private void OnPlacementsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Rebuild();
 
+    /// <summary>
+    /// 配置 VM の <see cref="PlacementItemViewModel.PixelOffsetX"/> / <c>Y</c> 変更を
+    /// 検知して、対応する Border の TranslateTransform を再計算する。
+    /// 購読は <see cref="Rebuild"/> の Layer 2 ループで配置ごとに張り、
+    /// <see cref="UnsubscribePlacementChanges"/> で一括解除する。
+    /// </summary>
+    private void OnPlacementItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not PlacementItemViewModel placement) return;
+        if (e.PropertyName is not (nameof(PlacementItemViewModel.PixelOffsetX)
+            or nameof(PlacementItemViewModel.PixelOffsetY)))
+            return;
+
+        // 対応する Border を逆引き（_placementBorders は Border → VM の dict）
+        foreach (var (border, vm) in _placementBorders)
+        {
+            if (vm == placement)
+            {
+                ApplyPixelOffsetTransform(border, placement);
+                return;
+            }
+        }
+    }
+
+    private void UnsubscribePlacementChanges()
+    {
+        foreach (var item in _placementBorders.Values)
+            item.PropertyChanged -= OnPlacementItemPropertyChanged;
+    }
+
     private void Rebuild()
     {
+        // 古い配置 VM の PropertyChanged 購読を解除してから _placementBorders をクリアする。
+        // 購読は Layer 2 のループで張り直す。Rebuild 経路（CurrentGrid/SelectedPlacement 変更、
+        // Placements コレクション変更、DataContext 変更）すべてで漏れなく解除される。
+        UnsubscribePlacementChanges();
+
         CanvasGrid.Children.Clear();
         CanvasGrid.RowDefinitions.Clear();
         CanvasGrid.ColumnDefinitions.Clear();
@@ -162,6 +197,12 @@ public partial class GridCanvasView : UserControl
             CanvasGrid.Children.Add(visual);
 
             _placementBorders[visual] = placement;
+            // 配置 VM の PixelOffsetX/Y 変更をキャンバスに即時反映するため購読する。
+            // Inspector の「保存」ボタンや RevertAsync などキャンバスを介さない経路で値が
+            // 変わっても、対応する Border の TranslateTransform を再計算して追従させる。
+            // Shift+ドラッグ中は UpdatePixelOffsetFromDrag が ApplyPixelOffsetTransform を直接
+            // 呼ぶため、本ハンドラと二重計算になるが ApplyPixelOffsetTransform は idempotent。
+            placement.PropertyChanged += OnPlacementItemPropertyChanged;
             ApplyPixelOffsetTransform(visual, placement);
         }
 
