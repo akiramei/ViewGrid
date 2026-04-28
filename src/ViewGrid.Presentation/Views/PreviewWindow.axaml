@@ -28,19 +28,25 @@
 
         <Grid Grid.Row="1"
               Margin="12,6,12,12"
-              ColumnDefinitions="*,Auto,Auto">
+              ColumnDefinitions="*,Auto,Auto,Auto">
             <TextBlock x:Name="InfoText"
                        Grid.Column="0"
                        VerticalAlignment="Center"
                        Opacity="0.7"
                        FontSize="11" />
+            <ToggleButton x:Name="ActualSizeToggle"
+                          Grid.Column="1"
+                          Content="実寸表示"
+                          Margin="0,0,8,0"
+                          ToolTip.Tip="出力ピクセルと等倍で表示（ドラッグでパン）"
+                          IsCheckedChanged="OnActualSizeToggled" />
             <Button x:Name="SaveButton"
-                    Grid.Column="1"
+                    Grid.Column="2"
                     Content="PNG として保存"
                     Classes="accent"
                     Margin="0,0,8,0"
                     Click="OnSaveClicked" />
-            <Button Grid.Column="2"
+            <Button Grid.Column="3"
                     Content="閉じる"
                     Click="OnCloseClicked" />
         </Grid>

@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using ViewGrid.Application.ViewModels;
 
@@ -122,6 +124,36 @@ public partial class PreviewWindow : Window
         var bitmap = new Bitmap(stream);
         PreviewImage.Source = bitmap;
         InfoText.Text = $"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} / {pngBytes.Length:N0} bytes";
+    }
+
+    /// <summary>
+    /// 「実寸表示」トグル。チェック時は <strong>物理ピクセル等倍</strong>（外部画像ビューワの 100% 表示と一致）。
+    /// 解除時はウィンドウに収まるよう <see cref="Stretch.Uniform"/> + <see cref="StretchDirection.DownOnly"/>
+    /// で縮小フィット（既定）に戻す。
+    /// </summary>
+    /// <remarks>
+    /// Avalonia の <see cref="Stretch.None"/> は「DIP 等倍」であり、Windows のディスプレイ拡大率
+    /// （`RenderScaling` ＝ 例えば 150% で 1.5）が掛かるため、外部ビューワの「100% 表示」より大きく見える。
+    /// 物理ピクセル等倍を再現するには、Image の Width/Height を `PixelSize / RenderScaling` に明示し、
+    /// <see cref="Stretch.Fill"/> で割り当てサイズに合わせる必要がある。
+    /// </remarks>
+    private void OnActualSizeToggled(object? sender, RoutedEventArgs e)
+    {
+        if (ActualSizeToggle.IsChecked == true && PreviewImage.Source is Bitmap bmp)
+        {
+            var scale = this.RenderScaling > 0 ? this.RenderScaling : 1.0;
+            PreviewImage.Stretch = Stretch.Fill;
+            PreviewImage.StretchDirection = StretchDirection.Both;
+            PreviewImage.Width = bmp.PixelSize.Width / scale;
+            PreviewImage.Height = bmp.PixelSize.Height / scale;
+        }
+        else
+        {
+            PreviewImage.ClearValue(Image.WidthProperty);
+            PreviewImage.ClearValue(Image.HeightProperty);
+            PreviewImage.Stretch = Stretch.Uniform;
+            PreviewImage.StretchDirection = StretchDirection.DownOnly;
+        }
     }
 
     private async void OnSaveClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

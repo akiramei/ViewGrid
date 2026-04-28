@@ -30,11 +30,11 @@ public sealed class SkiaThumbnailServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Generates_Thumbnail_With_Long_Edge_At_Most_256()
+    public async Task Generates_Thumbnail_With_Long_Edge_At_Most_1024()
     {
         var hash = "thumbsrc000000000000000000000000000000000000000000000000000000a1";
         var relative = _storage.BuildRelativePath(hash, ".png");
-        using (var src = new MemoryStream(TestImageFactory.CreatePng(1024, 512)))
+        using (var src = new MemoryStream(TestImageFactory.CreatePng(4096, 2048)))
             await _storage.SaveAsync(src, relative);
 
         var result = await _thumbnails.GenerateAsync(relative, hash);
@@ -47,9 +47,9 @@ public sealed class SkiaThumbnailServiceTests : IAsyncLifetime
         using var codec = SKCodec.Create(absolute!);
         codec.Should().NotBeNull();
         var info = codec!.Info;
-        Math.Max(info.Width, info.Height).Should().Be(256);
-        info.Width.Should().Be(256);
-        info.Height.Should().Be(128);
+        Math.Max(info.Width, info.Height).Should().Be(1024);
+        info.Width.Should().Be(1024);
+        info.Height.Should().Be(512);
     }
 
     [Fact]

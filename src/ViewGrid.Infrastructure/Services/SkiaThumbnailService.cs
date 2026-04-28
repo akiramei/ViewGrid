@@ -13,7 +13,7 @@ internal sealed class SkiaThumbnailService(StorageOptions options, IImageStorage
     private readonly StorageOptions _options = options ?? throw new ArgumentNullException(nameof(options));
     private readonly IImageStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
 
-    public int MaxEdgePixels => 256;
+    public int MaxEdgePixels => 1024;
 
     public async Task<ErrorOr<string>> GenerateAsync(
         string assetRelativePath,
