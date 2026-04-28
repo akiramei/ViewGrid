@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -37,6 +38,19 @@ public sealed partial class CopyListViewModel : ViewModelBase
 
     public ObservableCollection<CopyItemViewModel> Copies { get; } = [];
 
+    /// <summary>
+    /// マルチセレクト中の論理コピー集合。Ctrl/Shift+クリックで複数選択された要素が入る。
+    /// View 側 (<c>CopyListView</c>) の <c>SelectionChanged</c> で
+    /// <see cref="UpdateSelectedCopies"/> を経由して同期される。
+    /// 削除は本コレクション全件を対象とし、件数 ≧ 2 のときは特性編集パネルが disabled になる。
+    /// </summary>
+    public ObservableCollection<CopyItemViewModel> SelectedCopies { get; } = [];
+
+    private bool _bulkUpdatingSelection;
+
+    public int SelectedCount => SelectedCopies.Count;
+    public bool IsMultiSelected => SelectedCopies.Count > 1;
+
     public bool HasAsset => _currentAssetId.HasValue;
 
     public CopyListViewModel(
@@ -49,7 +63,46 @@ public sealed partial class CopyListViewModel : ViewModelBase
         _createUseCase = createUseCase;
         _messenger = messenger;
         _logger = logger;
+
+        SelectedCopies.CollectionChanged += (_, _) =>
+        {
+            if (_bulkUpdatingSelection) return;
+            NotifySelectionChanged();
+        };
     }
+
+    /// <summary>
+    /// View からの選択変更を 1 回の操作として反映する。Clear と Add の連鎖で発火する
+    /// CollectionChanged を抑止し、完了時に 1 回だけ通知する。
+    /// </summary>
+    public void UpdateSelectedCopies(IReadOnlyList<CopyItemViewModel> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+
+        _bulkUpdatingSelection = true;
+        try
+        {
+            SelectedCopies.Clear();
+            foreach (var item in items)
+                SelectedCopies.Add(item);
+        }
+        finally
+        {
+            _bulkUpdatingSelection = false;
+        }
+        NotifySelectionChanged();
+    }
+
+    private void NotifySelectionChanged()
+    {
+        OnPropertyChanged(nameof(SelectedCopies));
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(IsMultiSelected));
+        DeleteSelectedCopyCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsBusyChanged(bool value) => DeleteSelectedCopyCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedCopyChanged(CopyItemViewModel? value) => DeleteSelectedCopyCommand.NotifyCanExecuteChanged();
 
     public async Task LoadForAssetAsync(Guid? assetId, CancellationToken ct = default)
     {
@@ -57,6 +110,9 @@ public sealed partial class CopyListViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasAsset));
 
         Copies.Clear();
+        // 旧アセットの選択が残ると DeleteSelectedCopyAsync 等が Copies に存在しない
+        // CopyId を対象にしてしまうため、ここで明示的にクリアする
+        UpdateSelectedCopies(Array.Empty<CopyItemViewModel>());
         SelectedCopy = null;
         StatusMessage = null;
 
@@ -115,33 +171,51 @@ public sealed partial class CopyListViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanDeleteSelected))]
     public async Task DeleteSelectedCopyAsync(CancellationToken ct = default)
     {
-        var selected = SelectedCopy;
-        if (selected is null || IsBusy)
+        var targets = SelectedCopies.Count > 0
+            ? SelectedCopies.ToList()
+            : SelectedCopy is { } single ? [single] : new List<CopyItemViewModel>();
+        if (targets.Count == 0 || IsBusy)
             return;
 
         try
         {
             IsBusy = true;
-            var result = await _copyRepository.DeleteAsync(selected.CopyId, ct);
-            if (result.IsError)
+            var success = 0;
+            var failed = 0;
+            var errors = new List<string>();
+            foreach (var target in targets)
             {
-                StatusMessage = string.Join(", ", result.Errors);
-                return;
+                if (ct.IsCancellationRequested) break;
+                var result = await _copyRepository.DeleteAsync(target.CopyId, ct);
+                if (result.IsError)
+                {
+                    failed++;
+                    errors.AddRange(result.Errors.Select(e => e.Description));
+                    continue;
+                }
+                Copies.Remove(target);
+                success++;
             }
 
-            Copies.Remove(selected);
+            SelectedCopies.Clear();
             SelectedCopy = Copies.FirstOrDefault();
-            StatusMessage = $"「{selected.DisplayName}」を削除しました。";
-            _messenger.Send(new CopyLibraryChangedMessage());
+
+            StatusMessage = failed == 0
+                ? (success == 1 ? $"「{targets[0].DisplayName}」を削除しました。" : $"{success} 件削除しました。")
+                : $"{success} 件削除、{failed} 件失敗（{string.Join(", ", errors.Distinct())}）";
+            if (success > 0)
+                _messenger.Send(new CopyLibraryChangedMessage());
         }
         finally
         {
             IsBusy = false;
         }
     }
+
+    private bool CanDeleteSelected() => !IsBusy && (SelectedCopies.Count > 0 || SelectedCopy is not null);
 
     [LoggerMessage(EventId = 3001, Level = LogLevel.Information, Message = "論理コピー一覧を読み込み: asset={AssetId} count={Count}")]
     private static partial void LogLoaded(ILogger logger, Guid assetId, int count);

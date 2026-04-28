@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -40,6 +41,24 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
 
     public ObservableCollection<AssetItemViewModel> Assets { get; } = [];
 
+    /// <summary>
+    /// マルチセレクト中のアセット集合。Ctrl/Shift+クリックで複数選択された要素が入る。
+    /// View 側 (<c>AssetLibraryView</c>) の <c>SelectionChanged</c> で
+    /// <see cref="UpdateSelectedAssets"/> を経由して同期される。
+    /// 削除は本コレクション全件を対象とし、件数 ≧ 2 のときは特性編集パネルが disabled になる。
+    /// </summary>
+    public ObservableCollection<AssetItemViewModel> SelectedAssets { get; } = [];
+
+    /// <summary>
+    /// <see cref="UpdateSelectedAssets"/> の Clear/Add 連鎖中は CollectionChanged で
+    /// 中間状態の通知が走らないよう抑止し、完了時に 1 回だけ通知する。
+    /// EF Core の DbContext は同時クエリをサポートしないため、再入抑制が必須。
+    /// </summary>
+    private bool _bulkUpdatingSelection;
+
+    public int SelectedCount => SelectedAssets.Count;
+    public bool IsMultiSelected => SelectedAssets.Count > 1;
+
     public AssetLibraryViewModel(
         ImportImageUseCase importUseCase,
         DeleteImageAssetUseCase deleteUseCase,
@@ -56,7 +75,46 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
         _filePickerService = filePickerService;
         _messenger = messenger;
         _logger = logger;
+
+        SelectedAssets.CollectionChanged += (_, _) =>
+        {
+            if (_bulkUpdatingSelection) return; // bulk 完了時に明示的に通知する
+            NotifySelectionChanged();
+        };
     }
+
+    /// <summary>
+    /// View からの選択変更を 1 回の操作として反映する。Clear と Add の連鎖で発火する
+    /// CollectionChanged を抑止し、完了時に 1 回だけ通知する（再入による多重ロード回避）。
+    /// </summary>
+    public void UpdateSelectedAssets(IReadOnlyList<AssetItemViewModel> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+
+        _bulkUpdatingSelection = true;
+        try
+        {
+            SelectedAssets.Clear();
+            foreach (var item in items)
+                SelectedAssets.Add(item);
+        }
+        finally
+        {
+            _bulkUpdatingSelection = false;
+        }
+        NotifySelectionChanged();
+    }
+
+    private void NotifySelectionChanged()
+    {
+        OnPropertyChanged(nameof(SelectedAssets));
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(IsMultiSelected));
+        DeleteSelectedCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsBusyChanged(bool value) => DeleteSelectedCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedAssetChanged(AssetItemViewModel? value) => DeleteSelectedCommand.NotifyCanExecuteChanged();
 
     [RelayCommand]
     public async Task LoadAsync(CancellationToken ct = default)
@@ -71,6 +129,9 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
 
             var assets = await _assetRepository.FindAllAsync(ct);
             Assets.Clear();
+            // 古いアセット参照が選択に残らないようにクリア
+            UpdateSelectedAssets(Array.Empty<AssetItemViewModel>());
+            SelectedAsset = null;
             foreach (var asset in assets)
             {
                 Assets.Add(BuildItem(asset));
@@ -153,29 +214,46 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanDeleteSelected))]
     public async Task DeleteSelectedAsync(CancellationToken ct = default)
     {
-        var selected = SelectedAsset;
-        if (selected is null || IsBusy)
+        // SelectedAssets が空のときは SelectedAsset 単独でも削除できるよう fallback
+        var targets = SelectedAssets.Count > 0
+            ? SelectedAssets.ToList()
+            : SelectedAsset is { } single ? [single] : new List<AssetItemViewModel>();
+        if (targets.Count == 0 || IsBusy)
             return;
 
         try
         {
             IsBusy = true;
-            var result = await _deleteUseCase.ExecuteAsync(selected.AssetId, ct);
-            if (result.IsError)
+            var success = 0;
+            var failed = 0;
+            var errors = new List<string>();
+            foreach (var target in targets)
             {
-                StatusMessage = $"削除に失敗しました: {string.Join(", ", result.Errors)}";
-                return;
+                if (ct.IsCancellationRequested) break;
+                var result = await _deleteUseCase.ExecuteAsync(target.AssetId, ct);
+                if (result.IsError)
+                {
+                    failed++;
+                    errors.AddRange(result.Errors.Select(e => e.Description));
+                    continue;
+                }
+                Assets.Remove(target);
+                success++;
             }
 
-            Assets.Remove(selected);
+            SelectedAssets.Clear();
             SelectedAsset = null;
-            StatusMessage = $"{selected.DisplayName} を削除しました。";
+
+            StatusMessage = failed == 0
+                ? (success == 1 ? $"{targets[0].DisplayName} を削除しました。" : $"{success} 件削除しました。")
+                : $"{success} 件削除、{failed} 件失敗（{string.Join(", ", errors.Distinct())}）";
 
             // Asset 削除は cascade で関連 ImageCopy も削除されるため候補にも反映。
-            _messenger.Send(new CopyLibraryChangedMessage());
+            if (success > 0)
+                _messenger.Send(new CopyLibraryChangedMessage());
         }
         finally
         {
@@ -183,10 +261,15 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
         }
     }
 
+    private bool CanDeleteSelected() => !IsBusy && (SelectedAssets.Count > 0 || SelectedAsset is not null);
+
     private async Task ReloadAssetsAsync(CancellationToken ct)
     {
         var assets = await _assetRepository.FindAllAsync(ct);
         Assets.Clear();
+        // 古いアセット参照が選択に残らないようにクリア
+        UpdateSelectedAssets(Array.Empty<AssetItemViewModel>());
+        SelectedAsset = null;
         foreach (var asset in assets)
             Assets.Add(BuildItem(asset));
     }

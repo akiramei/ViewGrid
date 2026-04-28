@@ -34,6 +34,13 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? StatusMessage { get; set; }
 
+    /// <summary>
+    /// 複数選択中の案内文。<c>null</c> 以外なら View 上に表示し、編集 UI は disabled になる。
+    /// 外部（<see cref="MainWindowViewModel"/>）が選択件数に応じて設定する。
+    /// </summary>
+    [ObservableProperty]
+    public partial string? MultiSelectMessage { get; set; }
+
     // 編集バッファ
     [ObservableProperty] public partial string? CopyName { get; set; }
     [ObservableProperty] public partial Rotation Rotation { get; set; }
@@ -194,8 +201,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         if (_suppressDirty)
             return;
 
-        // メタ状態の変化はダーティ化しない
-        if (e.PropertyName is nameof(IsDirty) or nameof(HasCopy) or nameof(StatusMessage))
+        // メタ状態の変化はダーティ化しない（編集バッファ以外の表示用プロパティ）
+        if (e.PropertyName is nameof(IsDirty) or nameof(HasCopy)
+            or nameof(StatusMessage) or nameof(MultiSelectMessage))
             return;
 
         if (!IsDirty)

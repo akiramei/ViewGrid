@@ -22,8 +22,12 @@
                         Command="{Binding CreateCopyCommand}"
                         IsEnabled="{Binding HasAsset}" />
                 <Button Content="削除"
-                        Command="{Binding DeleteSelectedCopyCommand}"
-                        IsEnabled="{Binding SelectedCopy, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                        Command="{Binding DeleteSelectedCopyCommand}" />
+                <TextBlock Text="{Binding SelectedCount, StringFormat='({0} 件選択中)'}"
+                           VerticalAlignment="Center"
+                           Opacity="0.7"
+                           FontSize="11"
+                           IsVisible="{Binding IsMultiSelected}" />
                 <ProgressBar IsIndeterminate="True"
                              IsVisible="{Binding IsBusy}"
                              Width="80"
@@ -42,9 +46,11 @@
                        Opacity="0.55"
                        IsVisible="{Binding !HasAsset}" />
 
-            <ListBox ItemsSource="{Binding Copies}"
+            <ListBox x:Name="CopyList"
+                     ItemsSource="{Binding Copies}"
                      SelectedItem="{Binding SelectedCopy}"
-                     SelectionMode="Single"
+                     SelectionMode="Multiple"
+                     SelectionChanged="OnCopyListSelectionChanged"
                      IsVisible="{Binding HasAsset}"
                      Background="Transparent">
                 <ListBox.ItemTemplate>

@@ -23,8 +23,12 @@
                         Command="{Binding PickFilesAndImportCommand}"
                         IsEnabled="{Binding !IsBusy}" />
                 <Button Content="選択を削除"
-                        Command="{Binding DeleteSelectedCommand}"
-                        IsEnabled="{Binding SelectedAsset, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                        Command="{Binding DeleteSelectedCommand}" />
+                <TextBlock Text="{Binding SelectedCount, StringFormat='({0} 件選択中)'}"
+                           VerticalAlignment="Center"
+                           Opacity="0.7"
+                           FontSize="11"
+                           IsVisible="{Binding IsMultiSelected}" />
                 <Button Content="再読み込み"
                         Command="{Binding LoadCommand}"
                         IsEnabled="{Binding !IsBusy}" />
@@ -56,9 +60,11 @@
         <!-- アセット一覧 -->
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
-            <ListBox ItemsSource="{Binding Assets}"
+            <ListBox x:Name="AssetList"
+                     ItemsSource="{Binding Assets}"
                      SelectedItem="{Binding SelectedAsset}"
-                     SelectionMode="Single"
+                     SelectionMode="Multiple"
+                     SelectionChanged="OnAssetListSelectionChanged"
                      Background="Transparent"
                      Padding="12">
                 <ListBox.ItemsPanel>
