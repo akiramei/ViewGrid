@@ -24,7 +24,9 @@ public sealed class ScalingModeLabelConverter : IValueConverter
         ScalingMode.UniformContain => "アスペクト維持（収める）",
         ScalingMode.UniformContainShrinkOnly => "縮小のみ",
         ScalingMode.UniformContainEnlargeOnly => "拡大のみ",
-        ScalingMode.UniformCover => "アスペクト維持（埋める）",
+        // 旧表記「アスペクト維持（埋める）」はユーザー認識（=収まる）と挙動（=見切れる）が乖離していた。
+        // 「覆う・切り取り」で「全面を覆うため画像の一部が切れる」ことを明示する。
+        ScalingMode.UniformCover => "アスペクト維持（覆う・切り取り）",
         ScalingMode.Fill => "完全充填（縦横独立）",
         _ => mode.ToString(),
     };
