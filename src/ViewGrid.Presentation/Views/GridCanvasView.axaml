@@ -5,7 +5,9 @@
              xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
              mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="600"
              x:Class="ViewGrid.Presentation.Views.GridCanvasView"
-             x:DataType="vm:GridWorkspaceViewModel">
+             x:DataType="vm:GridWorkspaceViewModel"
+             Focusable="True"
+             IsTabStop="False">
 
     <Border BorderBrush="{DynamicResource SystemBaseLowColor}"
             BorderThickness="1"

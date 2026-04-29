@@ -41,6 +41,11 @@ public partial class GridCanvasView : UserControl
     private PlacementItemViewModel? _pixelOffsetTarget;
     private Border? _pixelOffsetBorder;
 
+    // Ctrl+Arrow キー入力処理中フラグ。連打/オートリピート時の並行 ApplyPixelOffsetAsync 呼び出しを
+    // 防いで履歴整合性を保つ（前回の DB 書込が完了する前に次のキーを受けるとレースで履歴が壊れるため）。
+    // 副作用として、キーリピートでは一部のキーが drop される（ユーザーは押し直しで対応可能）。
+    private bool _pixelOffsetKeyBusy;
+
     // セル位置 → セル Border 参照（範囲ハイライトの一括クリアに使う）
     private readonly Dictionary<CellPosition, Border> _cellBorders = new();
 
@@ -60,6 +65,9 @@ public partial class GridCanvasView : UserControl
         BoundaryOverlay.PointerMoved += OnOverlayPointerMoved;
         BoundaryOverlay.PointerReleased += OnOverlayPointerReleased;
         BoundaryOverlay.PointerCaptureLost += OnOverlayPointerCaptureLost;
+        // Ctrl+Arrow（および Ctrl+Shift+Arrow）でアクティブ配置の PixelOffset を 1px / 10px 微調整。
+        // UserControl 自体が Focusable のとき、placement クリック後にここでキーを受け取る。
+        KeyDown += OnUserControlKeyDown;
     }
 
     private void OnCanvasGridSizeChanged(object? sender, SizeChangedEventArgs e)
@@ -864,6 +872,10 @@ public partial class GridCanvasView : UserControl
         if (!e.GetCurrentPoint(border).Properties.IsLeftButtonPressed)
             return;
 
+        // 配置をクリックしたら、UserControl 自体にフォーカスを移して Ctrl+Arrow で
+        // PixelOffset 微調整できるようにする（IsTabStop=false なので Tab には現れない）。
+        Focus();
+
         // Shift 押下中はピクセル微調整モード。通常の D&D を抑止して PixelOffsetX/Y を
         // ドラッグで連続更新する。Avalonia の implicit pointer capture を border に
         // 明示的に張り直して、押下中の Move/Released を確実に同 border で受ける。
@@ -1405,6 +1417,62 @@ public partial class GridCanvasView : UserControl
         PlacementItemViewModel? PlacementSource,
         CopyCandidateViewModel? CopySource,
         GrabOffset Offset);
+
+    /// <summary>
+    /// Ctrl+Arrow（1px）/ Ctrl+Shift+Arrow（10px）でアクティブ配置の PixelOffset を微調整する。
+    /// <para>
+    /// 動作条件: Ctrl 修飾必須、矢印キーのみ、<see cref="GridWorkspaceViewModel.SelectedPlacement"/>
+    /// が設定済み。Ctrl なしの矢印キーは Inspector の NumericUpDown 等が自然に処理するため
+    /// 干渉しない。
+    /// </para>
+    /// <para>
+    /// 並行性: <see cref="_pixelOffsetKeyBusy"/> フラグで前回の DB 書込中はキーを drop する。
+    /// 履歴整合性を優先する設計（<see cref="GridWorkspaceViewModel.ApplyPixelOffsetAsync"/> が
+    /// before/after の snapshot を取って <c>UpdatePlacementOffsetCommand</c> を作るため、
+    /// 並行呼び出しは履歴を壊す）。キーリピート連打では一部 drop されるが、押し直しで対応可能。
+    /// </para>
+    /// </summary>
+    private async void OnUserControlKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_vm?.SelectedPlacement is not PlacementItemViewModel placement)
+            return;
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            return;
+
+        int dx = 0, dy = 0;
+        switch (e.Key)
+        {
+            case Key.Left:  dx = -1; break;
+            case Key.Right: dx =  1; break;
+            case Key.Up:    dy = -1; break;
+            case Key.Down:  dy =  1; break;
+            default: return;
+        }
+
+        // Shift 同時押しで 10px ステップ（粗調整）
+        var step = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 10 : 1;
+        dx *= step;
+        dy *= step;
+
+        e.Handled = true;
+
+        // 並行呼び出し防止: 前回の処理中なら drop。VM 側の ApplyPixelOffsetAsync は
+        // FindByIdAsync → ExecuteAsync のシーケンスで動くため、レースで履歴が壊れ得る。
+        if (_pixelOffsetKeyBusy)
+            return;
+
+        _pixelOffsetKeyBusy = true;
+        try
+        {
+            var newX = placement.PixelOffsetX + dx;
+            var newY = placement.PixelOffsetY + dy;
+            await _vm.ApplyPixelOffsetAsync(placement.PlacementId, newX, newY);
+        }
+        finally
+        {
+            _pixelOffsetKeyBusy = false;
+        }
+    }
 
     private enum DragKind { Unknown, Copy, Placement }
 
