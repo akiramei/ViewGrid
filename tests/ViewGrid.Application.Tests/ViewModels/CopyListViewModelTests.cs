@@ -20,8 +20,9 @@ public sealed class CopyListViewModelTests : IAsyncLifetime
         _fx = await UseCaseFixture.CreateAsync();
         var create = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
         _messenger = new WeakReferenceMessenger();
+        var history = new ViewGrid.Application.History.UndoRedoService();
         _vm = new CopyListViewModel(
-            _fx.CopyRepository, create, _messenger,
+            _fx.CopyRepository, create, _messenger, history,
             NullLogger<CopyListViewModel>.Instance);
     }
 

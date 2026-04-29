@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using ViewGrid.Application.History;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
@@ -19,6 +20,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
 {
     private UseCaseFixture _fx = null!;
     private WeakReferenceMessenger _messenger = null!;
+    private UndoRedoService _history = null!;
     private GridWorkspaceViewModel _vm = null!;
 
     public async Task InitializeAsync()
@@ -36,8 +38,11 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         var export = new ExportGridUseCase(render);
         var picker = Substitute.For<IFilePickerService>();
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
+        _history = new UndoRedoService();
         var inspector = new PlacementInspectorViewModel(
             offset,
+            _fx.PlacementRepository,
+            _history,
             _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);
 
@@ -65,6 +70,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             fitWeight,
             picker,
             _messenger,
+            _history,
             inspector,
             NullLogger<GridWorkspaceViewModel>.Instance);
     }

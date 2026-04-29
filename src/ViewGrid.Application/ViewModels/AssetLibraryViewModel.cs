@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using ViewGrid.Application.History;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
@@ -28,6 +29,7 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
     private readonly IThumbnailService _thumbnailService;
     private readonly IFilePickerService _filePickerService;
     private readonly IMessenger _messenger;
+    private readonly IUndoRedoService _history;
     private readonly ILogger<AssetLibraryViewModel> _logger;
 
     [ObservableProperty]
@@ -66,6 +68,7 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
         IThumbnailService thumbnailService,
         IFilePickerService filePickerService,
         IMessenger messenger,
+        IUndoRedoService history,
         ILogger<AssetLibraryViewModel> logger)
     {
         _importUseCase = importUseCase;
@@ -74,6 +77,7 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
         _thumbnailService = thumbnailService;
         _filePickerService = filePickerService;
         _messenger = messenger;
+        _history = history;
         _logger = logger;
 
         SelectedAssets.CollectionChanged += (_, _) =>
@@ -206,7 +210,11 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
             // 取り込みは ImportImageUseCase が既定 Copy を自動作成するため、
             // 候補ライブラリにも変更が及ぶ。失敗のみのケースでは通知不要。
             if (imported > 0 || duplicated > 0)
+            {
+                // アセット追加は Undo 対象外。新規 Copy が生まれるため履歴の参照整合性が崩れる前にクリア。
+                _history.Clear();
                 _messenger.Send(new CopyLibraryChangedMessage());
+            }
         }
         finally
         {
@@ -252,8 +260,12 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
                 : $"{success} 件削除、{failed} 件失敗（{string.Join(", ", errors.Distinct())}）";
 
             // Asset 削除は cascade で関連 ImageCopy も削除されるため候補にも反映。
+            // 履歴に該当 Copy を参照する Command が残ると Undo で NotFound になるので全消去。
             if (success > 0)
+            {
+                _history.Clear();
                 _messenger.Send(new CopyLibraryChangedMessage());
+            }
         }
         finally
         {

@@ -24,11 +24,16 @@ public sealed class UpdateImageCopyUseCase(IImageCopyRepository copyRepository)
             return Error.NotFound("ImageCopy.NotFound", $"ImageCopy {copyId} が見つかりません。");
 
         var now = DateTimeOffset.UtcNow;
+        // CopyName: 通常 null は「変更しない」を意味するが、ClearCopyName=true のときは
+        // 「明示的に null で上書きする」を意味する（Undo で「無名 → 命名 → Undo（無名へ復帰）」を実現するため）。
+        var updatedCopyName = changes.ClearCopyName
+            ? null
+            : (changes.CopyName ?? current.CopyName);
         var updated = new ImageCopy
         {
             Id = current.Id,
             AssetId = current.AssetId,
-            CopyName = changes.CopyName ?? current.CopyName,
+            CopyName = updatedCopyName,
             Transform = changes.Transform ?? current.Transform,
             ScalingMode = changes.ScalingMode ?? current.ScalingMode,
             TrimmingAnchor = changes.TrimmingAnchor ?? current.TrimmingAnchor,
@@ -45,7 +50,19 @@ public sealed class UpdateImageCopyUseCase(IImageCopyRepository copyRepository)
 
 public sealed record UpdateImageCopyChanges
 {
+    /// <summary>
+    /// 新しい CopyName。<c>null</c> は通常「変更しない」を意味するが、
+    /// <see cref="ClearCopyName"/> が <c>true</c> のときは「明示的に null へ更新する」を意味する。
+    /// </summary>
     public string? CopyName { get; init; }
+
+    /// <summary>
+    /// <see cref="CopyName"/> が <c>null</c> でも明示的に DB を <c>null</c> 更新するか。
+    /// 既定 <c>false</c>（通常の更新フロー、null は「変更しない」）。
+    /// Undo/Redo で「無名 → 命名 → Undo（無名に戻す）」の往復を実現するために必要。
+    /// </summary>
+    public bool ClearCopyName { get; init; }
+
     public ImageTransform? Transform { get; init; }
     public ScalingMode? ScalingMode { get; init; }
     public TrimmingAnchor? TrimmingAnchor { get; init; }

@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
+using ViewGrid.Application.History;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
 
@@ -12,6 +13,8 @@ public static class DependencyInjection
         // VM 間の疎結合通知に使うメッセンジャー（候補リストの自動更新ほか）
         services.AddSingleton<IMessenger>(_ => WeakReferenceMessenger.Default);
 
+        // Undo/Redo 履歴サービス（アプリ全体で 1 本のスタックを共有）
+        services.AddSingleton<IUndoRedoService, UndoRedoService>();
 
         // UseCases
         services.AddScoped<ImportImageUseCase>();

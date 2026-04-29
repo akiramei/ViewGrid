@@ -37,6 +37,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
         var delete = new DeleteImageAssetUseCase(_fx.AssetRepository, _fx.Storage, _fx.Thumbnails);
 
         _messenger = new WeakReferenceMessenger();
+        var history = new ViewGrid.Application.History.UndoRedoService();
         _vm = new AssetLibraryViewModel(
             import,
             delete,
@@ -44,6 +45,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
             _fx.Thumbnails,
             _picker,
             _messenger,
+            history,
             NullLogger<AssetLibraryViewModel>.Instance);
     }
 

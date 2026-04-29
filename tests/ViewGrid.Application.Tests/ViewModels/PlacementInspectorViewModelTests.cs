@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using ViewGrid.Application.History;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
@@ -30,8 +31,11 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         _fx = await UseCaseFixture.CreateAsync();
         _messenger = new WeakReferenceMessenger();
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
+        var history = new UndoRedoService();
         _vm = new PlacementInspectorViewModel(
             offset,
+            _fx.PlacementRepository,
+            history,
             _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);
         _place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
@@ -55,7 +59,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     [Fact]
     public async Task AttachAsync_Loads_Placement_Values_Without_Marking_Dirty()
     {
-        var (item, _) = await SeedAndPlaceAsync();
+        var (item, _, _) = await SeedAndPlaceAsync();
 
         await _vm.AttachAsync(item);
 
@@ -69,7 +73,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     [Fact]
     public async Task Editing_PixelOffset_Marks_Dirty_And_Enables_Save()
     {
-        var (item, _) = await SeedAndPlaceAsync();
+        var (item, _, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
         _vm.PixelOffsetX = 50;
@@ -81,8 +85,8 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     [Fact]
     public async Task SaveAsync_Persists_PixelOffset_To_Placement()
     {
-        var (item, _) = await SeedAndPlaceAsync();
-        await _vm.AttachAsync(item);
+        var (item, _, gridVm) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item, gridVm);
 
         _vm.PixelOffsetX = 100;
         _vm.PixelOffsetY = -25;
@@ -101,8 +105,8 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     [Fact]
     public async Task SaveAsync_Clamps_PixelOffset_To_Max()
     {
-        var (item, _) = await SeedAndPlaceAsync();
-        await _vm.AttachAsync(item);
+        var (item, _, gridVm) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item, gridVm);
 
         _vm.PixelOffsetX = 99_999;
         _vm.PixelOffsetY = -99_999;
@@ -117,7 +121,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     [Fact]
     public async Task RevertAsync_Restores_Edit_Buffer_From_Source()
     {
-        var (item, _) = await SeedAndPlaceAsync();
+        var (item, _, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
         _vm.PixelOffsetX = 200;
@@ -132,7 +136,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     [Fact]
     public async Task ResetPixelOffsetCommand_Sets_Both_Axes_To_Zero()
     {
-        var (item, _) = await SeedAndPlaceAsync();
+        var (item, _, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
         _vm.PixelOffsetX = 50;
@@ -147,7 +151,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     [Fact]
     public async Task EditCopyPropertiesCommand_Sends_Navigate_Message_With_Asset_And_Copy_Ids()
     {
-        var (item, copy) = await SeedAndPlaceAsync();
+        var (item, copy, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
         NavigateToCopyPropertiesMessage? received = null;
@@ -174,7 +178,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         _vm.EditCopyPropertiesCommand.CanExecute(null).Should().BeFalse();
     }
 
-    private async Task<(PlacementItemViewModel item, ImageCopy copy)> SeedAndPlaceAsync()
+    private async Task<(PlacementItemViewModel item, ImageCopy copy, GridCanvasItemViewModel gridVm)> SeedAndPlaceAsync()
     {
         var asset = await _fx.SeedAssetAsync();
         var copy = await _fx.SeedCopyAsync(asset.Id);
@@ -182,7 +186,8 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         var p = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
         p.IsError.Should().BeFalse();
         var item = new PlacementItemViewModel(p.Value, copy, asset, null);
-        return (item, copy);
+        var gridVm = new GridCanvasItemViewModel(grid);
+        return (item, copy, gridVm);
     }
 
     private async Task<GridCanvas> SeedGridAsync(int rows, int cols)
@@ -209,7 +214,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     public async Task AttachAsync_Populates_ImageDrawSizeLabel_When_Grid_Is_Provided()
     {
         // 400x400 キャンバスの 2x2 グリッド = 各セル 200x200。OccupySize=1×1 なので 200×200 px。
-        var (item, _) = await SeedAndPlaceAsync();
+        var (item, _, _) = await SeedAndPlaceAsync();
         var grid = await _fx.GridRepository.FindByIdAsync(item.GridId);
         var gridVm = new GridCanvasItemViewModel(grid!);
 
@@ -221,7 +226,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     [Fact]
     public async Task AttachAsync_Clears_ImageDrawSizeLabel_When_Source_Is_Null()
     {
-        var (item, _) = await SeedAndPlaceAsync();
+        var (item, _, _) = await SeedAndPlaceAsync();
         var grid = await _fx.GridRepository.FindByIdAsync(item.GridId);
         var gridVm = new GridCanvasItemViewModel(grid!);
         await _vm.AttachAsync(item, gridVm);
@@ -238,7 +243,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         // Shift+ドラッグなど外部から source の PixelOffset が更新されたとき、
         // Inspector の表示が追従し、IsDirty=true となる（保存ボタン経由で永続化する設計）。
         // 以前は自動保存していたが、編集と保存の責務分離が崩れる UX 上の違和感があったため改修。
-        var (item, _) = await SeedAndPlaceAsync();
+        var (item, _, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
         item.PixelOffsetX = 123;

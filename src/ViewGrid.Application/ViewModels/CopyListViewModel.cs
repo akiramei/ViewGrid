@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using ViewGrid.Application.History;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Interfaces;
@@ -23,6 +24,7 @@ public sealed partial class CopyListViewModel : ViewModelBase
     private readonly IImageCopyRepository _copyRepository;
     private readonly CreateLogicalCopyUseCase _createUseCase;
     private readonly IMessenger _messenger;
+    private readonly IUndoRedoService _history;
     private readonly ILogger<CopyListViewModel> _logger;
 
     private Guid? _currentAssetId;
@@ -57,11 +59,13 @@ public sealed partial class CopyListViewModel : ViewModelBase
         IImageCopyRepository copyRepository,
         CreateLogicalCopyUseCase createUseCase,
         IMessenger messenger,
+        IUndoRedoService history,
         ILogger<CopyListViewModel> logger)
     {
         _copyRepository = copyRepository;
         _createUseCase = createUseCase;
         _messenger = messenger;
+        _history = history;
         _logger = logger;
 
         SelectedCopies.CollectionChanged += (_, _) =>
@@ -163,6 +167,8 @@ public sealed partial class CopyListViewModel : ViewModelBase
             Copies.Add(item);
             SelectedCopy = item;
             StatusMessage = $"「{item.DisplayName}」を作成しました。";
+            // 新規 Copy 作成は Undo 対象外（履歴に積めない）。既存履歴の整合を保つため全消去。
+            _history.Clear();
             _messenger.Send(new CopyLibraryChangedMessage());
         }
         finally
@@ -206,8 +212,12 @@ public sealed partial class CopyListViewModel : ViewModelBase
             StatusMessage = failed == 0
                 ? (success == 1 ? $"「{targets[0].DisplayName}」を削除しました。" : $"{success} 件削除しました。")
                 : $"{success} 件削除、{failed} 件失敗（{string.Join(", ", errors.Distinct())}）";
+            // Copy 削除は cascade で関連 Placement も削除されるため履歴を全消去
             if (success > 0)
+            {
+                _history.Clear();
                 _messenger.Send(new CopyLibraryChangedMessage());
+            }
         }
         finally
         {

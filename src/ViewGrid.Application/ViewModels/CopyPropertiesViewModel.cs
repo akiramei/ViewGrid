@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading;
@@ -6,6 +7,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using ViewGrid.Application.History;
+using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
@@ -19,6 +22,7 @@ namespace ViewGrid.Application.ViewModels;
 public sealed partial class CopyPropertiesViewModel : ViewModelBase
 {
     private readonly UpdateImageCopyUseCase _updateUseCase;
+    private readonly IUndoRedoService _history;
     private readonly IMessenger _messenger;
     private readonly ILogger<CopyPropertiesViewModel> _logger;
 
@@ -96,10 +100,12 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
 
     public CopyPropertiesViewModel(
         UpdateImageCopyUseCase updateUseCase,
+        IUndoRedoService history,
         IMessenger messenger,
         ILogger<CopyPropertiesViewModel> logger)
     {
         _updateUseCase = updateUseCase;
+        _history = history;
         _messenger = messenger;
         _logger = logger;
         PropertyChanged += OnAnyPropertyChanged;
@@ -157,9 +163,26 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         if (_source is null || !IsDirty)
             return;
 
-        var changes = new UpdateImageCopyChanges
+        // before snapshot: source の現在値（保存前 = ロード時 / 直前 Save 時の永続化済み値）。
+        // Undo で「null 名前に戻す」を明示するため、CopyName が null のときは ClearCopyName=true で立てる。
+        var before = new UpdateImageCopyChanges
         {
-            CopyName = string.IsNullOrWhiteSpace(CopyName) ? null : CopyName,
+            CopyName = _source.CopyName,
+            ClearCopyName = _source.CopyName is null,
+            Transform = new ImageTransform(_source.Rotation, _source.FlipX, _source.FlipY),
+            ScalingMode = _source.ScalingMode,
+            TrimmingAnchor = _source.TrimmingAnchor,
+            Alignment = _source.Alignment,
+            OccupySize = _source.OccupySize,
+        };
+
+        // after: 編集バッファから組み立て。空文字 → null は「明示的に名前を消す」操作で、
+        // Redo でも同じ「null へ更新」が必要になるので ClearCopyName=true。
+        var afterCopyName = string.IsNullOrWhiteSpace(CopyName) ? null : CopyName;
+        var after = new UpdateImageCopyChanges
+        {
+            CopyName = afterCopyName,
+            ClearCopyName = afterCopyName is null,
             Transform = new ImageTransform(Rotation, FlipX, FlipY),
             ScalingMode = ScalingMode,
             TrimmingAnchor = new TrimmingAnchor(TrimAnchorX, TrimAnchorY),
@@ -167,23 +190,29 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             OccupySize = BuildOccupySizeOrDefault(),
         };
 
-        var result = await _updateUseCase.ExecuteAsync(_source.CopyId, changes, ct);
-        if (result.IsError)
+        // Description は「Save 時点での名前 → after の名前」を含める。改名されたケースで履歴上わかりやすい。
+        var beforeNameLabel = string.IsNullOrWhiteSpace(_source.CopyName) ? "(無名)" : _source.CopyName;
+        var afterNameLabel = string.IsNullOrWhiteSpace(afterCopyName) ? "(無名)" : afterCopyName;
+        var description = string.Equals(beforeNameLabel, afterNameLabel, StringComparison.Ordinal)
+            ? $"特性編集: 「{beforeNameLabel}」"
+            : $"特性編集: 「{beforeNameLabel}」→「{afterNameLabel}」";
+        var command = new UpdateImageCopyCommand(_updateUseCase, _source.CopyId, before, after, description);
+        var execResult = await _history.ExecuteAsync(command, ct);
+        if (execResult.IsError)
         {
-            StatusMessage = string.Join(", ", result.Errors);
+            StatusMessage = string.Join(", ", execResult.Errors);
             return;
         }
 
-        // source にも反映してリスト表示を最新化する
-        var updated = result.Value;
-        _source.CopyName = updated.CopyName;
-        _source.Rotation = updated.Transform.Rotation;
-        _source.FlipX = updated.Transform.FlipX;
-        _source.FlipY = updated.Transform.FlipY;
-        _source.ScalingMode = updated.ScalingMode;
-        _source.TrimmingAnchor = updated.TrimmingAnchor;
-        _source.Alignment = updated.Alignment;
-        _source.OccupySize = updated.OccupySize;
+        // source にも反映してリスト表示を最新化する（after の値で）
+        _source.CopyName = after.CopyName;
+        _source.Rotation = after.Transform!.Value.Rotation;
+        _source.FlipX = after.Transform.Value.FlipX;
+        _source.FlipY = after.Transform.Value.FlipY;
+        _source.ScalingMode = after.ScalingMode!.Value;
+        _source.TrimmingAnchor = after.TrimmingAnchor!.Value;
+        _source.Alignment = after.Alignment!.Value;
+        _source.OccupySize = after.OccupySize!.Value;
 
         _suppressDirty = true;
         try
@@ -197,7 +226,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         }
 
         _messenger.Send(new CopyLibraryChangedMessage());
-        LogSaved(_logger, updated.Id);
+        LogSaved(_logger, _source.CopyId);
     }
 
     [RelayCommand(CanExecute = nameof(CanRevert))]

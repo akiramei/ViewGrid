@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using ViewGrid.Application.History;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
@@ -21,8 +22,9 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         _fx = await UseCaseFixture.CreateAsync();
         var update = new UpdateImageCopyUseCase(_fx.CopyRepository);
         _messenger = new WeakReferenceMessenger();
+        var history = new UndoRedoService();
         _vm = new CopyPropertiesViewModel(
-            update, _messenger,
+            update, history, _messenger,
             NullLogger<CopyPropertiesViewModel>.Instance);
     }
 

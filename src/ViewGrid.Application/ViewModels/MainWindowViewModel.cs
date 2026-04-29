@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using ViewGrid.Application.History;
 using ViewGrid.Application.Messages;
 
 namespace ViewGrid.Application.ViewModels;
@@ -19,6 +22,7 @@ public sealed partial class MainWindowViewModel
     public const int LayoutTabIndex = 1;
 
     private readonly IMessenger _messenger;
+    private readonly IUndoRedoService _history;
     /// <summary>
     /// 現在進行中の CopyList ロードを中断するための CTS。
     /// マルチセレクト中の <c>SelectedAssets</c> の Clear/Add 連鎖で本ハンドラが
@@ -42,6 +46,33 @@ public sealed partial class MainWindowViewModel
     [ObservableProperty]
     public partial int SelectedTabIndex { get; set; }
 
+    /// <summary>Undo 可能な操作があるか。<see cref="UndoCommand"/> の CanExecute と連動する。</summary>
+    [ObservableProperty]
+    public partial bool CanUndo { get; set; }
+
+    /// <summary>Redo 可能な操作があるか。<see cref="RedoCommand"/> の CanExecute と連動する。</summary>
+    [ObservableProperty]
+    public partial bool CanRedo { get; set; }
+
+    /// <summary>編集メニューに表示する Undo ラベル（例: "元に戻す: 配置"）。</summary>
+    [ObservableProperty]
+    public partial string UndoLabel { get; set; } = "元に戻す";
+
+    /// <summary>編集メニューに表示する Redo ラベル（例: "やり直し: 配置"）。</summary>
+    [ObservableProperty]
+    public partial string RedoLabel { get; set; } = "やり直し";
+
+    /// <summary>履歴 UI（Phase 2 のツールバー Flyout）にバインドする履歴エントリ一覧。
+    /// <see cref="IUndoRedoService.History"/> を都度評価する（StateChanged で通知）。</summary>
+    public IReadOnlyList<HistoryEntry> HistoryEntries => _history.History;
+
+    /// <summary>履歴 UI で選択状態の表示に使う「現在位置」インデックス。
+    /// <see cref="IUndoRedoService.CurrentIndex"/> を都度評価する。</summary>
+    public int CurrentHistoryIndex => _history.CurrentIndex;
+
+    /// <summary>履歴 UI から見て、何かしらエントリがあるか。プレースホルダ表示用。</summary>
+    public bool HasHistory => _history.History.Count > 0;
+
     public AssetLibraryViewModel AssetLibrary { get; }
     public CopyListViewModel CopyList { get; }
     public CopyPropertiesViewModel CopyProperties { get; }
@@ -54,7 +85,8 @@ public sealed partial class MainWindowViewModel
         CopyPropertiesViewModel copyProperties,
         GridCanvasListViewModel gridList,
         GridWorkspaceViewModel gridWorkspace,
-        IMessenger messenger)
+        IMessenger messenger,
+        IUndoRedoService history)
     {
         AssetLibrary = assetLibrary;
         CopyList = copyList;
@@ -62,12 +94,123 @@ public sealed partial class MainWindowViewModel
         GridList = gridList;
         GridWorkspace = gridWorkspace;
         _messenger = messenger;
+        _history = history;
 
         AssetLibrary.PropertyChanged += OnAssetLibraryPropertyChanged;
         CopyList.PropertyChanged += OnCopyListPropertyChanged;
         GridList.PropertyChanged += OnGridListPropertyChanged;
 
+        _history.StateChanged += OnHistoryStateChanged;
+        OnHistoryStateChanged();
+
         _messenger.Register(this);
+    }
+
+    /// <summary>Ctrl+Z / 編集メニュー → Undo。Undo 後に各 VM を最新 DB 状態に再同期する。</summary>
+    [RelayCommand(CanExecute = nameof(CanUndoCommand))]
+    public async Task UndoAsync(CancellationToken ct = default)
+    {
+        var result = await _history.UndoAsync(ct);
+        if (!result.IsError)
+            await RefreshAfterHistoryAsync(ct);
+    }
+
+    /// <summary>Ctrl+Y / Ctrl+Shift+Z / 編集メニュー → Redo。Redo 後に各 VM を最新 DB 状態に再同期する。</summary>
+    [RelayCommand(CanExecute = nameof(CanRedoCommand))]
+    public async Task RedoAsync(CancellationToken ct = default)
+    {
+        var result = await _history.RedoAsync(ct);
+        if (!result.IsError)
+            await RefreshAfterHistoryAsync(ct);
+    }
+
+    /// <summary>
+    /// 履歴 UI からの直接ジャンプ。複数ステップの一括 Undo / Redo を行う。
+    /// <paramref name="targetIndex"/> は <see cref="HistoryEntries"/> 内の Index、
+    /// または -1（全 Undo 状態）を指定する。範囲外は <see cref="IUndoRedoService.JumpToAsync"/> 側で
+    /// validation エラーになる（UI 側で範囲外を選ばせない設計が前提）。
+    /// </summary>
+    [RelayCommand]
+    public async Task JumpToHistoryAsync(int targetIndex, CancellationToken ct = default)
+    {
+        var result = await _history.JumpToAsync(targetIndex, ct);
+        if (!result.IsError)
+            await RefreshAfterHistoryAsync(ct);
+    }
+
+    /// <summary>
+    /// Undo / Redo 直後に DB と VM の整合を取るため、各画面の VM を最新状態に再ロードする。
+    /// <list type="bullet">
+    ///   <item><see cref="GridCanvasListViewModel.LoadAsync"/>: <c>RenameGridCanvasCommand</c> /
+    ///         <c>SetActiveGridCanvasCommand</c> 等の取り消し結果（名前 / IsActive）を
+    ///         サイドバーに反映する。</item>
+    ///   <item><see cref="CopyListViewModel.LoadForAssetAsync"/>: <c>UpdateImageCopyCommand</c> の
+    ///         取り消し結果（CopyName/Rotation/特性 全般）を準備タブの一覧に反映する。
+    ///         <c>CopyPropertiesViewModel.SaveAsync</c> 内で書き込んだ <c>_source</c> の
+    ///         スタンプ値が DB ロールバックと乖離する問題をここで解消する。</item>
+    ///   <item><see cref="CopyLibraryChangedMessage"/>: <c>GridWorkspaceViewModel</c> 受信側で
+    ///         配置タブの候補・配置を再ロードする（<c>PlaceCommand</c> 等の取消結果を反映）。</item>
+    /// </list>
+    /// </summary>
+    private async Task RefreshAfterHistoryAsync(CancellationToken ct)
+    {
+        await GridList.LoadAsync(ct);
+
+        var asset = AssetLibrary.SelectedAsset;
+        if (asset is not null)
+        {
+            // 自動ロード（OnAssetLibraryPropertyChanged）と同じ _copyLoadGate を経由して
+            // 共有 ViewGridDbContext での同時クエリ例外を防ぐ。
+            try
+            {
+                await _copyLoadGate.WaitAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            try
+            {
+                // ユーザーが先頭以外のコピーを編集中のときに、LoadForAssetAsync が
+                // SelectedCopy を先頭に強制リセットする副作用がある。Undo で「編集を取り消す」
+                // のに選択まで動くと UX 上違和感があるため、ロード前の CopyId を控えて、
+                // 同じ Id がロード後の一覧に残っていれば再選択する。
+                var previousCopyId = CopyList.SelectedCopy?.CopyId;
+                await CopyList.LoadForAssetAsync(asset.AssetId, ct);
+                if (previousCopyId is { } id)
+                {
+                    var restored = CopyList.Copies.FirstOrDefault(c => c.CopyId == id);
+                    if (restored is not null)
+                        CopyList.SelectedCopy = restored;
+                }
+            }
+            finally
+            {
+                _copyLoadGate.Release();
+            }
+        }
+
+        _messenger.Send(new CopyLibraryChangedMessage());
+    }
+
+    private bool CanUndoCommand() => CanUndo;
+    private bool CanRedoCommand() => CanRedo;
+
+    private void OnHistoryStateChanged()
+    {
+        CanUndo = _history.CanUndo;
+        CanRedo = _history.CanRedo;
+        UndoLabel = _history.NextUndoDescription is { } u ? $"元に戻す: {u}" : "元に戻す";
+        RedoLabel = _history.NextRedoDescription is { } r ? $"やり直し: {r}" : "やり直し";
+
+        // 履歴 UI 用プロパティ（History は呼び出しのたびに新しい List を生成するため、
+        // 参照変更通知でバインドが再評価される）
+        OnPropertyChanged(nameof(HistoryEntries));
+        OnPropertyChanged(nameof(CurrentHistoryIndex));
+        OnPropertyChanged(nameof(HasHistory));
+
+        UndoCommand.NotifyCanExecuteChanged();
+        RedoCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -226,6 +369,7 @@ public sealed partial class MainWindowViewModel
     public void Dispose()
     {
         _messenger.UnregisterAll(this);
+        _history.StateChanged -= OnHistoryStateChanged;
         _copyLoadCts?.Cancel();
         _copyLoadCts?.Dispose();
         _copyLoadCts = null;

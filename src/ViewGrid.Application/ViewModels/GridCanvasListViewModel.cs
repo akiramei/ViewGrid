@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using ViewGrid.Application.History;
+using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Interfaces;
 
@@ -22,6 +24,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     private readonly DeleteGridCanvasUseCase _deleteUseCase;
     private readonly RenameGridCanvasUseCase _renameUseCase;
     private readonly SetActiveGridCanvasUseCase _setActiveUseCase;
+    private readonly IUndoRedoService _history;
     private readonly ILogger<GridCanvasListViewModel> _logger;
 
     public ObservableCollection<GridCanvasItemViewModel> Grids { get; } = [];
@@ -53,6 +56,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         DeleteGridCanvasUseCase deleteUseCase,
         RenameGridCanvasUseCase renameUseCase,
         SetActiveGridCanvasUseCase setActiveUseCase,
+        IUndoRedoService history,
         ILogger<GridCanvasListViewModel> logger)
     {
         _repository = repository;
@@ -60,6 +64,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         _deleteUseCase = deleteUseCase;
         _renameUseCase = renameUseCase;
         _setActiveUseCase = setActiveUseCase;
+        _history = history;
         _logger = logger;
     }
 
@@ -135,6 +140,9 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
                 return;
             }
 
+            // 新規グリッド作成は Undo 対象外（cascade なしだが派生履歴を破綻させ得るため履歴破棄）
+            _history.Clear();
+
             // アクティブ化した結果として他のフラグを落とす必要があるので、一覧再読込
             await ReloadGridsInternalAsync(ct);
             SelectedGrid = Grids.FirstOrDefault(g => g.GridId == result.Value.Id);
@@ -159,6 +167,9 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
                 return;
             }
 
+            // グリッド削除は cascade で配置を消すため、関連する履歴は復元不能 → 全消去
+            _history.Clear();
+
             Grids.Remove(selected);
             SelectedGrid = Grids.FirstOrDefault();
             StatusMessage = $"「{selected.Name}」を削除しました。";
@@ -174,7 +185,12 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         try
         {
             IsBusy = true;
-            var result = await _setActiveUseCase.ExecuteAsync(selected.GridId, ct);
+            // before の active grid id を取得して Undo に備える
+            var previousActive = await _repository.FindActiveAsync(ct);
+            var description = $"アクティブ切替: 「{selected.Name}」";
+            var command = new SetActiveGridCanvasCommand(
+                _setActiveUseCase, selected.GridId, previousActive?.Id, description);
+            var result = await _history.ExecuteAsync(command, ct);
             if (result.IsError)
             {
                 StatusMessage = string.Join(", ", result.Errors);
@@ -194,16 +210,23 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     {
         var selected = SelectedGrid;
         if (selected is null || IsBusy) return;
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        if (newName.Trim() == selected.Name) return;
+
         try
         {
             IsBusy = true;
-            var result = await _renameUseCase.ExecuteAsync(selected.GridId, newName, ct);
+            var trimmed = newName.Trim();
+            var description = $"リネーム: 「{selected.Name}」→「{trimmed}」";
+            var command = new RenameGridCanvasCommand(
+                _renameUseCase, selected.GridId, selected.Name, trimmed, description);
+            var result = await _history.ExecuteAsync(command, ct);
             if (result.IsError)
             {
                 StatusMessage = string.Join(", ", result.Errors);
                 return;
             }
-            selected.Name = result.Value.Name;
+            selected.Name = trimmed;
             StatusMessage = "名前を変更しました。";
         }
         finally { IsBusy = false; }

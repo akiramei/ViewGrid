@@ -9,6 +9,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using ViewGrid.Application.History;
+using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
@@ -41,6 +43,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly FitGridWeightToPlacementUseCase _fitWeightUseCase;
     private readonly IFilePickerService _filePicker;
     private readonly IMessenger _messenger;
+    private readonly IUndoRedoService _history;
     private readonly ILogger<GridWorkspaceViewModel> _logger;
 
     public PlacementInspectorViewModel Inspector { get; }
@@ -96,6 +99,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         FitGridWeightToPlacementUseCase fitWeightUseCase,
         IFilePickerService filePicker,
         IMessenger messenger,
+        IUndoRedoService history,
         PlacementInspectorViewModel inspector,
         ILogger<GridWorkspaceViewModel> logger)
     {
@@ -116,6 +120,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _fitWeightUseCase = fitWeightUseCase;
         _filePicker = filePicker;
         _messenger = messenger;
+        _history = history;
         Inspector = inspector;
         _logger = logger;
 
@@ -278,8 +283,14 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             IsBusy = true;
             if (target is null)
             {
-                // Move
-                var result = await _moveUseCase.ExecuteAsync(sourcePlacementId, dropPosition, ct);
+                // Move（Undo/Redo 履歴に積む）
+                var beforePosition = source.Position;
+                if (beforePosition == dropPosition) return false;
+                var moveDescription =
+                    $"移動: 「{source.Label}」 ({beforePosition.X},{beforePosition.Y}) → ({dropPosition.X},{dropPosition.Y})";
+                var command = new MovePlacementCommand(
+                    _moveUseCase, grid.GridId, sourcePlacementId, beforePosition, dropPosition, moveDescription);
+                var result = await _history.ExecuteAsync(command, ct);
                 if (result.IsError)
                 {
                     StatusMessage = string.Join(", ", result.Errors);
@@ -292,8 +303,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             }
             else
             {
-                // Swap
-                var result = await _swapUseCase.ExecuteAsync(sourcePlacementId, target.PlacementId, ct);
+                // Swap（Undo/Redo 履歴に積む）
+                var swapDescription = $"入れ替え: 「{source.Label}」⇔「{target.Label}」";
+                var command = new SwapPlacementsCommand(
+                    _swapUseCase, grid.GridId, sourcePlacementId, target.PlacementId, swapDescription);
+                var result = await _history.ExecuteAsync(command, ct);
                 if (result.IsError)
                 {
                     StatusMessage = string.Join(", ", result.Errors);
@@ -319,7 +333,13 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try
         {
             IsBusy = true;
-            var result = await _placeUseCase.ExecuteAsync(grid.GridId, copyId, position, ct);
+            var candidate = Candidates.FirstOrDefault(c => c.CopyId == copyId);
+            var copyLabel = candidate?.CopyDisplayName ?? "(不明なコピー)";
+            var description = $"配置: 「{copyLabel}」→ ({position.X},{position.Y})";
+            var command = new PlaceCommand(
+                _placeUseCase, _removeUseCase, _placementRepository,
+                grid.GridId, copyId, position, description);
+            var result = await _history.ExecuteAsync(command, ct);
             if (result.IsError)
             {
                 StatusMessage = string.Join(", ", result.Errors);
@@ -327,7 +347,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             }
 
             await ReloadPlacementsAsync(grid.GridId, ct);
-            SelectedPlacement = Placements.FirstOrDefault(p => p.PlacementId == result.Value.Id);
+            SelectedPlacement = command.CreatedPlacementId is { } pid
+                ? Placements.FirstOrDefault(p => p.PlacementId == pid)
+                : null;
             StatusMessage = $"({position.X},{position.Y}) に配置しました。";
             return true;
         }
@@ -351,7 +373,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 return;
             }
 
-            var result = await _placeUseCase.ExecuteAsync(grid.GridId, candidate.CopyId, position.Value, ct);
+            var description = $"配置: 「{candidate.CopyDisplayName}」→ ({position.Value.X},{position.Value.Y})";
+            var command = new PlaceCommand(
+                _placeUseCase, _removeUseCase, _placementRepository,
+                grid.GridId, candidate.CopyId, position.Value, description);
+            var result = await _history.ExecuteAsync(command, ct);
             if (result.IsError)
             {
                 StatusMessage = string.Join(", ", result.Errors);
@@ -360,7 +386,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
             // 反映: VM 側のリストにアイテムを追加（再ロードで一括更新する）
             await ReloadPlacementsAsync(grid.GridId, ct);
-            SelectedPlacement = Placements.FirstOrDefault(p => p.PlacementId == result.Value.Id);
+            SelectedPlacement = command.CreatedPlacementId is { } pid
+                ? Placements.FirstOrDefault(p => p.PlacementId == pid)
+                : null;
             StatusMessage = $"({position.Value.X},{position.Value.Y}) に配置しました。";
         }
         finally { IsBusy = false; }
@@ -375,7 +403,18 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try
         {
             IsBusy = true;
-            var result = await _removeUseCase.ExecuteAsync(target.PlacementId, ct);
+            // Undo に必要な完全 snapshot を Execute 前に取得
+            var snapshot = await _placementRepository.FindByIdAsync(target.PlacementId, ct);
+            if (snapshot is null)
+            {
+                StatusMessage = "削除対象の配置が見つかりません。";
+                return;
+            }
+
+            var description = $"削除: 「{target.Label}」 ({target.GridX},{target.GridY})";
+            var command = new RemovePlacementCommand(
+                _removeUseCase, _placementRepository, snapshot, description);
+            var result = await _history.ExecuteAsync(command, ct);
             if (result.IsError)
             {
                 StatusMessage = string.Join(", ", result.Errors);
@@ -511,18 +550,41 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         var grid = CurrentGrid;
         if (grid is null) return false;
 
-        var result = await _updateWeightsUseCase.ExecuteAsync(grid.GridId, colWeights, rowWeights, ct);
+        // Undo に備えて before/after の完全な配列を保持。null（変更なし）は現在値で埋める。
+        var beforeCol = grid.ColWeights;
+        var beforeRow = grid.RowWeights;
+        var afterCol = colWeights is null
+            ? beforeCol
+            : [.. colWeights];
+        var afterRow = rowWeights is null
+            ? beforeRow
+            : [.. rowWeights];
+
+        if (afterCol.SequenceEqual(beforeCol) && afterRow.SequenceEqual(beforeRow))
+            return true; // 値変化なし — 履歴に積まない
+
+        // どちらが変わったかでラベルを切り替え（両方変わったら「比率」とまとめる）
+        var colChanged = !afterCol.SequenceEqual(beforeCol);
+        var rowChanged = !afterRow.SequenceEqual(beforeRow);
+        var axisLabel = colChanged && rowChanged ? "比率" : (colChanged ? "列幅" : "行高");
+        var description = $"{axisLabel}変更: グリッド「{grid.Name}」";
+        var command = new UpdateGridWeightsCommand(
+            _updateWeightsUseCase, grid.GridId, beforeCol, beforeRow, afterCol, afterRow, description);
+        var result = await _history.ExecuteAsync(command, ct);
         if (result.IsError)
         {
             StatusMessage = string.Join(", ", result.Errors);
             return false;
         }
 
-        // VM 側の重みを更新する。GridCanvasView は CurrentGrid の PropertyChanged を見て Rebuild
-        // するので、明示的に CurrentGrid 通知を発火（参照は同じだが内容が変わったため）。
-        grid.ColWeights = result.Value.ColWeights;
-        grid.RowWeights = result.Value.RowWeights;
-        OnPropertyChanged(nameof(CurrentGrid));
+        // 永続化された最新値を再取得して VM に反映
+        var reloaded = await _gridRepository.FindByIdAsync(grid.GridId, ct);
+        if (reloaded is not null)
+        {
+            grid.ColWeights = reloaded.ColWeights;
+            grid.RowWeights = reloaded.RowWeights;
+            OnPropertyChanged(nameof(CurrentGrid));
+        }
         StatusMessage = "グリッド比率を更新しました。";
         return true;
     }
@@ -536,18 +598,43 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     public async Task<bool> ApplyPixelOffsetAsync(
         Guid placementId, int pixelOffsetX, int pixelOffsetY, CancellationToken ct = default)
     {
+        var grid = CurrentGrid;
+        if (grid is null) return false;
+
         var max = PlacementInspectorViewModel.MaxPixelOffset;
         var clampedX = Math.Clamp(pixelOffsetX, -max, max);
         var clampedY = Math.Clamp(pixelOffsetY, -max, max);
 
-        var result = await _updateOffsetUseCase.ExecuteAsync(placementId, clampedX, clampedY, ct);
+        // Undo に備えて DB 上の現在値を before として取得（VM 側はドラッグ中に書き換わっているため）
+        var current = await _placementRepository.FindByIdAsync(placementId, ct);
+        if (current is null)
+        {
+            StatusMessage = $"GridPlacement {placementId} が見つかりません。";
+            return false;
+        }
+        var beforeX = current.PixelOffsetX;
+        var beforeY = current.PixelOffsetY;
+
+        if (beforeX == clampedX && beforeY == clampedY)
+        {
+            // 値変化なし — 履歴に積まない
+            StatusMessage = "ピクセル微調整: 変化なし。";
+            return true;
+        }
+
+        var item = Placements.FirstOrDefault(p => p.PlacementId == placementId);
+        var label = item?.Label ?? "(不明な配置)";
+        var description = $"ピクセル微調整: 「{label}」 ΔX={clampedX}, ΔY={clampedY}";
+        var command = new UpdatePlacementOffsetCommand(
+            _updateOffsetUseCase, grid.GridId, placementId,
+            beforeX, beforeY, clampedX, clampedY, description);
+        var result = await _history.ExecuteAsync(command, ct);
         if (result.IsError)
         {
             StatusMessage = string.Join(", ", result.Errors);
             return false;
         }
 
-        var item = Placements.FirstOrDefault(p => p.PlacementId == placementId);
         if (item is not null)
         {
             item.PixelOffsetX = clampedX;
@@ -607,24 +694,32 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         if (grid is null) return false;
         if (colIndex < 0 || colIndex >= grid.Cols) return false;
 
-        var newLocks = grid.ColLocked.ToBuilder();
-        if (newLocks.Count != grid.Cols)
-        {
-            newLocks.Clear();
-            for (var i = 0; i < grid.Cols; i++) newLocks.Add(false);
-        }
-        newLocks[colIndex] = !newLocks[colIndex];
+        var beforeCol = grid.ColLocked.Length == grid.Cols
+            ? grid.ColLocked
+            : [.. Enumerable.Range(0, grid.Cols).Select(_ => false)];
+        var afterCol = beforeCol.SetItem(colIndex, !beforeCol[colIndex]);
+        var beforeRow = grid.RowLocked.Length == grid.Rows
+            ? grid.RowLocked
+            : [.. Enumerable.Range(0, grid.Rows).Select(_ => false)];
 
-        var result = await _updateLocksUseCase.ExecuteAsync(grid.GridId, newLocks, rowLocked: null, ct);
+        var lockState = afterCol[colIndex] ? "ロック" : "解除";
+        var description = $"列 {colIndex} {lockState}: グリッド「{grid.Name}」";
+        var command = new UpdateGridLocksCommand(
+            _updateLocksUseCase, grid.GridId, beforeCol, beforeRow, afterCol, beforeRow, description);
+        var result = await _history.ExecuteAsync(command, ct);
         if (result.IsError)
         {
             StatusMessage = string.Join(", ", result.Errors);
             return false;
         }
 
-        grid.ColLocked = result.Value.ColLocked;
-        OnPropertyChanged(nameof(CurrentGrid));
-        StatusMessage = newLocks[colIndex] ? $"列 {colIndex} をロックしました。" : $"列 {colIndex} のロックを解除しました。";
+        var reloaded = await _gridRepository.FindByIdAsync(grid.GridId, ct);
+        if (reloaded is not null)
+        {
+            grid.ColLocked = reloaded.ColLocked;
+            OnPropertyChanged(nameof(CurrentGrid));
+        }
+        StatusMessage = afterCol[colIndex] ? $"列 {colIndex} をロックしました。" : $"列 {colIndex} のロックを解除しました。";
         return true;
     }
 
@@ -635,24 +730,32 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         if (grid is null) return false;
         if (rowIndex < 0 || rowIndex >= grid.Rows) return false;
 
-        var newLocks = grid.RowLocked.ToBuilder();
-        if (newLocks.Count != grid.Rows)
-        {
-            newLocks.Clear();
-            for (var i = 0; i < grid.Rows; i++) newLocks.Add(false);
-        }
-        newLocks[rowIndex] = !newLocks[rowIndex];
+        var beforeRow = grid.RowLocked.Length == grid.Rows
+            ? grid.RowLocked
+            : [.. Enumerable.Range(0, grid.Rows).Select(_ => false)];
+        var afterRow = beforeRow.SetItem(rowIndex, !beforeRow[rowIndex]);
+        var beforeCol = grid.ColLocked.Length == grid.Cols
+            ? grid.ColLocked
+            : [.. Enumerable.Range(0, grid.Cols).Select(_ => false)];
 
-        var result = await _updateLocksUseCase.ExecuteAsync(grid.GridId, colLocked: null, newLocks, ct);
+        var lockState = afterRow[rowIndex] ? "ロック" : "解除";
+        var description = $"行 {rowIndex} {lockState}: グリッド「{grid.Name}」";
+        var command = new UpdateGridLocksCommand(
+            _updateLocksUseCase, grid.GridId, beforeCol, beforeRow, beforeCol, afterRow, description);
+        var result = await _history.ExecuteAsync(command, ct);
         if (result.IsError)
         {
             StatusMessage = string.Join(", ", result.Errors);
             return false;
         }
 
-        grid.RowLocked = result.Value.RowLocked;
-        OnPropertyChanged(nameof(CurrentGrid));
-        StatusMessage = newLocks[rowIndex] ? $"行 {rowIndex} をロックしました。" : $"行 {rowIndex} のロックを解除しました。";
+        var reloaded = await _gridRepository.FindByIdAsync(grid.GridId, ct);
+        if (reloaded is not null)
+        {
+            grid.RowLocked = reloaded.RowLocked;
+            OnPropertyChanged(nameof(CurrentGrid));
+        }
+        StatusMessage = afterRow[rowIndex] ? $"行 {rowIndex} をロックしました。" : $"行 {rowIndex} のロックを解除しました。";
         return true;
     }
 

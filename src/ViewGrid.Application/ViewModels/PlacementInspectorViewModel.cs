@@ -6,9 +6,12 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using ViewGrid.Application.History;
+using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
+using ViewGrid.Core.Interfaces;
 using ViewGrid.Core.UseCases;
 
 namespace ViewGrid.Application.ViewModels;
@@ -31,6 +34,8 @@ namespace ViewGrid.Application.ViewModels;
 public sealed partial class PlacementInspectorViewModel : ObservableObject
 {
     private readonly UpdatePlacementOffsetUseCase _offsetUseCase;
+    private readonly IGridPlacementRepository _placementRepository;
+    private readonly IUndoRedoService _history;
     private readonly IMessenger _messenger;
     private readonly ILogger<PlacementInspectorViewModel> _logger;
 
@@ -70,10 +75,14 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
 
     public PlacementInspectorViewModel(
         UpdatePlacementOffsetUseCase offsetUseCase,
+        IGridPlacementRepository placementRepository,
+        IUndoRedoService history,
         IMessenger messenger,
         ILogger<PlacementInspectorViewModel> logger)
     {
         _offsetUseCase = offsetUseCase;
+        _placementRepository = placementRepository;
+        _history = history;
         _messenger = messenger;
         _logger = logger;
         PropertyChanged += OnAnyPropertyChanged;
@@ -156,14 +165,36 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     {
         // _source は外部要因で null 化される可能性があるためローカルキャプチャ。
         var source = _source;
-        if (source is null || !IsDirty) return;
+        var grid = _grid;
+        if (source is null || grid is null || !IsDirty) return;
 
         var clampedX = Math.Clamp(PixelOffsetX, -MaxPixelOffset, MaxPixelOffset);
         var clampedY = Math.Clamp(PixelOffsetY, -MaxPixelOffset, MaxPixelOffset);
-        var offsetResult = await _offsetUseCase.ExecuteAsync(source.PlacementId, clampedX, clampedY, ct);
-        if (offsetResult.IsError)
+
+        // before の値は DB の永続化済み値から取得（Shift+ドラッグで _source が書き換わっている可能性がある）
+        var current = await _placementRepository.FindByIdAsync(source.PlacementId, ct);
+        if (current is null)
         {
-            StatusMessage = string.Join(", ", offsetResult.Errors);
+            StatusMessage = $"GridPlacement {source.PlacementId} が見つかりません。";
+            return;
+        }
+        if (current.PixelOffsetX == clampedX && current.PixelOffsetY == clampedY)
+        {
+            // 値変化なし — 履歴に積まない
+            _suppressDirty = true;
+            try { IsDirty = false; StatusMessage = "保存しました（変更なし）。"; }
+            finally { _suppressDirty = false; }
+            return;
+        }
+
+        var description = $"ピクセル微調整: 「{source.Label}」 ΔX={clampedX}, ΔY={clampedY}";
+        var command = new UpdatePlacementOffsetCommand(
+            _offsetUseCase, grid.GridId, source.PlacementId,
+            current.PixelOffsetX, current.PixelOffsetY, clampedX, clampedY, description);
+        var execResult = await _history.ExecuteAsync(command, ct);
+        if (execResult.IsError)
+        {
+            StatusMessage = string.Join(", ", execResult.Errors);
             return;
         }
 

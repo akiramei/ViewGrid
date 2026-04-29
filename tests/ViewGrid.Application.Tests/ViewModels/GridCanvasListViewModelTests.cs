@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using ViewGrid.Application.History;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
@@ -19,8 +20,9 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         var delete = new DeleteGridCanvasUseCase(_fx.GridRepository);
         var rename = new RenameGridCanvasUseCase(_fx.GridRepository);
         var setActive = new SetActiveGridCanvasUseCase(_fx.GridRepository);
+        var history = new UndoRedoService();
         _vm = new GridCanvasListViewModel(
-            _fx.GridRepository, create, delete, rename, setActive,
+            _fx.GridRepository, create, delete, rename, setActive, history,
             NullLogger<GridCanvasListViewModel>.Instance);
     }
 

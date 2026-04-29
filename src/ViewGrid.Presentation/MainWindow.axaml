@@ -13,8 +13,26 @@
         WindowStartupLocation="CenterScreen"
         DragDrop.AllowDrop="True">
 
-    <Grid RowDefinitions="Auto,*">
-        <Border Grid.Row="0"
+    <!-- Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z で Undo/Redo を発火（Window レベル KeyBinding） -->
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+        <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}" />
+    </Window.KeyBindings>
+
+    <Grid RowDefinitions="Auto,Auto,*">
+        <Menu Grid.Row="0">
+            <MenuItem Header="編集">
+                <MenuItem Header="{Binding UndoLabel}"
+                          Command="{Binding UndoCommand}"
+                          InputGesture="Ctrl+Z" />
+                <MenuItem Header="{Binding RedoLabel}"
+                          Command="{Binding RedoCommand}"
+                          InputGesture="Ctrl+Y" />
+            </MenuItem>
+        </Menu>
+
+        <Border Grid.Row="1"
                 Padding="16,12"
                 Background="{DynamicResource SystemChromeLowColor}">
             <StackPanel>
@@ -27,7 +45,7 @@
             </StackPanel>
         </Border>
 
-        <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedTabIndex}" Padding="0">
+        <TabControl Grid.Row="2" SelectedIndex="{Binding SelectedTabIndex}" Padding="0">
             <TabItem Header="準備">
                 <Grid ColumnDefinitions="*,380">
                     <views:AssetLibraryView Grid.Column="0"
