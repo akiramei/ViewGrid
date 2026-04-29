@@ -3,6 +3,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
+        xmlns:history="clr-namespace:ViewGrid.Application.History;assembly=ViewGrid.Application"
+        xmlns:converters="clr-namespace:ViewGrid.Presentation.Converters"
         xmlns:views="clr-namespace:ViewGrid.Presentation.Views"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="720"
         x:Class="ViewGrid.Presentation.MainWindow"
@@ -20,17 +22,103 @@
         <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}" />
     </Window.KeyBindings>
 
+    <Window.Resources>
+        <!--
+            履歴 Flyout 内の ListBox 各項目テンプレート。
+            列構成:
+              Col0: 現在位置インジケータ（▶、IsCurrent のみ表示）
+              Col1: 適用/取消グリフ（✓ または ○）
+              Col2: 説明文（IsApplied=false なら Opacity 0.5）
+        -->
+        <DataTemplate x:Key="HistoryItemTemplate" x:DataType="history:HistoryEntry">
+            <Grid ColumnDefinitions="20,Auto,*" MinHeight="28">
+                <TextBlock Grid.Column="0"
+                           Text="▶"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource SystemAccentColor}"
+                           IsVisible="{Binding IsCurrent}" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding IsApplied, Converter={x:Static converters:BoolToHistoryGlyphConverter.Instance}}"
+                           Margin="0,0,8,0"
+                           VerticalAlignment="Center"
+                           Opacity="0.5" />
+                <TextBlock Grid.Column="2"
+                           Text="{Binding Description}"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center"
+                           Opacity="{Binding IsApplied, Converter={x:Static converters:BoolToOpacityConverter.Instance}}" />
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
     <Grid RowDefinitions="Auto,Auto,*">
-        <Menu Grid.Row="0">
-            <MenuItem Header="編集">
-                <MenuItem Header="{Binding UndoLabel}"
-                          Command="{Binding UndoCommand}"
-                          InputGesture="Ctrl+Z" />
-                <MenuItem Header="{Binding RedoLabel}"
-                          Command="{Binding RedoCommand}"
-                          InputGesture="Ctrl+Y" />
-            </MenuItem>
-        </Menu>
+        <DockPanel Grid.Row="0" LastChildFill="False">
+            <!-- 左: 編集メニュー -->
+            <Menu DockPanel.Dock="Left">
+                <MenuItem Header="編集">
+                    <MenuItem Header="{Binding UndoLabel}"
+                              Command="{Binding UndoCommand}"
+                              InputGesture="Ctrl+Z" />
+                    <MenuItem Header="{Binding RedoLabel}"
+                              Command="{Binding RedoCommand}"
+                              InputGesture="Ctrl+Y" />
+                </MenuItem>
+            </Menu>
+
+            <!-- 右: 履歴ツールバー（Undo / ▼履歴 / Redo） -->
+            <StackPanel DockPanel.Dock="Right"
+                        Orientation="Horizontal"
+                        Spacing="2"
+                        Margin="0,2,8,2">
+                <Button Classes="toolbar"
+                        Command="{Binding UndoCommand}"
+                        ToolTip.Tip="{Binding UndoLabel}">
+                    <PathIcon Data="{StaticResource UndoGeometry}" Width="14" Height="14" />
+                </Button>
+
+                <Button x:Name="HistoryDropdownButton"
+                        Classes="toolbar"
+                        ToolTip.Tip="操作履歴">
+                    <PathIcon Data="{StaticResource ChevronDownGeometry}" Width="12" Height="12" />
+                    <Button.Flyout>
+                        <Flyout Placement="BottomEdgeAlignedRight"
+                                ShowMode="Standard">
+                            <Border MinWidth="320" MaxWidth="500" MaxHeight="500">
+                                <Grid RowDefinitions="Auto,*,Auto">
+                                    <TextBlock Grid.Row="0"
+                                               Text="操作履歴（最新 50 件）"
+                                               FontWeight="SemiBold"
+                                               Margin="12,8" />
+                                    <ListBox Grid.Row="1"
+                                             x:Name="HistoryListBox"
+                                             ItemsSource="{Binding HistoryEntries}"
+                                             ItemTemplate="{StaticResource HistoryItemTemplate}"
+                                             SelectionMode="Single"
+                                             BorderThickness="0,1,0,0"
+                                             Background="Transparent"
+                                             IsVisible="{Binding HasHistory}"
+                                             PointerReleased="OnHistoryItemClicked" />
+                                    <TextBlock Grid.Row="1"
+                                               Text="操作履歴はありません"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Opacity="0.5"
+                                               IsVisible="{Binding !HasHistory}" />
+                                </Grid>
+                            </Border>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+
+                <Button Classes="toolbar"
+                        Command="{Binding RedoCommand}"
+                        ToolTip.Tip="{Binding RedoLabel}">
+                    <PathIcon Data="{StaticResource RedoGeometry}" Width="14" Height="14" />
+                </Button>
+            </StackPanel>
+        </DockPanel>
 
         <Border Grid.Row="1"
                 Padding="16,12"

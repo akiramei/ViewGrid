@@ -63,4 +63,27 @@
     <Style Selector="StackPanel.FormGroup">
         <Setter Property="Spacing" Value="12" />
     </Style>
+
+    <!--
+        ツールバーボタン（編集メニュー横の Undo / 履歴 / Redo 等）。
+        ・透明背景 + hover で薄い背景色（FluentTheme のシステム色を流用）。
+        ・disabled 時は Opacity を下げてモノトーン化。
+        ・固定幅 32×28 でツールバー上で揃う。
+    -->
+    <Style Selector="Button.toolbar">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Padding" Value="6,4" />
+        <Setter Property="MinWidth" Value="32" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.toolbar:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SystemBaseLowColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SystemBaseMediumLowColor}" />
+    </Style>
+    <Style Selector="Button.toolbar:disabled">
+        <Setter Property="Opacity" Value="0.4" />
+    </Style>
 </Styles>
