@@ -313,16 +313,26 @@ public partial class GridCanvasView : UserControl
         // ハンドルは CanvasGrid 内に Grid.SetColumn/Row で配置する。
         // これにより Avalonia の Grid Layout が決定する実セル境界と必ず一致する
         // （BoundaryOverlay の Canvas 絶対座標とは独立に、Grid のレイアウト計算を信頼する）。
+        // 通常境界（青）と「ロック隣接境界（オレンジ）」の 2 種類を用意し、
+        // ロック中の列/行に隣接する境界はフィット時に重み変動が制限されることを示す。
+        // 色は BuildHeaderToggle のロック中ボタン背景（FFA500 系）と統一して直感を揃える。
         var idleFill = new SolidColorBrush(Color.FromArgb(0x55, 0x33, 0x99, 0xFF));
         var hoverFill = new SolidColorBrush(Color.FromArgb(0xAA, 0x33, 0x99, 0xFF));
+        var idleLockedFill = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xA5, 0x00));
+        var hoverLockedFill = new SolidColorBrush(Color.FromArgb(0xAA, 0xFF, 0xA5, 0x00));
 
         // 列境界ハンドル: 列 i-1 と列 i の境界 = col=i セルの左端中心に配置
         for (var i = 1; i < grid.Cols; i++)
         {
+            // 隣接する 2 セル（i-1, i）のどちらかがロック中なら「ロック隣接」と判定。
+            // フィット動作（WeightRedistributor.FitToOccupant）でロック列を飛ばす意味論と一致。
+            var locked = IsColLocked(grid, i - 1) || IsColLocked(grid, i);
+            var idle = locked ? idleLockedFill : idleFill;
+            var hover = locked ? hoverLockedFill : hoverFill;
             var handle = new Rectangle
             {
                 Width = HandleHitWidth,
-                Fill = idleFill,
+                Fill = idle,
                 Cursor = new Cursor(StandardCursorType.SizeWestEast),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Stretch,
@@ -333,18 +343,21 @@ public partial class GridCanvasView : UserControl
             Grid.SetRow(handle, 0);
             Grid.SetRowSpan(handle, grid.Rows);
             handle.PointerPressed += OnBoundaryPointerPressed;
-            handle.PointerEntered += (_, _) => handle.Fill = hoverFill;
-            handle.PointerExited += (_, _) => handle.Fill = idleFill;
+            handle.PointerEntered += (_, _) => handle.Fill = hover;
+            handle.PointerExited += (_, _) => handle.Fill = idle;
             CanvasGrid.Children.Add(handle);
         }
 
         // 行境界ハンドル: 行 i-1 と行 i の境界 = row=i セルの上端中心に配置
         for (var i = 1; i < grid.Rows; i++)
         {
+            var locked = IsRowLocked(grid, i - 1) || IsRowLocked(grid, i);
+            var idle = locked ? idleLockedFill : idleFill;
+            var hover = locked ? hoverLockedFill : hoverFill;
             var handle = new Rectangle
             {
                 Height = HandleHitWidth,
-                Fill = idleFill,
+                Fill = idle,
                 Cursor = new Cursor(StandardCursorType.SizeNorthSouth),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Top,
@@ -355,10 +368,29 @@ public partial class GridCanvasView : UserControl
             Grid.SetColumnSpan(handle, grid.Cols);
             Grid.SetRow(handle, i);
             handle.PointerPressed += OnBoundaryPointerPressed;
-            handle.PointerEntered += (_, _) => handle.Fill = hoverFill;
-            handle.PointerExited += (_, _) => handle.Fill = idleFill;
+            handle.PointerEntered += (_, _) => handle.Fill = hover;
+            handle.PointerExited += (_, _) => handle.Fill = idle;
             CanvasGrid.Children.Add(handle);
         }
+    }
+
+    /// <summary>
+    /// 指定列がロック中か判定する。<c>ColLocked</c> の長さが <c>Cols</c> と
+    /// 一致しない過渡状態（マイグレーション直後など）では <c>false</c> 扱い。
+    /// </summary>
+    private static bool IsColLocked(GridCanvasItemViewModel grid, int colIndex)
+    {
+        if (colIndex < 0 || colIndex >= grid.Cols) return false;
+        if (grid.ColLocked.Length != grid.Cols) return false;
+        return grid.ColLocked[colIndex];
+    }
+
+    /// <summary>指定行がロック中か判定する。詳細は <see cref="IsColLocked"/> 参照。</summary>
+    private static bool IsRowLocked(GridCanvasItemViewModel grid, int rowIndex)
+    {
+        if (rowIndex < 0 || rowIndex >= grid.Rows) return false;
+        if (grid.RowLocked.Length != grid.Rows) return false;
+        return grid.RowLocked[rowIndex];
     }
 
     /// <summary>
