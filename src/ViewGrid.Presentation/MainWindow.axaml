@@ -53,7 +53,12 @@
         </DataTemplate>
     </Window.Resources>
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <!--
+        全体レイアウト: Row 0 にメニュー + 履歴ツールバー（DockPanel で左右分割）、Row 1 に TabControl。
+        プロ向けフラット化のため、本体内のタイトル Border は削除した（Window クロームで「ViewGrid」が
+        常時見えているため重複情報）。これにより縦スペース約 50px をキャンバス側に解放している。
+    -->
+    <Grid RowDefinitions="Auto,*">
         <DockPanel Grid.Row="0" LastChildFill="False">
             <!-- 左: 編集メニュー -->
             <Menu DockPanel.Dock="Left">
@@ -67,7 +72,13 @@
                 </MenuItem>
             </Menu>
 
-            <!-- 右: 履歴ツールバー（Undo / ▼履歴 / Redo） -->
+            <!--
+                右: 履歴ツールバー。配置は「← →  ▼」の順。
+                Undo / Redo は連続操作される「ペア」なので隣接させる（VS Code / Word の慣例）。
+                履歴ドロップダウンは Undo/Redo の派生機能として右側に分離して配置する。
+                Undo↔Redo 間は Spacing=2（密）、Redo↔▼ 間は Margin で 8px 余白（疎）にして
+                視覚的にも「ペア + 補助」の階層を表現する。
+            -->
             <StackPanel DockPanel.Dock="Right"
                         Orientation="Horizontal"
                         Spacing="2"
@@ -78,8 +89,15 @@
                     <PathIcon Data="{StaticResource UndoGeometry}" Width="14" Height="14" />
                 </Button>
 
+                <Button Classes="toolbar"
+                        Command="{Binding RedoCommand}"
+                        ToolTip.Tip="{Binding RedoLabel}">
+                    <PathIcon Data="{StaticResource RedoGeometry}" Width="14" Height="14" />
+                </Button>
+
                 <Button x:Name="HistoryDropdownButton"
                         Classes="toolbar"
+                        Margin="8,0,0,0"
                         ToolTip.Tip="操作履歴">
                     <PathIcon Data="{StaticResource ChevronDownGeometry}" Width="12" Height="12" />
                     <Button.Flyout>
@@ -111,29 +129,10 @@
                         </Flyout>
                     </Button.Flyout>
                 </Button>
-
-                <Button Classes="toolbar"
-                        Command="{Binding RedoCommand}"
-                        ToolTip.Tip="{Binding RedoLabel}">
-                    <PathIcon Data="{StaticResource RedoGeometry}" Width="14" Height="14" />
-                </Button>
             </StackPanel>
         </DockPanel>
 
-        <Border Grid.Row="1"
-                Padding="16,12"
-                Background="{DynamicResource SystemChromeLowColor}">
-            <StackPanel>
-                <TextBlock Text="{Binding Title}"
-                           FontSize="22"
-                           FontWeight="SemiBold" />
-                <TextBlock Text="2 フェーズワークフロー（準備 → 配置）"
-                           Opacity="0.65"
-                           FontSize="12" />
-            </StackPanel>
-        </Border>
-
-        <TabControl Grid.Row="2" SelectedIndex="{Binding SelectedTabIndex}" Padding="0">
+        <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedTabIndex}" Padding="0">
             <TabItem Header="準備">
                 <Grid ColumnDefinitions="*,380">
                     <views:AssetLibraryView Grid.Column="0"
