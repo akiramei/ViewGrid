@@ -60,6 +60,19 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     [ObservableProperty]
     public partial string? StatusMessage { get; set; }
 
+    /// <summary>
+    /// プレビュー / PNG 出力で適用するトリミング設定。配置タブの右ペイン上部の
+    /// ComboBox から選択する。<see cref="TrimMode.None"/> はキャンバス全面、
+    /// <see cref="TrimMode.OccupiedCells"/> は占有セルの bbox で切り出し、
+    /// <see cref="TrimMode.DrawnPixels"/> は α&gt;0 のピクセル走査で求めた bbox で切り出し。
+    /// 永続化はせず、セッション内のオプション扱い（既定 None）。
+    /// </summary>
+    [ObservableProperty]
+    public partial TrimMode SelectedTrimMode { get; set; } = TrimMode.None;
+
+    public IReadOnlyList<TrimMode> TrimModeOptions { get; } =
+        [TrimMode.None, TrimMode.OccupiedCells, TrimMode.DrawnPixels];
+
     public ObservableCollection<PlacementItemViewModel> Placements { get; } = [];
     public ObservableCollection<CopyCandidateViewModel> Candidates { get; } = [];
 
@@ -417,7 +430,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try
         {
             IsBusy = true;
-            var result = await _renderUseCase.ExecuteAsync(grid.GridId, ct);
+            var result = await _renderUseCase.ExecuteAsync(grid.GridId, SelectedTrimMode, ct);
             if (result.IsError)
             {
                 StatusMessage = string.Join(", ", result.Errors);
@@ -445,7 +458,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try
         {
             IsBusy = true;
-            var result = await _exportUseCase.ExecuteAsync(grid.GridId, path, ct);
+            var result = await _exportUseCase.ExecuteAsync(grid.GridId, path, SelectedTrimMode, ct);
             StatusMessage = result.IsError
                 ? string.Join(", ", result.Errors)
                 : $"出力しました: {Path.GetFileName(path)} ({result.Value.FileSizeBytes:N0} bytes)";

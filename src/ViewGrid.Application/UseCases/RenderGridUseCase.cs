@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ErrorOr;
+using ViewGrid.Core.Entities;
 using ViewGrid.Core.Interfaces;
 using ViewGrid.Core.Services;
 
@@ -20,7 +21,10 @@ public sealed class RenderGridUseCase(
     IImageStorage imageStorage,
     IGridImageRenderer renderer)
 {
-    public async Task<ErrorOr<byte[]>> ExecuteAsync(Guid gridId, CancellationToken ct = default)
+    public async Task<ErrorOr<byte[]>> ExecuteAsync(
+        Guid gridId,
+        TrimMode trimMode = TrimMode.None,
+        CancellationToken ct = default)
     {
         var grid = await gridRepository.FindByIdAsync(gridId, ct);
         if (grid is null)
@@ -43,6 +47,6 @@ public sealed class RenderGridUseCase(
             items.Add(new PlacementRenderItem(placement, copy, absolutePath));
         }
 
-        return await renderer.RenderPngAsync(grid, items, ct);
+        return await renderer.RenderPngAsync(grid, items, trimMode, ct);
     }
 }

@@ -76,6 +76,51 @@ public static class PlacementGeometry
     /// 与えられた重み配列の累積和（要素数 = <paramref name="count"/> + 1）を返す。
     /// 各重みが正でない場合は 1 として扱う（実用上の安全策）。
     /// </summary>
+    /// <summary>
+    /// 占有セル群のバウンディングボックスを計算する。<see cref="TrimMode.OccupiedCells"/>
+    /// での出力切り出しに使う純粋関数。各 placement の <see cref="ComputeDestRect"/>
+    /// （PixelOffset=0）の和集合を取り、結果をキャンバス境界にクランプして返す。
+    /// </summary>
+    /// <param name="placements">配置の (位置, 占有サイズ) 列。空なら 0 矩形。</param>
+    /// <returns>占有矩形。配置がない場合は <c>(0,0,0,0)</c>。</returns>
+    public static PixelRect ComputeOccupiedBoundingBox(
+        PixelSize canvas,
+        int gridCols,
+        int gridRows,
+        IReadOnlyList<int>? colWeights,
+        IReadOnlyList<int>? rowWeights,
+        IReadOnlyList<(CellPosition Position, OccupySize Occupy)> placements)
+    {
+        ArgumentNullException.ThrowIfNull(placements);
+        if (placements.Count == 0)
+            return new PixelRect(0, 0, 0, 0);
+
+        int minX = int.MaxValue, minY = int.MaxValue;
+        int maxX = int.MinValue, maxY = int.MinValue;
+
+        foreach (var (pos, occ) in placements)
+        {
+            var rect = ComputeDestRect(
+                canvas, gridCols, gridRows, colWeights, rowWeights,
+                pos, occ, pixelOffsetX: 0, pixelOffsetY: 0);
+            if (rect.X < minX) minX = rect.X;
+            if (rect.Y < minY) minY = rect.Y;
+            if (rect.X + rect.Width > maxX) maxX = rect.X + rect.Width;
+            if (rect.Y + rect.Height > maxY) maxY = rect.Y + rect.Height;
+        }
+
+        // キャンバス境界にクランプ（PixelOffset 等で外に出ることはないが安全策）
+        minX = Math.Max(0, minX);
+        minY = Math.Max(0, minY);
+        maxX = Math.Min(canvas.Width, maxX);
+        maxY = Math.Min(canvas.Height, maxY);
+
+        if (maxX <= minX || maxY <= minY)
+            return new PixelRect(0, 0, 0, 0);
+
+        return new PixelRect(minX, minY, maxX - minX, maxY - minY);
+    }
+
     private static long[] BuildPrefixSums(IReadOnlyList<int>? weights, int count)
     {
         var prefix = new long[count + 1];

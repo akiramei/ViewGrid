@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ErrorOr;
+using ViewGrid.Core.Entities;
 
 namespace ViewGrid.Application.UseCases;
 
@@ -17,12 +18,13 @@ public sealed class ExportGridUseCase(RenderGridUseCase render)
     public async Task<ErrorOr<ExportGridResult>> ExecuteAsync(
         Guid gridId,
         string outputPath,
+        TrimMode trimMode = TrimMode.None,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(outputPath))
             return Error.Validation("Export.InvalidPath", "出力パスが空です。");
 
-        var rendered = await render.ExecuteAsync(gridId, ct);
+        var rendered = await render.ExecuteAsync(gridId, trimMode, ct);
         if (rendered.IsError)
             return rendered.Errors;
 

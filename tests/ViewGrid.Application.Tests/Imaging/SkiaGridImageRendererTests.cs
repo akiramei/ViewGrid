@@ -232,6 +232,132 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         rendered.GetPixel(40, 30).Alpha.Should().Be(0);
     }
 
+    [Fact]
+    public async Task TrimMode_None_Returns_Full_Canvas_Size()
+    {
+        // 3×3 グリッドで左上 1×1 のみ占有 → None なら 120×120 全面
+        var imagePath = WriteSolidColorPng(40, 40, SKColors.Red);
+        var grid = CreateGrid(rows: 3, cols: 3, canvas: new PixelSize(120, 120));
+        var copy = CreateCopy();
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            TrimMode.None);
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        rendered.Width.Should().Be(120);
+        rendered.Height.Should().Be(120);
+    }
+
+    [Fact]
+    public async Task TrimMode_OccupiedCells_Crops_To_Cell_Bounding_Box()
+    {
+        // 3×3 グリッドで (0,0) と (1,0) のみ占有 → 占有 bbox は左上 80×40
+        var imagePath = WriteSolidColorPng(40, 40, SKColors.Red);
+        var grid = CreateGrid(rows: 3, cols: 3, canvas: new PixelSize(120, 120));
+        var copy = CreateCopy();
+        var items = new List<PlacementRenderItem>
+        {
+            new(CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0), order: 0), copy, imagePath),
+            new(CreatePlacement(grid.Id, copy.Id, new CellPosition(1, 0), order: 1), copy, imagePath),
+        };
+
+        var result = await _renderer.RenderPngAsync(grid, items, TrimMode.OccupiedCells);
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        rendered.Width.Should().Be(80);
+        rendered.Height.Should().Be(40);
+        // 中央が赤いことを確認（占有セル内の描画ピクセル）
+        rendered.GetPixel(20, 20).Should().Be(SKColors.Red);
+        rendered.GetPixel(60, 20).Should().Be(SKColors.Red);
+    }
+
+    [Fact]
+    public async Task TrimMode_DrawnPixels_Crops_To_Drawn_Pixel_Bounding_Box()
+    {
+        // 3×3 グリッドの (1,1) に 40×40 の赤画像を Stretch.None で配置 → 中央セル 40×40 描画。
+        // セル枠 ((40,40)-(80,80)) の内側 40×40 に赤、それ以外は透過 → bbox は 40×40
+        var imagePath = WriteSolidColorPng(40, 40, SKColors.Red);
+        var grid = CreateGrid(rows: 3, cols: 3, canvas: new PixelSize(120, 120));
+        var copy = CreateCopy(scaling: ScalingMode.None);
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(1, 1));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            TrimMode.DrawnPixels);
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        rendered.Width.Should().Be(40);
+        rendered.Height.Should().Be(40);
+        // すべての角が赤（透過なし）
+        rendered.GetPixel(0, 0).Should().Be(SKColors.Red);
+        rendered.GetPixel(39, 39).Should().Be(SKColors.Red);
+    }
+
+    [Fact]
+    public async Task TrimMode_DrawnPixels_Removes_Subpixel_Transparent_Fringe_From_Contained_Image()
+    {
+        // 横長画像を正方形セルへ Contain + Center で配置すると dstY=37.5 になり、
+        // Skia の線形補間で上外周に薄い半透明行が出る。DrawnPixels はそれを余白として落とす。
+        var imagePath = WriteSolidColorPng(200, 50, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopy(scaling: ScalingMode.UniformContain, alignment: Alignment.Center);
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            TrimMode.DrawnPixels);
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        rendered.Width.Should().Be(100);
+        rendered.Height.Should().Be(25);
+        rendered.GetPixel(50, 0).Should().Be(SKColors.Red);
+        rendered.GetPixel(50, 24).Should().Be(SKColors.Red);
+    }
+
+    [Fact]
+    public async Task TrimMode_DrawnPixels_Does_Not_Extend_Beyond_Occupied_Cells()
+    {
+        // 占有セル外の領域に α が漏れていても DrawnPixels bbox はその外に拡張しないことを検証する。
+        // 3×3 グリッドで右下 (2,2) のみ占有。占有セル bbox は (80,80)-(120,120) の 40×40。
+        // 画像は 40×40 の赤を Stretch.None で配置 → セル全体を覆う → 描画 bbox は 40×40
+        var imagePath = WriteSolidColorPng(40, 40, SKColors.Red);
+        var grid = CreateGrid(rows: 3, cols: 3, canvas: new PixelSize(120, 120));
+        var copy = CreateCopy(scaling: ScalingMode.None);
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(2, 2));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            TrimMode.DrawnPixels);
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        rendered.Width.Should().Be(40);
+        rendered.Height.Should().Be(40);
+        rendered.GetPixel(0, 0).Should().Be(SKColors.Red);
+        rendered.GetPixel(39, 39).Should().Be(SKColors.Red);
+    }
+
+    [Fact]
+    public async Task TrimMode_OccupiedCells_With_No_Placements_Returns_Tiny_Transparent_Image()
+    {
+        // 配置なしで OccupiedCells は bbox=空 → ファイル破損を避けるため 1×1 透過画像を返す
+        var grid = CreateGrid(rows: 3, cols: 3, canvas: new PixelSize(120, 120));
+
+        var result = await _renderer.RenderPngAsync(grid, [], TrimMode.OccupiedCells);
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        rendered.Width.Should().Be(1);
+        rendered.Height.Should().Be(1);
+        rendered.GetPixel(0, 0).Alpha.Should().Be(0);
+    }
+
     private string WriteSolidColorPng(int w, int h, SKColor color)
     {
         var path = Path.Combine(_tempDir.FullName, $"{Guid.NewGuid():N}.png");

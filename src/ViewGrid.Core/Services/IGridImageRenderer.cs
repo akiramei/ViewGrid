@@ -24,8 +24,14 @@ public interface IGridImageRenderer
     /// 配置済み画像をピクセル精度で合成して PNG バイト列を返す。
     /// 描画順は <see cref="GridPlacement.PlacementOrder"/> の昇順（小さいものほど下）。
     /// </summary>
+    /// <param name="trimMode">
+    /// 出力時のトリミング指定。<see cref="TrimMode.None"/> はキャンバス全面（既定）、
+    /// <see cref="TrimMode.OccupiedCells"/> は占有セル群の bbox で切り出し、
+    /// <see cref="TrimMode.DrawnPixels"/> は α&gt;0 のピクセル走査で求めた bbox で切り出す。
+    /// </param>
     Task<ErrorOr<byte[]>> RenderPngAsync(
         GridCanvas grid,
         IReadOnlyList<PlacementRenderItem> items,
+        TrimMode trimMode = TrimMode.None,
         CancellationToken ct = default);
 }

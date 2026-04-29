@@ -8,6 +8,9 @@ namespace ViewGrid.Core.Tests.UseCases;
 
 public sealed class PlacementGeometryTests
 {
+    // CA1861 回避: リテラル配列を static readonly フィールドに切り出す（テスト用 fixture）
+    private static readonly int[] WeightsTwoOneOne = [2, 1, 1];
+
     private static ImageCopy MakeCopy(
         ScalingMode mode = ScalingMode.UniformContain,
         OccupySize? occupy = null,
@@ -166,6 +169,113 @@ public sealed class PlacementGeometryTests
         shifted.Y.Should().Be(baseRect.Y - 3);
         shifted.Width.Should().Be(baseRect.Width);
         shifted.Height.Should().Be(baseRect.Height);
+    }
+
+    [Fact]
+    public void OccupiedBoundingBox_Empty_Placements_Returns_Zero_Rect()
+    {
+        var canvas = new PixelSize(1200, 1200);
+
+        var bbox = PlacementGeometry.ComputeOccupiedBoundingBox(
+            canvas, 3, 3, colWeights: null, rowWeights: null,
+            placements: System.Array.Empty<(CellPosition, OccupySize)>());
+
+        bbox.X.Should().Be(0);
+        bbox.Y.Should().Be(0);
+        bbox.Width.Should().Be(0);
+        bbox.Height.Should().Be(0);
+    }
+
+    [Fact]
+    public void OccupiedBoundingBox_Single_OneByOne_Placement_Equals_Cell_Rect()
+    {
+        var canvas = new PixelSize(1200, 1200);
+
+        var bbox = PlacementGeometry.ComputeOccupiedBoundingBox(
+            canvas, 3, 3, null, null,
+            placements: new[] { (new CellPosition(1, 1), OccupySize.OneByOne) });
+
+        // 中央セル: 400×400 (cell at (400,400))
+        bbox.X.Should().Be(400);
+        bbox.Y.Should().Be(400);
+        bbox.Width.Should().Be(400);
+        bbox.Height.Should().Be(400);
+    }
+
+    [Fact]
+    public void OccupiedBoundingBox_Multiple_Placements_Returns_Union_Rect()
+    {
+        var canvas = new PixelSize(1200, 1200);
+
+        // 3×3 グリッドで (0,0) と (2,1) に 1×1 配置 → bbox は (0,0)-(1200,800)
+        var bbox = PlacementGeometry.ComputeOccupiedBoundingBox(
+            canvas, 3, 3, null, null,
+            placements: new[]
+            {
+                (new CellPosition(0, 0), OccupySize.OneByOne),
+                (new CellPosition(2, 1), OccupySize.OneByOne),
+            });
+
+        bbox.X.Should().Be(0);
+        bbox.Y.Should().Be(0);
+        bbox.Width.Should().Be(1200);
+        bbox.Height.Should().Be(800);
+    }
+
+    [Fact]
+    public void OccupiedBoundingBox_Respects_OccupySize()
+    {
+        var canvas = new PixelSize(1200, 1200);
+
+        // (0,0) で 2×1 占有 + (2,2) で 1×1 占有 → bbox (0,0)-(1200,1200)
+        var bbox = PlacementGeometry.ComputeOccupiedBoundingBox(
+            canvas, 3, 3, null, null,
+            placements: new[]
+            {
+                (new CellPosition(0, 0), new OccupySize(2, 1)),
+                (new CellPosition(2, 2), OccupySize.OneByOne),
+            });
+
+        bbox.X.Should().Be(0);
+        bbox.Y.Should().Be(0);
+        bbox.Width.Should().Be(1200);
+        bbox.Height.Should().Be(1200);
+    }
+
+    [Fact]
+    public void OccupiedBoundingBox_Skips_Empty_Right_Column_When_Only_Left_Used()
+    {
+        var canvas = new PixelSize(1200, 1200);
+
+        // (0,0) と (1,0) のみ → 右列が空 → bbox は (0,0)-(800,400)
+        var bbox = PlacementGeometry.ComputeOccupiedBoundingBox(
+            canvas, 3, 3, null, null,
+            placements: new[]
+            {
+                (new CellPosition(0, 0), OccupySize.OneByOne),
+                (new CellPosition(1, 0), OccupySize.OneByOne),
+            });
+
+        bbox.X.Should().Be(0);
+        bbox.Y.Should().Be(0);
+        bbox.Width.Should().Be(800);
+        bbox.Height.Should().Be(400);
+    }
+
+    [Fact]
+    public void OccupiedBoundingBox_Honors_Column_Weights()
+    {
+        var canvas = new PixelSize(1200, 1200);
+
+        // 列重み 2,1,1 で 3 列。(0,0) のみ占有なら bbox 幅は 1200*2/4 = 600
+        var bbox = PlacementGeometry.ComputeOccupiedBoundingBox(
+            canvas, 3, 3,
+            colWeights: WeightsTwoOneOne,
+            rowWeights: null,
+            placements: new[] { (new CellPosition(0, 0), OccupySize.OneByOne) });
+
+        bbox.X.Should().Be(0);
+        bbox.Width.Should().Be(600);
     }
 
     [Fact]

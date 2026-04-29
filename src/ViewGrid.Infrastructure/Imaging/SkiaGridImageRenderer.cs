@@ -20,17 +20,19 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     public Task<ErrorOr<byte[]>> RenderPngAsync(
         GridCanvas grid,
         IReadOnlyList<PlacementRenderItem> items,
+        TrimMode trimMode = TrimMode.None,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(grid);
         ArgumentNullException.ThrowIfNull(items);
 
-        return Task.Run<ErrorOr<byte[]>>(() => Render(grid, items, ct), ct);
+        return Task.Run<ErrorOr<byte[]>>(() => Render(grid, items, trimMode, ct), ct);
     }
 
     private static ErrorOr<byte[]> Render(
         GridCanvas grid,
         IReadOnlyList<PlacementRenderItem> items,
+        TrimMode trimMode,
         CancellationToken ct)
     {
         var info = new SKImageInfo(
@@ -56,12 +58,266 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         }
 
         using var image = surface.Snapshot();
+        return EncodeWithTrim(image, grid, items, trimMode);
+    }
+
+    /// <summary>
+    /// 描画ピクセル走査で「描画あり」とみなす α 閾値。アンチエイリアスや影で生じる
+    /// 微小 α (1〜数程度) は視覚的に透明と区別がつかないため bbox から除外する。
+    /// 8 (約 3%) は一般的な PNG 透過素材で「透明」とみなせる上限の経験値。
+    /// </summary>
+    private const byte DrawnPixelAlphaThreshold = 8;
+
+    /// <summary>
+    /// レンダリング結果の <see cref="SKImage"/> に <paramref name="trimMode"/> を適用して
+    /// PNG バイト列に変換する。<see cref="TrimMode.None"/> は全面そのまま、
+    /// <see cref="TrimMode.OccupiedCells"/> は占有セル bbox で切り出し、
+    /// <see cref="TrimMode.DrawnPixels"/> は占有セル bbox 内をピクセル走査して
+    /// α &gt;= 閾値の bbox で切り出し（占有セル外には決して拡張されない）。
+    /// </summary>
+    private static ErrorOr<byte[]> EncodeWithTrim(
+        SKImage image,
+        GridCanvas grid,
+        IReadOnlyList<PlacementRenderItem> items,
+        TrimMode trimMode)
+    {
+        SKRectI? cropRect = trimMode switch
+        {
+            TrimMode.OccupiedCells => ComputeOccupiedCellsRect(grid, items),
+            // 走査範囲を占有セル bbox に絞ることで、(a) 想定外の α が占有セル外に漏れていても
+            // bbox を膨らませない安全弁、(b) 走査ピクセル数の削減によるパフォーマンス向上、
+            // の両方を得る。
+            TrimMode.DrawnPixels => ComputeDrawnPixelsRect(
+                image,
+                ComputeOccupiedCellsRect(grid, items),
+                ComputeRenderedGeometryRect(grid, items)),
+            _ => null,
+        };
+
+        if (cropRect is null)
+            return EncodePng(image);
+
+        // 何も描画されていない / 計算不能の場合は 1×1 透過 PNG にフォールバック（ファイル破損を避ける）
+        if (cropRect.Value.Width <= 0 || cropRect.Value.Height <= 0)
+        {
+            using var emptyInfo = new SKBitmap(1, 1);
+            emptyInfo.Erase(SKColors.Transparent);
+            using var emptyImage = SKImage.FromBitmap(emptyInfo);
+            return EncodePng(emptyImage);
+        }
+
+        using var subset = image.Subset(cropRect.Value);
+        if (subset is null)
+            return Error.Failure("Render.SubsetFailed", "トリミング切り出しに失敗しました。");
+        return EncodePng(subset);
+    }
+
+    private static ErrorOr<byte[]> EncodePng(SKImage image)
+    {
         using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
         if (encoded is null)
             return Error.Failure("Render.EncodeFailed", "PNG エンコードに失敗しました。");
-
         return encoded.ToArray();
     }
+
+    /// <summary>
+    /// 占有セル群の bbox を <see cref="PlacementGeometry.ComputeOccupiedBoundingBox"/> で計算し、
+    /// SkiaSharp の <see cref="SKRectI"/> 形式で返す。配置がない場合は空矩形を返す。
+    /// </summary>
+    private static SKRectI ComputeOccupiedCellsRect(
+        GridCanvas grid,
+        IReadOnlyList<PlacementRenderItem> items)
+    {
+        if (items.Count == 0)
+            return SKRectI.Empty;
+
+        var placementsForBbox = items
+            .Select(i => (i.Placement.Position, i.Copy.OccupySize))
+            .ToArray();
+
+        var bbox = PlacementGeometry.ComputeOccupiedBoundingBox(
+            grid.CanvasSize, grid.GridCols, grid.GridRows,
+            grid.ColWeights, grid.RowWeights,
+            placementsForBbox);
+
+        return new SKRectI(bbox.X, bbox.Y, bbox.X + bbox.Width, bbox.Y + bbox.Height);
+    }
+
+    /// <summary>
+    /// レンダリング結果から α &gt;= <see cref="DrawnPixelAlphaThreshold"/> のピクセルの
+    /// バウンディングボックスを計算する。CPU 上の <see cref="SKBitmap"/> にコピーしてから
+    /// ピクセルバイトを走査する（SKSurface の GPU テクスチャを直接走査するのは不安定なため）。
+    /// <paramref name="clampToRect"/> が指定されればその矩形内のみ走査する。
+    /// 全ピクセルが透過 / 閾値未満の場合は空矩形。
+    /// </summary>
+    private static SKRectI ComputeDrawnPixelsRect(
+        SKImage image,
+        SKRectI? clampToRect = null,
+        SKRectI? renderedGeometryRect = null)
+    {
+        using var bitmap = SKBitmap.FromImage(image);
+        if (bitmap is null) return SKRectI.Empty;
+
+        var width = bitmap.Width;
+        var height = bitmap.Height;
+        var pixels = bitmap.Bytes; // RGBA8888 (premul) なので RGBA の R,G,B,A 順、A は 4 バイト目
+        if (pixels is null || pixels.Length < width * height * 4)
+            return SKRectI.Empty;
+
+        var rowStride = bitmap.RowBytes;
+
+        // 走査範囲を占有セル bbox に絞る（外側は確実に透過なので走査不要 + 安全弁）
+        int x0 = 0, y0 = 0, x1 = width, y1 = height;
+        if (clampToRect is { } clamp && clamp.Width > 0 && clamp.Height > 0)
+        {
+            x0 = Math.Max(0, clamp.Left);
+            y0 = Math.Max(0, clamp.Top);
+            x1 = Math.Min(width, clamp.Right);
+            y1 = Math.Min(height, clamp.Bottom);
+        }
+        if (renderedGeometryRect is { } geometry && geometry.Width > 0 && geometry.Height > 0)
+        {
+            // 半ピクセル配置時、線形補間で画像外周に薄い α 行/列が作られることがある。
+            // その行は「画像が配置されている幾何領域」の外側なので、走査範囲から除外する。
+            x0 = Math.Max(x0, geometry.Left);
+            y0 = Math.Max(y0, geometry.Top);
+            x1 = Math.Min(x1, geometry.Right);
+            y1 = Math.Min(y1, geometry.Bottom);
+        }
+        if (x1 <= x0 || y1 <= y0)
+            return SKRectI.Empty;
+
+        int minX = x1, minY = y1, maxX = -1, maxY = -1;
+        for (var y = y0; y < y1; y++)
+        {
+            var rowStart = y * rowStride;
+            // 行内で最初/最後の "描画あり" ピクセルだけ見れば minX/maxX を更新するのに十分
+            int rowMinX = -1, rowMaxX = -1;
+            for (var x = x0; x < x1; x++)
+            {
+                if (pixels[rowStart + x * 4 + 3] >= DrawnPixelAlphaThreshold)
+                {
+                    if (rowMinX < 0) rowMinX = x;
+                    rowMaxX = x;
+                }
+            }
+            if (rowMinX >= 0)
+            {
+                if (rowMinX < minX) minX = rowMinX;
+                if (rowMaxX > maxX) maxX = rowMaxX;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+
+        if (maxX < 0)
+            return SKRectI.Empty;
+
+        // SKRectI は Right/Bottom = exclusive 想定で扱う（Subset 引数として）
+        return new SKRectI(minX, minY, maxX + 1, maxY + 1);
+    }
+
+    /// <summary>
+    /// 各 placement の画像描画先矩形（セル境界クリップ後）の bbox を返す。
+    /// DrawnPixels の α 走査範囲と交差させ、サブピクセル補間で生じる外周の薄い透明色を
+    /// トリム対象として扱うために使う。
+    /// </summary>
+    private static SKRectI ComputeRenderedGeometryRect(
+        GridCanvas grid,
+        IReadOnlyList<PlacementRenderItem> items)
+    {
+        SKRectI? union = null;
+
+        foreach (var item in items)
+        {
+            if (!TryGetTransformedImageSize(item, out var sw, out var sh))
+                continue;
+
+            var cellRect = PlacementGeometry.ComputeDestRect(
+                grid.CanvasSize,
+                grid.GridCols,
+                grid.GridRows,
+                grid.ColWeights,
+                grid.RowWeights,
+                item.Placement.Position,
+                item.Copy.OccupySize,
+                pixelOffsetX: 0,
+                pixelOffsetY: 0);
+
+            var dest = PlacementGeometry.ComputeDestRect(
+                grid.CanvasSize,
+                grid.GridCols,
+                grid.GridRows,
+                grid.ColWeights,
+                grid.RowWeights,
+                item.Placement.Position,
+                item.Copy.OccupySize,
+                item.Placement.PixelOffsetX,
+                item.Placement.PixelOffsetY);
+
+            var (_, dstRect) = ComputeSrcDstRects(sw, sh, dest, item.Copy);
+            var visible = Intersect(
+                dstRect,
+                SKRect.Create(cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height));
+            if (visible.Width <= 0 || visible.Height <= 0)
+                continue;
+
+            var rect = ToPixelSearchRect(visible, grid.CanvasSize.Width, grid.CanvasSize.Height);
+            if (rect.Width <= 0 || rect.Height <= 0)
+                continue;
+
+            union = union is null ? rect : Union(union.Value, rect);
+        }
+
+        return union ?? SKRectI.Empty;
+    }
+
+    private static bool TryGetTransformedImageSize(PlacementRenderItem item, out int width, out int height)
+    {
+        width = 0;
+        height = 0;
+        if (!File.Exists(item.SourceImageAbsolutePath))
+            return false;
+
+        using var stream = File.OpenRead(item.SourceImageAbsolutePath);
+        using var codec = SKCodec.Create(stream);
+        if (codec is null)
+            return false;
+
+        var info = codec.Info;
+        var rotateSwap = item.Copy.Transform.Rotation is Rotation.Cw90 or Rotation.Cw270;
+        width = rotateSwap ? info.Height : info.Width;
+        height = rotateSwap ? info.Width : info.Height;
+        return width > 0 && height > 0;
+    }
+
+    private static SKRect Intersect(SKRect a, SKRect b)
+    {
+        var left = Math.Max(a.Left, b.Left);
+        var top = Math.Max(a.Top, b.Top);
+        var right = Math.Min(a.Right, b.Right);
+        var bottom = Math.Min(a.Bottom, b.Bottom);
+        return right <= left || bottom <= top
+            ? SKRect.Empty
+            : SKRect.Create(left, top, right - left, bottom - top);
+    }
+
+    private static SKRectI ToPixelSearchRect(SKRect rect, int canvasWidth, int canvasHeight)
+    {
+        var left = Math.Clamp((int)Math.Ceiling(rect.Left), 0, canvasWidth);
+        var top = Math.Clamp((int)Math.Ceiling(rect.Top), 0, canvasHeight);
+        var right = Math.Clamp((int)Math.Ceiling(rect.Right), 0, canvasWidth);
+        var bottom = Math.Clamp((int)Math.Ceiling(rect.Bottom), 0, canvasHeight);
+        return right <= left || bottom <= top
+            ? SKRectI.Empty
+            : new SKRectI(left, top, right, bottom);
+    }
+
+    private static SKRectI Union(SKRectI a, SKRectI b) => new(
+        Math.Min(a.Left, b.Left),
+        Math.Min(a.Top, b.Top),
+        Math.Max(a.Right, b.Right),
+        Math.Max(a.Bottom, b.Bottom));
 
     private static Error? DrawOne(
         SKCanvas canvas,
@@ -249,7 +505,15 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 Anchor1D.End => pad,
                 _ => pad / 2.0,
             };
-            return (0.0, srcSize, dstStart + dstOffset, drawSize);
+            var drawStart = dstStart + dstOffset;
+            if (IsNearlyInteger(drawSize))
+            {
+                // 画像の描画サイズが整数ピクセルなのに開始位置だけが .5 になると、
+                // 線形補間で外周に 1px 程度の半透明行/列が発生する。
+                drawStart = Math.Round(drawStart, MidpointRounding.AwayFromZero);
+                drawSize = Math.Round(drawSize, MidpointRounding.AwayFromZero);
+            }
+            return (0.0, srcSize, drawStart, drawSize);
         }
         else
         {
@@ -264,4 +528,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             return (srcOffset, visibleSrc, dstStart, dstSize);
         }
     }
+
+    private static bool IsNearlyInteger(double value) =>
+        Math.Abs(value - Math.Round(value)) < 0.000001;
 }
