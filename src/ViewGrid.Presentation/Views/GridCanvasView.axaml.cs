@@ -661,9 +661,9 @@ public partial class GridCanvasView : UserControl
                 var grid = _vm?.CurrentGrid;
                 Bitmap bitmap = LoadAndPreRotateBitmap(
                     placement.ThumbnailPath, placement.Rotation, placement.FlipX, placement.FlipY,
-                    placement.AutoCropFraction);
-                var cropFractionW = placement.AutoCropFraction?.Width ?? 1.0;
-                var cropFractionH = placement.AutoCropFraction?.Height ?? 1.0;
+                    placement.EffectiveCropFraction);
+                var cropFractionW = placement.EffectiveCropFraction?.Width ?? 1.0;
+                var cropFractionH = placement.EffectiveCropFraction?.Height ?? 1.0;
 
                 var (stretch, direction) = MapScalingMode(placement.ScalingMode);
                 // 全 ScalingMode で Alignment を使う（旧版は ScalingMode.None で TrimmingAnchor、
@@ -807,19 +807,19 @@ public partial class GridCanvasView : UserControl
         => new();
 
     /// <summary>
-    /// サムネイルを読み込み、AutoCrop（オプション、比率指定）→ Flip → Rotate の順で
+    /// サムネイルを読み込み、Crop（オプション、ManualCrop 優先で解決済みの比率）→ Flip → Rotate の順で
     /// SkiaSharp 上に焼き込んだ Avalonia <see cref="Bitmap"/> を返す。<br/>
-    /// AutoCrop は VM 層で原画像走査済みの <see cref="ViewGrid.Core.Entities.AutoCropFraction"/>
-    /// を比率としてサムネに適用するので、Renderer / View / Use case で同一座標系の
-    /// 走査結果を共有でき、サムネ走査と原画像走査の精度差で表示が乖離する問題が解消する。
+    /// Crop は VM 層で <see cref="ViewGrid.Core.Services.IImageCropResolver"/> 経由で解決済みの
+    /// <see cref="ViewGrid.Core.Entities.CropFraction"/> をサムネに適用するので、Renderer / View /
+    /// Use case で同一座標系の比率を共有でき、自動と手動の表示が揃う。
     /// </summary>
     private static Bitmap LoadAndPreRotateBitmap(
         string thumbnailPath,
         ViewGrid.Core.Entities.Rotation rotation,
         bool flipX, bool flipY,
-        ViewGrid.Core.Entities.AutoCropFraction? autoCropFraction)
+        ViewGrid.Core.Entities.CropFraction? cropFraction)
     {
-        var hasCrop = autoCropFraction is { } f && !f.IsFull();
+        var hasCrop = cropFraction is { } f && !f.IsFull();
         if (rotation == ViewGrid.Core.Entities.Rotation.None && !flipX && !flipY && !hasCrop)
         {
             // 変換不要なら直接 Avalonia.Bitmap で読み込む（最速パス）。
@@ -834,7 +834,7 @@ public partial class GridCanvasView : UserControl
         {
             if (hasCrop)
             {
-                cropped = TryApplyAutoCropFraction(skBitmap, autoCropFraction!.Value);
+                cropped = TryApplyCropFraction(skBitmap, cropFraction!.Value);
                 if (cropped is not null)
                     toTransform = cropped;
             }
@@ -852,12 +852,12 @@ public partial class GridCanvasView : UserControl
     }
 
     /// <summary>
-    /// サムネ <see cref="SKBitmap"/> に <see cref="ViewGrid.Core.Entities.AutoCropFraction"/>
+    /// サムネ <see cref="SKBitmap"/> に <see cref="ViewGrid.Core.Entities.CropFraction"/>
     /// （0–1 比率）をサムネ寸法に展開して切り出した新しい <see cref="SKBitmap"/> を返す。
     /// 結果が空・元サイズと同一なら <c>null</c>。
     /// </summary>
-    private static SKBitmap? TryApplyAutoCropFraction(
-        SKBitmap source, ViewGrid.Core.Entities.AutoCropFraction fraction)
+    private static SKBitmap? TryApplyCropFraction(
+        SKBitmap source, ViewGrid.Core.Entities.CropFraction fraction)
     {
         if (source.Width <= 0 || source.Height <= 0) return null;
         var (x, y, w, h) = fraction.ToPixelBbox(source.Width, source.Height);

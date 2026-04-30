@@ -31,8 +31,7 @@ public sealed partial class FitGridWeightToPlacementUseCase(
     IGridPlacementRepository placementRepository,
     IImageCopyRepository copyRepository,
     IImageAssetRepository assetRepository,
-    IImageStorage imageStorage,
-    IAutoCropBboxResolver autoCropResolver,
+    IImageCropResolver cropResolver,
     UpdateGridWeightsUseCase updateWeights,
     ILogger<FitGridWeightToPlacementUseCase> logger)
 {
@@ -130,17 +129,15 @@ public sealed partial class FitGridWeightToPlacementUseCase(
     }
 
     /// <summary>
-    /// 「AutoCrop 適用後の論理画像サイズ（原画像座標系、回転前）」を返す。
-    /// AutoCrop OFF または fraction 取得失敗時は <see cref="ImageAsset.Size"/> をそのまま使う。
+    /// 「クロップ適用後の論理画像サイズ（原画像座標系、回転前）」を返す。
+    /// ManualCrop または AutoCrop が有効ならその比率で縮めたサイズを、どちらも無効なら
+    /// <see cref="ImageAsset.Size"/> をそのまま使う（<see cref="IImageCropResolver"/> 経由で
+    /// 優先順位を解決）。
     /// </summary>
     private async Task<(int Width, int Height)> ResolveEffectiveSourceSizeAsync(
         ImageAsset asset, ImageCopy copy, CancellationToken ct)
     {
-        if (copy.AutoCrop is not { } settings)
-            return (asset.Size.Width, asset.Size.Height);
-
-        var absolutePath = imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
-        var fraction = await autoCropResolver.ResolveAsync(asset.Id, absolutePath, settings, ct);
+        var fraction = await cropResolver.ResolveAsync(copy, asset, ct);
         if (fraction is not { } f || f.IsFull())
             return (asset.Size.Width, asset.Size.Height);
 

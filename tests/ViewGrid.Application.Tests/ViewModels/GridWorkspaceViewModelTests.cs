@@ -50,7 +50,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         var updateLocks = new UpdateGridLocksUseCase(_fx.GridRepository);
         var fitWeight = new FitGridWeightToPlacementUseCase(
             _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository, _fx.AssetRepository,
-            _fx.Storage, _fx.AutoCropResolver, updateWeights,
+            _fx.CropResolver, updateWeights,
             NullLogger<FitGridWeightToPlacementUseCase>.Instance);
 
         _vm = new GridWorkspaceViewModel(
@@ -60,7 +60,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             _fx.PlacementRepository,
             _fx.Thumbnails,
             _fx.Storage,
-            _fx.AutoCropResolver,
+            _fx.CropResolver,
             place,
             remove,
             move,

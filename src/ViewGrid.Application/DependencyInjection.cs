@@ -1,8 +1,10 @@
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using ViewGrid.Application.History;
+using ViewGrid.Application.Services;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
+using ViewGrid.Core.Services;
 
 namespace ViewGrid.Application;
 
@@ -15,6 +17,9 @@ public static class DependencyInjection
 
         // Undo/Redo 履歴サービス（アプリ全体で 1 本のスタックを共有）
         services.AddSingleton<IUndoRedoService, UndoRedoService>();
+
+        // ImageCrop 優先順位 Resolver（ManualCrop > AutoCrop > null）
+        services.AddSingleton<IImageCropResolver, ImageCropResolver>();
 
         // UseCases
         services.AddScoped<ImportImageUseCase>();

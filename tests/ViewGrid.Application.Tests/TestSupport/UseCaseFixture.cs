@@ -1,6 +1,7 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using ViewGrid.Application.Services;
 using ViewGrid.Core.Entities;
 using ViewGrid.Infrastructure.Imaging;
 using ViewGrid.Infrastructure.Persistence;
@@ -23,6 +24,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
     public SkiaThumbnailService Thumbnails { get; }
     public AutoCropCache AutoCropCache { get; }
     public SkiaAutoCropBboxResolver AutoCropResolver { get; }
+    public ImageCropResolver CropResolver { get; }
     public SkiaImageColorPicker ColorPicker { get; }
     public EfImageAssetRepository AssetRepository { get; }
     public EfImageCopyRepository CopyRepository { get; }
@@ -38,6 +40,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         SkiaThumbnailService thumbnails,
         AutoCropCache autoCropCache,
         SkiaAutoCropBboxResolver autoCropResolver,
+        ImageCropResolver cropResolver,
         SkiaImageColorPicker colorPicker,
         EfImageAssetRepository assetRepository,
         EfImageCopyRepository copyRepository,
@@ -52,6 +55,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         Thumbnails = thumbnails;
         AutoCropCache = autoCropCache;
         AutoCropResolver = autoCropResolver;
+        CropResolver = cropResolver;
         ColorPicker = colorPicker;
         AssetRepository = assetRepository;
         CopyRepository = copyRepository;
@@ -76,6 +80,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         var thumbnails = new SkiaThumbnailService(storageOptions, storage);
         var autoCropCache = new AutoCropCache();
         var autoCropResolver = new SkiaAutoCropBboxResolver(autoCropCache);
+        var cropResolver = new ImageCropResolver(autoCropResolver, storage);
         var colorPicker = new SkiaImageColorPicker();
 
         return new UseCaseFixture(
@@ -87,6 +92,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
             thumbnails,
             autoCropCache,
             autoCropResolver,
+            cropResolver,
             colorPicker,
             new EfImageAssetRepository(db),
             new EfImageCopyRepository(db),

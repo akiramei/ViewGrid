@@ -244,23 +244,29 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             if (!TryGetSourceAndTransformedImageSize(item, out var sourceW, out var sourceH, out var sw, out var sh))
                 continue;
 
-            // AutoCrop が有効なら、回転後座標系の bbox サイズで sw/sh を上書き。
-            // DrawOne は src 矩形を AutoCrop オフセット起点で計算するため、ここでも同じ
-            // 「AutoCrop 後の論理画像サイズ」で ScalingMode を計算しないと dst 矩形が乖離する。
-            if (item.Copy.AutoCrop is { } settings &&
+            // Crop が有効なら、回転後座標系の bbox サイズで sw/sh を上書き。
+            // DrawOne は src 矩形を Crop オフセット起点で計算するため、ここでも同じ
+            // 「Crop 後の論理画像サイズ」で ScalingMode を計算しないと dst 矩形が乖離する。
+            // ManualCrop 優先（排他）、それ以外で AutoCrop（cache 経由）。
+            (int cx, int cy, int cw, int ch)? cropBbox = null;
+            if (item.Copy.ManualCrop is { } manual && !manual.IsFull())
+            {
+                cropBbox = manual.ToPixelBbox(sourceW, sourceH);
+            }
+            else if (item.Copy.AutoCrop is { } settings &&
                 _autoCropCache.TryGet(item.Copy.AssetId, settings, out var fraction) &&
                 !fraction.IsFull())
             {
-                var (cx, cy, cw, ch) = fraction.ToPixelBbox(sourceW, sourceH);
-                if (cw > 0 && ch > 0)
+                cropBbox = fraction.ToPixelBbox(sourceW, sourceH);
+            }
+            if (cropBbox is { } b && b.cw > 0 && b.ch > 0)
+            {
+                var rotatedCrop = AutoCropCalculator.TransformRect(
+                    new PixelRect(b.cx, b.cy, b.cw, b.ch), sourceW, sourceH, item.Copy.Transform);
+                if (rotatedCrop.Width > 0 && rotatedCrop.Height > 0)
                 {
-                    var rotatedCrop = AutoCropCalculator.TransformRect(
-                        new PixelRect(cx, cy, cw, ch), sourceW, sourceH, item.Copy.Transform);
-                    if (rotatedCrop.Width > 0 && rotatedCrop.Height > 0)
-                    {
-                        sw = rotatedCrop.Width;
-                        sh = rotatedCrop.Height;
-                    }
+                    sw = rotatedCrop.Width;
+                    sh = rotatedCrop.Height;
                 }
             }
 
@@ -381,9 +387,9 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 "Render.DecodeFailed",
                 $"画像のデコードに失敗しました: {item.SourceImageAbsolutePath}");
 
-        // AutoCrop: 回転前の原画像で外周走査して bbox を計算（Cache 経由）。
+        // Crop: ManualCrop 優先、それ以外で AutoCrop（回転前の原画像で外周走査、Cache 経由）。
         // 結果の bbox は原画像座標系。回転後座標系には ApplyTransform 完了後に変換する。
-        var autoCropSourceRect = ComputeAutoCropSourceRect(item, decoded);
+        var autoCropSourceRect = ComputeCropSourceRect(item, decoded);
 
         using var transformed = ApplyTransform(decoded, item.Copy.Transform);
         using var transformedImage = SKImage.FromBitmap(transformed);
@@ -456,12 +462,21 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     }
 
     /// <summary>
-    /// AutoCrop 設定があれば、原画像で外周走査して比率を返し、それを原画像サイズに展開した
-    /// bbox を返す（Cache 経由）。AutoCrop=null またはクロップ無効なら <c>null</c>。
-    /// bbox は原画像座標系（回転前）。View / FitUseCase と同一比率を共有する。
+    /// ManualCrop 優先 / AutoCrop 次の優先順位で実効的なクロップ bbox を返す（原画像座標系）。
+    /// ManualCrop は cache 不要で即時計算、AutoCrop は <see cref="AutoCropCache"/> 経由で
+    /// 原画像走査（回転前）の結果を再利用する。クロップ無効なら <c>null</c>。
     /// </summary>
-    private PixelRect? ComputeAutoCropSourceRect(PlacementRenderItem item, SKBitmap source)
+    private PixelRect? ComputeCropSourceRect(PlacementRenderItem item, SKBitmap source)
     {
+        // ManualCrop 優先（排他、走査不要）
+        if (item.Copy.ManualCrop is { } manual)
+        {
+            if (manual.IsFull()) return null;
+            var (mx, my, mw, mh) = manual.ToPixelBbox(source.Width, source.Height);
+            if (mw <= 0 || mh <= 0) return null;
+            return new PixelRect(mx, my, mw, mh);
+        }
+
         if (item.Copy.AutoCrop is not { } settings)
             return null;
 
