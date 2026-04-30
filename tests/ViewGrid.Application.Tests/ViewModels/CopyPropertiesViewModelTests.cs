@@ -243,4 +243,87 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         _vm.AutoCropCustomColorHex.Should().Be("#123456");
         _vm.AutoCropThreshold.Should().Be(16);
     }
+
+    [Fact]
+    public async Task ManualCropEnabled_Turning_On_Disables_AutoCropEnabled()
+    {
+        // 排他連動: 手動を ON にすると自動が OFF になる
+        var source = await SeedSourceWithSizeAsync();
+        _vm.Attach(source);
+        _vm.AutoCropEnabled = true;
+
+        _vm.ManualCropEnabled = true;
+
+        _vm.AutoCropEnabled.Should().BeFalse();
+        _vm.ManualCropEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AutoCropEnabled_Turning_On_Disables_ManualCropEnabled()
+    {
+        // 排他連動: 自動を ON にすると手動が OFF になる
+        var source = await SeedSourceWithSizeAsync();
+        _vm.Attach(source);
+        _vm.ManualCropEnabled = true;
+        _vm.ManualCropPixelX = 10;
+        _vm.ManualCropPixelY = 10;
+        _vm.ManualCropPixelWidth = 50;
+        _vm.ManualCropPixelHeight = 60;
+
+        _vm.AutoCropEnabled = true;
+
+        _vm.ManualCropEnabled.Should().BeFalse();
+        _vm.AutoCropEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ManualCrop_With_Defined_Rect_Round_Trips_Through_Save_And_Attach()
+    {
+        // 100x100 画像で (10,20) から 30x40 を Manual で切る → 比率 (0.1, 0.2, 0.3, 0.4)
+        var source = await SeedSourceWithSizeAsync(width: 100, height: 100);
+        _vm.Attach(source);
+
+        _vm.ManualCropEnabled = true;
+        _vm.ManualCropPixelX = 10;
+        _vm.ManualCropPixelY = 20;
+        _vm.ManualCropPixelWidth = 30;
+        _vm.ManualCropPixelHeight = 40;
+        await _vm.SaveAsync();
+
+        _vm.Attach(null);
+        _vm.Attach(source);
+
+        _vm.ManualCropEnabled.Should().BeTrue();
+        _vm.ManualCropPixelX.Should().BeApproximately(10, 0.001);
+        _vm.ManualCropPixelY.Should().BeApproximately(20, 0.001);
+        _vm.ManualCropPixelWidth.Should().BeApproximately(30, 0.001);
+        _vm.ManualCropPixelHeight.Should().BeApproximately(40, 0.001);
+        _vm.IsManualCropDefined.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ManualCropEnabled_Without_Rect_Persists_As_Off()
+    {
+        // 「手動」ラジオを選んだ直後（矩形未確定 W=0）で Save → 実質 OFF として保存される
+        var source = await SeedSourceWithSizeAsync();
+        _vm.Attach(source);
+
+        _vm.ManualCropEnabled = true;
+        // 矩形は未確定（W=H=0 のまま）
+        _vm.IsManualCropDefined.Should().BeFalse();
+        await _vm.SaveAsync();
+
+        // 再 Attach すると ManualCropEnabled は false（永続化されたのは null）
+        _vm.Attach(null);
+        _vm.Attach(source);
+
+        _vm.ManualCropEnabled.Should().BeFalse();
+    }
+
+    private async Task<CopyItemViewModel> SeedSourceWithSizeAsync(int width = 100, int height = 100)
+    {
+        var asset = await _fx.SeedAssetAsync(width: width, height: height);
+        var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "seed");
+        return new CopyItemViewModel(copy, sourceWidth: width, sourceHeight: height);
+    }
 }

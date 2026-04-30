@@ -62,6 +62,11 @@ public sealed partial class CopyItemViewModel : ObservableObject
     [ObservableProperty]
     public partial AutoCropSettings? AutoCrop { get; set; }
 
+    /// <summary>任意矩形トリミング設定（0–1 比率）。<c>null</c> なら機能 OFF。
+    /// AutoCrop と同時 ON でも ManualCrop が排他的に勝つ（Resolver で判定）。</summary>
+    [ObservableProperty]
+    public partial ManualCropFraction? ManualCrop { get; set; }
+
     public CopyItemViewModel(
         ImageCopy copy,
         string? thumbnailPath = null,
@@ -80,6 +85,7 @@ public sealed partial class CopyItemViewModel : ObservableObject
         Alignment = copy.Alignment;
         OccupySize = copy.OccupySize;
         AutoCrop = copy.AutoCrop;
+        ManualCrop = copy.ManualCrop;
         ThumbnailPath = thumbnailPath;
         SourceImagePath = sourceImagePath;
         SourceWidth = sourceWidth;

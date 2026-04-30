@@ -77,6 +77,35 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     /// 画像クリックピッカーで色を採取するとここに反映される。</summary>
     [ObservableProperty] public partial string AutoCropCustomColorHex { get; set; } = "#FFFFFF";
 
+    /// <summary>任意矩形トリミング機能の ON/OFF。OFF なら永続化時に ManualCrop=null（OFF）となる。
+    /// AutoCrop と排他で、こちらを ON にすると AutoCropEnabled が自動的に OFF になる。</summary>
+    [ObservableProperty] public partial bool ManualCropEnabled { get; set; }
+
+    /// <summary>矩形左上 X（元画像ピクセル）。永続化時に SourceWidth で割って 0–1 比率に換算。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
+    public partial double ManualCropPixelX { get; set; }
+
+    /// <summary>矩形左上 Y（元画像ピクセル）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
+    public partial double ManualCropPixelY { get; set; }
+
+    /// <summary>矩形幅（元画像ピクセル）。0 のときは「未確定」状態（手動ラジオを選んだ直後など）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
+    public partial double ManualCropPixelWidth { get; set; }
+
+    /// <summary>矩形高さ（元画像ピクセル）。0 のときは未確定。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
+    public partial double ManualCropPixelHeight { get; set; }
+
+    /// <summary>矩形が確定しているか（W&gt;0 かつ H&gt;0）。「手動」ラジオ ON 直後でドラッグ前は false。
+    /// 数値入力フィールドや矩形ハンドルの IsEnabled、Save 時の永続化判定に使う。</summary>
+    public bool IsManualCropDefined =>
+        ManualCropPixelWidth > 0.0 && ManualCropPixelHeight > 0.0;
+
     /// <summary>サムネイルの絶対パス（表示用）。Attach 時に <see cref="CopyItemViewModel.ThumbnailPath"/>
     /// からセットされる。AutoCrop の画像クリックピッカーでクリック対象として表示するが、色は
     /// <see cref="SourceImagePath"/> から採取する（サムネ WebP 圧縮で色が変化するため）。</summary>
@@ -114,6 +143,25 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     partial void OnScalingModeChanged(ScalingMode value)
     {
         OnPropertyChanged(nameof(IsAlignmentActive));
+    }
+
+    /// <summary>排他連動: AutoCrop ON にすると ManualCrop は OFF。
+    /// ラジオ 3 択（OFF/自動/手動）の意味論を VM 内で保証。</summary>
+    partial void OnAutoCropEnabledChanged(bool value)
+    {
+        if (value && ManualCropEnabled)
+        {
+            ManualCropEnabled = false;
+        }
+    }
+
+    /// <summary>排他連動: ManualCrop ON にすると AutoCrop は OFF。</summary>
+    partial void OnManualCropEnabledChanged(bool value)
+    {
+        if (value && AutoCropEnabled)
+        {
+            AutoCropEnabled = false;
+        }
     }
 
     // XAML バインディング用の選択肢
@@ -182,6 +230,11 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
                 AutoCropPreset = AutoCropPreset.White;
                 AutoCropThreshold = 8;
                 AutoCropCustomColorHex = "#FFFFFF";
+                ManualCropEnabled = false;
+                ManualCropPixelX = 0;
+                ManualCropPixelY = 0;
+                ManualCropPixelWidth = 0;
+                ManualCropPixelHeight = 0;
                 ThumbnailPath = null;
                 SourceImagePath = null;
                 SourceWidth = 0;
@@ -220,6 +273,22 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
                     AutoCropThreshold = 8;
                     AutoCropCustomColorHex = "#FFFFFF";
                 }
+                if (source.ManualCrop is { } mc && source.SourceWidth > 0 && source.SourceHeight > 0)
+                {
+                    ManualCropEnabled = true;
+                    ManualCropPixelX = mc.X * source.SourceWidth;
+                    ManualCropPixelY = mc.Y * source.SourceHeight;
+                    ManualCropPixelWidth = mc.Width * source.SourceWidth;
+                    ManualCropPixelHeight = mc.Height * source.SourceHeight;
+                }
+                else
+                {
+                    ManualCropEnabled = false;
+                    ManualCropPixelX = 0;
+                    ManualCropPixelY = 0;
+                    ManualCropPixelWidth = 0;
+                    ManualCropPixelHeight = 0;
+                }
             }
             IsDirty = false;
             StatusMessage = null;
@@ -238,7 +307,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
 
         // before snapshot: source の現在値（保存前 = ロード時 / 直前 Save 時の永続化済み値）。
         // Undo で「null 名前に戻す」を明示するため、CopyName が null のときは ClearCopyName=true で立てる。
-        // AutoCrop も同様: null のときは ClearAutoCrop=true で「OFF へ戻す」を明示する。
+        // AutoCrop / ManualCrop も同様: null のときは Clear*=true で「OFF へ戻す」を明示する。
         var before = new UpdateImageCopyChanges
         {
             CopyName = _source.CopyName,
@@ -249,12 +318,23 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             OccupySize = _source.OccupySize,
             AutoCrop = _source.AutoCrop,
             ClearAutoCrop = _source.AutoCrop is null,
+            ManualCrop = _source.ManualCrop,
+            ClearManualCrop = _source.ManualCrop is null,
         };
 
         // after: 編集バッファから組み立て。空文字 → null は「明示的に名前を消す」操作で、
         // Redo でも同じ「null へ更新」が必要になるので ClearCopyName=true。
         var afterCopyName = string.IsNullOrWhiteSpace(CopyName) ? null : CopyName;
         var afterAutoCrop = AutoCropEnabled ? BuildAutoCropFromInputs() : (AutoCropSettings?)null;
+        // ManualCrop は「ラジオで手動を選んでいて、かつ矩形が確定している」ときのみ永続化。
+        // 「手動」選択 + 未確定（W=0 or H=0）は実質 OFF として保存する（ユーザー認識と一致）。
+        var afterManualCrop = (ManualCropEnabled && IsManualCropDefined && SourceWidth > 0 && SourceHeight > 0)
+            ? new ManualCropFraction(
+                ManualCropPixelX / SourceWidth,
+                ManualCropPixelY / SourceHeight,
+                ManualCropPixelWidth / SourceWidth,
+                ManualCropPixelHeight / SourceHeight)
+            : (ManualCropFraction?)null;
         var after = new UpdateImageCopyChanges
         {
             CopyName = afterCopyName,
@@ -265,6 +345,8 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             OccupySize = BuildOccupySizeOrDefault(),
             AutoCrop = afterAutoCrop,
             ClearAutoCrop = afterAutoCrop is null,
+            ManualCrop = afterManualCrop,
+            ClearManualCrop = afterManualCrop is null,
         };
 
         // Description は「Save 時点での名前 → after の名前」を含める。改名されたケースで履歴上わかりやすい。
@@ -290,6 +372,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         _source.Alignment = after.Alignment!.Value;
         _source.OccupySize = after.OccupySize!.Value;
         _source.AutoCrop = after.AutoCrop;
+        _source.ManualCrop = after.ManualCrop;
 
         _suppressDirty = true;
         try
