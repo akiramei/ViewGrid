@@ -37,7 +37,12 @@ public partial class CopyPropertiesView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
-        ManualCropOverlay.LayoutUpdated += (_, _) => UpdateOverlay();
+        // ManualCropImage のサイズ変更（コンテナリサイズや初回 Source 設定時）で再描画。
+        // 旧版は ManualCropOverlay.LayoutUpdated を購読していたが、
+        // Canvas.Children.Clear/Add が InvalidateMeasure → LayoutUpdated を再発火させて
+        // 無限再帰 → StackOverflow でプロセス即終了する不具合があった。
+        // PropertyChanged + BoundsProperty に絞ると Children 操作では再発火しない（Image 自体の
+        // レイアウトは Children 操作で変わらないため）。
         ManualCropImage.PropertyChanged += (_, e) =>
         {
             if (e.Property == BoundsProperty) UpdateOverlay();
