@@ -238,11 +238,11 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task External_PixelOffset_Change_On_Source_Syncs_Inspector_And_Marks_Dirty()
+    public async Task External_PixelOffset_Change_On_Source_Syncs_Inspector_Without_Marking_Dirty()
     {
-        // Shift+ドラッグなど外部から source の PixelOffset が更新されたとき、
-        // Inspector の表示が追従し、IsDirty=true となる（保存ボタン経由で永続化する設計）。
-        // 以前は自動保存していたが、編集と保存の責務分離が崩れる UX 上の違和感があったため改修。
+        // Shift+ドラッグ（リリース時）・Ctrl+Arrow・Undo/Redo など外部経路は自前で履歴へ積む。
+        // Inspector の表示は追従するが IsDirty は立てない。立てると「保存ボタンを押さないと
+        // 永続化されない」と誤認させ、Inspector 編集との挙動不統一になるため。
         var (item, _, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
@@ -251,6 +251,21 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
 
         _vm.PixelOffsetX.Should().Be(123);
         _vm.PixelOffsetY.Should().Be(-45);
+        _vm.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Manual_Edit_Still_Marks_Dirty_After_External_Sync()
+    {
+        // 外部由来の同期（_suppressDirty ガード）が走った後でも、ユーザーが Inspector の数値を
+        // 直接編集すれば IsDirty=true になる（手動編集チャネルは保存ボタン経由のまま）。
+        var (item, _, _) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item);
+
+        item.PixelOffsetX = 123; // 外部由来 → IsDirty 立たない
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.PixelOffsetY = 50;   // 手動編集 → IsDirty 立つ
         _vm.IsDirty.Should().BeTrue();
     }
 

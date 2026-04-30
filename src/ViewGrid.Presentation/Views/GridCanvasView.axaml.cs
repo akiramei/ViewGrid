@@ -948,17 +948,34 @@ public partial class GridCanvasView : UserControl
         }
     }
 
-    private void OnPlacementPointerReleased(object? sender, PointerReleasedEventArgs e)
+    private async void OnPlacementPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         // Shift+ドラッグの終了: ドラッグ中に PlacementItemViewModel.PixelOffsetX/Y を直接更新済み。
-        // ここでは状態クリアのみ。Inspector が PropertyChanged 経由で IsDirty=true を立て、
-        // ユーザーが「保存」ボタンを押したときに DB 永続化される（Inspector 編集と挙動を統一）。
+        // リリース時に履歴へ積む（Ctrl+Arrow と意味論を統一: 1 アクション = 1 履歴エントリ）。
+        // 開始値と同値（実質ドラッグなし）なら ApplyPixelOffsetAsync 側で履歴に積まない。
         if (_pixelOffsetDragging)
         {
+            var target = _pixelOffsetTarget;
+            var startX = _pixelOffsetStartX;
+            var startY = _pixelOffsetStartY;
             _pixelOffsetDragging = false;
             _pixelOffsetTarget = null;
             _pixelOffsetBorder = null;
             e.Handled = true;
+
+            if (target is not null && _vm is not null
+                && (target.PixelOffsetX != startX || target.PixelOffsetY != startY))
+            {
+                try
+                {
+                    await _vm.ApplyPixelOffsetAsync(
+                        target.PlacementId, target.PixelOffsetX, target.PixelOffsetY);
+                }
+                catch
+                {
+                    // ユーザー操作起点の例外は握りつぶす（StatusMessage で表示される）
+                }
+            }
             return;
         }
 

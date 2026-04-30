@@ -251,22 +251,30 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     private bool CanEditCopyProperties() => HasPlacement;
 
     /// <summary>
-    /// 外部（Shift+ドラッグ等）からの <see cref="PlacementItemViewModel.PixelOffsetX"/> /
-    /// <c>Y</c> 変更を Inspector の表示にも反映させる。Shift+ドラッグは「Inspector 編集の
-    /// 代替手段」なので、IsDirty を立てて保存ボタン経由で永続化する設計に統一する
-    /// （以前は自動保存していたが、編集と保存の責務分離が崩れる UX 上の違和感があったため改修）。
+    /// 外部（Shift+ドラッグ・Ctrl+Arrow・Undo/Redo 等）からの
+    /// <see cref="PlacementItemViewModel.PixelOffsetX"/> / <c>Y</c> 変更を
+    /// Inspector の表示にも反映させる。これらの操作は自前で履歴へ積むため、
+    /// Inspector の <see cref="IsDirty"/> を立てる必要はない（むしろ立てると
+    /// 「保存ボタンを押さないと永続化されない」と誤認させる）。
+    /// <see cref="_suppressDirty"/>=true でガードして同期だけを行う。
     /// </summary>
     private void OnSourcePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is not PlacementItemViewModel src || src != _source) return;
+        if (e.PropertyName is not (nameof(PlacementItemViewModel.PixelOffsetX)
+            or nameof(PlacementItemViewModel.PixelOffsetY))) return;
 
-        if (e.PropertyName is nameof(PlacementItemViewModel.PixelOffsetX))
+        _suppressDirty = true;
+        try
         {
-            PixelOffsetX = src.PixelOffsetX;
+            if (e.PropertyName is nameof(PlacementItemViewModel.PixelOffsetX))
+                PixelOffsetX = src.PixelOffsetX;
+            else
+                PixelOffsetY = src.PixelOffsetY;
         }
-        else if (e.PropertyName is nameof(PlacementItemViewModel.PixelOffsetY))
+        finally
         {
-            PixelOffsetY = src.PixelOffsetY;
+            _suppressDirty = false;
         }
     }
 
