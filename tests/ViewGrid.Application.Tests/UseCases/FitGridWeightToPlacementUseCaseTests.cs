@@ -26,6 +26,8 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
             _fx.PlacementRepository,
             _fx.CopyRepository,
             _fx.AssetRepository,
+            _fx.Storage,
+            _fx.AutoCropResolver,
             _updateWeights,
             NullLogger<FitGridWeightToPlacementUseCase>.Instance);
         _place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);

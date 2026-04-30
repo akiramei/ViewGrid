@@ -69,6 +69,8 @@ public sealed class UpdateImageCopyCommand : IUndoableCommand
             ScalingMode = source.ScalingMode,
             Alignment = source.Alignment,
             OccupySize = source.OccupySize,
+            AutoCrop = source.AutoCrop,
+            ClearAutoCrop = source.AutoCrop is null,
         };
     }
 }

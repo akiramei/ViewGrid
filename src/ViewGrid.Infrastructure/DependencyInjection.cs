@@ -31,6 +31,8 @@ public static class DependencyInjection
         services.AddSingleton<IImageProber, SkiaImageProber>();
         services.AddSingleton<IImageStorage, FileSystemImageStorage>();
         services.AddSingleton<IThumbnailService, SkiaThumbnailService>();
+        services.AddSingleton<AutoCropCache>();
+        services.AddSingleton<IAutoCropBboxResolver, SkiaAutoCropBboxResolver>();
         services.AddSingleton<IGridImageRenderer, SkiaGridImageRenderer>();
 
         return services;

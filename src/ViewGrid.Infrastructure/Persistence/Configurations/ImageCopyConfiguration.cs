@@ -43,6 +43,16 @@ internal sealed class ImageCopyConfiguration : IEntityTypeConfiguration<ImageCop
             occ.Property(p => p.Height).HasColumnName("occupy_height").IsRequired();
         });
 
+        // 単色余白の自動トリミング設定。集約ビュー <see cref="ImageCopy.AutoCrop"/> は無視し、
+        // 原始値 2 つ（uint? / byte?）を直接 nullable 列にマップする。両方 NULL なら OFF。
+        builder.Ignore(x => x.AutoCrop);
+        builder.Property(x => x.AutoCropTargetColor)
+            .HasConversion<long?>()  // uint → long? で SQLite INTEGER に安全保存
+            .HasColumnName("auto_crop_color");
+        builder.Property(x => x.AutoCropThreshold)
+            .HasConversion<int?>()  // byte → int? で SQLite INTEGER に
+            .HasColumnName("auto_crop_threshold");
+
         builder.HasOne<ImageAsset>()
             .WithMany()
             .HasForeignKey(x => x.AssetId)

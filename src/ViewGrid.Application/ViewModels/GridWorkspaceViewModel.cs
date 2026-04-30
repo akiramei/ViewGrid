@@ -31,6 +31,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly IImageAssetRepository _assetRepository;
     private readonly IGridPlacementRepository _placementRepository;
     private readonly IThumbnailService _thumbnailService;
+    private readonly IImageStorage _imageStorage;
+    private readonly IAutoCropBboxResolver _autoCropResolver;
     private readonly PlaceImageCopyUseCase _placeUseCase;
     private readonly RemovePlacementUseCase _removeUseCase;
     private readonly MovePlacementUseCase _moveUseCase;
@@ -87,6 +89,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         IImageAssetRepository assetRepository,
         IGridPlacementRepository placementRepository,
         IThumbnailService thumbnailService,
+        IImageStorage imageStorage,
+        IAutoCropBboxResolver autoCropResolver,
         PlaceImageCopyUseCase placeUseCase,
         RemovePlacementUseCase removeUseCase,
         MovePlacementUseCase moveUseCase,
@@ -108,6 +112,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _assetRepository = assetRepository;
         _placementRepository = placementRepository;
         _thumbnailService = thumbnailService;
+        _imageStorage = imageStorage;
+        _autoCropResolver = autoCropResolver;
         _placeUseCase = placeUseCase;
         _removeUseCase = removeUseCase;
         _moveUseCase = moveUseCase;
@@ -252,7 +258,28 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             }
 
             var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
-            Placements.Add(new PlacementItemViewModel(p, copy, asset, thumb));
+            var item = new PlacementItemViewModel(p, copy, asset, thumb);
+
+            // AutoCrop ON なら原画像走査の比率を事前解決して View / Renderer / Use case で共有する。
+            // VM 層で 1 度だけ計算（cache 経由）し、PlacementItemViewModel に保存することで、
+            // サムネ走査と原画像走査の精度差による表示不整合を避ける。
+            if (copy.AutoCrop is { } settings)
+            {
+                try
+                {
+                    var path = _imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
+                    var fraction = await _autoCropResolver.ResolveAsync(asset.Id, path, settings, ct);
+                    item.AutoCropFraction = fraction;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch
+                {
+                    // 走査失敗時はクロップなしで表示（fallback）
+                    item.AutoCropFraction = null;
+                }
+            }
+
+            Placements.Add(item);
         }
 
         LogPlacementsLoaded(_logger, gridId, Placements.Count);

@@ -39,6 +39,10 @@ public sealed partial class CopyItemViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SummaryLine))]
     public partial OccupySize OccupySize { get; set; }
 
+    /// <summary>単色余白の自動トリミング設定。<c>null</c> なら機能 OFF。</summary>
+    [ObservableProperty]
+    public partial AutoCropSettings? AutoCrop { get; set; }
+
     public CopyItemViewModel(ImageCopy copy)
     {
         ArgumentNullException.ThrowIfNull(copy);
@@ -51,6 +55,7 @@ public sealed partial class CopyItemViewModel : ObservableObject
         ScalingMode = copy.ScalingMode;
         Alignment = copy.Alignment;
         OccupySize = copy.OccupySize;
+        AutoCrop = copy.AutoCrop;
     }
 
     public string DisplayName =>

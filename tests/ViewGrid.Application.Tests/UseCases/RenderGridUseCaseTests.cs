@@ -25,7 +25,7 @@ public sealed class RenderGridUseCaseTests : IAsyncLifetime
             _fx.CopyRepository,
             _fx.AssetRepository,
             _fx.Storage,
-            new SkiaGridImageRenderer());
+            new SkiaGridImageRenderer(new AutoCropCache()));
         _place = new PlaceImageCopyUseCase(
             _fx.GridRepository,
             _fx.CopyRepository,

@@ -274,21 +274,17 @@ public static class PlacementGeometry
     private static (double DstStart, double DstLen) ComputeAxisDst(
         double srcSize, double destStart, double destSize, double scale, Anchor1D anchor)
     {
+        // <see cref="SkiaGridImageRenderer.ComputeAxis"/> と整合する仕様: 画像全体を scale 倍した
+        // dst に anchor 位置で配置する。画像 > セル の場合 pad < 0 となり dst が cell を
+        // 超えるが、後段の cellRect 交差で表示矩形は cell 内に収まる。
         var drawSize = srcSize * scale;
-        if (drawSize <= destSize)
+        var pad = destSize - drawSize;
+        var offset = anchor switch
         {
-            var pad = destSize - drawSize;
-            var offset = anchor switch
-            {
-                Anchor1D.Start => 0.0,
-                Anchor1D.End => pad,
-                _ => pad / 2.0,
-            };
-            return (destStart + offset, drawSize);
-        }
-        else
-        {
-            return (destStart, destSize);
-        }
+            Anchor1D.Start => 0.0,
+            Anchor1D.End => pad,
+            _ => pad / 2.0,
+        };
+        return (destStart + offset, drawSize);
     }
 }

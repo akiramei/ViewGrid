@@ -78,7 +78,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         var swap = new SwapPlacementsUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
         var render = new RenderGridUseCase(
             _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository,
-            _fx.AssetRepository, _fx.Storage, new SkiaGridImageRenderer());
+            _fx.AssetRepository, _fx.Storage, new SkiaGridImageRenderer(new AutoCropCache()));
         var export = new ExportGridUseCase(render);
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
         var inspector = new PlacementInspectorViewModel(
@@ -87,11 +87,13 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         var updateWeights = new UpdateGridWeightsUseCase(_fx.GridRepository);
         var updateLocks = new UpdateGridLocksUseCase(_fx.GridRepository);
         var fitWeight = new FitGridWeightToPlacementUseCase(
-            _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository, _fx.AssetRepository, updateWeights,
+            _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository, _fx.AssetRepository,
+            _fx.Storage, _fx.AutoCropResolver, updateWeights,
             NullLogger<FitGridWeightToPlacementUseCase>.Instance);
         _gridWorkspace = new GridWorkspaceViewModel(
             _fx.GridRepository, _fx.CopyRepository, _fx.AssetRepository, _fx.PlacementRepository,
-            _fx.Thumbnails, place, remove, move, swap, render, export, updateWeights, updateLocks, offset,
+            _fx.Thumbnails, _fx.Storage, _fx.AutoCropResolver,
+            place, remove, move, swap, render, export, updateWeights, updateLocks, offset,
             fitWeight, picker, _messenger, sharedHistory, inspector,
             NullLogger<GridWorkspaceViewModel>.Instance);
 

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using ErrorOr;
 using SkiaSharp;
 using ViewGrid.Core.Entities;
+using ViewGrid.Core.Geometry;
 using ViewGrid.Core.Services;
 using ViewGrid.Core.UseCases;
 
@@ -17,6 +18,13 @@ namespace ViewGrid.Infrastructure.Imaging;
 /// </summary>
 internal sealed class SkiaGridImageRenderer : IGridImageRenderer
 {
+    private readonly AutoCropCache _autoCropCache;
+
+    public SkiaGridImageRenderer(AutoCropCache autoCropCache)
+    {
+        _autoCropCache = autoCropCache;
+    }
+
     public Task<ErrorOr<byte[]>> RenderPngAsync(
         GridCanvas grid,
         IReadOnlyList<PlacementRenderItem> items,
@@ -29,7 +37,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         return Task.Run<ErrorOr<byte[]>>(() => Render(grid, items, trimMode, ct), ct);
     }
 
-    private static ErrorOr<byte[]> Render(
+    private ErrorOr<byte[]> Render(
         GridCanvas grid,
         IReadOnlyList<PlacementRenderItem> items,
         TrimMode trimMode,
@@ -75,7 +83,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     /// <see cref="TrimMode.DrawnPixels"/> は占有セル bbox 内をピクセル走査して
     /// α &gt;= 閾値の bbox で切り出し（占有セル外には決して拡張されない）。
     /// </summary>
-    private static ErrorOr<byte[]> EncodeWithTrim(
+    private ErrorOr<byte[]> EncodeWithTrim(
         SKImage image,
         GridCanvas grid,
         IReadOnlyList<PlacementRenderItem> items,
@@ -220,9 +228,12 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     /// <summary>
     /// 各 placement の画像描画先矩形（セル境界クリップ後）の bbox を返す。
     /// DrawnPixels の α 走査範囲と交差させ、サブピクセル補間で生じる外周の薄い透明色を
-    /// トリム対象として扱うために使う。
+    /// トリム対象として扱うために使う。<br/>
+    /// AutoCrop が有効な placement では、<see cref="DrawOne"/> が cache に保存した
+    /// 原画像座標系 bbox を取得して回転後座標系に変換し、ComputeSrcDstRects に渡す
+    /// 「実効的な画像サイズ」として使う（DrawOne と同じ dst 矩形を再現する）。
     /// </summary>
-    private static SKRectI ComputeRenderedGeometryRect(
+    private SKRectI ComputeRenderedGeometryRect(
         GridCanvas grid,
         IReadOnlyList<PlacementRenderItem> items)
     {
@@ -230,8 +241,28 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
 
         foreach (var item in items)
         {
-            if (!TryGetTransformedImageSize(item, out var sw, out var sh))
+            if (!TryGetSourceAndTransformedImageSize(item, out var sourceW, out var sourceH, out var sw, out var sh))
                 continue;
+
+            // AutoCrop が有効なら、回転後座標系の bbox サイズで sw/sh を上書き。
+            // DrawOne は src 矩形を AutoCrop オフセット起点で計算するため、ここでも同じ
+            // 「AutoCrop 後の論理画像サイズ」で ScalingMode を計算しないと dst 矩形が乖離する。
+            if (item.Copy.AutoCrop is { } settings &&
+                _autoCropCache.TryGet(item.Copy.AssetId, settings, out var fraction) &&
+                !fraction.IsFull())
+            {
+                var (cx, cy, cw, ch) = fraction.ToPixelBbox(sourceW, sourceH);
+                if (cw > 0 && ch > 0)
+                {
+                    var rotatedCrop = AutoCropCalculator.TransformRect(
+                        new PixelRect(cx, cy, cw, ch), sourceW, sourceH, item.Copy.Transform);
+                    if (rotatedCrop.Width > 0 && rotatedCrop.Height > 0)
+                    {
+                        sw = rotatedCrop.Width;
+                        sh = rotatedCrop.Height;
+                    }
+                }
+            }
 
             var cellRect = PlacementGeometry.ComputeDestRect(
                 grid.CanvasSize,
@@ -272,10 +303,20 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         return union ?? SKRectI.Empty;
     }
 
-    private static bool TryGetTransformedImageSize(PlacementRenderItem item, out int width, out int height)
+    /// <summary>
+    /// 原画像（回転前）と回転後画像のピクセルサイズを <see cref="SKCodec"/> から取得する。
+    /// AutoCrop bbox の回転変換に <paramref name="sourceWidth"/> / <paramref name="sourceHeight"/> が必要なため、
+    /// 既存の <c>TryGetTransformedImageSize</c> を拡張している。
+    /// </summary>
+    private static bool TryGetSourceAndTransformedImageSize(
+        PlacementRenderItem item,
+        out int sourceWidth, out int sourceHeight,
+        out int transformedWidth, out int transformedHeight)
     {
-        width = 0;
-        height = 0;
+        sourceWidth = 0;
+        sourceHeight = 0;
+        transformedWidth = 0;
+        transformedHeight = 0;
         if (!File.Exists(item.SourceImageAbsolutePath))
             return false;
 
@@ -285,10 +326,12 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             return false;
 
         var info = codec.Info;
+        sourceWidth = info.Width;
+        sourceHeight = info.Height;
         var rotateSwap = item.Copy.Transform.Rotation is Rotation.Cw90 or Rotation.Cw270;
-        width = rotateSwap ? info.Height : info.Width;
-        height = rotateSwap ? info.Width : info.Height;
-        return width > 0 && height > 0;
+        transformedWidth = rotateSwap ? info.Height : info.Width;
+        transformedHeight = rotateSwap ? info.Width : info.Height;
+        return transformedWidth > 0 && transformedHeight > 0;
     }
 
     private static SKRect Intersect(SKRect a, SKRect b)
@@ -319,7 +362,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         Math.Max(a.Right, b.Right),
         Math.Max(a.Bottom, b.Bottom));
 
-    private static Error? DrawOne(
+    private Error? DrawOne(
         SKCanvas canvas,
         GridCanvas grid,
         PlacementRenderItem item,
@@ -338,12 +381,21 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 "Render.DecodeFailed",
                 $"画像のデコードに失敗しました: {item.SourceImageAbsolutePath}");
 
+        // AutoCrop: 回転前の原画像で外周走査して bbox を計算（Cache 経由）。
+        // 結果の bbox は原画像座標系。回転後座標系には ApplyTransform 完了後に変換する。
+        var autoCropSourceRect = ComputeAutoCropSourceRect(item, decoded);
+
         using var transformed = ApplyTransform(decoded, item.Copy.Transform);
         using var transformedImage = SKImage.FromBitmap(transformed);
         if (transformedImage is null)
             return Error.Failure(
                 "Render.ImageFromBitmapFailed",
                 $"画像変換に失敗しました: {item.SourceImageAbsolutePath}");
+
+        // 回転後座標系での AutoCrop 矩形（src 矩形のオフセット元）。
+        var autoCropTransformedRect = autoCropSourceRect is { } sourceCrop
+            ? AutoCropCalculator.TransformRect(sourceCrop, decoded.Width, decoded.Height, item.Copy.Transform)
+            : new PixelRect(0, 0, transformed.Width, transformed.Height);
 
         // セル領域（PixelOffset 適用前）。クリップ範囲として使う。
         var cellRect = PlacementGeometry.ComputeDestRect(
@@ -372,9 +424,18 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         if (dest.Width <= 0 || dest.Height <= 0)
             return null;
 
+        // ComputeSrcDstRects には「AutoCrop 後の論理画像サイズ」を渡す。
+        // ScalingMode (UniformContain 等) も AutoCrop 後の比率で計算され、見た目通りになる。
         var (srcRect, dstRect) = ComputeSrcDstRects(
-            transformed.Width, transformed.Height,
+            autoCropTransformedRect.Width, autoCropTransformedRect.Height,
             dest, item.Copy);
+
+        // src 矩形を AutoCrop オフセットだけシフトして、実際に切り出す原画像領域を AutoCrop 内に限定する。
+        srcRect = SKRect.Create(
+            srcRect.Left + autoCropTransformedRect.X,
+            srcRect.Top + autoCropTransformedRect.Y,
+            srcRect.Width,
+            srcRect.Height);
 
         if (srcRect.Width <= 0 || srcRect.Height <= 0 ||
             dstRect.Width <= 0 || dstRect.Height <= 0)
@@ -392,6 +453,41 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             canvas.Restore();
         }
         return null;
+    }
+
+    /// <summary>
+    /// AutoCrop 設定があれば、原画像で外周走査して比率を返し、それを原画像サイズに展開した
+    /// bbox を返す（Cache 経由）。AutoCrop=null またはクロップ無効なら <c>null</c>。
+    /// bbox は原画像座標系（回転前）。View / FitUseCase と同一比率を共有する。
+    /// </summary>
+    private PixelRect? ComputeAutoCropSourceRect(PlacementRenderItem item, SKBitmap source)
+    {
+        if (item.Copy.AutoCrop is not { } settings)
+            return null;
+
+        var assetId = item.Copy.AssetId;
+        var fraction = _autoCropCache.GetOrCompute(assetId, settings, () =>
+        {
+            var pixels = source.Bytes;
+            if (pixels is null || pixels.Length == 0 || source.Width <= 0 || source.Height <= 0)
+                return AutoCropFraction.Full;
+            var bbox = AutoCropCalculator.Compute(pixels, source.Width, source.Height, source.RowBytes, settings);
+            if (bbox.Width <= 0 || bbox.Height <= 0)
+                return AutoCropFraction.Full;
+            return new AutoCropFraction(
+                (double)bbox.X / source.Width,
+                (double)bbox.Y / source.Height,
+                (double)bbox.Width / source.Width,
+                (double)bbox.Height / source.Height);
+        });
+
+        if (fraction.IsFull())
+            return null;
+
+        var (x, y, w, h) = fraction.ToPixelBbox(source.Width, source.Height);
+        if (w <= 0 || h <= 0)
+            return null;
+        return new PixelRect(x, y, w, h);
     }
 
     /// <summary>
@@ -492,40 +588,28 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         double scale,
         Anchor1D anchor)
     {
+        // 画像全体（src 全体）を scale 倍した dst に常に配置する。
+        // 画像 ≤ セル のときは pad >= 0 で anchor の位置に配置（中央/左右）。
+        // 画像 > セル のときは pad < 0 で dst が cell 範囲を超え、上位の <see cref="SKCanvas.ClipRect"/>
+        // でセル境界外がカットされる。PixelOffset で dst を動かしても表示サイズが
+        // 縮まず、見せる src 部分が変わるだけ（View の <c>Image + Translate + ClipToBounds</c> と整合）。
         var drawSize = srcSize * scale;
-        if (drawSize <= dstSize)
+        var pad = dstSize - drawSize;
+        var dstOffset = anchor switch
         {
-            // 画像 ≤ セル: anchor で「セル内のどこに置くか」を決める
-            var pad = dstSize - drawSize;
-            var dstOffset = anchor switch
-            {
-                Anchor1D.Start => 0.0,
-                Anchor1D.End => pad,
-                _ => pad / 2.0,
-            };
-            var drawStart = dstStart + dstOffset;
-            if (IsNearlyInteger(drawSize))
-            {
-                // 画像の描画サイズが整数ピクセルなのに開始位置だけが .5 になると、
-                // 線形補間で外周に 1px 程度の半透明行/列が発生する。
-                drawStart = Math.Round(drawStart, MidpointRounding.AwayFromZero);
-                drawSize = Math.Round(drawSize, MidpointRounding.AwayFromZero);
-            }
-            return (0.0, srcSize, drawStart, drawSize);
-        }
-        else
+            Anchor1D.Start => 0.0,
+            Anchor1D.End => pad,
+            _ => pad / 2.0,
+        };
+        var drawStart = dstStart + dstOffset;
+        if (IsNearlyInteger(drawSize))
         {
-            // 画像 > セル: 同じ anchor で「ソースのどの部分を見せるか」を決める
-            var visibleSrc = dstSize / scale;
-            var pad = srcSize - visibleSrc;
-            var srcOffset = anchor switch
-            {
-                Anchor1D.Start => 0.0,
-                Anchor1D.End => pad,
-                _ => pad / 2.0,
-            };
-            return (srcOffset, visibleSrc, dstStart, dstSize);
+            // 画像の描画サイズが整数ピクセルなのに開始位置だけが .5 になると、
+            // 線形補間で外周に 1px 程度の半透明行/列が発生する。
+            drawStart = Math.Round(drawStart, MidpointRounding.AwayFromZero);
+            drawSize = Math.Round(drawSize, MidpointRounding.AwayFromZero);
         }
+        return (0.0, srcSize, drawStart, drawSize);
     }
 
     private static bool IsNearlyInteger(double value) =>

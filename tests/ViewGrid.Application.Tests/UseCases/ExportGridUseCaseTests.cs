@@ -25,7 +25,7 @@ public sealed class ExportGridUseCaseTests : IAsyncLifetime
             _fx.CopyRepository,
             _fx.AssetRepository,
             _fx.Storage,
-            new SkiaGridImageRenderer());
+            new SkiaGridImageRenderer(new AutoCropCache()));
         _export = new ExportGridUseCase(render);
         _outputDir = TestImageFactory.CreateTempDirectory();
     }

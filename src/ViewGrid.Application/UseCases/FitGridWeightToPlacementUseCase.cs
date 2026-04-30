@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.Geometry;
 using ViewGrid.Core.Interfaces;
+using ViewGrid.Core.Services;
 using ViewGrid.Core.UseCases;
 
 namespace ViewGrid.Application.UseCases;
@@ -30,6 +31,8 @@ public sealed partial class FitGridWeightToPlacementUseCase(
     IGridPlacementRepository placementRepository,
     IImageCopyRepository copyRepository,
     IImageAssetRepository assetRepository,
+    IImageStorage imageStorage,
+    IAutoCropBboxResolver autoCropResolver,
     UpdateGridWeightsUseCase updateWeights,
     ILogger<FitGridWeightToPlacementUseCase> logger)
 {
@@ -54,6 +57,11 @@ public sealed partial class FitGridWeightToPlacementUseCase(
         if (grid is null)
             return Error.NotFound("Grid.NotFound", $"GridCanvas {placement.GridId} が見つかりません。");
 
+        // AutoCrop 適用後の「論理画像サイズ（原画像座標系、回転前）」を求める。
+        // レンダラと同じ effective size を使うことで、フィット計算の dst 矩形がレンダラの
+        // 描画結果と一致する（AutoCrop でアスペクト比が変わっても余白計算が正しい）。
+        var (effectiveSourceW, effectiveSourceH) = await ResolveEffectiveSourceSizeAsync(asset, copy, ct);
+
         // セル矩形（PixelOffset=0）と実描画矩形（PixelOffset 込み + クリップ済み）
         var cellRect = PlacementGeometry.ComputeDestRect(
             grid.CanvasSize, grid.GridCols, grid.GridRows,
@@ -64,7 +72,7 @@ public sealed partial class FitGridWeightToPlacementUseCase(
             grid.CanvasSize, grid.GridCols, grid.GridRows,
             grid.ColWeights, grid.RowWeights,
             placement.Position,
-            asset.Size.Width, asset.Size.Height, copy,
+            effectiveSourceW, effectiveSourceH, copy,
             placement.PixelOffsetX, placement.PixelOffsetY);
 
         if (axis == FitAxis.Column)
@@ -74,7 +82,7 @@ public sealed partial class FitGridWeightToPlacementUseCase(
             var rightPad = (cellRect.X + cellRect.Width) - (renderedRect.X + renderedRect.Width);
 
             LogFitDiagColumn(logger,
-                copy.ScalingMode, asset.Size.Width, asset.Size.Height,
+                copy.ScalingMode, effectiveSourceW, effectiveSourceH,
                 cellRect.X, cellRect.Width,
                 renderedRect.X, renderedRect.Width,
                 leftPad, inner, rightPad);
@@ -100,7 +108,7 @@ public sealed partial class FitGridWeightToPlacementUseCase(
             var bottomPad = (cellRect.Y + cellRect.Height) - (renderedRect.Y + renderedRect.Height);
 
             LogFitDiagRow(logger,
-                copy.ScalingMode, asset.Size.Width, asset.Size.Height,
+                copy.ScalingMode, effectiveSourceW, effectiveSourceH,
                 cellRect.Y, cellRect.Height,
                 renderedRect.Y, renderedRect.Height,
                 topPad, inner, bottomPad);
@@ -119,6 +127,27 @@ public sealed partial class FitGridWeightToPlacementUseCase(
             var result = await updateWeights.ExecuteAsync(grid.Id, null, newRowWeights, ct);
             return result.IsError ? result.Errors : Result.Success;
         }
+    }
+
+    /// <summary>
+    /// 「AutoCrop 適用後の論理画像サイズ（原画像座標系、回転前）」を返す。
+    /// AutoCrop OFF または fraction 取得失敗時は <see cref="ImageAsset.Size"/> をそのまま使う。
+    /// </summary>
+    private async Task<(int Width, int Height)> ResolveEffectiveSourceSizeAsync(
+        ImageAsset asset, ImageCopy copy, CancellationToken ct)
+    {
+        if (copy.AutoCrop is not { } settings)
+            return (asset.Size.Width, asset.Size.Height);
+
+        var absolutePath = imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
+        var fraction = await autoCropResolver.ResolveAsync(asset.Id, absolutePath, settings, ct);
+        if (fraction is not { } f || f.IsFull())
+            return (asset.Size.Width, asset.Size.Height);
+
+        var (_, _, w, h) = f.ToPixelBbox(asset.Size.Width, asset.Size.Height);
+        if (w <= 0 || h <= 0)
+            return (asset.Size.Width, asset.Size.Height);
+        return (w, h);
     }
 
     [LoggerMessage(EventId = 7001, Level = LogLevel.Information,

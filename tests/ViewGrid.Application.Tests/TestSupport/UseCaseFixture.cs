@@ -2,6 +2,7 @@ using System.IO;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ViewGrid.Core.Entities;
+using ViewGrid.Infrastructure.Imaging;
 using ViewGrid.Infrastructure.Persistence;
 using ViewGrid.Infrastructure.Repositories;
 using ViewGrid.Infrastructure.Services;
@@ -20,6 +21,8 @@ internal sealed class UseCaseFixture : IAsyncDisposable
     public StorageOptions StorageOptions { get; }
     public FileSystemImageStorage Storage { get; }
     public SkiaThumbnailService Thumbnails { get; }
+    public AutoCropCache AutoCropCache { get; }
+    public SkiaAutoCropBboxResolver AutoCropResolver { get; }
     public EfImageAssetRepository AssetRepository { get; }
     public EfImageCopyRepository CopyRepository { get; }
     public EfGridCanvasRepository GridRepository { get; }
@@ -32,6 +35,8 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         StorageOptions options,
         FileSystemImageStorage storage,
         SkiaThumbnailService thumbnails,
+        AutoCropCache autoCropCache,
+        SkiaAutoCropBboxResolver autoCropResolver,
         EfImageAssetRepository assetRepository,
         EfImageCopyRepository copyRepository,
         EfGridCanvasRepository gridRepository,
@@ -43,6 +48,8 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         StorageOptions = options;
         Storage = storage;
         Thumbnails = thumbnails;
+        AutoCropCache = autoCropCache;
+        AutoCropResolver = autoCropResolver;
         AssetRepository = assetRepository;
         CopyRepository = copyRepository;
         GridRepository = gridRepository;
@@ -64,6 +71,8 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         var storageOptions = new StorageOptions { DataDirectory = tempDir.FullName };
         var storage = new FileSystemImageStorage(storageOptions);
         var thumbnails = new SkiaThumbnailService(storageOptions, storage);
+        var autoCropCache = new AutoCropCache();
+        var autoCropResolver = new SkiaAutoCropBboxResolver(autoCropCache);
 
         return new UseCaseFixture(
             connection,
@@ -72,6 +81,8 @@ internal sealed class UseCaseFixture : IAsyncDisposable
             storageOptions,
             storage,
             thumbnails,
+            autoCropCache,
+            autoCropResolver,
             new EfImageAssetRepository(db),
             new EfImageCopyRepository(db),
             new EfGridCanvasRepository(db),

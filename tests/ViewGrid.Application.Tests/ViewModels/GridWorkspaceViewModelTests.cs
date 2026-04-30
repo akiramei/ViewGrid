@@ -34,7 +34,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         var swap = new SwapPlacementsUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
         var render = new RenderGridUseCase(
             _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository,
-            _fx.AssetRepository, _fx.Storage, new SkiaGridImageRenderer());
+            _fx.AssetRepository, _fx.Storage, new SkiaGridImageRenderer(new AutoCropCache()));
         var export = new ExportGridUseCase(render);
         var picker = Substitute.For<IFilePickerService>();
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
@@ -49,7 +49,8 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         var updateWeights = new UpdateGridWeightsUseCase(_fx.GridRepository);
         var updateLocks = new UpdateGridLocksUseCase(_fx.GridRepository);
         var fitWeight = new FitGridWeightToPlacementUseCase(
-            _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository, _fx.AssetRepository, updateWeights,
+            _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository, _fx.AssetRepository,
+            _fx.Storage, _fx.AutoCropResolver, updateWeights,
             NullLogger<FitGridWeightToPlacementUseCase>.Instance);
 
         _vm = new GridWorkspaceViewModel(
@@ -58,6 +59,8 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             _fx.AssetRepository,
             _fx.PlacementRepository,
             _fx.Thumbnails,
+            _fx.Storage,
+            _fx.AutoCropResolver,
             place,
             remove,
             move,

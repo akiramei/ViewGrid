@@ -20,7 +20,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
     public Task InitializeAsync()
     {
         _tempDir = TestImageFactory.CreateTempDirectory();
-        _renderer = new SkiaGridImageRenderer();
+        _renderer = new SkiaGridImageRenderer(new AutoCropCache());
         return Task.CompletedTask;
     }
 

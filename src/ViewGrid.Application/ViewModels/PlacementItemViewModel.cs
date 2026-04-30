@@ -44,6 +44,22 @@ public sealed partial class PlacementItemViewModel : ObservableObject
     [ObservableProperty]
     public partial Alignment Alignment { get; set; }
 
+    /// <summary>
+    /// 単色余白の自動トリミング設定（コピー側の特性）。<c>null</c> なら機能 OFF。
+    /// View 側でサムネに反映され、Renderer 側で PNG 出力にも反映される。
+    /// </summary>
+    [ObservableProperty]
+    public partial AutoCropSettings? AutoCrop { get; set; }
+
+    /// <summary>
+    /// AutoCrop 走査結果の比率（0–1）。VM 層で <see cref="IAutoCropBboxResolver"/> 経由で
+    /// 原画像走査した結果を保存。Renderer / View / Use case が同一比率を共有することで、
+    /// サムネ走査と原画像走査の精度差による表示不整合を避ける。
+    /// AutoCrop OFF または走査失敗時は <c>null</c>。
+    /// </summary>
+    [ObservableProperty]
+    public partial AutoCropFraction? AutoCropFraction { get; set; }
+
     [ObservableProperty]
     public partial int PixelOffsetX { get; set; }
 
@@ -82,6 +98,7 @@ public sealed partial class PlacementItemViewModel : ObservableObject
         FlipY = copy.Transform.FlipY;
         ScalingMode = copy.ScalingMode;
         Alignment = copy.Alignment;
+        AutoCrop = copy.AutoCrop;
         ThumbnailPath = thumbnailPath;
         SourceWidth = asset.Size.Width;
         SourceHeight = asset.Size.Height;
@@ -100,5 +117,6 @@ public sealed partial class PlacementItemViewModel : ObservableObject
         FlipY = copy.Transform.FlipY;
         ScalingMode = copy.ScalingMode;
         Alignment = copy.Alignment;
+        AutoCrop = copy.AutoCrop;
     }
 }

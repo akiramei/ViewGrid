@@ -29,6 +29,11 @@ public sealed class UpdateImageCopyUseCase(IImageCopyRepository copyRepository)
         var updatedCopyName = changes.ClearCopyName
             ? null
             : (changes.CopyName ?? current.CopyName);
+        // AutoCrop も同様の Optional 二段判定: ClearAutoCrop=true のときは null へ更新。
+        // それ以外で AutoCrop が指定されていれば更新、null なら現状維持。
+        var updatedAutoCrop = changes.ClearAutoCrop
+            ? (AutoCropSettings?)null
+            : (changes.AutoCrop ?? current.AutoCrop);
         var updated = new ImageCopy
         {
             Id = current.Id,
@@ -38,6 +43,7 @@ public sealed class UpdateImageCopyUseCase(IImageCopyRepository copyRepository)
             ScalingMode = changes.ScalingMode ?? current.ScalingMode,
             Alignment = changes.Alignment ?? current.Alignment,
             OccupySize = changes.OccupySize ?? current.OccupySize,
+            AutoCrop = updatedAutoCrop,
             CreatedAt = current.CreatedAt,
             UpdatedAt = now,
         };
@@ -66,4 +72,16 @@ public sealed record UpdateImageCopyChanges
     public ScalingMode? ScalingMode { get; init; }
     public Alignment? Alignment { get; init; }
     public OccupySize? OccupySize { get; init; }
+
+    /// <summary>
+    /// 単色余白の自動トリミング設定。<c>null</c> は通常「変更しない」を意味するが、
+    /// <see cref="ClearAutoCrop"/> が <c>true</c> のときは「明示的に null へ更新（OFF へ）」を意味する。
+    /// </summary>
+    public AutoCropSettings? AutoCrop { get; init; }
+
+    /// <summary>
+    /// <see cref="AutoCrop"/> が <c>null</c> でも明示的に DB を <c>null</c> 更新するか。
+    /// 既定 <c>false</c>（通常の更新フロー）。Undo/Redo で「OFF → ON → Undo（OFF に戻す）」の往復を実現するために必要。
+    /// </summary>
+    public bool ClearAutoCrop { get; init; }
 }

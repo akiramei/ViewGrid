@@ -27,6 +27,35 @@ public sealed class ImageCopy
 
     public required OccupySize OccupySize { get; init; }
 
+    /// <summary>
+    /// 単色余白の自動トリミングの対象色（ARGB 32-bit、α が 0 のとき α 単独判定）。
+    /// <c>null</c> + <see cref="AutoCropThreshold"/>=null なら機能 OFF（既定）。
+    /// EF Core が直接マップする原始値。アプリケーション側は <see cref="AutoCrop"/> で集約してアクセスする。
+    /// </summary>
+    public uint? AutoCropTargetColor { get; init; }
+
+    /// <summary>単色余白の自動トリミング閾値（0–255、Chebyshev 距離）。</summary>
+    public byte? AutoCropThreshold { get; init; }
+
+    /// <summary>
+    /// 単色余白の自動トリミング設定の集約ビュー。<c>null</c> なら機能 OFF。
+    /// <see cref="AutoCropTargetColor"/> / <see cref="AutoCropThreshold"/> の両方が
+    /// 揃っているときだけ非 null で返す（DB の整合は EF Core 側のマップで保証）。
+    /// </summary>
+    public AutoCropSettings? AutoCrop
+    {
+        get => (AutoCropTargetColor, AutoCropThreshold) switch
+        {
+            ({ } c, { } t) => new AutoCropSettings(c, t),
+            _ => null,
+        };
+        init
+        {
+            AutoCropTargetColor = value?.TargetColorArgb;
+            AutoCropThreshold = value?.Threshold;
+        }
+    }
+
     public required DateTimeOffset CreatedAt { get; init; }
     public required DateTimeOffset UpdatedAt { get; set; }
 

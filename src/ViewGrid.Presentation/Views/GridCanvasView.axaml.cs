@@ -665,7 +665,10 @@ public partial class GridCanvasView : UserControl
                 // 視覚サイズを source × displayScale DIPs に固定する（後述）。
                 var grid = _vm?.CurrentGrid;
                 Bitmap bitmap = LoadAndPreRotateBitmap(
-                    placement.ThumbnailPath, placement.Rotation, placement.FlipX, placement.FlipY);
+                    placement.ThumbnailPath, placement.Rotation, placement.FlipX, placement.FlipY,
+                    placement.AutoCropFraction);
+                var cropFractionW = placement.AutoCropFraction?.Width ?? 1.0;
+                var cropFractionH = placement.AutoCropFraction?.Height ?? 1.0;
 
                 var (stretch, direction) = MapScalingMode(placement.ScalingMode);
                 // 全 ScalingMode で Alignment を使う（旧版は ScalingMode.None で TrimmingAnchor、
@@ -709,8 +712,13 @@ public partial class GridCanvasView : UserControl
                     var rotateSwap = placement.Rotation
                         is ViewGrid.Core.Entities.Rotation.Cw90
                         or ViewGrid.Core.Entities.Rotation.Cw270;
-                    var sourceW = rotateSwap ? placement.SourceHeight : placement.SourceWidth;
-                    var sourceH = rotateSwap ? placement.SourceWidth : placement.SourceHeight;
+                    // AutoCrop 適用後の論理画像サイズ（原画像座標系、回転前）。
+                    // fraction は LoadAndPreRotateBitmap がサムネ走査で算出した「回転前の原画像
+                    // 座標系での比率」で、原画像の実寸に乗算するだけで AutoCrop 後の論理サイズを得る。
+                    var croppedSourceW = (int)Math.Max(1.0, Math.Round(placement.SourceWidth * cropFractionW));
+                    var croppedSourceH = (int)Math.Max(1.0, Math.Round(placement.SourceHeight * cropFractionH));
+                    var sourceW = rotateSwap ? croppedSourceH : croppedSourceW;
+                    var sourceH = rotateSwap ? croppedSourceW : croppedSourceH;
                     var displayScale = ComputeDisplayScale(grid);
                     image.Stretch = Stretch.Uniform; // explicit W/H へ uniform リサンプリング
                     image.Width = Math.Max(1.0, sourceW * displayScale);
@@ -804,14 +812,20 @@ public partial class GridCanvasView : UserControl
         => new();
 
     /// <summary>
-    /// サムネイルを読み込み、<see cref="Rotation"/> と <see cref="bool"/> Flip を SkiaSharp で
-    /// 焼き込んだ Avalonia <see cref="Bitmap"/> を返す。renderer の ApplyTransform と同じ
-    /// 適用順序（Flip → Rotate）で計算する。
+    /// サムネイルを読み込み、AutoCrop（オプション、比率指定）→ Flip → Rotate の順で
+    /// SkiaSharp 上に焼き込んだ Avalonia <see cref="Bitmap"/> を返す。<br/>
+    /// AutoCrop は VM 層で原画像走査済みの <see cref="ViewGrid.Core.Entities.AutoCropFraction"/>
+    /// を比率としてサムネに適用するので、Renderer / View / Use case で同一座標系の
+    /// 走査結果を共有でき、サムネ走査と原画像走査の精度差で表示が乖離する問題が解消する。
     /// </summary>
     private static Bitmap LoadAndPreRotateBitmap(
-        string thumbnailPath, ViewGrid.Core.Entities.Rotation rotation, bool flipX, bool flipY)
+        string thumbnailPath,
+        ViewGrid.Core.Entities.Rotation rotation,
+        bool flipX, bool flipY,
+        ViewGrid.Core.Entities.AutoCropFraction? autoCropFraction)
     {
-        if (rotation == ViewGrid.Core.Entities.Rotation.None && !flipX && !flipY)
+        var hasCrop = autoCropFraction is { } f && !f.IsFull();
+        if (rotation == ViewGrid.Core.Entities.Rotation.None && !flipX && !flipY && !hasCrop)
         {
             // 変換不要なら直接 Avalonia.Bitmap で読み込む（最速パス）。
             using var stream = File.OpenRead(thumbnailPath);
@@ -819,11 +833,59 @@ public partial class GridCanvasView : UserControl
         }
 
         using var skBitmap = SKBitmap.Decode(thumbnailPath);
-        using var transformed = ApplySkiaTransform(skBitmap, rotation, flipX, flipY);
-        using var skImage = SKImage.FromBitmap(transformed);
-        using var encoded = skImage.Encode(SKEncodedImageFormat.Png, 100);
-        using var ms = new MemoryStream(encoded.ToArray());
-        return new Bitmap(ms);
+        SKBitmap toTransform = skBitmap;
+        SKBitmap? cropped = null;
+        try
+        {
+            if (hasCrop)
+            {
+                cropped = TryApplyAutoCropFraction(skBitmap, autoCropFraction!.Value);
+                if (cropped is not null)
+                    toTransform = cropped;
+            }
+
+            using var transformed = ApplySkiaTransform(toTransform, rotation, flipX, flipY);
+            using var skImage = SKImage.FromBitmap(transformed);
+            using var encoded = skImage.Encode(SKEncodedImageFormat.Png, 100);
+            using var ms = new MemoryStream(encoded.ToArray());
+            return new Bitmap(ms);
+        }
+        finally
+        {
+            cropped?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// サムネ <see cref="SKBitmap"/> に <see cref="ViewGrid.Core.Entities.AutoCropFraction"/>
+    /// （0–1 比率）をサムネ寸法に展開して切り出した新しい <see cref="SKBitmap"/> を返す。
+    /// 結果が空・元サイズと同一なら <c>null</c>。
+    /// </summary>
+    private static SKBitmap? TryApplyAutoCropFraction(
+        SKBitmap source, ViewGrid.Core.Entities.AutoCropFraction fraction)
+    {
+        if (source.Width <= 0 || source.Height <= 0) return null;
+        var (x, y, w, h) = fraction.ToPixelBbox(source.Width, source.Height);
+        if (w <= 0 || h <= 0) return null;
+        if (x == 0 && y == 0 && w == source.Width && h == source.Height) return null;
+
+        var dst = new SKBitmap(w, h, source.ColorType, source.AlphaType);
+        try
+        {
+            using var canvas = new SKCanvas(dst);
+            canvas.Clear(SKColors.Transparent);
+            using var srcImage = SKImage.FromBitmap(source);
+            canvas.DrawImage(
+                srcImage,
+                new SKRect(x, y, x + w, y + h),
+                new SKRect(0, 0, w, h));
+            return dst;
+        }
+        catch
+        {
+            dst.Dispose();
+            throw;
+        }
     }
 
     private static SKBitmap ApplySkiaTransform(
