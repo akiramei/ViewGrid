@@ -34,6 +34,10 @@ public sealed class UpdateImageCopyUseCase(IImageCopyRepository copyRepository)
         var updatedAutoCrop = changes.ClearAutoCrop
             ? (AutoCropSettings?)null
             : (changes.AutoCrop ?? current.AutoCrop);
+        // ManualCrop も同パターン。ClearManualCrop=true で明示 null 化。
+        var updatedManualCrop = changes.ClearManualCrop
+            ? (ManualCropFraction?)null
+            : (changes.ManualCrop ?? current.ManualCrop);
         var updated = new ImageCopy
         {
             Id = current.Id,
@@ -44,6 +48,7 @@ public sealed class UpdateImageCopyUseCase(IImageCopyRepository copyRepository)
             Alignment = changes.Alignment ?? current.Alignment,
             OccupySize = changes.OccupySize ?? current.OccupySize,
             AutoCrop = updatedAutoCrop,
+            ManualCrop = updatedManualCrop,
             CreatedAt = current.CreatedAt,
             UpdatedAt = now,
         };
@@ -84,4 +89,17 @@ public sealed record UpdateImageCopyChanges
     /// 既定 <c>false</c>（通常の更新フロー）。Undo/Redo で「OFF → ON → Undo（OFF に戻す）」の往復を実現するために必要。
     /// </summary>
     public bool ClearAutoCrop { get; init; }
+
+    /// <summary>
+    /// 任意矩形トリミング（手動）設定。<c>null</c> は通常「変更しない」を意味するが、
+    /// <see cref="ClearManualCrop"/> が <c>true</c> のときは「明示的に null へ更新（OFF へ）」を意味する。
+    /// AutoCrop と同時 ON でも ManualCrop が排他的に勝つ（Resolver で判定）。
+    /// </summary>
+    public ManualCropFraction? ManualCrop { get; init; }
+
+    /// <summary>
+    /// <see cref="ManualCrop"/> が <c>null</c> でも明示的に DB を <c>null</c> 更新するか。
+    /// 既定 <c>false</c>。Undo/Redo で「矩形設定 → OFF → Undo（矩形設定に戻す）」の往復を実現するために必要。
+    /// </summary>
+    public bool ClearManualCrop { get; init; }
 }
