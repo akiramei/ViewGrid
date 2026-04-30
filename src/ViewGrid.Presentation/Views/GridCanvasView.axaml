@@ -13,8 +13,15 @@
             BorderThickness="1"
             Background="{DynamicResource SystemChromeMediumLowColor}">
         <Viewbox Stretch="Uniform" StretchDirection="Both">
-            <!-- 全体 624×624: 上端/左端 24px のヘッダバー + 600×600 のキャンバス本体 -->
-            <Grid Width="624" Height="624"
+            <!--
+                上端/左端 24px のヘッダバー + キャンバス本体。
+                外側 Grid の Width/Height とキャンバス Container の Width/Height は
+                ユーザーの CanvasSize アスペクトに合わせて Rebuild() で動的に設定する
+                （PNG 出力と表示の比率を一致させるため）。
+                XAML の初期値 624×624 は「グリッド未ロード時のフォールバック」。
+            -->
+            <Grid x:Name="OuterCanvasGrid"
+                  Width="624" Height="624"
                   RowDefinitions="24,*" ColumnDefinitions="24,*">
                 <!-- (0,1): 列ヘッダバー（列ロック切替） -->
                 <Grid x:Name="ColHeaderBar"
@@ -24,8 +31,10 @@
                 <Grid x:Name="RowHeaderBar"
                       Grid.Row="1" Grid.Column="0"
                       Background="{DynamicResource SystemChromeMediumColor}" />
-                <!-- (1,1): キャンバス本体 -->
-                <Grid Grid.Row="1" Grid.Column="1" Width="600" Height="600">
+                <!-- (1,1): キャンバス本体。Width/Height は Rebuild() で設定する（フォールバック 600×600） -->
+                <Grid x:Name="CanvasContainer"
+                      Grid.Row="1" Grid.Column="1"
+                      Width="600" Height="600">
                     <Grid x:Name="CanvasGrid" Background="White" />
                     <!-- 境界ドラッグ用ハンドル（A2）。Canvas 上に絶対配置。
                          Background は付けない（Background があると Canvas 全体が hit-test 対象になり、

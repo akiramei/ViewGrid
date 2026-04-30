@@ -43,7 +43,6 @@ public sealed class UpdateImageCopyUseCaseTests : IAsyncLifetime
 
         // 未指定のフィールドは据え置き
         updated.CopyName.Should().Be("initial");
-        updated.TrimmingAnchor.Should().Be(TrimmingAnchor.Center);
         updated.Transform.Should().Be(ImageTransform.Identity);
         updated.OccupySize.Should().Be(OccupySize.OneByOne);
     }

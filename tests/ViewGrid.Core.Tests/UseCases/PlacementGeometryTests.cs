@@ -16,9 +16,7 @@ public sealed class PlacementGeometryTests
         OccupySize? occupy = null,
         Rotation rotation = Rotation.None,
         AnchorX alignX = AnchorX.Center,
-        AnchorY alignY = AnchorY.Center,
-        AnchorX trimX = AnchorX.Center,
-        AnchorY trimY = AnchorY.Center)
+        AnchorY alignY = AnchorY.Center)
     {
         var now = DateTimeOffset.UtcNow;
         return new ImageCopy
@@ -27,7 +25,6 @@ public sealed class PlacementGeometryTests
             AssetId = Guid.NewGuid(),
             Transform = new ImageTransform(rotation, FlipX: false, FlipY: false),
             ScalingMode = mode,
-            TrimmingAnchor = new TrimmingAnchor(trimX, trimY),
             Alignment = new Alignment(alignX, alignY),
             OccupySize = occupy ?? OccupySize.OneByOne,
             CreatedAt = now,
@@ -474,7 +471,7 @@ public sealed class PlacementGeometryTests
     public void ComputeRenderedRect_None_SmallerThanCell_CenteredSmallRect()
     {
         var canvas = new PixelSize(600, 600);
-        var copy = MakeCopy(ScalingMode.None); // None は TrimmingAnchor で位置決め (Center)
+        var copy = MakeCopy(ScalingMode.None); // Alignment デフォルト (Center, Center)
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
             position: new CellPosition(1, 1),

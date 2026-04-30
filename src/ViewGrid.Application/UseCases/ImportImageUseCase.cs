@@ -126,7 +126,6 @@ public sealed partial class ImportImageUseCase(
             CopyName = null,
             Transform = ImageTransform.Identity,
             ScalingMode = ScalingMode.UniformContain,
-            TrimmingAnchor = TrimmingAnchor.Center,
             Alignment = Alignment.Center,
             OccupySize = OccupySize.OneByOne,
             CreatedAt = now,

@@ -97,7 +97,6 @@ public sealed class ViewGridDbContextTests : IAsyncLifetime
             CopyName = "rotated-90",
             Transform = new ImageTransform(Rotation.Cw90, true, false),
             ScalingMode = ScalingMode.UniformContainShrinkOnly,
-            TrimmingAnchor = TrimmingAnchor.TopCenter,
             Alignment = new Alignment(AnchorX.Right, AnchorY.Bottom),
             OccupySize = new OccupySize(2, 1),
             CreatedAt = now,
@@ -111,7 +110,6 @@ public sealed class ViewGridDbContextTests : IAsyncLifetime
         reloaded!.Transform.Rotation.Should().Be(Rotation.Cw90);
         reloaded.Transform.FlipX.Should().BeTrue();
         reloaded.ScalingMode.Should().Be(ScalingMode.UniformContainShrinkOnly);
-        reloaded.TrimmingAnchor.Should().Be(TrimmingAnchor.TopCenter);
         reloaded.Alignment.X.Should().Be(AnchorX.Right);
         reloaded.Alignment.Y.Should().Be(AnchorY.Bottom);
         reloaded.OccupySize.Width.Should().Be(2);
@@ -178,7 +176,6 @@ public sealed class ViewGridDbContextTests : IAsyncLifetime
         AssetId = assetId,
         Transform = ImageTransform.Identity,
         ScalingMode = ScalingMode.UniformContain,
-        TrimmingAnchor = TrimmingAnchor.Center,
         Alignment = Alignment.Center,
         OccupySize = OccupySize.OneByOne,
         CreatedAt = DateTimeOffset.UtcNow,

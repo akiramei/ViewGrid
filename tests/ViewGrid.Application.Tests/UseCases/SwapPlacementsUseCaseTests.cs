@@ -145,7 +145,6 @@ public sealed class SwapPlacementsUseCaseTests : IAsyncLifetime
             CopyName = copyName,
             Transform = ImageTransform.Identity,
             ScalingMode = ScalingMode.UniformContain,
-            TrimmingAnchor = TrimmingAnchor.Center,
             Alignment = Alignment.Center,
             OccupySize = size,
             CreatedAt = now,

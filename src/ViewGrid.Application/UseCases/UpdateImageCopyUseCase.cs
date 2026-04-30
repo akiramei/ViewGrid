@@ -36,7 +36,6 @@ public sealed class UpdateImageCopyUseCase(IImageCopyRepository copyRepository)
             CopyName = updatedCopyName,
             Transform = changes.Transform ?? current.Transform,
             ScalingMode = changes.ScalingMode ?? current.ScalingMode,
-            TrimmingAnchor = changes.TrimmingAnchor ?? current.TrimmingAnchor,
             Alignment = changes.Alignment ?? current.Alignment,
             OccupySize = changes.OccupySize ?? current.OccupySize,
             CreatedAt = current.CreatedAt,
@@ -65,7 +64,6 @@ public sealed record UpdateImageCopyChanges
 
     public ImageTransform? Transform { get; init; }
     public ScalingMode? ScalingMode { get; init; }
-    public TrimmingAnchor? TrimmingAnchor { get; init; }
     public Alignment? Alignment { get; init; }
     public OccupySize? OccupySize { get; init; }
 }

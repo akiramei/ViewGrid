@@ -31,7 +31,6 @@ public sealed class CreateLogicalCopyUseCaseTests : IAsyncLifetime
         copy.AssetId.Should().Be(asset.Id);
         copy.Transform.Should().Be(ImageTransform.Identity);
         copy.ScalingMode.Should().Be(ScalingMode.UniformContain);
-        copy.TrimmingAnchor.Should().Be(TrimmingAnchor.Center);
         copy.Alignment.Should().Be(Alignment.Center);
         copy.OccupySize.Should().Be(OccupySize.OneByOne);
         copy.CopyName.Should().BeNull();

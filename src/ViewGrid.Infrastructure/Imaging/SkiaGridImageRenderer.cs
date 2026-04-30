@@ -455,16 +455,14 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             _ => 1.0,
         };
 
-        // ScalingMode.None は位置決めも TrimmingAnchor を使う（はみ出し軸の挙動と統一して
-        // 「収まる軸でも TrimmingAnchor で寄せる」ようにする）。それ以外は Alignment。
-        var useTrimForPosition = copy.ScalingMode == ScalingMode.None;
-        var positionAnchorX = useTrimForPosition ? ToAnchor1D(copy.TrimmingAnchor.X) : ToAnchor1D(copy.Alignment.X);
-        var positionAnchorY = useTrimForPosition ? ToAnchor1D(copy.TrimmingAnchor.Y) : ToAnchor1D(copy.Alignment.Y);
-        var trimAnchorX = ToAnchor1D(copy.TrimmingAnchor.X);
-        var trimAnchorY = ToAnchor1D(copy.TrimmingAnchor.Y);
+        // 位置決め（画像 ≤ セル）とトリミング（画像 > セル）を単一の Alignment アンカーで表現。
+        // CSS background-position 等の業界標準に倣う。旧版は TrimmingAnchor / Alignment の
+        // 2 アンカー設計だったが、概念的に同じものを 2 つ持つだけだったため統合した。
+        var anchorX = ToAnchor1D(copy.Alignment.X);
+        var anchorY = ToAnchor1D(copy.Alignment.Y);
 
-        var (srcX, srcW, dstX, dstW) = ComputeAxis(sw, dest.X, dest.Width, scale, positionAnchorX, trimAnchorX);
-        var (srcY, srcH, dstY, dstH) = ComputeAxis(sh, dest.Y, dest.Height, scale, positionAnchorY, trimAnchorY);
+        var (srcX, srcW, dstX, dstW) = ComputeAxis(sw, dest.X, dest.Width, scale, anchorX);
+        var (srcY, srcH, dstY, dstH) = ComputeAxis(sh, dest.Y, dest.Height, scale, anchorY);
 
         return (
             SKRect.Create((float)srcX, (float)srcY, (float)srcW, (float)srcH),
@@ -492,14 +490,14 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         double dstStart,
         double dstSize,
         double scale,
-        Anchor1D positionAnchor,
-        Anchor1D trimAnchor)
+        Anchor1D anchor)
     {
         var drawSize = srcSize * scale;
         if (drawSize <= dstSize)
         {
+            // 画像 ≤ セル: anchor で「セル内のどこに置くか」を決める
             var pad = dstSize - drawSize;
-            var dstOffset = positionAnchor switch
+            var dstOffset = anchor switch
             {
                 Anchor1D.Start => 0.0,
                 Anchor1D.End => pad,
@@ -517,9 +515,10 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         }
         else
         {
+            // 画像 > セル: 同じ anchor で「ソースのどの部分を見せるか」を決める
             var visibleSrc = dstSize / scale;
             var pad = srcSize - visibleSrc;
-            var srcOffset = trimAnchor switch
+            var srcOffset = anchor switch
             {
                 Anchor1D.Start => 0.0,
                 Anchor1D.End => pad,

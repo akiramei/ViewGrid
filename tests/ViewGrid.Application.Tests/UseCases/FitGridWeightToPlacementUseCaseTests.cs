@@ -234,7 +234,6 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
             AssetId = asset.Id,
             Transform = ImageTransform.Identity,
             ScalingMode = scalingMode,
-            TrimmingAnchor = TrimmingAnchor.Center,
             Alignment = Alignment.Center,
             OccupySize = OccupySize.OneByOne,
             CreatedAt = now,

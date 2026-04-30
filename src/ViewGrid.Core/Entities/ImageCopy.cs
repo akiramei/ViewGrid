@@ -17,7 +17,12 @@ public sealed class ImageCopy
     public required ImageTransform Transform { get; init; }
 
     public required ScalingMode ScalingMode { get; init; }
-    public required TrimmingAnchor TrimmingAnchor { get; init; }
+
+    /// <summary>
+    /// セル内での画像の位置基準点。画像 ≤ セル の軸では「セル内のどこに配置するか」、
+    /// 画像 &gt; セル の軸では「ソースのどの部分を見せるか」を**同じ値**で表現する
+    /// （CSS background-position 等と同じ単一アンカー設計）。
+    /// </summary>
     public required Alignment Alignment { get; init; }
 
     public required OccupySize OccupySize { get; init; }
@@ -25,6 +30,6 @@ public sealed class ImageCopy
     public required DateTimeOffset CreatedAt { get; init; }
     public required DateTimeOffset UpdatedAt { get; set; }
 
-    /// <summary>スケーリング・トリミング・アライメントの集約ビュー。</summary>
-    public ImageCharacteristics Characteristics => new(ScalingMode, TrimmingAnchor, Alignment);
+    /// <summary>スケーリング・アライメントの集約ビュー。</summary>
+    public ImageCharacteristics Characteristics => new(ScalingMode, Alignment);
 }

@@ -32,7 +32,6 @@ public sealed class CreateLogicalCopyUseCase(
             CopyName = copyName,
             Transform = transform ?? ImageTransform.Identity,
             ScalingMode = ScalingMode.UniformContain,
-            TrimmingAnchor = TrimmingAnchor.Center,
             Alignment = Alignment.Center,
             OccupySize = OccupySize.OneByOne,
             CreatedAt = now,

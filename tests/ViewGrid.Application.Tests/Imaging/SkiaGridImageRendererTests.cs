@@ -99,13 +99,14 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Fixed_Scaling_With_Larger_Image_Crops_To_Cell_Using_Trimming_Anchor()
+    public async Task Fixed_Scaling_With_Larger_Image_Crops_To_Cell_Using_Alignment()
     {
-        // 200x200 のソース（左半分赤・右半分青）を 100x100 のセルに Fixed + TopLeft で配置
+        // 200x200 のソース（左半分赤・右半分青）を 100x100 のセルに None + TopLeft で配置
         // → ソースの (0,0)-(100,100) が出力される（=全部赤）。
+        // Alignment 単一アンカーで「画像 > セル」のトリミング側も決まる。
         var imagePath = WriteHalfSplitPng(200, 200, SKColors.Red, SKColors.Blue);
         var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
-        var copy = CreateCopy(scaling: ScalingMode.None, trimming: TrimmingAnchor.TopLeft);
+        var copy = CreateCopy(scaling: ScalingMode.None, alignment: new Alignment(AnchorX.Left, AnchorY.Top));
         var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
 
         var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)]);
@@ -145,7 +146,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         //    可視 src 範囲は中央 50px、出力は dst 全面が画像で埋まる。
         var imagePath = WriteHalfSplitPng(200, 50, SKColors.Red, SKColors.Blue);
         var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
-        var copy = CreateCopy(scaling: ScalingMode.UniformCover, trimming: TrimmingAnchor.Center);
+        var copy = CreateCopy(scaling: ScalingMode.UniformCover, alignment: Alignment.Center);
         var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
 
         var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)]);
@@ -399,7 +400,6 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
 
     private static ImageCopy CreateCopy(
         ScalingMode scaling = ScalingMode.UniformContain,
-        TrimmingAnchor? trimming = null,
         Alignment? alignment = null,
         ImageTransform? transform = null,
         OccupySize? occupy = null) => new()
@@ -408,7 +408,6 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         AssetId = Guid.NewGuid(),
         Transform = transform ?? ImageTransform.Identity,
         ScalingMode = scaling,
-        TrimmingAnchor = trimming ?? TrimmingAnchor.Center,
         Alignment = alignment ?? Alignment.Center,
         OccupySize = occupy ?? OccupySize.OneByOne,
         CreatedAt = DateTimeOffset.UtcNow,

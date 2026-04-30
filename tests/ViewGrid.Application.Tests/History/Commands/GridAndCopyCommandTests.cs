@@ -43,7 +43,6 @@ public sealed class GridAndCopyCommandTests : IAsyncLifetime
             CopyName = "after",
             Transform = new ImageTransform(Rotation.Cw90, FlipX: true, FlipY: false),
             ScalingMode = ScalingMode.UniformCover,
-            TrimmingAnchor = new TrimmingAnchor(AnchorX.Left, AnchorY.Top),
             Alignment = new Alignment(AnchorX.Right, AnchorY.Bottom),
             OccupySize = new OccupySize(2, 1),
         };

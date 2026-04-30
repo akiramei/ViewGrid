@@ -17,15 +17,13 @@ public sealed class ImageCopyTests
             AssetId = Guid.NewGuid(),
             Transform = ImageTransform.Identity,
             ScalingMode = ScalingMode.UniformContainShrinkOnly,
-            TrimmingAnchor = TrimmingAnchor.TopCenter,
-            Alignment = Alignment.Center,
+            Alignment = new Alignment(AnchorX.Center, AnchorY.Top),
             OccupySize = OccupySize.OneByOne,
             CreatedAt = now,
             UpdatedAt = now,
         };
 
         copy.Characteristics.ScalingMode.Should().Be(ScalingMode.UniformContainShrinkOnly);
-        copy.Characteristics.TrimmingAnchor.Should().Be(TrimmingAnchor.TopCenter);
-        copy.Characteristics.Alignment.Should().Be(Alignment.Center);
+        copy.Characteristics.Alignment.Should().Be(new Alignment(AnchorX.Center, AnchorY.Top));
     }
 }

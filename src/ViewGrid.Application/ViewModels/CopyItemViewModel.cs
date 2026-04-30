@@ -33,9 +33,6 @@ public sealed partial class CopyItemViewModel : ObservableObject
     public partial ScalingMode ScalingMode { get; set; }
 
     [ObservableProperty]
-    public partial TrimmingAnchor TrimmingAnchor { get; set; }
-
-    [ObservableProperty]
     public partial Alignment Alignment { get; set; }
 
     [ObservableProperty]
@@ -52,7 +49,6 @@ public sealed partial class CopyItemViewModel : ObservableObject
         FlipX = copy.Transform.FlipX;
         FlipY = copy.Transform.FlipY;
         ScalingMode = copy.ScalingMode;
-        TrimmingAnchor = copy.TrimmingAnchor;
         Alignment = copy.Alignment;
         OccupySize = copy.OccupySize;
     }

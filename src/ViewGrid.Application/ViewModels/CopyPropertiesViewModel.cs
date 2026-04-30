@@ -51,30 +51,22 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     [ObservableProperty] public partial bool FlipX { get; set; }
     [ObservableProperty] public partial bool FlipY { get; set; }
     [ObservableProperty] public partial ScalingMode ScalingMode { get; set; } = ScalingMode.UniformContain;
-    [ObservableProperty] public partial AnchorX TrimAnchorX { get; set; } = AnchorX.Center;
-    [ObservableProperty] public partial AnchorY TrimAnchorY { get; set; } = AnchorY.Center;
     [ObservableProperty] public partial AnchorX AlignX { get; set; } = AnchorX.Center;
     [ObservableProperty] public partial AnchorY AlignY { get; set; } = AnchorY.Center;
     [ObservableProperty] public partial int OccupyWidth { get; set; } = 1;
     [ObservableProperty] public partial int OccupyHeight { get; set; } = 1;
 
     /// <summary>
-    /// <see cref="ScalingMode.None"/> のときだけ <see cref="TrimAnchorX"/> /
-    /// <see cref="TrimAnchorY"/> が renderer に効く。それ以外のモード（Uniform 系・Cover・Fill）では
-    /// 効かないため、UI でも IsEnabled で連動グレーアウトして「いまどっちが効いているか」を可視化する。
+    /// <see cref="AlignX"/> / <see cref="AlignY"/> が renderer に効くか。
+    /// <see cref="ScalingMode.Fill"/> 以外では常に効く（画像 ≤ セルなら配置位置、
+    /// 画像 &gt; セルなら表示部分の選択を、同じ Alignment アンカーで決める）。
+    /// 旧版は TrimmingAnchor を別個に持っていたが、CSS background-position 等の
+    /// 業界標準に倣い 1 アンカーに統合した。
     /// </summary>
-    public bool IsTrimAnchorActive => ScalingMode == ScalingMode.None;
-
-    /// <summary>
-    /// <see cref="ScalingMode.None"/> 以外のときだけ <see cref="AlignX"/> / <see cref="AlignY"/> が
-    /// renderer に効く（None では <see cref="TrimAnchorX"/> / <see cref="TrimAnchorY"/> が効くため
-    /// Alignment は効かない）。<see cref="IsTrimAnchorActive"/> の対称。
-    /// </summary>
-    public bool IsAlignmentActive => ScalingMode != ScalingMode.None;
+    public bool IsAlignmentActive => ScalingMode != ScalingMode.Fill;
 
     partial void OnScalingModeChanged(ScalingMode value)
     {
-        OnPropertyChanged(nameof(IsTrimAnchorActive));
         OnPropertyChanged(nameof(IsAlignmentActive));
     }
 
@@ -126,8 +118,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
                 FlipX = false;
                 FlipY = false;
                 ScalingMode = ScalingMode.UniformContain;
-                TrimAnchorX = AnchorX.Center;
-                TrimAnchorY = AnchorY.Center;
                 AlignX = AnchorX.Center;
                 AlignY = AnchorY.Center;
                 OccupyWidth = 1;
@@ -141,8 +131,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
                 FlipX = source.FlipX;
                 FlipY = source.FlipY;
                 ScalingMode = source.ScalingMode;
-                TrimAnchorX = source.TrimmingAnchor.X;
-                TrimAnchorY = source.TrimmingAnchor.Y;
                 AlignX = source.Alignment.X;
                 AlignY = source.Alignment.Y;
                 OccupyWidth = source.OccupySize.Width;
@@ -171,7 +159,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             ClearCopyName = _source.CopyName is null,
             Transform = new ImageTransform(_source.Rotation, _source.FlipX, _source.FlipY),
             ScalingMode = _source.ScalingMode,
-            TrimmingAnchor = _source.TrimmingAnchor,
             Alignment = _source.Alignment,
             OccupySize = _source.OccupySize,
         };
@@ -185,7 +172,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             ClearCopyName = afterCopyName is null,
             Transform = new ImageTransform(Rotation, FlipX, FlipY),
             ScalingMode = ScalingMode,
-            TrimmingAnchor = new TrimmingAnchor(TrimAnchorX, TrimAnchorY),
             Alignment = new Alignment(AlignX, AlignY),
             OccupySize = BuildOccupySizeOrDefault(),
         };
@@ -210,7 +196,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         _source.FlipX = after.Transform.Value.FlipX;
         _source.FlipY = after.Transform.Value.FlipY;
         _source.ScalingMode = after.ScalingMode!.Value;
-        _source.TrimmingAnchor = after.TrimmingAnchor!.Value;
         _source.Alignment = after.Alignment!.Value;
         _source.OccupySize = after.OccupySize!.Value;
 

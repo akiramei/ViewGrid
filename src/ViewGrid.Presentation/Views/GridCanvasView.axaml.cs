@@ -155,6 +155,14 @@ public partial class GridCanvasView : UserControl
         if (grid is null)
             return;
 
+        // 表示キャンバスのアスペクト比をユーザーの CanvasSize に合わせる。
+        // 最大辺を CanvasFixedSize（= 600 logical）にして等比縮小。
+        // これにより「表示セル比率 = ユーザーセル比率」となり、ScalingMode.None で
+        // bitmap を 1:displayScale で読み込めば PNG 出力と表示が完全に一致する。
+        // 旧実装は 600×600 固定だったため、ユーザーの CanvasSize アスペクトと表示が
+        // 乖離して、原寸固定モードで画像がはみ出してクリップされる現象があった。
+        ApplyCanvasDisplaySize(grid);
+
         // 重み配列があれば各行・列に Star 重みを反映、無ければ均等。
         for (var r = 0; r < grid.Rows; r++)
         {
@@ -300,7 +308,42 @@ public partial class GridCanvasView : UserControl
 
     // ---------- A2: 境界ドラッグで列・行重みを動的調整 ----------
 
-    private const double CanvasFixedSize = 600.0; // axaml の Width/Height 600 に合わせる
+    /// <summary>
+    /// 表示キャンバスの最大辺（logical）。ユーザーの CanvasSize アスペクトを保ったまま、
+    /// max(CanvasWidth, CanvasHeight) がこの値になるよう等比縮小する。
+    /// 旧来の "正方形 600×600 固定" 設計の名残だが、現在は「最大辺」の意味。
+    /// </summary>
+    private const double CanvasFixedSize = 600.0;
+
+    /// <summary>
+    /// ユーザーの CanvasSize に対する表示キャンバスのスケール係数。
+    /// 例: CanvasSize=640×800 なら displayScale = 600/800 = 0.75。
+    /// 表示キャンバス logical サイズ = (CanvasWidth × scale, CanvasHeight × scale)。
+    /// </summary>
+    private static double ComputeDisplayScale(GridCanvasItemViewModel grid)
+    {
+        var maxEdge = Math.Max(grid.CanvasWidth, grid.CanvasHeight);
+        return maxEdge > 0 ? CanvasFixedSize / maxEdge : 1.0;
+    }
+
+    /// <summary>
+    /// <see cref="OuterCanvasGrid"/> と <see cref="CanvasContainer"/> のサイズを、
+    /// ユーザーの CanvasSize アスペクトに合わせて設定する（max edge=<see cref="CanvasFixedSize"/>）。
+    /// 表示セルのアスペクトがユーザーセルのアスペクトと一致するため、
+    /// PNG 出力と表示の比率が完全に揃う。Rebuild() の冒頭で呼ぶ。
+    /// </summary>
+    private void ApplyCanvasDisplaySize(GridCanvasItemViewModel grid)
+    {
+        var scale = ComputeDisplayScale(grid);
+        var canvasW = grid.CanvasWidth * scale;
+        var canvasH = grid.CanvasHeight * scale;
+        const double headerSize = 24.0;
+
+        CanvasContainer.Width = canvasW;
+        CanvasContainer.Height = canvasH;
+        OuterCanvasGrid.Width = canvasW + headerSize;
+        OuterCanvasGrid.Height = canvasH + headerSize;
+    }
     private const double HandleHitWidth = 12.0;   // ドラッグハンドルの掴み幅（px）。視認性も兼ねて広めに。
 
     private GridCanvasItemViewModel? _draggingGrid;
@@ -541,7 +584,12 @@ public partial class GridCanvasView : UserControl
 
         if (Math.Abs(deltaPx) < 1.0) return;
 
-        var newWeights = WeightRedistributor.Redistribute(startWeights, idx, deltaPx, CanvasFixedSize);
+        // 表示キャンバスはユーザーの CanvasSize アスペクトに合わせてあるため、
+        // 軸ごとの logical サイズを Bounds から取得する（旧実装は CanvasFixedSize 固定で
+        // 非正方形キャンバスでは比率がズレていた）。
+        var axisLogicalSize = isCol ? CanvasGrid.Bounds.Width : CanvasGrid.Bounds.Height;
+        if (axisLogicalSize <= 0) axisLogicalSize = CanvasFixedSize;
+        var newWeights = WeightRedistributor.Redistribute(startWeights, idx, deltaPx, axisLogicalSize);
         if (newWeights.SequenceEqual(startWeights)) return;
 
         if (_vm is null) return;
@@ -612,34 +660,17 @@ public partial class GridCanvasView : UserControl
                 // 回転・反転は事前に Bitmap に焼き込む（renderer の ApplyTransform と同じ順序）。
                 // これにより Avalonia の Stretch が「回転後のアスペクト比」で計算され、
                 // PNG 出力（ピクセル合成）と UI 近似の見た目が一致する。
-                // ScalingMode.None だけは「サムネを元画像寸法に拡大した Bitmap」を使う。
-                // Source.PixelSize が元画像寸法と一致することで Stretch.None 表示が
-                // Renderer の挙動（画像 > セルならクリップ）と整合する。
-                Bitmap bitmap;
+                // すべての ScalingMode で thumbnail-bound bitmap（max 1024px）を使う。
+                // ScalingMode.None については explicit Width/Height + Stretch.Uniform で
+                // 視覚サイズを source × displayScale DIPs に固定する（後述）。
                 var grid = _vm?.CurrentGrid;
-                if (placement.ScalingMode == ViewGrid.Core.Entities.ScalingMode.None
-                    && placement.SourceWidth > 0 && placement.SourceHeight > 0
-                    && grid is not null)
-                {
-                    var rotateSwap = placement.Rotation
-                        is ViewGrid.Core.Entities.Rotation.Cw90
-                        or ViewGrid.Core.Entities.Rotation.Cw270;
-                    var nw = rotateSwap ? placement.SourceHeight : placement.SourceWidth;
-                    var nh = rotateSwap ? placement.SourceWidth : placement.SourceHeight;
-                    var maxDim = Math.Max(grid.CanvasWidth, grid.CanvasHeight);
-                    bitmap = LoadAndResizeAtNativeSize(
-                        placement.ThumbnailPath, placement.Rotation,
-                        placement.FlipX, placement.FlipY, nw, nh, maxDim);
-                }
-                else
-                {
-                    bitmap = LoadAndPreRotateBitmap(
-                        placement.ThumbnailPath, placement.Rotation, placement.FlipX, placement.FlipY);
-                }
+                Bitmap bitmap = LoadAndPreRotateBitmap(
+                    placement.ThumbnailPath, placement.Rotation, placement.FlipX, placement.FlipY);
+
                 var (stretch, direction) = MapScalingMode(placement.ScalingMode);
-                var (hAlign, vAlign) = stretch == Stretch.None
-                    ? MapTrimmingAnchorToAlignment(placement.TrimmingAnchor)
-                    : MapAlignment(placement.Alignment);
+                // 全 ScalingMode で Alignment を使う（旧版は ScalingMode.None で TrimmingAnchor、
+                // それ以外で Alignment という分岐があったが、TrimmingAnchor は Alignment に統合された）。
+                var (hAlign, vAlign) = MapAlignment(placement.Alignment);
 
                 var image = new Image
                 {
@@ -658,6 +689,33 @@ public partial class GridCanvasView : UserControl
                     MinWidth = 0,
                     MinHeight = 0,
                 };
+
+                // ScalingMode.None: 視覚サイズを「source × displayScale DIPs」に明示固定する。
+                // bitmap 自体は thumbnail bound（max 1024px）のままで、Stretch.Uniform が
+                // explicit Width/Height へリサンプリングする。これにより:
+                //   - メモリは thumbnail サイズで bound（巨大ソースでも ~4MB 上限）
+                //   - 視覚サイズは source × displayScale で PNG 出力と一致（WYSIWYG 維持）
+                //   - 画像 > セルなら HorizontalAlignment/VerticalAlignment（TrimmingAnchor 由来）
+                //     によって ClipToBounds でセル境界クリップされる挙動も維持
+                // 旧実装は LoadAndResizeAtNativeSize で bitmap pixel size を可変にしていたが、
+                // (1) 巨大ソースで ~108MB 確保（メモリ退行）、(2) cap=600 で WYSIWYG 破綻、
+                // の二律背反だった。explicit W/H + thumbnail bitmap でこの問題を解消する。
+                // プレビュー品質は thumbnail 解像度に依存するため、ソースが thumbnail 上限
+                // (1024px) を超える場合は upscale で若干ぼやけるが、PNG 出力には影響しない。
+                if (placement.ScalingMode == ViewGrid.Core.Entities.ScalingMode.None
+                    && placement.SourceWidth > 0 && placement.SourceHeight > 0
+                    && grid is not null)
+                {
+                    var rotateSwap = placement.Rotation
+                        is ViewGrid.Core.Entities.Rotation.Cw90
+                        or ViewGrid.Core.Entities.Rotation.Cw270;
+                    var sourceW = rotateSwap ? placement.SourceHeight : placement.SourceWidth;
+                    var sourceH = rotateSwap ? placement.SourceWidth : placement.SourceHeight;
+                    var displayScale = ComputeDisplayScale(grid);
+                    image.Stretch = Stretch.Uniform; // explicit W/H へ uniform リサンプリング
+                    image.Width = Math.Max(1.0, sourceW * displayScale);
+                    image.Height = Math.Max(1.0, sourceH * displayScale);
+                }
                 content = image;
             }
             catch
@@ -736,23 +794,6 @@ public partial class GridCanvasView : UserControl
         return (h, v);
     }
 
-    private static (HorizontalAlignment H, VerticalAlignment V) MapTrimmingAnchorToAlignment(
-        ViewGrid.Core.Entities.TrimmingAnchor anchor)
-    {
-        var h = anchor.X switch
-        {
-            ViewGrid.Core.Entities.AnchorX.Left => HorizontalAlignment.Left,
-            ViewGrid.Core.Entities.AnchorX.Right => HorizontalAlignment.Right,
-            _ => HorizontalAlignment.Center,
-        };
-        var v = anchor.Y switch
-        {
-            ViewGrid.Core.Entities.AnchorY.Top => VerticalAlignment.Top,
-            ViewGrid.Core.Entities.AnchorY.Bottom => VerticalAlignment.Bottom,
-            _ => VerticalAlignment.Center,
-        };
-        return (h, v);
-    }
 
     /// <summary>
     /// 配置に適用する RenderTransform。回転・反転は <see cref="LoadAndPreRotateBitmap"/> で
@@ -780,47 +821,6 @@ public partial class GridCanvasView : UserControl
         using var skBitmap = SKBitmap.Decode(thumbnailPath);
         using var transformed = ApplySkiaTransform(skBitmap, rotation, flipX, flipY);
         using var skImage = SKImage.FromBitmap(transformed);
-        using var encoded = skImage.Encode(SKEncodedImageFormat.Png, 100);
-        using var ms = new MemoryStream(encoded.ToArray());
-        return new Bitmap(ms);
-    }
-
-    /// <summary>
-    /// ScalingMode.None 用: サムネを「元画像と同じピクセル寸法（または最大寸法に丸めたサイズ）」の
-    /// Bitmap として返す。これにより View の <see cref="Stretch.None"/> 表示が
-    /// Renderer の元画像基準と一致し、画像 &gt; セルのケースでセル全体を埋めてクリップされる挙動になる。
-    /// メモリ消費を抑えるため、<paramref name="maxDim"/> を超える寸法は等比で縮小する。
-    /// </summary>
-    private static Bitmap LoadAndResizeAtNativeSize(
-        string thumbnailPath, ViewGrid.Core.Entities.Rotation rotation, bool flipX, bool flipY,
-        int nativeWidth, int nativeHeight, int maxDim)
-    {
-        // 上限クランプ（アスペクト維持）
-        var maxNative = Math.Max(nativeWidth, nativeHeight);
-        if (maxDim > 0 && maxNative > maxDim)
-        {
-            var ratio = (double)maxDim / maxNative;
-            nativeWidth = Math.Max(1, (int)Math.Round(nativeWidth * ratio));
-            nativeHeight = Math.Max(1, (int)Math.Round(nativeHeight * ratio));
-        }
-
-        using var skBitmap = SKBitmap.Decode(thumbnailPath);
-        using var transformed = ApplySkiaTransform(skBitmap, rotation, flipX, flipY);
-
-        using var resized = new SKBitmap(
-            nativeWidth, nativeHeight, transformed.ColorType, transformed.AlphaType);
-        using (var canvas = new SKCanvas(resized))
-        using (var sourceImage = SKImage.FromBitmap(transformed))
-        {
-            canvas.Clear(SKColors.Transparent);
-            var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear);
-            canvas.DrawImage(sourceImage,
-                SKRect.Create(0, 0, transformed.Width, transformed.Height),
-                SKRect.Create(0, 0, nativeWidth, nativeHeight),
-                sampling);
-        }
-
-        using var skImage = SKImage.FromBitmap(resized);
         using var encoded = skImage.Encode(SKEncodedImageFormat.Png, 100);
         using var ms = new MemoryStream(encoded.ToArray());
         return new Bitmap(ms);
@@ -987,10 +987,13 @@ public partial class GridCanvasView : UserControl
         var dx = current.X - _pixelOffsetStart.X;
         var dy = current.Y - _pixelOffsetStart.Y;
 
-        // 論理 600×600 上の delta を「キャンバス CanvasWidth×CanvasHeight」上の
-        // ピクセル量に換算（見たまま動くスケール）。
-        var sx = grid.CanvasWidth / CanvasFixedSize;
-        var sy = grid.CanvasHeight / CanvasFixedSize;
+        // 表示 logical 上の delta を「ユーザー CanvasWidth×CanvasHeight」上の
+        // ピクセル量に換算（見たまま動くスケール）。表示キャンバスはユーザーの CanvasSize
+        // アスペクトに合わせてあるため（max edge=CanvasFixedSize）、軸ごとの Bounds で割る。
+        var displayW = CanvasGrid.Bounds.Width > 0 ? CanvasGrid.Bounds.Width : CanvasFixedSize;
+        var displayH = CanvasGrid.Bounds.Height > 0 ? CanvasGrid.Bounds.Height : CanvasFixedSize;
+        var sx = grid.CanvasWidth / displayW;
+        var sy = grid.CanvasHeight / displayH;
         var max = PlacementInspectorViewModel.MaxPixelOffset;
         var newX = Math.Clamp(_pixelOffsetStartX + (int)Math.Round(dx * sx), -max, max);
         var newY = Math.Clamp(_pixelOffsetStartY + (int)Math.Round(dy * sy), -max, max);

@@ -89,22 +89,11 @@
                         </ComboBox>
                     </StackPanel>
 
-                    <!-- ScalingMode=None のときのみ TrimmingAnchor が renderer に効く -->
-                    <StackPanel Classes="FormSection" IsEnabled="{Binding IsTrimAnchorActive}">
-                        <TextBlock Classes="FieldLabel" Text="トリミング基準" />
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                            <ComboBox Grid.Column="0"
-                                      ItemsSource="{Binding AnchorXOptions}"
-                                      SelectedItem="{Binding TrimAnchorX}"
-                                      HorizontalAlignment="Stretch" />
-                            <ComboBox Grid.Column="1"
-                                      ItemsSource="{Binding AnchorYOptions}"
-                                      SelectedItem="{Binding TrimAnchorY}"
-                                      HorizontalAlignment="Stretch" />
-                        </Grid>
-                    </StackPanel>
-
-                    <!-- ScalingMode!=None のときのみ Alignment が renderer に効く -->
+                    <!--
+                        Alignment: 単一アンカーで「画像 ≤ セル での配置位置」と
+                        「画像 > セル での表示部分」を両方表現する（CSS background-position と同じ）。
+                        Fill モードでは画像がセルにピッタリ伸縮されるため Alignment は効かない。
+                    -->
                     <StackPanel Classes="FormSection" IsEnabled="{Binding IsAlignmentActive}">
                         <TextBlock Classes="FieldLabel" Text="アライメント" />
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">

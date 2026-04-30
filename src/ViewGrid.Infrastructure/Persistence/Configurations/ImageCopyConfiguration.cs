@@ -31,12 +31,6 @@ internal sealed class ImageCopyConfiguration : IEntityTypeConfiguration<ImageCop
             .HasColumnName("scaling_mode")
             .IsRequired();
 
-        builder.ComplexProperty(x => x.TrimmingAnchor, ta =>
-        {
-            ta.Property(p => p.X).HasConversion<string>().HasMaxLength(8).HasColumnName("trim_anchor_x").IsRequired();
-            ta.Property(p => p.Y).HasConversion<string>().HasMaxLength(8).HasColumnName("trim_anchor_y").IsRequired();
-        });
-
         builder.ComplexProperty(x => x.Alignment, al =>
         {
             al.Property(p => p.X).HasConversion<string>().HasMaxLength(8).HasColumnName("align_x").IsRequired();

@@ -8,7 +8,7 @@ using ViewGrid.Core.Entities;
 namespace ViewGrid.Application.History.Commands;
 
 /// <summary>
-/// 論理コピーの特性（Rotation/Flip/Scaling/Trim/Align/Occupy/Name）編集の Undo/Redo ラッパ。
+/// 論理コピーの特性（Rotation/Flip/Scaling/Align/Occupy/Name）編集の Undo/Redo ラッパ。
 /// before / after の <see cref="UpdateImageCopyChanges"/>（全フィールドを明示的に保持）を
 /// 構築時に受け取り、両方向に <see cref="UpdateImageCopyUseCase"/> を呼ぶ。
 /// 共有コピーなので <see cref="AffectedGridId"/> は <c>null</c>（特定のグリッドに紐付かない）。
@@ -67,7 +67,6 @@ public sealed class UpdateImageCopyCommand : IUndoableCommand
             ClearCopyName = source.CopyName is null,
             Transform = source.Transform,
             ScalingMode = source.ScalingMode,
-            TrimmingAnchor = source.TrimmingAnchor,
             Alignment = source.Alignment,
             OccupySize = source.OccupySize,
         };

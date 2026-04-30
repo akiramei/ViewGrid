@@ -40,30 +40,34 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ScalingMode_None_Activates_TrimAnchor_And_Deactivates_Alignment()
+    public async Task ScalingMode_Other_Than_Fill_Activates_Alignment()
     {
-        // ScalingMode.None ではトリミング基準が renderer に効き、Alignment は効かない。
-        // UI 側で IsEnabled に Bind してグレーアウト切替する。
+        // 旧版は ScalingMode.None で TrimmingAnchor、それ以外で Alignment という
+        // 排他制御だったが、TrimmingAnchor は Alignment に統合されたため
+        // None / Uniform 系 / Cover では常に Alignment が有効。Fill のみ無効。
         var source = await SeedSourceAsync();
         _vm.Attach(source);
 
         _vm.ScalingMode = ScalingMode.None;
+        _vm.IsAlignmentActive.Should().BeTrue();
 
-        _vm.IsTrimAnchorActive.Should().BeTrue();
-        _vm.IsAlignmentActive.Should().BeFalse();
+        _vm.ScalingMode = ScalingMode.UniformCover;
+        _vm.IsAlignmentActive.Should().BeTrue();
+
+        _vm.ScalingMode = ScalingMode.UniformContain;
+        _vm.IsAlignmentActive.Should().BeTrue();
     }
 
     [Fact]
-    public async Task ScalingMode_NonNone_Activates_Alignment_And_Deactivates_TrimAnchor()
+    public async Task ScalingMode_Fill_Deactivates_Alignment()
     {
-        // ScalingMode.None 以外（Uniform 系・Cover・Fill）では Alignment が renderer に効く。
+        // Fill はセルにピッタリ伸縮されるため Alignment が効かない。
         var source = await SeedSourceAsync();
         _vm.Attach(source);
 
-        _vm.ScalingMode = ScalingMode.UniformCover;
+        _vm.ScalingMode = ScalingMode.Fill;
 
-        _vm.IsTrimAnchorActive.Should().BeFalse();
-        _vm.IsAlignmentActive.Should().BeTrue();
+        _vm.IsAlignmentActive.Should().BeFalse();
     }
 
     [Fact]

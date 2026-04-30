@@ -229,12 +229,14 @@ public static class PlacementGeometry
                 _ => 1.0,
             };
 
-            var useTrimForPosition = copy.ScalingMode == ScalingMode.None;
-            var posAnchorX = useTrimForPosition ? ToAnchor1D(copy.TrimmingAnchor.X) : ToAnchor1D(copy.Alignment.X);
-            var posAnchorY = useTrimForPosition ? ToAnchor1D(copy.TrimmingAnchor.Y) : ToAnchor1D(copy.Alignment.Y);
+            // 位置決め・トリミングを単一の Alignment アンカーで表現する
+            // （CSS background-position と同じ意味論。画像 ≤ セルなら配置位置、
+            //  画像 > セルならソースの可視範囲を同じアンカーで決める）。
+            var anchorX = ToAnchor1D(copy.Alignment.X);
+            var anchorY = ToAnchor1D(copy.Alignment.Y);
 
-            (dstX, dstW) = ComputeAxisDst(sw, destX, destW, scale, posAnchorX);
-            (dstY, dstH) = ComputeAxisDst(sh, destY, destH, scale, posAnchorY);
+            (dstX, dstW) = ComputeAxisDst(sw, destX, destW, scale, anchorX);
+            (dstY, dstH) = ComputeAxisDst(sh, destY, destH, scale, anchorY);
         }
 
         // セル境界でクリップ

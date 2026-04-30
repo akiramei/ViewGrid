@@ -42,9 +42,6 @@ public sealed partial class PlacementItemViewModel : ObservableObject
     public partial ScalingMode ScalingMode { get; set; }
 
     [ObservableProperty]
-    public partial TrimmingAnchor TrimmingAnchor { get; set; }
-
-    [ObservableProperty]
     public partial Alignment Alignment { get; set; }
 
     [ObservableProperty]
@@ -84,7 +81,6 @@ public sealed partial class PlacementItemViewModel : ObservableObject
         FlipX = copy.Transform.FlipX;
         FlipY = copy.Transform.FlipY;
         ScalingMode = copy.ScalingMode;
-        TrimmingAnchor = copy.TrimmingAnchor;
         Alignment = copy.Alignment;
         ThumbnailPath = thumbnailPath;
         SourceWidth = asset.Size.Width;
@@ -103,7 +99,6 @@ public sealed partial class PlacementItemViewModel : ObservableObject
         FlipX = copy.Transform.FlipX;
         FlipY = copy.Transform.FlipY;
         ScalingMode = copy.ScalingMode;
-        TrimmingAnchor = copy.TrimmingAnchor;
         Alignment = copy.Alignment;
     }
 }

@@ -122,7 +122,6 @@ internal sealed class UseCaseFixture : IAsyncDisposable
             CopyName = copyName,
             Transform = ImageTransform.Identity,
             ScalingMode = ScalingMode.UniformContain,
-            TrimmingAnchor = TrimmingAnchor.Center,
             Alignment = Alignment.Center,
             OccupySize = OccupySize.OneByOne,
             CreatedAt = now,
