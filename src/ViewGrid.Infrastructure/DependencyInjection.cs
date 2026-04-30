@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddSingleton<IThumbnailService, SkiaThumbnailService>();
         services.AddSingleton<AutoCropCache>();
         services.AddSingleton<IAutoCropBboxResolver, SkiaAutoCropBboxResolver>();
+        services.AddSingleton<IImageColorPicker, SkiaImageColorPicker>();
         services.AddSingleton<IGridImageRenderer, SkiaGridImageRenderer>();
 
         return services;

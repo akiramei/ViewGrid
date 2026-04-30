@@ -24,7 +24,7 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         _messenger = new WeakReferenceMessenger();
         var history = new UndoRedoService();
         _vm = new CopyPropertiesViewModel(
-            update, history, _messenger,
+            update, history, _messenger, _fx.ColorPicker,
             NullLogger<CopyPropertiesViewModel>.Instance);
     }
 
@@ -178,5 +178,63 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         var asset = await _fx.SeedAssetAsync();
         var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "seed");
         return new CopyItemViewModel(copy);
+    }
+
+    [Theory]
+    [InlineData("#FFFFFF", 0xFFFFFFFFu)]
+    [InlineData("#000000", 0xFF000000u)]
+    [InlineData("FF8800", 0xFFFF8800u)] // # 省略
+    [InlineData("#80FF8800", 0x80FF8800u)] // ARGB
+    [InlineData("invalid", 0xFFFFFFFFu)] // 不正値 → 既定（白）
+    [InlineData("", 0xFFFFFFFFu)] // 空 → 既定
+    [InlineData(null, 0xFFFFFFFFu)] // null → 既定
+    public void ParseHexColorOrDefault_Returns_Expected_Argb(string? hex, uint expected)
+    {
+        var argb = CopyPropertiesViewModel.ParseHexColorOrDefault(hex);
+        argb.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task PickColorFromThumbnailAsync_Switches_To_Custom_And_Updates_Hex()
+    {
+        // SeedAssetAsync が生成する PNG は cornflower blue (#6495ED) でフィルされる
+        // (TestImageFactory.CreatePng の既定色)。任意位置をクリックすればその色が拾える。
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var thumbPath = _fx.Storage.ResolveAbsolutePath(asset.StoredRelativePath);
+        var source = new CopyItemViewModel(copy, thumbPath);
+
+        _vm.Attach(source);
+        _vm.AutoCropEnabled = true;
+
+        await _vm.PickColorFromThumbnailAsync(50, 50);
+
+        _vm.AutoCropPreset.Should().Be(AutoCropPreset.Custom);
+        _vm.AutoCropCustomColorHex.Should().Be("#6495ED");
+        _vm.IsAutoCropCustom.Should().BeTrue();
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Custom_AutoCrop_Round_Trip_Through_Save_And_Attach()
+    {
+        // Custom + 任意 HEX で Save → 再 Attach → Custom 復元 + HEX 復元
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+
+        _vm.AutoCropEnabled = true;
+        _vm.AutoCropPreset = AutoCropPreset.Custom;
+        _vm.AutoCropCustomColorHex = "#123456";
+        _vm.AutoCropThreshold = 16;
+        await _vm.SaveAsync();
+
+        // 別 Attach で初期化 → 元の source に再 Attach
+        _vm.Attach(null);
+        _vm.Attach(source);
+
+        _vm.AutoCropEnabled.Should().BeTrue();
+        _vm.AutoCropPreset.Should().Be(AutoCropPreset.Custom);
+        _vm.AutoCropCustomColorHex.Should().Be("#123456");
+        _vm.AutoCropThreshold.Should().Be(16);
     }
 }

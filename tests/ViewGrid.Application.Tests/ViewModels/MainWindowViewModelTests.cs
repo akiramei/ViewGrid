@@ -54,13 +54,15 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         // CopyListViewModel
         var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
         _copyList = new CopyListViewModel(
-            _fx.CopyRepository, createCopy, _messenger, sharedHistory,
+            _fx.CopyRepository, _fx.AssetRepository, _fx.Thumbnails,
+            createCopy, _messenger, sharedHistory,
             NullLogger<CopyListViewModel>.Instance);
 
         // CopyPropertiesViewModel
         var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository);
         _copyProperties = new CopyPropertiesViewModel(
-            updateCopy, sharedHistory, _messenger, NullLogger<CopyPropertiesViewModel>.Instance);
+            updateCopy, sharedHistory, _messenger, _fx.ColorPicker,
+            NullLogger<CopyPropertiesViewModel>.Instance);
 
         // GridCanvasListViewModel
         var createGrid = new CreateGridCanvasUseCase(_fx.GridRepository);

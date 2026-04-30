@@ -12,6 +12,12 @@ public sealed partial class CopyItemViewModel : ObservableObject
     public Guid CopyId { get; }
     public Guid AssetId { get; }
 
+    /// <summary>
+    /// アセットのサムネ絶対パス（無ければ <c>null</c>）。AutoCrop の画像クリックピッカー
+    /// が「サムネ上をクリックして色を採取」する UI で使う。
+    /// </summary>
+    public string? ThumbnailPath { get; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayName))]
     [NotifyPropertyChangedFor(nameof(SummaryLine))]
@@ -43,7 +49,7 @@ public sealed partial class CopyItemViewModel : ObservableObject
     [ObservableProperty]
     public partial AutoCropSettings? AutoCrop { get; set; }
 
-    public CopyItemViewModel(ImageCopy copy)
+    public CopyItemViewModel(ImageCopy copy, string? thumbnailPath = null)
     {
         ArgumentNullException.ThrowIfNull(copy);
         CopyId = copy.Id;
@@ -56,6 +62,7 @@ public sealed partial class CopyItemViewModel : ObservableObject
         Alignment = copy.Alignment;
         OccupySize = copy.OccupySize;
         AutoCrop = copy.AutoCrop;
+        ThumbnailPath = thumbnailPath;
     }
 
     public string DisplayName =>

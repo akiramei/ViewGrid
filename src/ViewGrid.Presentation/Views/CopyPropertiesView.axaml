@@ -11,6 +11,7 @@
     <UserControl.Resources>
         <conv:ScalingModeLabelConverter x:Key="ScalingModeLabel" />
         <conv:AutoCropPresetLabelConverter x:Key="AutoCropPresetLabel" />
+        <conv:FilePathToBitmapConverter x:Key="FilePathToBitmap" />
     </UserControl.Resources>
 
     <Border Padding="12">
@@ -145,6 +146,27 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
+
+                            <!-- カスタム時の HEX 入力（#RRGGBB） + サムネクリックピッカー -->
+                            <StackPanel Spacing="4" IsVisible="{Binding IsAutoCropCustom}">
+                                <TextBlock Classes="FieldLabel" Text="HEX (#RRGGBB)" />
+                                <TextBox Text="{Binding AutoCropCustomColorHex}"
+                                         PlaceholderText="#FFFFFF" />
+                                <TextBlock Classes="HintText"
+                                           Text="サムネ画像をクリックすると色を採取できます。" />
+                                <Border BorderBrush="{DynamicResource SystemBaseLowColor}"
+                                        BorderThickness="1"
+                                        Background="{DynamicResource SystemAltMediumLowColor}"
+                                        IsVisible="{Binding HasThumbnail}">
+                                    <Image x:Name="ColorPickerImage"
+                                           Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
+                                           MaxHeight="160"
+                                           Stretch="Uniform"
+                                           Cursor="Cross"
+                                           PointerPressed="OnColorPickerPointerPressed" />
+                                </Border>
+                            </StackPanel>
+
                             <TextBlock Classes="FieldLabel" Text="許容色差（0–128）" />
                             <NumericUpDown Value="{Binding AutoCropThreshold}"
                                            Minimum="0" Maximum="128"

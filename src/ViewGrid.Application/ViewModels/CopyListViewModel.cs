@@ -12,6 +12,7 @@ using ViewGrid.Application.History;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Interfaces;
+using ViewGrid.Core.Services;
 
 namespace ViewGrid.Application.ViewModels;
 
@@ -22,6 +23,8 @@ namespace ViewGrid.Application.ViewModels;
 public sealed partial class CopyListViewModel : ViewModelBase
 {
     private readonly IImageCopyRepository _copyRepository;
+    private readonly IImageAssetRepository _assetRepository;
+    private readonly IThumbnailService _thumbnailService;
     private readonly CreateLogicalCopyUseCase _createUseCase;
     private readonly IMessenger _messenger;
     private readonly IUndoRedoService _history;
@@ -57,12 +60,16 @@ public sealed partial class CopyListViewModel : ViewModelBase
 
     public CopyListViewModel(
         IImageCopyRepository copyRepository,
+        IImageAssetRepository assetRepository,
+        IThumbnailService thumbnailService,
         CreateLogicalCopyUseCase createUseCase,
         IMessenger messenger,
         IUndoRedoService history,
         ILogger<CopyListViewModel> logger)
     {
         _copyRepository = copyRepository;
+        _assetRepository = assetRepository;
+        _thumbnailService = thumbnailService;
         _createUseCase = createUseCase;
         _messenger = messenger;
         _history = history;
@@ -126,9 +133,12 @@ public sealed partial class CopyListViewModel : ViewModelBase
         try
         {
             IsBusy = true;
+            // AutoCrop の画像クリックピッカー UI で使うサムネパスを事前解決
+            var asset = await _assetRepository.FindByIdAsync(assetId.Value, ct);
+            var thumbnailPath = asset is null ? null : _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
             var copies = await _copyRepository.FindByAssetIdAsync(assetId.Value, ct);
             foreach (var copy in copies)
-                Copies.Add(new CopyItemViewModel(copy));
+                Copies.Add(new CopyItemViewModel(copy, thumbnailPath));
 
             SelectedCopy = Copies.FirstOrDefault();
             LogLoaded(_logger, assetId.Value, copies.Count);
@@ -163,7 +173,9 @@ public sealed partial class CopyListViewModel : ViewModelBase
                 return;
             }
 
-            var item = new CopyItemViewModel(result.Value);
+            var asset = await _assetRepository.FindByIdAsync(_currentAssetId.Value, ct);
+            var thumbnailPath = asset is null ? null : _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
+            var item = new CopyItemViewModel(result.Value, thumbnailPath);
             Copies.Add(item);
             SelectedCopy = item;
             StatusMessage = $"「{item.DisplayName}」を作成しました。";

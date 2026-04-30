@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,6 +13,7 @@ using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
+using ViewGrid.Core.Services;
 
 namespace ViewGrid.Application.ViewModels;
 
@@ -24,6 +26,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     private readonly UpdateImageCopyUseCase _updateUseCase;
     private readonly IUndoRedoService _history;
     private readonly IMessenger _messenger;
+    private readonly IImageColorPicker _colorPicker;
     private readonly ILogger<CopyPropertiesViewModel> _logger;
 
     private CopyItemViewModel? _source;
@@ -60,11 +63,31 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     /// <see cref="AutoCropThreshold"/> は無視され、保存時に AutoCrop=null となる。</summary>
     [ObservableProperty] public partial bool AutoCropEnabled { get; set; }
 
-    /// <summary>対象色プリセット（白/黒/透明）。Phase 1 では <see cref="AutoCropPreset.Custom"/> は未使用。</summary>
-    [ObservableProperty] public partial AutoCropPreset AutoCropPreset { get; set; } = AutoCropPreset.White;
+    /// <summary>対象色プリセット（白/黒/透明/カスタム）。<see cref="AutoCropPreset.Custom"/> 選択時は
+    /// <see cref="AutoCropCustomColorHex"/> の値（または画像クリックピッカーで採取した色）を使う。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAutoCropCustom))]
+    public partial AutoCropPreset AutoCropPreset { get; set; } = AutoCropPreset.White;
 
     /// <summary>許容色差（Chebyshev、0–128）。0 で完全一致のみ余白扱い。</summary>
     [ObservableProperty] public partial int AutoCropThreshold { get; set; } = 8;
+
+    /// <summary>カスタム対象色の HEX 表記（<c>#RRGGBB</c>）。<see cref="AutoCropPreset.Custom"/>
+    /// 選択時のみ <c>BuildAutoCropFromInputs</c> で参照される。
+    /// 画像クリックピッカーで色を採取するとここに反映される。</summary>
+    [ObservableProperty] public partial string AutoCropCustomColorHex { get; set; } = "#FFFFFF";
+
+    /// <summary>サムネイルの絶対パス。Attach 時に <see cref="CopyItemViewModel.ThumbnailPath"/> から
+    /// セットされる。AutoCrop の画像クリックピッカーで使う（null ならピッカー UI は非表示）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasThumbnail))]
+    public partial string? ThumbnailPath { get; set; }
+
+    /// <summary>カスタム HEX / 画像ピッカーを表示するかの派生プロパティ。</summary>
+    public bool IsAutoCropCustom => AutoCropPreset == AutoCropPreset.Custom;
+
+    /// <summary>サムネが利用可能か（画像クリックピッカーの有効性）。</summary>
+    public bool HasThumbnail => !string.IsNullOrEmpty(ThumbnailPath);
 
     /// <summary>
     /// <see cref="AlignX"/> / <see cref="AlignY"/> が renderer に効くか。
@@ -105,17 +128,20 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         AutoCropPreset.White,
         AutoCropPreset.Black,
         AutoCropPreset.Transparent,
+        AutoCropPreset.Custom,
     ];
 
     public CopyPropertiesViewModel(
         UpdateImageCopyUseCase updateUseCase,
         IUndoRedoService history,
         IMessenger messenger,
+        IImageColorPicker colorPicker,
         ILogger<CopyPropertiesViewModel> logger)
     {
         _updateUseCase = updateUseCase;
         _history = history;
         _messenger = messenger;
+        _colorPicker = colorPicker;
         _logger = logger;
         PropertyChanged += OnAnyPropertyChanged;
     }
@@ -142,6 +168,8 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
                 AutoCropEnabled = false;
                 AutoCropPreset = AutoCropPreset.White;
                 AutoCropThreshold = 8;
+                AutoCropCustomColorHex = "#FFFFFF";
+                ThumbnailPath = null;
             }
             else
             {
@@ -155,17 +183,23 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
                 AlignY = source.Alignment.Y;
                 OccupyWidth = source.OccupySize.Width;
                 OccupyHeight = source.OccupySize.Height;
+                ThumbnailPath = source.ThumbnailPath;
                 if (source.AutoCrop is { } ac)
                 {
                     AutoCropEnabled = true;
                     AutoCropPreset = MapToPreset(ac);
                     AutoCropThreshold = ac.Threshold;
+                    // Custom プリセットの場合は HEX 表示も復元
+                    AutoCropCustomColorHex = AutoCropPreset == AutoCropPreset.Custom
+                        ? FormatHex(ac.TargetColorArgb)
+                        : "#FFFFFF";
                 }
                 else
                 {
                     AutoCropEnabled = false;
                     AutoCropPreset = AutoCropPreset.White;
                     AutoCropThreshold = 8;
+                    AutoCropCustomColorHex = "#FFFFFF";
                 }
             }
             IsDirty = false;
@@ -270,9 +304,8 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 編集バッファ（プリセット + 閾値）から <see cref="AutoCropSettings"/> を組み立てる。
-    /// プリセットの色情報は static factory（<see cref="AutoCropSettings.White"/> 等）から取得し、
-    /// 閾値だけ <see cref="AutoCropThreshold"/> でオーバーライドする。
+    /// 編集バッファ（プリセット + 閾値 + Custom HEX）から <see cref="AutoCropSettings"/> を組み立てる。
+    /// White/Black/Transparent プリセットは static factory の色を使い、Custom は HEX 解析。
     /// </summary>
     private AutoCropSettings BuildAutoCropFromInputs()
     {
@@ -281,7 +314,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         {
             AutoCropPreset.Black => new AutoCropSettings(AutoCropSettings.Black.TargetColorArgb, threshold),
             AutoCropPreset.Transparent => new AutoCropSettings(AutoCropSettings.Transparent.TargetColorArgb, threshold),
-            // White / Custom（Phase 1 では Custom 未使用のため White と同じ扱い）
+            AutoCropPreset.Custom => new AutoCropSettings(ParseHexColorOrDefault(AutoCropCustomColorHex), threshold),
             _ => new AutoCropSettings(AutoCropSettings.White.TargetColorArgb, threshold),
         };
     }
@@ -299,6 +332,47 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         if (settings.TargetColorArgb == AutoCropSettings.Transparent.TargetColorArgb)
             return AutoCropPreset.Transparent;
         return AutoCropPreset.Custom;
+    }
+
+    /// <summary>
+    /// "#RRGGBB" または "#AARRGGBB" の HEX 文字列を ARGB 32-bit に解析する（α 省略時は 0xFF）。
+    /// 解析失敗時は白 <c>0xFFFFFFFF</c> を返す（UI 入力ミスでクラッシュさせない）。
+    /// </summary>
+    internal static uint ParseHexColorOrDefault(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex))
+            return AutoCropSettings.White.TargetColorArgb;
+        var s = hex.Trim().TrimStart('#');
+        if (s.Length == 6 && uint.TryParse(s, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb))
+            return 0xFF000000u | rgb;
+        if (s.Length == 8 && uint.TryParse(s, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var argb))
+            return argb;
+        return AutoCropSettings.White.TargetColorArgb;
+    }
+
+    /// <summary>ARGB 32-bit を "#RRGGBB" 形式の HEX 文字列にフォーマット（α は捨てる）。</summary>
+    internal static string FormatHex(uint argb)
+    {
+        var rgb = argb & 0x00FFFFFFu;
+        return $"#{rgb:X6}";
+    }
+
+    /// <summary>
+    /// サムネ画像の指定ピクセル位置から色を採取して <see cref="AutoCropPreset.Custom"/> +
+    /// <see cref="AutoCropCustomColorHex"/> に反映する。View 側がクリック座標を bitmap pixel
+    /// 座標に換算してから本メソッドを呼ぶ。
+    /// </summary>
+    public async Task PickColorFromThumbnailAsync(int x, int y, CancellationToken ct = default)
+    {
+        var path = ThumbnailPath;
+        if (string.IsNullOrEmpty(path)) return;
+
+        var argb = await _colorPicker.PickColorAsync(path, x, y, ct);
+        if (argb is not { } color) return;
+
+        // 自動的に Custom プリセットに切り替え + HEX を更新（IsDirty が立つ）
+        AutoCropPreset = AutoCropPreset.Custom;
+        AutoCropCustomColorHex = FormatHex(color);
     }
 
     private void OnAnyPropertyChanged(object? sender, PropertyChangedEventArgs e)

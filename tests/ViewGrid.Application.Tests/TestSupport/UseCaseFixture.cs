@@ -23,6 +23,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
     public SkiaThumbnailService Thumbnails { get; }
     public AutoCropCache AutoCropCache { get; }
     public SkiaAutoCropBboxResolver AutoCropResolver { get; }
+    public SkiaImageColorPicker ColorPicker { get; }
     public EfImageAssetRepository AssetRepository { get; }
     public EfImageCopyRepository CopyRepository { get; }
     public EfGridCanvasRepository GridRepository { get; }
@@ -37,6 +38,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         SkiaThumbnailService thumbnails,
         AutoCropCache autoCropCache,
         SkiaAutoCropBboxResolver autoCropResolver,
+        SkiaImageColorPicker colorPicker,
         EfImageAssetRepository assetRepository,
         EfImageCopyRepository copyRepository,
         EfGridCanvasRepository gridRepository,
@@ -50,6 +52,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         Thumbnails = thumbnails;
         AutoCropCache = autoCropCache;
         AutoCropResolver = autoCropResolver;
+        ColorPicker = colorPicker;
         AssetRepository = assetRepository;
         CopyRepository = copyRepository;
         GridRepository = gridRepository;
@@ -73,6 +76,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         var thumbnails = new SkiaThumbnailService(storageOptions, storage);
         var autoCropCache = new AutoCropCache();
         var autoCropResolver = new SkiaAutoCropBboxResolver(autoCropCache);
+        var colorPicker = new SkiaImageColorPicker();
 
         return new UseCaseFixture(
             connection,
@@ -83,6 +87,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
             thumbnails,
             autoCropCache,
             autoCropResolver,
+            colorPicker,
             new EfImageAssetRepository(db),
             new EfImageCopyRepository(db),
             new EfGridCanvasRepository(db),

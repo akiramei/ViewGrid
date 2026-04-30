@@ -48,27 +48,37 @@ internal sealed class SkiaAutoCropBboxResolver : IAutoCropBboxResolver
             if (!File.Exists(sourceImageAbsolutePath))
                 return null;
 
-            using var bitmap = SKBitmap.Decode(sourceImageAbsolutePath);
-            if (bitmap is null)
+            using var raw = SKBitmap.Decode(sourceImageAbsolutePath);
+            if (raw is null)
                 return null;
 
-            var pixels = bitmap.Bytes;
-            if (pixels is null || pixels.Length == 0)
-                return null;
-
-            var fraction = _cache.GetOrCompute(assetId, settings, () =>
+            // Skia の Decode は Windows で Bgra8888 を返すため、Bytes を RGBA として
+            // 走査する前に Rgba8888+Unpremul に正規化する（R/B swap で色一致が壊れるのを防ぐ）。
+            var bitmap = SkiaPixelHelper.EnsureRgbaUnpremul(raw, out var ownsBitmap);
+            try
             {
-                var bbox = AutoCropCalculator.Compute(pixels, bitmap.Width, bitmap.Height, bitmap.RowBytes, settings);
-                if (bbox.Width <= 0 || bbox.Height <= 0 || bitmap.Width <= 0 || bitmap.Height <= 0)
-                    return AutoCropFraction.Full;
-                return new AutoCropFraction(
-                    (double)bbox.X / bitmap.Width,
-                    (double)bbox.Y / bitmap.Height,
-                    (double)bbox.Width / bitmap.Width,
-                    (double)bbox.Height / bitmap.Height);
-            });
+                var pixels = bitmap.Bytes;
+                if (pixels is null || pixels.Length == 0)
+                    return null;
 
-            return fraction.IsFull() ? null : fraction;
+                var fraction = _cache.GetOrCompute(assetId, settings, () =>
+                {
+                    var bbox = AutoCropCalculator.Compute(pixels, bitmap.Width, bitmap.Height, bitmap.RowBytes, settings);
+                    if (bbox.Width <= 0 || bbox.Height <= 0 || bitmap.Width <= 0 || bitmap.Height <= 0)
+                        return AutoCropFraction.Full;
+                    return new AutoCropFraction(
+                        (double)bbox.X / bitmap.Width,
+                        (double)bbox.Y / bitmap.Height,
+                        (double)bbox.Width / bitmap.Width,
+                        (double)bbox.Height / bitmap.Height);
+                });
+
+                return fraction.IsFull() ? null : fraction;
+            }
+            finally
+            {
+                if (ownsBitmap) bitmap.Dispose();
+            }
         }, ct);
     }
 }

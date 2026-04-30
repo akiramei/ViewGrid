@@ -466,19 +466,33 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             return null;
 
         var assetId = item.Copy.AssetId;
+
+        // Skia の Decode は Windows で Bgra8888 を返すため、Bytes を RGBA として走査する前に
+        // Rgba8888+Unpremul に正規化する（R/B swap で色一致が壊れるのを防ぐ）。
+        // Cache miss 時のみ走査するので毎回コピーは発生しない。
         var fraction = _autoCropCache.GetOrCompute(assetId, settings, () =>
         {
-            var pixels = source.Bytes;
-            if (pixels is null || pixels.Length == 0 || source.Width <= 0 || source.Height <= 0)
+            if (source.Width <= 0 || source.Height <= 0)
                 return AutoCropFraction.Full;
-            var bbox = AutoCropCalculator.Compute(pixels, source.Width, source.Height, source.RowBytes, settings);
-            if (bbox.Width <= 0 || bbox.Height <= 0)
-                return AutoCropFraction.Full;
-            return new AutoCropFraction(
-                (double)bbox.X / source.Width,
-                (double)bbox.Y / source.Height,
-                (double)bbox.Width / source.Width,
-                (double)bbox.Height / source.Height);
+            var normalized = SkiaPixelHelper.EnsureRgbaUnpremul(source, out var ownsNormalized);
+            try
+            {
+                var pixels = normalized.Bytes;
+                if (pixels is null || pixels.Length == 0)
+                    return AutoCropFraction.Full;
+                var bbox = AutoCropCalculator.Compute(pixels, normalized.Width, normalized.Height, normalized.RowBytes, settings);
+                if (bbox.Width <= 0 || bbox.Height <= 0)
+                    return AutoCropFraction.Full;
+                return new AutoCropFraction(
+                    (double)bbox.X / normalized.Width,
+                    (double)bbox.Y / normalized.Height,
+                    (double)bbox.Width / normalized.Width,
+                    (double)bbox.Height / normalized.Height);
+            }
+            finally
+            {
+                if (ownsNormalized) normalized.Dispose();
+            }
         });
 
         if (fraction.IsFull())
