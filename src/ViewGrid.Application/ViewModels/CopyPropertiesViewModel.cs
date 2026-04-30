@@ -106,6 +106,25 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     public bool IsManualCropDefined =>
         ManualCropPixelWidth > 0.0 && ManualCropPixelHeight > 0.0;
 
+    /// <summary>
+    /// 「OFF / 自動 / 手動」ラジオの「OFF」用バインド。両方 OFF なら true。
+    /// setter で true をセットされると AutoCrop / ManualCrop を両方 OFF にする
+    /// （RadioButton の IsChecked にバインドして OFF ラジオをユーザーが選んだ時の挙動）。
+    /// </summary>
+    public bool IsCropOff
+    {
+        get => !AutoCropEnabled && !ManualCropEnabled;
+        set
+        {
+            if (value)
+            {
+                AutoCropEnabled = false;
+                ManualCropEnabled = false;
+            }
+            OnPropertyChanged();
+        }
+    }
+
     /// <summary>サムネイルの絶対パス（表示用）。Attach 時に <see cref="CopyItemViewModel.ThumbnailPath"/>
     /// からセットされる。AutoCrop の画像クリックピッカーでクリック対象として表示するが、色は
     /// <see cref="SourceImagePath"/> から採取する（サムネ WebP 圧縮で色が変化するため）。</summary>
@@ -153,6 +172,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         {
             ManualCropEnabled = false;
         }
+        OnPropertyChanged(nameof(IsCropOff));
     }
 
     /// <summary>排他連動: ManualCrop ON にすると AutoCrop は OFF。</summary>
@@ -162,6 +182,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         {
             AutoCropEnabled = false;
         }
+        OnPropertyChanged(nameof(IsCropOff));
     }
 
     // XAML バインディング用の選択肢
