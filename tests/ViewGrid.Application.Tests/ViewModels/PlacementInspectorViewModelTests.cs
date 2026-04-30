@@ -238,11 +238,11 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task External_PixelOffset_Change_On_Source_Syncs_Inspector_Without_Marking_Dirty()
+    public async Task External_PixelOffset_Change_On_Source_Syncs_Inspector_And_Marks_Dirty()
     {
-        // Shift+ドラッグ（リリース時）・Ctrl+Arrow・Undo/Redo など外部経路は自前で履歴へ積む。
-        // Inspector の表示は追従するが IsDirty は立てない。立てると「保存ボタンを押さないと
-        // 永続化されない」と誤認させ、Inspector 編集との挙動不統一になるため。
+        // Shift+ドラッグ・Ctrl+Arrow など UI チャネルは PlacementItemViewModel.PixelOffset を
+        // 直接更新する「Inspector 数値直接入力の直感的な代替」。Inspector はその変更を
+        // 同期表示し、IsDirty=true を立て、保存ボタン押下で 1 履歴エントリにまとめて永続化する。
         var (item, _, _) = await SeedAndPlaceAsync();
         await _vm.AttachAsync(item);
 
@@ -251,22 +251,36 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
 
         _vm.PixelOffsetX.Should().Be(123);
         _vm.PixelOffsetY.Should().Be(-45);
-        _vm.IsDirty.Should().BeFalse();
+        _vm.IsDirty.Should().BeTrue();
     }
 
     [Fact]
-    public async Task Manual_Edit_Still_Marks_Dirty_After_External_Sync()
+    public async Task RevertAsync_Restores_Source_And_Buffer_From_Db_Even_When_Source_Was_Mutated()
     {
-        // 外部由来の同期（_suppressDirty ガード）が走った後でも、ユーザーが Inspector の数値を
-        // 直接編集すれば IsDirty=true になる（手動編集チャネルは保存ボタン経由のまま）。
-        var (item, _, _) = await SeedAndPlaceAsync();
-        await _vm.AttachAsync(item);
+        // Shift+ドラッグ等で source.PixelOffset を直接書き換えた状態から、
+        // RevertAsync で「DB の永続化値」に戻ること。
+        var (item, _, gridVm) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item, gridVm);
 
-        item.PixelOffsetX = 123; // 外部由来 → IsDirty 立たない
+        // DB に値を書いてから永続化値を確定する（Save 経由）
+        _vm.PixelOffsetX = 30;
+        _vm.PixelOffsetY = 40;
+        await _vm.SaveAsync();
         _vm.IsDirty.Should().BeFalse();
 
-        _vm.PixelOffsetY = 50;   // 手動編集 → IsDirty 立つ
+        // Shift+ドラッグ相当: source を直接書き換え（Inspector に IsDirty=true が立つ）
+        item.PixelOffsetX = 999;
+        item.PixelOffsetY = -999;
         _vm.IsDirty.Should().BeTrue();
+
+        await _vm.RevertAsync();
+
+        _vm.IsDirty.Should().BeFalse();
+        // source 自体も DB の値に戻る（View が PropertyChanged で追従するため）
+        item.PixelOffsetX.Should().Be(30);
+        item.PixelOffsetY.Should().Be(40);
+        _vm.PixelOffsetX.Should().Be(30);
+        _vm.PixelOffsetY.Should().Be(40);
     }
 
     [Fact]

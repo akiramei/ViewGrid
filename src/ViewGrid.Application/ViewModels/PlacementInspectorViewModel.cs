@@ -198,14 +198,14 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
             return;
         }
 
-        // VM 側の表示用 PlacementItemViewModel にも同期。Shift+ドラッグ系で
-        // 既に同値ならイベント連鎖はないため、再入の懸念はない。
-        source.PixelOffsetX = clampedX;
-        source.PixelOffsetY = clampedY;
-
+        // VM 側の表示用 PlacementItemViewModel にも同期。
+        // _suppressDirty スコープ内で代入することで、source の PropertyChanged が
+        // OnSourcePropertyChanged → OnAnyPropertyChanged を経由して IsDirty を再度立てるのを防ぐ。
         _suppressDirty = true;
         try
         {
+            source.PixelOffsetX = clampedX;
+            source.PixelOffsetY = clampedY;
             IsDirty = false;
             StatusMessage = "保存しました。";
         }
@@ -217,8 +217,47 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         LogSaved(_logger, source.PlacementId);
     }
 
+    /// <summary>
+    /// 「リセット」ボタン。Inspector 数値編集 / Shift+ドラッグ / Ctrl+Arrow いずれの
+    /// チャネルでも編集中バッファを破棄して<b>DB の永続化値</b>に戻す。
+    /// <para>
+    /// 単に <c>AttachAsync(_source)</c> で再ロードするだけだと <c>_source</c> 自体が
+    /// Shift+ドラッグ等で書き換わっているため意味がない。DB から PlacementId で読み直して
+    /// <c>source.PixelOffset</c> と Inspector Buffer の両方を永続化値に再セットする。
+    /// View（Border 描画）も <c>source.PixelOffsetX/Y</c> の PropertyChanged で追従する。
+    /// </para>
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanRevert))]
-    public Task RevertAsync(CancellationToken ct = default) => AttachAsync(_source, _grid, ct);
+    public async Task RevertAsync(CancellationToken ct = default)
+    {
+        var source = _source;
+        if (source is null) return;
+
+        var current = await _placementRepository.FindByIdAsync(source.PlacementId, ct);
+        if (current is null)
+        {
+            StatusMessage = $"GridPlacement {source.PlacementId} が見つかりません。";
+            return;
+        }
+
+        _suppressDirty = true;
+        try
+        {
+            // source を DB 値に戻す（View が PropertyChanged で追従する）
+            source.PixelOffsetX = current.PixelOffsetX;
+            source.PixelOffsetY = current.PixelOffsetY;
+            // Inspector Buffer は OnSourcePropertyChanged 経由で同期されるが、
+            // 既に同値だった場合に変更通知が出ないこともあるので明示的に上書き。
+            PixelOffsetX = current.PixelOffsetX;
+            PixelOffsetY = current.PixelOffsetY;
+            IsDirty = false;
+            StatusMessage = null;
+        }
+        finally
+        {
+            _suppressDirty = false;
+        }
+    }
 
     private bool CanSave() => HasPlacement && IsDirty;
     private bool CanRevert() => HasPlacement && IsDirty;
@@ -251,31 +290,25 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     private bool CanEditCopyProperties() => HasPlacement;
 
     /// <summary>
-    /// 外部（Shift+ドラッグ・Ctrl+Arrow・Undo/Redo 等）からの
-    /// <see cref="PlacementItemViewModel.PixelOffsetX"/> / <c>Y</c> 変更を
-    /// Inspector の表示にも反映させる。これらの操作は自前で履歴へ積むため、
-    /// Inspector の <see cref="IsDirty"/> を立てる必要はない（むしろ立てると
-    /// 「保存ボタンを押さないと永続化されない」と誤認させる）。
-    /// <see cref="_suppressDirty"/>=true でガードして同期だけを行う。
+    /// Shift+ドラッグ・Ctrl+Arrow からの <see cref="PlacementItemViewModel.PixelOffsetX"/> /
+    /// <c>Y</c> 変更を Inspector の表示にも反映させ、IsDirty を立てる。
+    /// <para>
+    /// これらの UI チャネルは「Inspector 数値直接入力の直感的な代替」と位置づけ、
+    /// 編集中バッファ（Inspector）→ IsDirty → 保存ボタン／Revert のフローに統一する。
+    /// 連続操作（Shift+ドラッグ中・Ctrl+→ 連打）は保存ボタン押下時に 1 履歴エントリへまとまる。
+    /// </para>
+    /// <para>
+    /// Save 後の <c>source.PixelOffset</c> 同期更新で本ハンドラが再入するが、Save 内で
+    /// <see cref="_suppressDirty"/>=true でガードしているので IsDirty 連鎖は起きない。
+    /// </para>
     /// </summary>
     private void OnSourcePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is not PlacementItemViewModel src || src != _source) return;
-        if (e.PropertyName is not (nameof(PlacementItemViewModel.PixelOffsetX)
-            or nameof(PlacementItemViewModel.PixelOffsetY))) return;
-
-        _suppressDirty = true;
-        try
-        {
-            if (e.PropertyName is nameof(PlacementItemViewModel.PixelOffsetX))
-                PixelOffsetX = src.PixelOffsetX;
-            else
-                PixelOffsetY = src.PixelOffsetY;
-        }
-        finally
-        {
-            _suppressDirty = false;
-        }
+        if (e.PropertyName is nameof(PlacementItemViewModel.PixelOffsetX))
+            PixelOffsetX = src.PixelOffsetX;
+        else if (e.PropertyName is nameof(PlacementItemViewModel.PixelOffsetY))
+            PixelOffsetY = src.PixelOffsetY;
     }
 
     private void OnAnyPropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -41,11 +41,6 @@ public partial class GridCanvasView : UserControl
     private PlacementItemViewModel? _pixelOffsetTarget;
     private Border? _pixelOffsetBorder;
 
-    // Ctrl+Arrow キー入力処理中フラグ。連打/オートリピート時の並行 ApplyPixelOffsetAsync 呼び出しを
-    // 防いで履歴整合性を保つ（前回の DB 書込が完了する前に次のキーを受けるとレースで履歴が壊れるため）。
-    // 副作用として、キーリピートでは一部のキーが drop される（ユーザーは押し直しで対応可能）。
-    private bool _pixelOffsetKeyBusy;
-
     // セル位置 → セル Border 参照（範囲ハイライトの一括クリアに使う）
     private readonly Dictionary<CellPosition, Border> _cellBorders = new();
 
@@ -1010,34 +1005,19 @@ public partial class GridCanvasView : UserControl
         }
     }
 
-    private async void OnPlacementPointerReleased(object? sender, PointerReleasedEventArgs e)
+    private void OnPlacementPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         // Shift+ドラッグの終了: ドラッグ中に PlacementItemViewModel.PixelOffsetX/Y を直接更新済み。
-        // リリース時に履歴へ積む（Ctrl+Arrow と意味論を統一: 1 アクション = 1 履歴エントリ）。
-        // 開始値と同値（実質ドラッグなし）なら ApplyPixelOffsetAsync 側で履歴に積まない。
+        // ここでは状態クリアのみ。Inspector が source の PropertyChanged を購読していて
+        // IsDirty=true を立てるので、ユーザーが「保存」ボタンを押すまで永続化されない。
+        // Inspector 数値直接入力と同じ「編集中バッファ → IsDirty → 保存／Revert」のフローに
+        // 統一する設計（Shift+ドラッグ・Ctrl+Arrow は Inspector 数値入力の直感的な UI 版）。
         if (_pixelOffsetDragging)
         {
-            var target = _pixelOffsetTarget;
-            var startX = _pixelOffsetStartX;
-            var startY = _pixelOffsetStartY;
             _pixelOffsetDragging = false;
             _pixelOffsetTarget = null;
             _pixelOffsetBorder = null;
             e.Handled = true;
-
-            if (target is not null && _vm is not null
-                && (target.PixelOffsetX != startX || target.PixelOffsetY != startY))
-            {
-                try
-                {
-                    await _vm.ApplyPixelOffsetAsync(
-                        target.PlacementId, target.PixelOffsetX, target.PixelOffsetY);
-                }
-                catch
-                {
-                    // ユーザー操作起点の例外は握りつぶす（StatusMessage で表示される）
-                }
-            }
             return;
         }
 
@@ -1508,13 +1488,14 @@ public partial class GridCanvasView : UserControl
     /// 干渉しない。
     /// </para>
     /// <para>
-    /// 並行性: <see cref="_pixelOffsetKeyBusy"/> フラグで前回の DB 書込中はキーを drop する。
-    /// 履歴整合性を優先する設計（<see cref="GridWorkspaceViewModel.ApplyPixelOffsetAsync"/> が
-    /// before/after の snapshot を取って <c>UpdatePlacementOffsetCommand</c> を作るため、
-    /// 並行呼び出しは履歴を壊す）。キーリピート連打では一部 drop されるが、押し直しで対応可能。
+    /// 仕様: <see cref="PlacementItemViewModel.PixelOffsetX"/> / <c>Y</c> を直接更新するだけ。
+    /// Inspector が source の <see cref="PropertyChangedEventArgs"/> を購読していて
+    /// IsDirty=true を立てるので、ユーザーが「保存」ボタンを押すまで永続化されない
+    /// （Shift+ドラッグ・Inspector 数値直接入力と同じ「編集中バッファ → IsDirty → 保存／Revert」
+    /// のフローに統一する設計）。連続押下は 1 履歴エントリ（保存ボタン押下時）にまとまる。
     /// </para>
     /// </summary>
-    private async void OnUserControlKeyDown(object? sender, KeyEventArgs e)
+    private void OnUserControlKeyDown(object? sender, KeyEventArgs e)
     {
         if (_vm?.SelectedPlacement is not PlacementItemViewModel placement)
             return;
@@ -1538,22 +1519,9 @@ public partial class GridCanvasView : UserControl
 
         e.Handled = true;
 
-        // 並行呼び出し防止: 前回の処理中なら drop。VM 側の ApplyPixelOffsetAsync は
-        // FindByIdAsync → ExecuteAsync のシーケンスで動くため、レースで履歴が壊れ得る。
-        if (_pixelOffsetKeyBusy)
-            return;
-
-        _pixelOffsetKeyBusy = true;
-        try
-        {
-            var newX = placement.PixelOffsetX + dx;
-            var newY = placement.PixelOffsetY + dy;
-            await _vm.ApplyPixelOffsetAsync(placement.PlacementId, newX, newY);
-        }
-        finally
-        {
-            _pixelOffsetKeyBusy = false;
-        }
+        var max = PlacementInspectorViewModel.MaxPixelOffset;
+        placement.PixelOffsetX = Math.Clamp(placement.PixelOffsetX + dx, -max, max);
+        placement.PixelOffsetY = Math.Clamp(placement.PixelOffsetY + dy, -max, max);
     }
 
     private enum DragKind { Unknown, Copy, Placement }
