@@ -53,6 +53,14 @@ internal sealed class ImageCopyConfiguration : IEntityTypeConfiguration<ImageCop
             .HasConversion<int?>()  // byte → int? で SQLite INTEGER に
             .HasColumnName("auto_crop_threshold");
 
+        // 任意矩形トリミング設定。集約ビュー <see cref="ImageCopy.ManualCrop"/> は無視し、
+        // 原始値 4 つ（double?）を直接 nullable 列にマップする。4 つすべて NULL なら OFF。
+        builder.Ignore(x => x.ManualCrop);
+        builder.Property(x => x.ManualCropX).HasColumnName("manual_crop_x");
+        builder.Property(x => x.ManualCropY).HasColumnName("manual_crop_y");
+        builder.Property(x => x.ManualCropWidth).HasColumnName("manual_crop_width");
+        builder.Property(x => x.ManualCropHeight).HasColumnName("manual_crop_height");
+
         builder.HasOne<ImageAsset>()
             .WithMany()
             .HasForeignKey(x => x.AssetId)

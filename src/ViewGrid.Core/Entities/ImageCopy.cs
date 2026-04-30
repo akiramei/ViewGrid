@@ -56,6 +56,43 @@ public sealed class ImageCopy
         }
     }
 
+    /// <summary>
+    /// 任意矩形トリミングの bbox（0–1 比率、元画像座標系）。<c>null</c> なら機能 OFF。
+    /// EF Core が直接マップする原始値。アプリケーション側は <see cref="ManualCrop"/> で集約してアクセスする。
+    /// 4 値すべてが揃っていないと無効として扱う（DB の整合は EF Core 側のマップで保証）。
+    /// </summary>
+    public double? ManualCropX { get; init; }
+
+    /// <summary>任意矩形トリミングの bbox 左上 Y（0–1 比率）。</summary>
+    public double? ManualCropY { get; init; }
+
+    /// <summary>任意矩形トリミングの bbox 幅（0–1 比率）。</summary>
+    public double? ManualCropWidth { get; init; }
+
+    /// <summary>任意矩形トリミングの bbox 高さ（0–1 比率）。</summary>
+    public double? ManualCropHeight { get; init; }
+
+    /// <summary>
+    /// 任意矩形トリミング設定の集約ビュー。<c>null</c> なら機能 OFF。
+    /// 4 つの原始値すべてが揃っているときだけ非 null で返す。
+    /// <see cref="AutoCrop"/> と同時設定されている場合は ManualCrop が優先される（Resolver 層で判定）。
+    /// </summary>
+    public ManualCropFraction? ManualCrop
+    {
+        get => (ManualCropX, ManualCropY, ManualCropWidth, ManualCropHeight) switch
+        {
+            ({ } x, { } y, { } w, { } h) => new ManualCropFraction(x, y, w, h),
+            _ => null,
+        };
+        init
+        {
+            ManualCropX = value?.X;
+            ManualCropY = value?.Y;
+            ManualCropWidth = value?.Width;
+            ManualCropHeight = value?.Height;
+        }
+    }
+
     public required DateTimeOffset CreatedAt { get; init; }
     public required DateTimeOffset UpdatedAt { get; set; }
 
