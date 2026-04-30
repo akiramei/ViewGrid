@@ -77,11 +77,24 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     /// 画像クリックピッカーで色を採取するとここに反映される。</summary>
     [ObservableProperty] public partial string AutoCropCustomColorHex { get; set; } = "#FFFFFF";
 
-    /// <summary>サムネイルの絶対パス。Attach 時に <see cref="CopyItemViewModel.ThumbnailPath"/> から
-    /// セットされる。AutoCrop の画像クリックピッカーで使う（null ならピッカー UI は非表示）。</summary>
+    /// <summary>サムネイルの絶対パス（表示用）。Attach 時に <see cref="CopyItemViewModel.ThumbnailPath"/>
+    /// からセットされる。AutoCrop の画像クリックピッカーでクリック対象として表示するが、色は
+    /// <see cref="SourceImagePath"/> から採取する（サムネ WebP 圧縮で色が変化するため）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasThumbnail))]
     public partial string? ThumbnailPath { get; set; }
+
+    /// <summary>原画像（圧縮なし）の絶対パス。色採取はここから行うことで AutoCrop 走査と一致する。</summary>
+    [ObservableProperty]
+    public partial string? SourceImagePath { get; set; }
+
+    /// <summary>原画像のピクセル幅。サムネクリック座標 → 原画像座標への換算に使う。</summary>
+    [ObservableProperty]
+    public partial int SourceWidth { get; set; }
+
+    /// <summary>原画像のピクセル高さ。同上。</summary>
+    [ObservableProperty]
+    public partial int SourceHeight { get; set; }
 
     /// <summary>カスタム HEX / 画像ピッカーを表示するかの派生プロパティ。</summary>
     public bool IsAutoCropCustom => AutoCropPreset == AutoCropPreset.Custom;
@@ -170,6 +183,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
                 AutoCropThreshold = 8;
                 AutoCropCustomColorHex = "#FFFFFF";
                 ThumbnailPath = null;
+                SourceImagePath = null;
+                SourceWidth = 0;
+                SourceHeight = 0;
             }
             else
             {
@@ -184,6 +200,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
                 OccupyWidth = source.OccupySize.Width;
                 OccupyHeight = source.OccupySize.Height;
                 ThumbnailPath = source.ThumbnailPath;
+                SourceImagePath = source.SourceImagePath;
+                SourceWidth = source.SourceWidth;
+                SourceHeight = source.SourceHeight;
                 if (source.AutoCrop is { } ac)
                 {
                     AutoCropEnabled = true;
@@ -358,16 +377,34 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// サムネ画像の指定ピクセル位置から色を採取して <see cref="AutoCropPreset.Custom"/> +
-    /// <see cref="AutoCropCustomColorHex"/> に反映する。View 側がクリック座標を bitmap pixel
-    /// 座標に換算してから本メソッドを呼ぶ。
+    /// サムネ画像のクリック位置から色を採取して <see cref="AutoCropPreset.Custom"/> +
+    /// <see cref="AutoCropCustomColorHex"/> に反映する。
+    /// <para>
+    /// View 側はサムネ <see cref="Avalonia.Media.Imaging.Bitmap.PixelSize"/> 上のクリック座標
+    /// （<paramref name="thumbX"/>, <paramref name="thumbY"/>）と寸法
+    /// （<paramref name="thumbWidth"/>, <paramref name="thumbHeight"/>）を渡す。本メソッドは
+    /// それを原画像座標に等比換算し、<see cref="SourceImagePath"/> から実際の色を採取する。
+    /// </para>
+    /// <para>
+    /// サムネは WebP 圧縮 + ダウンサンプルされており、AutoCrop 走査が原画像で行われる現状仕様と
+    /// 色が乖離する（threshold=0 で一致しない）。本メソッドが原画像から採取することで、
+    /// 採取色 = 走査対象色になり、ピッカーが意図通りに機能する。
+    /// </para>
     /// </summary>
-    public async Task PickColorFromThumbnailAsync(int x, int y, CancellationToken ct = default)
+    public async Task PickColorFromThumbnailAsync(
+        int thumbX, int thumbY, int thumbWidth, int thumbHeight, CancellationToken ct = default)
     {
-        var path = ThumbnailPath;
+        var path = SourceImagePath;
         if (string.IsNullOrEmpty(path)) return;
+        if (SourceWidth <= 0 || SourceHeight <= 0) return;
+        if (thumbWidth <= 0 || thumbHeight <= 0) return;
 
-        var argb = await _colorPicker.PickColorAsync(path, x, y, ct);
+        // サムネ座標 → 原画像座標（等比換算）。サムネは max 1024px の縮小版なので、
+        // 単色領域内の数ピクセルずれは結果に影響しない（ユーザーが狙う「外周単色」が同じ色なら）。
+        var srcX = (int)Math.Clamp((double)thumbX / thumbWidth * SourceWidth, 0, SourceWidth - 1);
+        var srcY = (int)Math.Clamp((double)thumbY / thumbHeight * SourceHeight, 0, SourceHeight - 1);
+
+        var argb = await _colorPicker.PickColorAsync(path, srcX, srcY, ct);
         if (argb is not { } color) return;
 
         // 自動的に Custom プリセットに切り替え + HEX を更新（IsDirty が立つ）

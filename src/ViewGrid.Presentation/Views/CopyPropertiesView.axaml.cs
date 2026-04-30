@@ -50,7 +50,8 @@ public partial class CopyPropertiesView : UserControl
 
         try
         {
-            await vm.PickColorFromThumbnailAsync(px, py);
+            // サムネ座標 + サムネ実寸を渡す。VM 側で原画像座標に等比換算して原画像から色採取する。
+            await vm.PickColorFromThumbnailAsync(px, py, bmpW, bmpH);
         }
         catch
         {

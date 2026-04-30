@@ -22,7 +22,7 @@ public sealed class CopyListViewModelTests : IAsyncLifetime
         _messenger = new WeakReferenceMessenger();
         var history = new ViewGrid.Application.History.UndoRedoService();
         _vm = new CopyListViewModel(
-            _fx.CopyRepository, _fx.AssetRepository, _fx.Thumbnails,
+            _fx.CopyRepository, _fx.AssetRepository, _fx.Thumbnails, _fx.Storage,
             create, _messenger, history,
             NullLogger<CopyListViewModel>.Instance);
     }

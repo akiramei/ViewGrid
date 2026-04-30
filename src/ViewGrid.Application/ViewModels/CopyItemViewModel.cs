@@ -14,9 +14,22 @@ public sealed partial class CopyItemViewModel : ObservableObject
 
     /// <summary>
     /// アセットのサムネ絶対パス（無ければ <c>null</c>）。AutoCrop の画像クリックピッカー
-    /// が「サムネ上をクリックして色を採取」する UI で使う。
+    /// では「サムネ画像を表示してクリック」する UI として使うが、色の採取は
+    /// <see cref="SourceImagePath"/> から行う（サムネは WebP 圧縮で色が変化するため）。
     /// </summary>
     public string? ThumbnailPath { get; }
+
+    /// <summary>
+    /// 原画像（圧縮なし）の絶対パス。AutoCrop の色採取は本パスから取得することで、
+    /// サムネ圧縮による色のズレを避け、AutoCrop 走査と同一の色で一致する。
+    /// </summary>
+    public string? SourceImagePath { get; }
+
+    /// <summary>原画像のピクセル幅（サムネクリック座標 → 原画像座標換算に使う）。</summary>
+    public int SourceWidth { get; }
+
+    /// <summary>原画像のピクセル高さ（同上）。</summary>
+    public int SourceHeight { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayName))]
@@ -49,7 +62,12 @@ public sealed partial class CopyItemViewModel : ObservableObject
     [ObservableProperty]
     public partial AutoCropSettings? AutoCrop { get; set; }
 
-    public CopyItemViewModel(ImageCopy copy, string? thumbnailPath = null)
+    public CopyItemViewModel(
+        ImageCopy copy,
+        string? thumbnailPath = null,
+        string? sourceImagePath = null,
+        int sourceWidth = 0,
+        int sourceHeight = 0)
     {
         ArgumentNullException.ThrowIfNull(copy);
         CopyId = copy.Id;
@@ -63,6 +81,9 @@ public sealed partial class CopyItemViewModel : ObservableObject
         OccupySize = copy.OccupySize;
         AutoCrop = copy.AutoCrop;
         ThumbnailPath = thumbnailPath;
+        SourceImagePath = sourceImagePath;
+        SourceWidth = sourceWidth;
+        SourceHeight = sourceHeight;
     }
 
     public string DisplayName =>

@@ -195,19 +195,25 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task PickColorFromThumbnailAsync_Switches_To_Custom_And_Updates_Hex()
+    public async Task PickColorFromThumbnailAsync_Switches_To_Custom_And_Samples_Original_Image()
     {
         // SeedAssetAsync が生成する PNG は cornflower blue (#6495ED) でフィルされる
-        // (TestImageFactory.CreatePng の既定色)。任意位置をクリックすればその色が拾える。
+        // (TestImageFactory.CreatePng の既定色)。色採取は SourceImagePath（原画像）から行う。
+        // サムネ座標 → 原画像座標の換算もテストする（仮想サムネ寸法 40x40 → 原画像 100x100）。
         var asset = await _fx.SeedAssetAsync();
         var copy = await _fx.SeedCopyAsync(asset.Id);
-        var thumbPath = _fx.Storage.ResolveAbsolutePath(asset.StoredRelativePath);
-        var source = new CopyItemViewModel(copy, thumbPath);
+        var sourcePath = _fx.Storage.ResolveAbsolutePath(asset.StoredRelativePath);
+        var source = new CopyItemViewModel(copy,
+            thumbnailPath: sourcePath,  // テスト用にサムネ = 原画像で代用
+            sourceImagePath: sourcePath,
+            sourceWidth: asset.Size.Width,
+            sourceHeight: asset.Size.Height);
 
         _vm.Attach(source);
         _vm.AutoCropEnabled = true;
 
-        await _vm.PickColorFromThumbnailAsync(50, 50);
+        // サムネ寸法 40x40 と仮定した中央クリック → 原画像 (50, 50) に換算される
+        await _vm.PickColorFromThumbnailAsync(20, 20, 40, 40);
 
         _vm.AutoCropPreset.Should().Be(AutoCropPreset.Custom);
         _vm.AutoCropCustomColorHex.Should().Be("#6495ED");
