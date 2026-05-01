@@ -50,14 +50,27 @@ public partial class CopyPropertiesView : UserControl
         // 無限再帰 → StackOverflow でプロセス即終了する不具合があった。
         // PropertyChanged + BoundsProperty に絞ると Children 操作では再発火しない（Image 自体の
         // レイアウトは Children 操作で変わらないため）。
+        // 加えて、Canvas (overlay) のサイズを Image.Bounds に同期する。
+        // Canvas は HorizontalAlignment/VerticalAlignment=Center で Grid 内に配置しているため、
+        // Width/Height を Image.Bounds.Width/Height に合わせれば Canvas (0,0) = Image control の左上
+        // が保証され、overlay 矩形が Image 表示部分と完全一致する。
         ManualCropImage.PropertyChanged += (_, e) =>
         {
-            if (e.Property == BoundsProperty) UpdateOverlay();
+            if (e.Property == BoundsProperty)
+            {
+                ManualCropOverlay.Width = ManualCropImage.Bounds.Width;
+                ManualCropOverlay.Height = ManualCropImage.Bounds.Height;
+                UpdateOverlay();
+            }
         };
-        // AutoCrop プレビュー Image も同様に Bounds 変更で overlay 再描画。
         AutoCropPreviewImage.PropertyChanged += (_, e) =>
         {
-            if (e.Property == BoundsProperty) UpdateAutoCropPreviewOverlay();
+            if (e.Property == BoundsProperty)
+            {
+                AutoCropPreviewOverlay.Width = AutoCropPreviewImage.Bounds.Width;
+                AutoCropPreviewOverlay.Height = AutoCropPreviewImage.Bounds.Height;
+                UpdateAutoCropPreviewOverlay();
+            }
         };
     }
 

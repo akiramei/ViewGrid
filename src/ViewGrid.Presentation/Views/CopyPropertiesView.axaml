@@ -215,6 +215,13 @@
                                         Background="{DynamicResource SystemAltMediumLowColor}"
                                         Margin="0,8,0,0"
                                         IsVisible="{Binding HasThumbnail}">
+                                    <!--
+                                        Canvas を Image と同じ位置/サイズに強制同期する。
+                                        HorizontalAlignment / VerticalAlignment を Center にし、
+                                        CodeBehind で Canvas.Width / Height を Image.Bounds に追従させる。
+                                        これで Canvas (0,0) = Image control 左上を保証し、
+                                        overlay 矩形が Image 表示部分と完全一致する。
+                                    -->
                                     <Grid>
                                         <Image x:Name="AutoCropPreviewImage"
                                                Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
@@ -223,6 +230,8 @@
                                                Cursor="Cross"
                                                PointerPressed="OnColorPickerPointerPressed" />
                                         <Canvas x:Name="AutoCropPreviewOverlay"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
                                                 IsHitTestVisible="False" />
                                     </Grid>
                                 </Border>
@@ -246,6 +255,9 @@
                                         Margin="0,4,0,0"
                                         IsVisible="{Binding HasThumbnail}">
                                     <!-- Image とオーバーレイ Canvas を Grid で重ねる。
+                                         Canvas は HorizontalAlignment/VerticalAlignment=Center で
+                                         CodeBehind から Image.Bounds に Width/Height 同期する
+                                         （これで Canvas (0,0) = Image control 左上を保証）。
                                          Canvas 上で PointerPressed/Moved/Released を扱い、
                                          CodeBehind がサムネ座標 → 元画像比率に等比換算する。 -->
                                     <Grid x:Name="ManualCropContainer">
@@ -254,6 +266,8 @@
                                                MaxHeight="240"
                                                Stretch="Uniform" />
                                         <Canvas x:Name="ManualCropOverlay"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
                                                 Background="Transparent"
                                                 Cursor="Cross"
                                                 PointerPressed="OnManualCropOverlayPointerPressed"
