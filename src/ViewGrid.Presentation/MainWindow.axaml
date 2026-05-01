@@ -11,8 +11,8 @@
         x:Name="MainWindowRoot"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
-        Width="1200" Height="720"
-        MinWidth="900" MinHeight="540"
+        Width="1440" Height="900"
+        MinWidth="1024" MinHeight="640"
         WindowStartupLocation="CenterScreen"
         DragDrop.AllowDrop="True">
 
@@ -187,7 +187,8 @@
                         <TextBlock Text="準備" />
                     </StackPanel>
                 </TabItem.Header>
-                <Grid ColumnDefinitions="*,380">
+                <!-- 右ペイン幅 380 → 440 で特性編集の窮屈さを緩和。アセット領域は伸縮 -->
+                <Grid ColumnDefinitions="*,440">
                     <views:AssetLibraryView Grid.Column="0"
                                             DataContext="{Binding AssetLibrary}" />
 
@@ -233,7 +234,7 @@
                                                    Opacity="0.5"
                                                    IsVisible="{Binding !HasHistory}" />
                                         <TextBlock Grid.Row="1"
-                                                   Text="hover で範囲を視覚化（赤=Undo / 緑=Redo）。クリックでジャンプ。"
+                                                   Text="hover で範囲を視覚化（赤=Undo / 青=Redo）。クリックでジャンプ。"
                                                    FontSize="10"
                                                    Opacity="0.6"
                                                    Margin="8,4"

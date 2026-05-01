@@ -90,14 +90,15 @@
         <Setter Property="Padding" Value="12" />
     </Style>
 
-    <!-- フォーム内 1 セクション（ラベル + 入力 1 行） -->
+    <!-- フォーム内 1 セクション（ラベル + 入力 1 行）。Spacing 4 → 6 で行間に呼吸感 -->
     <Style Selector="StackPanel.FormSection">
-        <Setter Property="Spacing" Value="4" />
+        <Setter Property="Spacing" Value="6" />
     </Style>
 
-    <!-- フォームのセクション群（セクション間の余白） -->
+    <!-- フォームのセクション群。Spacing 12 → 16 で各セクション（回転 / 反転 / スケーリング 等）が
+         明確に分離して見え、密度の高い特性編集タブの窮屈感を緩和する -->
     <Style Selector="StackPanel.FormGroup">
-        <Setter Property="Spacing" Value="12" />
+        <Setter Property="Spacing" Value="16" />
     </Style>
 
     <!--

@@ -56,8 +56,11 @@ public sealed class HoveredJumpRangeBackgroundConverter : IMultiValueConverter
 {
     public static readonly HoveredJumpRangeBackgroundConverter Instance = new();
 
-    private static readonly IBrush UndoBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0x33, 0x33));
-    private static readonly IBrush RedoBrush = new SolidColorBrush(Color.FromArgb(0x40, 0x33, 0xCC, 0x66));
+    // Undo は暖色（赤系、警告/取消の意味）、Redo はアクセント色のティール（進む方向）。
+    // 緑（#33CC66）はダーク背景との組み合わせが不調和になりやすいため、アクセント色 sky-500
+    // (#0EA5E9) の半透明に統一。Undo / Redo の暖色 vs 寒色 で方向の意味は引き続き伝わる。
+    private static readonly IBrush UndoBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xDC, 0x26, 0x26));
+    private static readonly IBrush RedoBrush = new SolidColorBrush(Color.FromArgb(0x40, 0x0E, 0xA5, 0xE9));
 
     public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
     {
