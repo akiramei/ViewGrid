@@ -49,7 +49,8 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     public partial string? MultiSelectMessage { get; set; }
 
     // 編集バッファ
-    [ObservableProperty] public partial string? CopyName { get; set; }
+    // CopyName はリスト上のインラインリネーム + 新規作成フライアウトに移管したため、特性タブの編集対象から除外。
+    // 履歴 Description 用に元の名前を参照する必要があるときは _source.CopyName を直接読む。
     [ObservableProperty] public partial Rotation Rotation { get; set; }
     [ObservableProperty] public partial bool FlipX { get; set; }
     [ObservableProperty] public partial bool FlipY { get; set; }
@@ -238,7 +239,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             if (source is null)
             {
                 HasCopy = false;
-                CopyName = null;
                 Rotation = Rotation.None;
                 FlipX = false;
                 FlipY = false;
@@ -264,7 +264,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             else
             {
                 HasCopy = true;
-                CopyName = source.CopyName;
                 Rotation = source.Rotation;
                 FlipX = source.FlipX;
                 FlipY = source.FlipY;
@@ -327,12 +326,11 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             return;
 
         // before snapshot: source の現在値（保存前 = ロード時 / 直前 Save 時の永続化済み値）。
-        // Undo で「null 名前に戻す」を明示するため、CopyName が null のときは ClearCopyName=true で立てる。
-        // AutoCrop / ManualCrop も同様: null のときは Clear*=true で「OFF へ戻す」を明示する。
+        // CopyName は本タブの編集対象外（インラインリネーム経由）なので CopyName=null + ClearCopyName=false で
+        // 「変更しない」を明示する（UpdateImageCopyUseCase 側で current 値を保持する）。
+        // AutoCrop / ManualCrop は: null のときは Clear*=true で「OFF へ戻す」を明示する。
         var before = new UpdateImageCopyChanges
         {
-            CopyName = _source.CopyName,
-            ClearCopyName = _source.CopyName is null,
             Transform = new ImageTransform(_source.Rotation, _source.FlipX, _source.FlipY),
             ScalingMode = _source.ScalingMode,
             Alignment = _source.Alignment,
@@ -343,9 +341,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             ClearManualCrop = _source.ManualCrop is null,
         };
 
-        // after: 編集バッファから組み立て。空文字 → null は「明示的に名前を消す」操作で、
-        // Redo でも同じ「null へ更新」が必要になるので ClearCopyName=true。
-        var afterCopyName = string.IsNullOrWhiteSpace(CopyName) ? null : CopyName;
+        // after: 編集バッファから組み立て。CopyName は触らない（インラインリネームとは独立）。
         var afterAutoCrop = AutoCropEnabled ? BuildAutoCropFromInputs() : (AutoCropSettings?)null;
         // ManualCrop は「ラジオで手動を選んでいて、かつ矩形が確定している」ときのみ永続化。
         // 「手動」選択 + 未確定（W=0 or H=0）は実質 OFF として保存する（ユーザー認識と一致）。
@@ -358,8 +354,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             : (ManualCropFraction?)null;
         var after = new UpdateImageCopyChanges
         {
-            CopyName = afterCopyName,
-            ClearCopyName = afterCopyName is null,
             Transform = new ImageTransform(Rotation, FlipX, FlipY),
             ScalingMode = ScalingMode,
             Alignment = new Alignment(AlignX, AlignY),
@@ -370,12 +364,10 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             ClearManualCrop = afterManualCrop is null,
         };
 
-        // Description は「Save 時点での名前 → after の名前」を含める。改名されたケースで履歴上わかりやすい。
-        var beforeNameLabel = string.IsNullOrWhiteSpace(_source.CopyName) ? "(無名)" : _source.CopyName;
-        var afterNameLabel = string.IsNullOrWhiteSpace(afterCopyName) ? "(無名)" : afterCopyName;
-        var description = string.Equals(beforeNameLabel, afterNameLabel, StringComparison.Ordinal)
-            ? $"特性編集: 「{beforeNameLabel}」"
-            : $"特性編集: 「{beforeNameLabel}」→「{afterNameLabel}」";
+        // Description は Save 時点での名前を表示用に使う（リネーム結果の追跡は UpdateImageCopyCommand
+        // のリネーム経路が別に表示するため、こちらは固定の「特性編集: 「{name}」」だけで良い）。
+        var nameLabel = string.IsNullOrWhiteSpace(_source.CopyName) ? "(無名)" : _source.CopyName!;
+        var description = $"特性編集: 「{nameLabel}」";
         var command = new UpdateImageCopyCommand(_updateUseCase, _source.CopyId, before, after, description);
         var execResult = await _history.ExecuteAsync(command, ct);
         if (execResult.IsError)
@@ -384,8 +376,8 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             return;
         }
 
-        // source にも反映してリスト表示を最新化する（after の値で）
-        _source.CopyName = after.CopyName;
+        // source にも反映してリスト表示を最新化する（after の値で）。
+        // CopyName は特性タブで触らないので _source の現状値を維持する。
         _source.Rotation = after.Transform!.Value.Rotation;
         _source.FlipX = after.Transform.Value.FlipX;
         _source.FlipY = after.Transform.Value.FlipY;

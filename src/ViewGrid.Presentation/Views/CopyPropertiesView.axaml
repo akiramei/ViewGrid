@@ -65,10 +65,11 @@
                 <TabItem Header="特性">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,0,0">
                         <StackPanel Classes="FormGroup">
-                            <StackPanel Classes="FormSection">
-                                <TextBlock Classes="FieldLabel" Text="名前" />
-                                <TextBox Text="{Binding CopyName}" PlaceholderText="（既定）" />
-                            </StackPanel>
+                            <!--
+                                コピー名の編集はリスト上のインラインリネーム（F2 / ダブルクリック → Enter）
+                                + 新規作成フライアウトの名前 TextBox に統合済み。
+                                特性タブ側の「名前」TextBox は冗長なため削除した。
+                            -->
 
                             <StackPanel Classes="FormSection">
                                 <TextBlock Classes="FieldLabel" Text="回転" />

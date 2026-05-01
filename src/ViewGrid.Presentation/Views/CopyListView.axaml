@@ -16,9 +16,10 @@
                        Text="論理コピー"
                        Margin="0,0,0,8" />
 
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8"
+                        IsVisible="{Binding !IsCreating}">
                 <Button Content="+ 新規"
-                        Command="{Binding CreateCopyCommand}"
+                        Command="{Binding BeginCreateCommand}"
                         IsEnabled="{Binding HasAsset}" />
                 <Button Content="削除"
                         Command="{Binding DeleteSelectedCopyCommand}" />
@@ -32,6 +33,36 @@
                              Width="80"
                              VerticalAlignment="Center" />
             </StackPanel>
+
+            <!--
+                新規作成フライアウト: 「+ 新規」を押すと展開。名前を空のまま「作成」すれば
+                従来通り「コピー N」自動採番。Enter で確定、Esc でキャンセル（KeyBindings）。
+            -->
+            <Border DockPanel.Dock="Top"
+                    IsVisible="{Binding IsCreating}"
+                    Padding="8"
+                    Margin="0,0,0,8"
+                    Background="{DynamicResource SystemAltMediumLowColor}"
+                    CornerRadius="4">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="新規コピー" FontWeight="SemiBold" />
+                    <TextBox x:Name="DraftCopyNameBox"
+                             Text="{Binding DraftCopyName, Mode=TwoWay}"
+                             PlaceholderText="名前（空欄で「コピー N」自動採番）">
+                        <TextBox.KeyBindings>
+                            <KeyBinding Gesture="Enter" Command="{Binding CommitCreateCommand}" />
+                            <KeyBinding Gesture="Escape" Command="{Binding CancelCreateCommand}" />
+                        </TextBox.KeyBindings>
+                    </TextBox>
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                        <Button Content="作成"
+                                Command="{Binding CommitCreateCommand}"
+                                IsDefault="True" />
+                        <Button Content="キャンセル"
+                                Command="{Binding CancelCreateCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
 
             <TextBlock DockPanel.Dock="Bottom"
                        Text="{Binding StatusMessage}"
@@ -50,12 +81,24 @@
                      SelectedItem="{Binding SelectedCopy}"
                      SelectionMode="Multiple"
                      SelectionChanged="OnCopyListSelectionChanged"
+                     DoubleTapped="OnCopyListDoubleTapped"
+                     KeyDown="OnCopyListKeyDown"
                      IsVisible="{Binding HasAsset}"
                      Background="Transparent">
                 <ListBox.ItemTemplate>
                     <DataTemplate DataType="vm:CopyItemViewModel">
                         <StackPanel Margin="2">
-                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                            <!-- 通常表示: TextBlock。F2 / ダブルクリックで編集モードに切替 -->
+                            <TextBlock Text="{Binding DisplayName}"
+                                       FontWeight="SemiBold"
+                                       IsVisible="{Binding !IsEditing}" />
+                            <!-- 編集モード: TextBox。Enter / フォーカス喪失で確定、Esc でキャンセル -->
+                            <TextBox Text="{Binding EditingName, Mode=TwoWay}"
+                                     IsVisible="{Binding IsEditing}"
+                                     PlaceholderText="（空欄で「既定」表示）"
+                                     KeyDown="OnEditingTextBoxKeyDown"
+                                     LostFocus="OnEditingTextBoxLostFocus"
+                                     AttachedToVisualTree="OnEditingTextBoxAttached" />
                             <TextBlock Text="{Binding SummaryLine}" Opacity="0.65" FontSize="11" />
                         </StackPanel>
                     </DataTemplate>

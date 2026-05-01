@@ -7,6 +7,7 @@ using ViewGrid.Application.Messages;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
+using ViewGrid.Core.Entities;
 using ViewGrid.Core.Services;
 using ViewGrid.Infrastructure.Imaging;
 using ViewGrid.Infrastructure.Services;
@@ -53,13 +54,13 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
 
         // CopyListViewModel
         var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
+        var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository);
         _copyList = new CopyListViewModel(
             _fx.CopyRepository, _fx.AssetRepository, _fx.Thumbnails, _fx.Storage,
-            createCopy, _messenger, sharedHistory,
+            createCopy, updateCopy, _messenger, sharedHistory,
             NullLogger<CopyListViewModel>.Instance);
 
         // CopyPropertiesViewModel
-        var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository);
         _copyProperties = new CopyPropertiesViewModel(
             updateCopy, sharedHistory, _messenger, _fx.ColorPicker,
             NullLogger<CopyPropertiesViewModel>.Instance);
@@ -187,12 +188,13 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
     /// Copy 特性の Undo を MainWindow 経由で実行すると、CopyList の VM も DB と同期される。
     /// CopyPropertiesViewModel.SaveAsync が _source（CopyItemViewModel）に書いた値が
     /// Undo の DB ロールバックと乖離する問題を解消する。
+    /// CopyName は特性タブの編集対象から外したため、Rotation を編集対象として round-trip を検証する。
     /// </summary>
     [Fact]
     public async Task UndoAsync_Reloads_CopyList_After_Property_Edit()
     {
         var asset = await _fx.SeedAssetAsync();
-        var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "before");
+        var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "name");
 
         await _assetLibrary.LoadAsync();
         _assetLibrary.SelectedAsset = _assetLibrary.Assets.Single();
@@ -202,17 +204,18 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         _copyList.Copies.Should().ContainSingle();
         var copyItem = _copyList.Copies[0];
         _copyList.SelectedCopy = copyItem;
+        copyItem.Rotation.Should().Be(Rotation.None);
 
-        // Save 経由で「after」へ更新
-        _copyProperties.CopyName = "after";
+        // Save 経由で Rotation を更新（特性タブの編集対象）
+        _copyProperties.Rotation = Rotation.Cw90;
         await _copyProperties.SaveAsync();
-        copyItem.CopyName.Should().Be("after");
+        copyItem.Rotation.Should().Be(Rotation.Cw90);
 
-        // Ctrl+Z で Undo → CopyList の VM も "before" に戻る
+        // Ctrl+Z で Undo → CopyList の VM も None に戻る（DB ロールバックと同期）
         await _vm.UndoAsync();
-        for (var i = 0; i < 20 && _copyList.Copies.FirstOrDefault()?.CopyName != "before"; i++)
+        for (var i = 0; i < 20 && _copyList.Copies.FirstOrDefault()?.Rotation != Rotation.None; i++)
             await Task.Delay(50);
-        _copyList.Copies[0].CopyName.Should().Be("before");
+        _copyList.Copies[0].Rotation.Should().Be(Rotation.None);
     }
 
     /// <summary>
@@ -235,20 +238,20 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             await Task.Delay(50);
         _copyList.Copies.Should().HaveCount(2);
 
-        // 先頭ではない 2 番目のコピーを選択して編集
+        // 先頭ではない 2 番目のコピーを選択して編集（CopyName は特性タブ対象外なので Rotation で代替）
         var second = _copyList.Copies.Single(c => c.CopyId == copy1.Id);
         _copyList.SelectedCopy = second;
-        _copyProperties.CopyName = "second-edited";
+        _copyProperties.Rotation = Rotation.Cw180;
         await _copyProperties.SaveAsync();
 
-        // Undo → SelectedCopy は second のまま、name は "second" に戻る
+        // Undo → SelectedCopy は second のまま、Rotation は元に戻る
         await _vm.UndoAsync();
-        for (var i = 0; i < 20 && _copyList.Copies.FirstOrDefault(c => c.CopyId == copy1.Id)?.CopyName != "second"; i++)
+        for (var i = 0; i < 20 && _copyList.Copies.FirstOrDefault(c => c.CopyId == copy1.Id)?.Rotation != Rotation.None; i++)
             await Task.Delay(50);
 
         _copyList.SelectedCopy.Should().NotBeNull();
         _copyList.SelectedCopy!.CopyId.Should().Be(copy1.Id); // 先頭（copy0）にジャンプしない
-        _copyList.SelectedCopy.CopyName.Should().Be("second");
+        _copyList.SelectedCopy.Rotation.Should().Be(Rotation.None);
     }
 
     /// <summary>
