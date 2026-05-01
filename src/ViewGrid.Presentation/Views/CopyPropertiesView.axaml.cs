@@ -124,11 +124,18 @@ public partial class CopyPropertiesView : UserControl
     /// <summary>
     /// AutoCrop プレビューサムネ（<see cref="Stretch.Uniform"/> 表示）の表示倍率と
     /// パディングを計算する。<c>null</c> はサムネ未ロード等で計算不能を意味する。
+    /// <para>
+    /// ManualCrop と同じ理由（Stretch.Uniform で Image 自体が中央縮小される）で、
+    /// Canvas (= 親 Grid) との位置差を考慮する必要がある。padX/padY は
+    /// 「Grid 内 Image オフセット + Image 内画像 padding」の合算。
+    /// </para>
     /// </summary>
     private (double DisplayW, double DisplayH, double Scale, double PadX, double PadY)?
         GetAutoCropPreviewMetrics()
     {
         if (AutoCropPreviewImage.Source is not Bitmap bmp) return null;
+        if (AutoCropPreviewImage.Parent is not Control container) return null;
+
         var imgW = AutoCropPreviewImage.Bounds.Width;
         var imgH = AutoCropPreviewImage.Bounds.Height;
         if (imgW <= 0 || imgH <= 0) return null;
@@ -140,8 +147,18 @@ public partial class CopyPropertiesView : UserControl
         var scale = Math.Min(imgW / bmpW, imgH / bmpH);
         var displayW = bmpW * scale;
         var displayH = bmpH * scale;
-        var padX = (imgW - displayW) / 2.0;
-        var padY = (imgH - displayH) / 2.0;
+
+        var imageInternalPadX = (imgW - displayW) / 2.0;
+        var imageInternalPadY = (imgH - displayH) / 2.0;
+
+        // 親 Grid 内での Image オフセット（Stretch.Uniform で中央配置される分）
+        var containerW = container.Bounds.Width;
+        var containerH = container.Bounds.Height;
+        var imageOffsetX = (containerW - imgW) / 2.0;
+        var imageOffsetY = (containerH - imgH) / 2.0;
+
+        var padX = imageOffsetX + imageInternalPadX;
+        var padY = imageOffsetY + imageInternalPadY;
         return (displayW, displayH, scale, padX, padY);
     }
 
@@ -231,8 +248,15 @@ public partial class CopyPropertiesView : UserControl
     }
 
     /// <summary>
-    /// 元画像ピクセル空間（VM 値）→ オーバーレイ座標空間（サムネ表示領域）の換算。
-    /// サムネは Stretch.Uniform でアスペクト維持表示されているため、表示倍率とパディングを考慮。
+    /// 元画像ピクセル空間（VM 値）→ オーバーレイ座標空間（Canvas overlay の座標）の換算。
+    /// <para>
+    /// Image は <c>Stretch=Uniform</c> でアスペクト比を維持しながら自分自身が縮小されるため、
+    /// 親 Grid (= Canvas overlay の親) の中で **中央に縮小配置**される。これにより
+    /// <c>Image.Bounds</c> は実際の Image レンダリング領域、<c>Canvas overlay.Bounds</c> は
+    /// 親 Grid のサイズになり、両者がずれる。padX/padY は以下の合算で計算:
+    ///   1. Image の Grid 内オフセット（Image が中央寄せされる分）
+    ///   2. Image 内での Stretch.Uniform の余白（画像表示部分の中央寄せ）
+    /// </para>
     /// </summary>
     private (double X, double Y, double W, double H, double Scale, double PadX, double PadY)?
         GetThumbnailDisplayMetrics()
@@ -252,8 +276,21 @@ public partial class CopyPropertiesView : UserControl
         var scale = Math.Min(imgW / bmpW, imgH / bmpH);
         var displayW = bmpW * scale;
         var displayH = bmpH * scale;
-        var padX = (imgW - displayW) / 2.0;
-        var padY = (imgH - displayH) / 2.0;
+
+        // (2) Image 内での画像コンテンツの余白（Stretch.Uniform で中央寄せ）
+        var imageInternalPadX = (imgW - displayW) / 2.0;
+        var imageInternalPadY = (imgH - displayH) / 2.0;
+
+        // (1) Canvas (= 親 Grid) 内での Image control 自体のオフセット。
+        // Image が Stretch.Uniform で縮小される場合、HorizontalAlignment 既定 Stretch でも
+        // 結果として Center 配置されるため、この差分を加える必要がある。
+        var containerW = ManualCropContainer.Bounds.Width;
+        var containerH = ManualCropContainer.Bounds.Height;
+        var imageOffsetX = (containerW - imgW) / 2.0;
+        var imageOffsetY = (containerH - imgH) / 2.0;
+
+        var padX = imageOffsetX + imageInternalPadX;
+        var padY = imageOffsetY + imageInternalPadY;
 
         // 元画像ピクセル → オーバーレイ座標の倍率（サムネ → オーバーレイの倍率を経由）
         // 元画像ピクセル × (bmpW / SourceWidth) × scale = オーバーレイ座標
