@@ -11,9 +11,19 @@
             <TextBlock Classes="HintText" Text="..." />
             <Border Classes="WarningBanner">...</Border>
             <Border Classes="InfoBanner">...</Border>
+            <Border Classes="Card">...</Border>
             <StackPanel Classes="FormSection">...</StackPanel>
             <StackPanel Classes="FormGroup">...</StackPanel>
     -->
+
+    <!--
+        P1 デザインシステム: アプリ全体のフォント。
+        日本語向けに "Yu Gothic UI" / "Meiryo UI" を優先し、ASCII は "Segoe UI Variable" / "Segoe UI"。
+        Latin / 日本語ともに字幅・字形が統一され、FluentTheme 既定のばらつきを抑制。
+    -->
+    <Style Selector="Window">
+        <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI, Yu Gothic UI, Meiryo UI, sans-serif" />
+    </Style>
 
     <!-- セクション見出し（パネル単位、サブグループ単位の小見出し共通） -->
     <Style Selector="TextBlock.SectionHeader">
@@ -54,6 +64,32 @@
         <Setter Property="Padding" Value="8,6" />
     </Style>
 
+    <!--
+        P1: カードスタイル。各セクションを Card で囲むことで「群」が視覚的に分かれ、
+        密度の高い右ペインでも情報のまとまりが見えるようになる。
+        ・背景 ViewGridCardBackground（柔らかい灰色）
+        ・薄い border + 6px CornerRadius（FluentTheme の rounded corner と整合）
+        ・内側 Padding 12（FormSection の Spacing=4 / FormGroup の Spacing=12 と階層的に整合）
+    -->
+    <Style Selector="Border.Card">
+        <Setter Property="Background" Value="{DynamicResource ViewGridCardBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ViewGridCardBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="12" />
+    </Style>
+
+    <!--
+        P1: SubtleCard（カード感を弱めたバージョン）。
+        Border は無し、背景の色だけで「セクション分け」を表現する。
+        Card よりさらに密度を上げたい場面（リスト項目の背景など）で使う。
+    -->
+    <Style Selector="Border.SubtleCard">
+        <Setter Property="Background" Value="{DynamicResource ViewGridCardBackground}" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="12" />
+    </Style>
+
     <!-- フォーム内 1 セクション（ラベル + 入力 1 行） -->
     <Style Selector="StackPanel.FormSection">
         <Setter Property="Spacing" Value="4" />
@@ -85,5 +121,49 @@
     </Style>
     <Style Selector="Button.toolbar:disabled">
         <Setter Property="Opacity" Value="0.4" />
+    </Style>
+
+    <!--
+        P2: 主要 TabControl（準備 / 配置）のヘッダ強化。
+        FluentTheme の既定だとフォントが本文と同じで「タブ」に見えにくい。
+        ・FontSize 16、SemiBold で大きく見せる
+        ・Padding を上下 10 に拡げてクリック領域を広く
+        ・選択中はアクセント色のアンダーラインを太くして「現在のフェーズ」を示す
+        ・ステッパー風の workflow を表現
+    -->
+    <Style Selector="TabControl.MainTabs > TabItem">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="16,10" />
+        <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector="TabControl.MainTabs > TabItem:selected">
+        <Setter Property="Foreground" Value="{DynamicResource SystemAccentColor}" />
+    </Style>
+
+    <!--
+        P5: ステータスバー。最下部に固定で 1 行、高さ 24、薄い境界線、
+        SystemBaseLowColor 背景で本体と区別する。FontSize 11 で控えめに。
+    -->
+    <Style Selector="Border.StatusBar">
+        <Setter Property="Background" Value="{DynamicResource ViewGridCardBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ViewGridCardBorder}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="Padding" Value="12,4" />
+        <Setter Property="MinHeight" Value="24" />
+    </Style>
+    <Style Selector="TextBlock.StatusBarText">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Opacity" Value="0.7" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!--
+        P6: アイコン + テキストのボタン（「+ 新規」「削除」など）。
+        PathIcon を左、TextBlock を右に並べたコンテンツ用。Spacing は CommonStyles の 1 単位。
+    -->
+    <Style Selector="StackPanel.IconButtonContent">
+        <Setter Property="Orientation" Value="Horizontal" />
+        <Setter Property="Spacing" Value="6" />
     </Style>
 </Styles>

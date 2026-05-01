@@ -5,14 +5,66 @@
              <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
     <Application.Resources>
-        <!--
-            アイコン Path Geometry。Google Material Icons (Apache 2.0) より adapted。
-            ライセンス表記は THIRD-PARTY-NOTICES.md 参照。
-            参照側の <PathIcon Data="{StaticResource UndoGeometry}" /> 等で使う。
-        -->
-        <StreamGeometry x:Key="UndoGeometry">M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z</StreamGeometry>
-        <StreamGeometry x:Key="RedoGeometry">M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z</StreamGeometry>
-        <StreamGeometry x:Key="ChevronDownGeometry">M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z</StreamGeometry>
+        <ResourceDictionary>
+            <!--
+                アイコン Path Geometry。Google Material Icons (Apache 2.0) より adapted。
+                ライセンス表記は THIRD-PARTY-NOTICES.md 参照。
+                参照側の <PathIcon Data="{StaticResource UndoGeometry}" /> 等で使う。
+            -->
+            <StreamGeometry x:Key="UndoGeometry">M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z</StreamGeometry>
+            <StreamGeometry x:Key="RedoGeometry">M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z</StreamGeometry>
+            <StreamGeometry x:Key="ChevronDownGeometry">M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z</StreamGeometry>
+
+            <!--
+                追加アイコン（P6 着手分）。Material Icons (Apache 2.0) より adapted。
+                add (新規)、delete (削除)、refresh (再読込)、save (保存)、image (画像)、history (履歴)、
+                settings (設定)、prepare (準備＝photo_library)、layout (配置＝grid_view)。
+            -->
+            <StreamGeometry x:Key="AddGeometry">M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z</StreamGeometry>
+            <StreamGeometry x:Key="DeleteGeometry">M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z</StreamGeometry>
+            <StreamGeometry x:Key="RefreshGeometry">M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z</StreamGeometry>
+            <StreamGeometry x:Key="SaveGeometry">M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z</StreamGeometry>
+            <StreamGeometry x:Key="ImageGeometry">M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z</StreamGeometry>
+            <StreamGeometry x:Key="HistoryGeometry">M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z</StreamGeometry>
+            <StreamGeometry x:Key="SettingsGeometry">M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z</StreamGeometry>
+            <StreamGeometry x:Key="PrepareGeometry">M20 4h-3.17L15 2H9L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z</StreamGeometry>
+            <StreamGeometry x:Key="LayoutGeometry">M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 4v8h8v-8h-8zm6 6h-4v-4h4v4z</StreamGeometry>
+
+            <!--
+                P1 デザインシステム: アクセント色をティール系に統一。
+                FluentTheme の SystemAccentColor は青系の既定だが、ViewGrid のクリエイティブツール感を
+                出すためティール (Tailwind sky-500/sky-600) ベースに変更。Light / Dark テーマ両対応。
+                Color* / SystemAccentColor* 系を上書きすることで、TabItem 下線、Button accent、
+                CheckBox / RadioButton 強調色などが一括で変わる。
+            -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <Color x:Key="SystemAccentColor">#0EA5E9</Color>
+                    <Color x:Key="SystemAccentColorDark1">#0284C7</Color>
+                    <Color x:Key="SystemAccentColorDark2">#0369A1</Color>
+                    <Color x:Key="SystemAccentColorDark3">#075985</Color>
+                    <Color x:Key="SystemAccentColorLight1">#38BDF8</Color>
+                    <Color x:Key="SystemAccentColorLight2">#7DD3FC</Color>
+                    <Color x:Key="SystemAccentColorLight3">#BAE6FD</Color>
+                    <!-- カード / パネル用の柔らかい背景色（FluentTheme の SystemAltMediumLowColor を上書き） -->
+                    <Color x:Key="ViewGridCardBackground">#F8FAFC</Color>
+                    <Color x:Key="ViewGridCardBorder">#E2E8F0</Color>
+                    <Color x:Key="ViewGridSurfaceBackground">#FFFFFF</Color>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="SystemAccentColor">#38BDF8</Color>
+                    <Color x:Key="SystemAccentColorDark1">#0EA5E9</Color>
+                    <Color x:Key="SystemAccentColorDark2">#0284C7</Color>
+                    <Color x:Key="SystemAccentColorDark3">#0369A1</Color>
+                    <Color x:Key="SystemAccentColorLight1">#7DD3FC</Color>
+                    <Color x:Key="SystemAccentColorLight2">#BAE6FD</Color>
+                    <Color x:Key="SystemAccentColorLight3">#E0F2FE</Color>
+                    <Color x:Key="ViewGridCardBackground">#1E293B</Color>
+                    <Color x:Key="ViewGridCardBorder">#334155</Color>
+                    <Color x:Key="ViewGridSurfaceBackground">#0F172A</Color>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 
     <Application.Styles>

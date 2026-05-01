@@ -54,6 +54,9 @@ public sealed partial class MainWindowViewModel
     [ObservableProperty]
     public partial int SelectedTabIndex { get; set; }
 
+    /// <summary>タブ切替時にステータスバーの表示を更新する。</summary>
+    partial void OnSelectedTabIndexChanged(int value) => OnPropertyChanged(nameof(StatusSummary));
+
     /// <summary>Undo 可能な操作があるか。<see cref="UndoCommand"/> の CanExecute と連動する。</summary>
     [ObservableProperty]
     public partial bool CanUndo { get; set; }
@@ -77,6 +80,52 @@ public sealed partial class MainWindowViewModel
     /// <summary>履歴 UI で選択状態の表示に使う「現在位置」インデックス。
     /// <see cref="IUndoRedoService.CurrentIndex"/> を都度評価する。</summary>
     public int CurrentHistoryIndex => _history.CurrentIndex;
+
+    /// <summary>
+    /// ステータスバー（最下部）の左側に表示する、現在のフェーズ + 件数の要約。
+    /// 例: 「準備: 12 件のアセット / 3 件のコピー」「配置: 5/9 セル使用」。
+    /// 派生プロパティ（再計算は OnAssetLibraryPropertyChanged / OnCopyListPropertyChanged 等から
+    /// 通知される）。<see cref="StatusSummary"/> プロパティ経由で View にバインド。
+    /// </summary>
+    public string StatusSummary
+    {
+        get
+        {
+            if (SelectedTabIndex == PreparationTabIndex)
+            {
+                var assetCount = AssetLibrary.Assets.Count;
+                var copyCount = CopyList.Copies.Count;
+                var assetText = AssetLibrary.SelectedAsset is null
+                    ? $"{assetCount} 件のアセット"
+                    : $"{assetCount} 件のアセット / 選択中 1 件";
+                return copyCount > 0
+                    ? $"準備: {assetText} / コピー {copyCount} 件"
+                    : $"準備: {assetText}";
+            }
+            else
+            {
+                var grid = GridList.SelectedGrid;
+                if (grid is null)
+                    return "配置: グリッド未選択";
+                return $"配置: {grid.Name} ({grid.Cols}×{grid.Rows} セル)";
+            }
+        }
+    }
+
+    /// <summary>
+    /// ステータスバー右側の Undo/Redo 状態表示。
+    /// 履歴件数 + 現在位置を「履歴: 5/12」形式で示す（履歴空のときは「履歴なし」）。
+    /// </summary>
+    public string HistorySummary
+    {
+        get
+        {
+            var total = _history.History.Count;
+            if (total == 0) return "履歴なし";
+            var current = _history.CurrentIndex + 1; // 0 始まりを 1 始まりへ
+            return $"履歴: {current}/{total}";
+        }
+    }
 
     /// <summary>履歴 UI から見て、何かしらエントリがあるか。プレースホルダ表示用。</summary>
     public bool HasHistory => _history.History.Count > 0;
@@ -253,6 +302,7 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(HistoryEntries));
         OnPropertyChanged(nameof(CurrentHistoryIndex));
         OnPropertyChanged(nameof(HasHistory));
+        OnPropertyChanged(nameof(HistorySummary));
 
         // CurrentIndex が変わると hover 範囲の意味も変わる（ジャンプ方向の判定が変わる）。
         // hover 中ならその場で再計算しておく。hover 解除中なら no-op。

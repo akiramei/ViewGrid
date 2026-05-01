@@ -13,25 +13,41 @@
     </UserControl.Resources>
 
     <DockPanel LastChildFill="True">
-        <!-- ツールバー -->
+        <!-- P6: ツールバー（アイコン付ボタンに統一、accent クラスで主要アクションを強調） -->
         <Border DockPanel.Dock="Top"
                 BorderBrush="{DynamicResource SystemBaseLowColor}"
                 BorderThickness="0,0,0,1"
-                Padding="12,8">
+                Padding="16,12">
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="画像を追加..."
-                        Command="{Binding PickFilesAndImportCommand}"
-                        IsEnabled="{Binding !IsBusy}" />
-                <Button Content="選択を削除"
-                        Command="{Binding DeleteSelectedCommand}" />
+                <Button Command="{Binding PickFilesAndImportCommand}"
+                        IsEnabled="{Binding !IsBusy}"
+                        Classes="accent"
+                        ToolTip.Tip="画像をアセットライブラリに追加">
+                    <StackPanel Classes="IconButtonContent">
+                        <PathIcon Data="{StaticResource AddGeometry}" Width="14" Height="14" />
+                        <TextBlock Text="画像を追加" />
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding DeleteSelectedCommand}"
+                        ToolTip.Tip="選択中のアセットを削除">
+                    <StackPanel Classes="IconButtonContent">
+                        <PathIcon Data="{StaticResource DeleteGeometry}" Width="14" Height="14" />
+                        <TextBlock Text="削除" />
+                    </StackPanel>
+                </Button>
                 <TextBlock Text="{Binding SelectedCount, StringFormat='({0} 件選択中)'}"
                            VerticalAlignment="Center"
                            Opacity="0.7"
                            FontSize="11"
                            IsVisible="{Binding IsMultiSelected}" />
-                <Button Content="再読み込み"
-                        Command="{Binding LoadCommand}"
-                        IsEnabled="{Binding !IsBusy}" />
+                <Button Command="{Binding LoadCommand}"
+                        IsEnabled="{Binding !IsBusy}"
+                        ToolTip.Tip="アセット一覧を再読み込み">
+                    <StackPanel Classes="IconButtonContent">
+                        <PathIcon Data="{StaticResource RefreshGeometry}" Width="14" Height="14" />
+                        <TextBlock Text="再読み込み" />
+                    </StackPanel>
+                </Button>
                 <ProgressBar IsIndeterminate="True"
                              IsVisible="{Binding IsBusy}"
                              Width="120"
@@ -40,11 +56,11 @@
             </StackPanel>
         </Border>
 
-        <!-- ステータスバー -->
+        <!-- ステータスバー（パネル内、件数 + メッセージ表示） -->
         <Border DockPanel.Dock="Bottom"
                 BorderBrush="{DynamicResource SystemBaseLowColor}"
                 BorderThickness="0,1,0,0"
-                Padding="12,6">
+                Padding="16,6">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0"
                            Text="{Binding StatusMessage}"
@@ -57,7 +73,28 @@
             </Grid>
         </Border>
 
-        <!-- アセット一覧 -->
+        <!-- P7: 空状態の案内（アセット 0 件のとき）。アイコン + 操作誘導文 -->
+        <Border DockPanel.Dock="Top"
+                IsVisible="{Binding !Assets.Count}"
+                Padding="32"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+            <StackPanel Spacing="12" HorizontalAlignment="Center">
+                <PathIcon Data="{StaticResource ImageGeometry}"
+                          Width="48" Height="48"
+                          Opacity="0.4" />
+                <TextBlock Text="まだ画像がありません"
+                           FontSize="16"
+                           Opacity="0.7"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="「画像を追加」ボタンまたはドラッグ＆ドロップで追加できます"
+                           FontSize="12"
+                           Opacity="0.5"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <!-- アセット一覧（カード化されたグリッド） -->
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
             <ListBox x:Name="AssetList"
@@ -78,8 +115,10 @@
                         <Border Width="180"
                                 Padding="8"
                                 Margin="4"
-                                CornerRadius="6"
-                                Background="{DynamicResource SystemListLowColor}">
+                                CornerRadius="8"
+                                Background="{DynamicResource ViewGridCardBackground}"
+                                BorderBrush="{DynamicResource ViewGridCardBorder}"
+                                BorderThickness="1">
                             <StackPanel Spacing="6">
                                 <Border Width="160" Height="160"
                                         Background="{DynamicResource SystemAltMediumLowColor}"

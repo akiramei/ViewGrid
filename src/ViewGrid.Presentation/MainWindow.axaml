@@ -16,7 +16,11 @@
         WindowStartupLocation="CenterScreen"
         DragDrop.AllowDrop="True">
 
-    <!-- Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z で Undo/Redo を発火（Window レベル KeyBinding） -->
+    <!--
+        Window レベル KeyBinding。
+        Undo/Redo: Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z
+        タブ切替: Ctrl+1（準備）/ Ctrl+2（配置）— P8 のショートカット拡充
+    -->
     <Window.KeyBindings>
         <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
         <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
@@ -73,14 +77,23 @@
     </Window.Resources>
 
     <!--
-        全体レイアウト: Row 0 にメニュー + 履歴ツールバー（DockPanel で左右分割）、Row 1 に TabControl。
-        プロ向けフラット化のため、本体内のタイトル Border は削除した（Window クロームで「ViewGrid」が
-        常時見えているため重複情報）。これにより縦スペース約 50px をキャンバス側に解放している。
+        P1+P5 全体レイアウト: Row 0 にメニュー + 履歴ツールバー、Row 1 に TabControl、Row 2 に
+        ステータスバー（最下部固定）。Row 1 のキャンバス領域は伸縮し、上下の補助 UI と区別される。
     -->
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,*,Auto">
         <DockPanel Grid.Row="0" LastChildFill="False">
-            <!-- 左: 編集メニュー -->
+            <!-- P3: メニューバー充実（ファイル / 編集 / 表示 / ヘルプ） -->
             <Menu DockPanel.Dock="Left">
+                <MenuItem Header="ファイル">
+                    <MenuItem Header="画像を追加..."
+                              InputGesture="Ctrl+O"
+                              IsEnabled="False"
+                              ToolTip.Tip="（準備タブのボタンから操作してください）" />
+                    <Separator />
+                    <MenuItem Header="終了"
+                              InputGesture="Alt+F4"
+                              Click="OnExitClicked" />
+                </MenuItem>
                 <MenuItem Header="編集">
                     <MenuItem Header="{Binding UndoLabel}"
                               Command="{Binding UndoCommand}"
@@ -88,6 +101,18 @@
                     <MenuItem Header="{Binding RedoLabel}"
                               Command="{Binding RedoCommand}"
                               InputGesture="Ctrl+Y" />
+                </MenuItem>
+                <MenuItem Header="表示">
+                    <MenuItem Header="準備タブ"
+                              InputGesture="Ctrl+1"
+                              Click="OnShowPreparationTabClicked" />
+                    <MenuItem Header="配置タブ"
+                              InputGesture="Ctrl+2"
+                              Click="OnShowLayoutTabClicked" />
+                </MenuItem>
+                <MenuItem Header="ヘルプ">
+                    <MenuItem Header="ViewGrid について"
+                              Click="OnAboutClicked" />
                 </MenuItem>
             </Menu>
 
@@ -151,8 +176,17 @@
             </StackPanel>
         </DockPanel>
 
-        <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedTabIndex}" Padding="0">
-            <TabItem Header="準備">
+        <TabControl Grid.Row="1"
+                    Classes="MainTabs"
+                    SelectedIndex="{Binding SelectedTabIndex}"
+                    Padding="0">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <PathIcon Data="{StaticResource PrepareGeometry}" Width="18" Height="18" />
+                        <TextBlock Text="準備" />
+                    </StackPanel>
+                </TabItem.Header>
                 <Grid ColumnDefinitions="*,380">
                     <views:AssetLibraryView Grid.Column="0"
                                             DataContext="{Binding AssetLibrary}" />
@@ -212,7 +246,13 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="配置">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <PathIcon Data="{StaticResource LayoutGeometry}" Width="18" Height="18" />
+                        <TextBlock Text="配置" />
+                    </StackPanel>
+                </TabItem.Header>
                 <Grid ColumnDefinitions="300,*">
                     <views:GridCanvasListView Grid.Column="0"
                                               DataContext="{Binding GridList}" />
@@ -221,5 +261,22 @@
                 </Grid>
             </TabItem>
         </TabControl>
+
+        <!--
+            P5: ステータスバー。準備タブ/配置タブの状態 + 履歴件数を最下部に常駐表示する。
+            VS Code / IntelliJ などのプロ向け IDE と同じ位置感。
+            左: フェーズ + 件数（準備: N 件 / 配置: グリッド名 N×M セル）
+            右: 履歴件数（履歴: 5/12）
+        -->
+        <Border Grid.Row="2" Classes="StatusBar">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Classes="StatusBarText"
+                           Text="{Binding StatusSummary}" />
+                <TextBlock Grid.Column="1"
+                           Classes="StatusBarText"
+                           Text="{Binding HistorySummary}" />
+            </Grid>
+        </Border>
     </Grid>
 </Window>

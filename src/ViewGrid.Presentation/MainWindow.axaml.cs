@@ -42,6 +42,48 @@ public partial class MainWindow : Window
             await vm.AssetLibrary.AddFilesAsync(paths);
     }
 
+    /// <summary>「ファイル → 終了」: Window を閉じる。</summary>
+    private void OnExitClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Close();
+
+    /// <summary>「表示 → 準備タブ」: SelectedTabIndex=0 に切替（Ctrl+1 と同じ）。</summary>
+    private void OnShowPreparationTabClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.SelectedTabIndex = MainWindowViewModel.PreparationTabIndex;
+    }
+
+    /// <summary>「表示 → 配置タブ」: SelectedTabIndex=1 に切替（Ctrl+2 と同じ）。</summary>
+    private void OnShowLayoutTabClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.SelectedTabIndex = MainWindowViewModel.LayoutTabIndex;
+    }
+
+    /// <summary>「ヘルプ → ViewGrid について」: 簡易な情報ダイアログ。</summary>
+    private async void OnAboutClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var dialog = new Window
+        {
+            Title = "ViewGrid について",
+            Width = 360,
+            Height = 220,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new Avalonia.Controls.StackPanel
+            {
+                Margin = new Avalonia.Thickness(24),
+                Spacing = 12,
+                Children =
+                {
+                    new Avalonia.Controls.TextBlock { Text = "ViewGrid", FontSize = 22, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                    new Avalonia.Controls.TextBlock { Text = "画像をグリッドに配置するシンプルなツール。", Opacity = 0.75 },
+                    new Avalonia.Controls.TextBlock { Text = "© 2026 ViewGrid", FontSize = 11, Opacity = 0.55, Margin = new Avalonia.Thickness(0, 8, 0, 0) },
+                },
+            },
+        };
+        await dialog.ShowDialog(this);
+    }
+
     /// <summary>
     /// 履歴 ListBox の各項目（DataTemplate 内 Grid）に hover した時、VM の
     /// <see cref="MainWindowViewModel.HoveredHistoryIndex"/> を更新する。
