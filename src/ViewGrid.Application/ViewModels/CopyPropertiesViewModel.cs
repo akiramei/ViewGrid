@@ -21,16 +21,24 @@ namespace ViewGrid.Application.ViewModels;
 /// 選択された論理コピーの特性を編集する。Attach で値を読み込み、
 /// 変更があれば IsDirty を立て、Save で永続化する。
 /// </summary>
-public sealed partial class CopyPropertiesViewModel : ViewModelBase
+public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
 {
     private readonly UpdateImageCopyUseCase _updateUseCase;
     private readonly IUndoRedoService _history;
     private readonly IMessenger _messenger;
     private readonly IImageColorPicker _colorPicker;
+    private readonly IAutoCropBboxResolver _autoCropResolver;
     private readonly ILogger<CopyPropertiesViewModel> _logger;
 
     private CopyItemViewModel? _source;
     private bool _suppressDirty;
+
+    /// <summary>
+    /// AutoCrop プレビュー計算の進行中タスクをキャンセルするための CTS。
+    /// 閾値スライダーや HEX 入力で連続変更されるたびに古い計算を打ち切り、
+    /// 最新の入力結果だけが反映されるようにする。
+    /// </summary>
+    private CancellationTokenSource? _autoCropPreviewCts;
 
     [ObservableProperty]
     public partial bool HasCopy { get; set; }
@@ -148,6 +156,25 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
     /// <summary>カスタム HEX / 画像ピッカーを表示するかの派生プロパティ。</summary>
     public bool IsAutoCropCustom => AutoCropPreset == AutoCropPreset.Custom;
 
+    /// <summary>
+    /// AutoCrop の走査結果（0–1 比率）。プレビュー overlay の bbox 計算に使う。
+    /// <c>null</c> のときは「クロップ範囲なし（全画素対象色 or 対象色不在）」または
+    /// プレビュー無効状態。<see cref="HasAutoCropPreview"/> も合わせて見る。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAutoCropPreview))]
+    public partial AutoCropFraction? AutoCropPreviewFraction { get; set; }
+
+    /// <summary>
+    /// プレビュー走査結果のユーザー向け説明文。
+    /// 「対象色によるクロップ範囲なし（全領域）」など、bbox=null のときに状況を伝える。
+    /// </summary>
+    [ObservableProperty]
+    public partial string? AutoCropPreviewMessage { get; set; }
+
+    /// <summary>プレビュー overlay を描画すべきか。<see cref="AutoCropPreviewFraction"/> が非 null なら true。</summary>
+    public bool HasAutoCropPreview => AutoCropPreviewFraction is not null;
+
     /// <summary>サムネが利用可能か（画像クリックピッカーの有効性）。</summary>
     public bool HasThumbnail => !string.IsNullOrEmpty(ThumbnailPath);
 
@@ -174,7 +201,17 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             ManualCropEnabled = false;
         }
         OnPropertyChanged(nameof(IsCropOff));
+        TriggerAutoCropPreviewUpdate();
     }
+
+    /// <summary>プリセット変更時にプレビュー再計算 + Custom 切替時の派生プロパティ通知。</summary>
+    partial void OnAutoCropPresetChanged(AutoCropPreset value) => TriggerAutoCropPreviewUpdate();
+
+    /// <summary>閾値変更時にプレビュー再計算（スライダー連続変更でもキャンセル合流で最新だけ反映）。</summary>
+    partial void OnAutoCropThresholdChanged(int value) => TriggerAutoCropPreviewUpdate();
+
+    /// <summary>カスタム HEX 変更時にプレビュー再計算（採取 / 手入力 両方）。</summary>
+    partial void OnAutoCropCustomColorHexChanged(string value) => TriggerAutoCropPreviewUpdate();
 
     /// <summary>排他連動: ManualCrop ON にすると AutoCrop は OFF。</summary>
     partial void OnManualCropEnabledChanged(bool value)
@@ -219,12 +256,14 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         IUndoRedoService history,
         IMessenger messenger,
         IImageColorPicker colorPicker,
+        IAutoCropBboxResolver autoCropResolver,
         ILogger<CopyPropertiesViewModel> logger)
     {
         _updateUseCase = updateUseCase;
         _history = history;
         _messenger = messenger;
         _colorPicker = colorPicker;
+        _autoCropResolver = autoCropResolver;
         _logger = logger;
         PropertyChanged += OnAnyPropertyChanged;
     }
@@ -312,11 +351,17 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
             }
             IsDirty = false;
             StatusMessage = null;
+            // Attach 内では _suppressDirty=true により partial method 経由のプレビュー再計算が
+            // 抑止されている。終了後に 1 回だけ呼び出して、AutoCropEnabled / 設定の最終状態に
+            // 基づいてプレビューを更新する（無効化のときは null へリセットされる）。
+            AutoCropPreviewFraction = null;
+            AutoCropPreviewMessage = null;
         }
         finally
         {
             _suppressDirty = false;
         }
+        TriggerAutoCropPreviewUpdate();
     }
 
     [RelayCommand(CanExecute = nameof(CanSave))]
@@ -508,6 +553,78 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
         AutoCropCustomColorHex = FormatHex(color);
     }
 
+    /// <summary>
+    /// AutoCrop プレビューの再計算を起動する。AutoCropEnabled / Preset / Threshold /
+    /// Custom HEX / Source パスの変更時に呼ばれる。
+    /// 進行中の計算があれば <see cref="_autoCropPreviewCts"/> でキャンセルし、
+    /// 最新入力に基づく結果だけが <see cref="AutoCropPreviewFraction"/> に反映される。
+    /// async void にしないため fire-and-forget で <see cref="RecalculateAutoCropPreviewAsync"/> を呼ぶ。
+    /// </summary>
+    private void TriggerAutoCropPreviewUpdate()
+    {
+        // _suppressDirty は Attach 中の一括設定。Attach 終了後にまとめて 1 回呼ぶよう、
+        // 中間状態の partial method 通知では preview 計算しない。
+        if (_suppressDirty) return;
+
+        _ = RecalculateAutoCropPreviewAsync();
+    }
+
+    /// <summary>
+    /// プレビュー走査を実行して <see cref="AutoCropPreviewFraction"/> を更新する。
+    /// AutoCrop OFF / source 未設定 / asset 未設定なら null + メッセージ null（プレビュー非表示）。
+    /// 走査が <c>null</c> を返したら「クロップ範囲なし」を意味するメッセージを表示する。
+    /// </summary>
+    private async Task RecalculateAutoCropPreviewAsync()
+    {
+        // 古い計算をキャンセル。Cancel() は ResolveAsync 内の await ポイントで例外として伝播する。
+        _autoCropPreviewCts?.Cancel();
+        _autoCropPreviewCts?.Dispose();
+        _autoCropPreviewCts = new CancellationTokenSource();
+        var ct = _autoCropPreviewCts.Token;
+
+        var assetId = _source?.AssetId;
+        var sourcePath = SourceImagePath;
+        if (!AutoCropEnabled || assetId is null || string.IsNullOrEmpty(sourcePath))
+        {
+            AutoCropPreviewFraction = null;
+            AutoCropPreviewMessage = null;
+            return;
+        }
+
+        var settings = BuildAutoCropFromInputs();
+        try
+        {
+            var fraction = await _autoCropResolver.ResolveAsync(assetId.Value, sourcePath, settings, ct);
+            if (ct.IsCancellationRequested) return;
+
+            if (fraction is null)
+            {
+                // Resolver が null を返すケース:
+                //   1. 走査結果が AutoCropFraction.Full（全領域 = クロップなし）
+                //   2. 原画像読込失敗 / cache miss + ファイル不在
+                // どちらも UX 上は「クロップ範囲なし」で扱う。原画像読込失敗は HasThumbnail=false の
+                // ケースなので、AutoCropEnabled かつ HasThumbnail=true のときは (1) と解釈してよい。
+                AutoCropPreviewFraction = null;
+                AutoCropPreviewMessage = "対象色によるクロップ範囲がありません（または対象色が見つかりません）";
+            }
+            else
+            {
+                AutoCropPreviewFraction = fraction;
+                AutoCropPreviewMessage = null;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 連続変更で次の計算に上書きされる。何もしない。
+        }
+        catch (Exception ex)
+        {
+            // ファイル I/O 等の予期せぬエラー。プレビューだけ無効化、Save 経路は別途エラー処理。
+            AutoCropPreviewFraction = null;
+            AutoCropPreviewMessage = $"プレビュー計算に失敗: {ex.Message}";
+        }
+    }
+
     private void OnAnyPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_suppressDirty)
@@ -527,4 +644,11 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase
 
     [LoggerMessage(EventId = 3101, Level = LogLevel.Information, Message = "論理コピー特性を保存: {CopyId}")]
     private static partial void LogSaved(ILogger logger, System.Guid copyId);
+
+    public void Dispose()
+    {
+        _autoCropPreviewCts?.Cancel();
+        _autoCropPreviewCts?.Dispose();
+        _autoCropPreviewCts = null;
+    }
 }

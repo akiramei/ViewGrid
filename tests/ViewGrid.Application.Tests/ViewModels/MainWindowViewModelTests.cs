@@ -62,7 +62,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
 
         // CopyPropertiesViewModel
         _copyProperties = new CopyPropertiesViewModel(
-            updateCopy, sharedHistory, _messenger, _fx.ColorPicker,
+            updateCopy, sharedHistory, _messenger, _fx.ColorPicker, _fx.AutoCropResolver,
             NullLogger<CopyPropertiesViewModel>.Instance);
 
         // GridCanvasListViewModel

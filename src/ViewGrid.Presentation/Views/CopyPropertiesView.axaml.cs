@@ -54,6 +54,11 @@ public partial class CopyPropertiesView : UserControl
         {
             if (e.Property == BoundsProperty) UpdateOverlay();
         };
+        // AutoCrop プレビュー Image も同様に Bounds 変更で overlay 再描画。
+        AutoCropPreviewImage.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == BoundsProperty) UpdateAutoCropPreviewOverlay();
+        };
     }
 
     /// <summary>
@@ -68,6 +73,8 @@ public partial class CopyPropertiesView : UserControl
         if (DataContext is not CopyPropertiesViewModel vm) return;
         if (image.Source is not Bitmap bitmap) return;
         if (!e.GetCurrentPoint(image).Properties.IsLeftButtonPressed) return;
+        // Custom プリセット時のみ色採取が意味を持つ（プリセット時はクリックしても何も起きない）。
+        if (!vm.IsAutoCropCustom) return;
 
         var pos = e.GetPosition(image);
         var imgW = image.Bounds.Width;
@@ -111,6 +118,94 @@ public partial class CopyPropertiesView : UserControl
             _vm.PropertyChanged += OnVmPropertyChanged;
         }
         UpdateOverlay();
+        UpdateAutoCropPreviewOverlay();
+    }
+
+    /// <summary>
+    /// AutoCrop プレビューサムネ（<see cref="Stretch.Uniform"/> 表示）の表示倍率と
+    /// パディングを計算する。<c>null</c> はサムネ未ロード等で計算不能を意味する。
+    /// </summary>
+    private (double DisplayW, double DisplayH, double Scale, double PadX, double PadY)?
+        GetAutoCropPreviewMetrics()
+    {
+        if (AutoCropPreviewImage.Source is not Bitmap bmp) return null;
+        var imgW = AutoCropPreviewImage.Bounds.Width;
+        var imgH = AutoCropPreviewImage.Bounds.Height;
+        if (imgW <= 0 || imgH <= 0) return null;
+
+        var bmpW = (double)bmp.PixelSize.Width;
+        var bmpH = (double)bmp.PixelSize.Height;
+        if (bmpW <= 0 || bmpH <= 0) return null;
+
+        var scale = Math.Min(imgW / bmpW, imgH / bmpH);
+        var displayW = bmpW * scale;
+        var displayH = bmpH * scale;
+        var padX = (imgW - displayW) / 2.0;
+        var padY = (imgH - displayH) / 2.0;
+        return (displayW, displayH, scale, padX, padY);
+    }
+
+    /// <summary>
+    /// AutoCrop プレビュー用 Canvas overlay を再描画する。
+    /// VM の <see cref="CopyPropertiesViewModel.AutoCropPreviewFraction"/> から bbox を計算し、
+    /// 赤枠 + 4 領域マットを描画する。
+    /// AutoCrop OFF / preview null / metrics 取得失敗のいずれかなら overlay 全消去。
+    /// </summary>
+    private void UpdateAutoCropPreviewOverlay()
+    {
+        if (AutoCropPreviewOverlay is null) return;
+        AutoCropPreviewOverlay.Children.Clear();
+
+        if (_vm is null || !_vm.AutoCropEnabled) return;
+        if (_vm.AutoCropPreviewFraction is not { } fraction) return;
+
+        var metrics = GetAutoCropPreviewMetrics();
+        if (metrics is null) return;
+        var (displayW, displayH, _, padX, padY) = metrics.Value;
+
+        // fraction (0-1) は元画像比率だが、サムネ Stretch.Uniform 表示でも比率は同じ。
+        // displayW/H に乗算するだけで overlay 座標 (Canvas 内座標) になる。
+        var rectX = padX + fraction.X * displayW;
+        var rectY = padY + fraction.Y * displayH;
+        var rectW = fraction.Width * displayW;
+        var rectH = fraction.Height * displayH;
+        if (rectW <= 0 || rectH <= 0) return;
+
+        // マット 4 領域: bbox 外側を半透明黒で覆って、クロップで残る範囲を強調する。
+        var mattBrush = new SolidColorBrush(Color.FromArgb(0x80, 0x00, 0x00, 0x00));
+        AddAutoCropMatt(padX, padY, displayW, rectY - padY, mattBrush);                          // 上
+        AddAutoCropMatt(padX, rectY + rectH, displayW, padY + displayH - (rectY + rectH), mattBrush); // 下
+        AddAutoCropMatt(padX, rectY, rectX - padX, rectH, mattBrush);                            // 左
+        AddAutoCropMatt(rectX + rectW, rectY, padX + displayW - (rectX + rectW), rectH, mattBrush); // 右
+
+        // bbox 赤枠（クロップで残る範囲を視覚化）
+        var border = new Rectangle
+        {
+            Width = rectW,
+            Height = rectH,
+            Stroke = new SolidColorBrush(Color.FromArgb(0xFF, 0xFF, 0x33, 0x33)),
+            StrokeThickness = 1.5,
+            Fill = Brushes.Transparent,
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(border, rectX);
+        Canvas.SetTop(border, rectY);
+        AutoCropPreviewOverlay.Children.Add(border);
+    }
+
+    private void AddAutoCropMatt(double x, double y, double w, double h, IBrush brush)
+    {
+        if (w <= 0 || h <= 0) return;
+        var rect = new Rectangle
+        {
+            Width = w,
+            Height = h,
+            Fill = brush,
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(rect, x);
+        Canvas.SetTop(rect, y);
+        AutoCropPreviewOverlay.Children.Add(rect);
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -125,6 +220,13 @@ public partial class CopyPropertiesView : UserControl
             or nameof(CopyPropertiesViewModel.ThumbnailPath))
         {
             UpdateOverlay();
+        }
+
+        if (e.PropertyName is nameof(CopyPropertiesViewModel.AutoCropPreviewFraction)
+            or nameof(CopyPropertiesViewModel.AutoCropEnabled)
+            or nameof(CopyPropertiesViewModel.ThumbnailPath))
+        {
+            UpdateAutoCropPreviewOverlay();
         }
     }
 

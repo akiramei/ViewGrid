@@ -24,7 +24,7 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         _messenger = new WeakReferenceMessenger();
         var history = new UndoRedoService();
         _vm = new CopyPropertiesViewModel(
-            update, history, _messenger, _fx.ColorPicker,
+            update, history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver,
             NullLogger<CopyPropertiesViewModel>.Instance);
     }
 
@@ -178,6 +178,49 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         var asset = await _fx.SeedAssetAsync();
         var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "seed");
         return new CopyItemViewModel(copy);
+    }
+
+    [Fact]
+    public async Task Attach_With_AutoCrop_Disabled_Has_No_Preview()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+
+        _vm.AutoCropEnabled.Should().BeFalse();
+        _vm.AutoCropPreviewFraction.Should().BeNull();
+        _vm.HasAutoCropPreview.Should().BeFalse();
+        _vm.AutoCropPreviewMessage.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Disabling_AutoCrop_After_Enable_Clears_Preview()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AutoCropEnabled = true;
+        // 走査の完了を最大 500ms 待つ（resolver は実画像走査だが SourceImagePath が null なので即 null になる）
+        for (var i = 0; i < 10 && _vm.AutoCropPreviewMessage is null && _vm.AutoCropPreviewFraction is null; i++)
+            await Task.Delay(20);
+
+        _vm.AutoCropEnabled = false;
+        for (var i = 0; i < 10 && _vm.AutoCropPreviewFraction is not null; i++)
+            await Task.Delay(20);
+
+        _vm.AutoCropPreviewFraction.Should().BeNull();
+        _vm.AutoCropPreviewMessage.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Enabling_AutoCrop_Without_SourcePath_Keeps_Preview_Null()
+    {
+        var source = await SeedSourceAsync();
+        // SeedSourceAsync は SourceImagePath を null で生成する（実画像連携は別の経路でテスト）
+        _vm.Attach(source);
+
+        _vm.AutoCropEnabled = true;
+        for (var i = 0; i < 10; i++) await Task.Delay(20); // 計算が走る時間を確保
+
+        _vm.AutoCropPreviewFraction.Should().BeNull(); // SourceImagePath null で early return
     }
 
     [Theory]
