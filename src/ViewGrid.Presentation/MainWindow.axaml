@@ -256,27 +256,9 @@
                         <TextBlock Text="配置" />
                     </StackPanel>
                 </TabItem.Header>
-                <!--
-                    「配置ファースト UI」第 1 段階: 配置タブを 3 ペイン化。
-                    ・Column 0 (320px): ライブラリ + グリッド一覧の縦 2 段サイドバー
-                      （AssetLibraryView の 180px サムネカードが 1 列収まる最低幅）
-                    ・Column 1 (*): キャンバス + 候補/プロパティ（既存の GridWorkspaceView）
-                    アセットライブラリは MainWindowViewModel.AssetLibrary を共有しているため、
-                    準備タブと選択状態が同期する（ライブラリは「常に同じ集合」を表現する設計）。
-                    準備タブは移行期間として温存（バリアント特性の本格編集はこちらで継続可能）。
-                -->
-                <Grid ColumnDefinitions="320,*">
-                    <Grid Grid.Column="0" RowDefinitions="3*,Auto,5*">
-                        <views:AssetLibraryView Grid.Row="0"
-                                                DataContext="{Binding AssetLibrary}" />
-                        <GridSplitter Grid.Row="1"
-                                      Height="4"
-                                      HorizontalAlignment="Stretch"
-                                      ResizeDirection="Rows"
-                                      Background="{DynamicResource SystemBaseLowColor}" />
-                        <views:GridCanvasListView Grid.Row="2"
-                                                  DataContext="{Binding GridList}" />
-                    </Grid>
+                <Grid ColumnDefinitions="300,*">
+                    <views:GridCanvasListView Grid.Column="0"
+                                              DataContext="{Binding GridList}" />
                     <views:GridWorkspaceView Grid.Column="1"
                                              DataContext="{Binding GridWorkspace}" />
                 </Grid>
