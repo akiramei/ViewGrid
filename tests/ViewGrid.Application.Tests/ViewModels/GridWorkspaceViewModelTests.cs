@@ -249,4 +249,69 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         ok.Should().BeFalse();
         _vm.StatusMessage.Should().NotBeNullOrEmpty();
     }
+
+    /// <summary>初期状態（グリッド未選択）では CurrentSelection が NoSelection になる。</summary>
+    [Fact]
+    public void CurrentSelection_NoGrid_Returns_NoSelection()
+    {
+        _vm.CurrentSelection.Should().BeOfType<ViewGrid.Application.Selection.NoSelection>();
+        _vm.IsNoSelection.Should().BeTrue();
+        _vm.IsGridOnlySelected.Should().BeFalse();
+        _vm.IsPlacementSelected.Should().BeFalse();
+    }
+
+    /// <summary>グリッド選択 + 配置未選択なら GridSelection になる。</summary>
+    [Fact]
+    public async Task CurrentSelection_With_Grid_But_No_Placement_Returns_GridSelection()
+    {
+        var grid = await SeedActiveGridAsync(2, 2);
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+
+        _vm.CurrentSelection.Should().BeOfType<ViewGrid.Application.Selection.GridSelection>();
+        ((ViewGrid.Application.Selection.GridSelection)_vm.CurrentSelection).GridId.Should().Be(grid.Id);
+        _vm.IsGridOnlySelected.Should().BeTrue();
+        _vm.IsPlacementSelected.Should().BeFalse();
+    }
+
+    /// <summary>配置選択時は PlacementSelection に切り替わり、Placement/Copy/Grid Id が一致する。</summary>
+    [Fact]
+    public async Task CurrentSelection_With_Selected_Placement_Returns_PlacementSelection()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        var placed = await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+        placed.IsError.Should().BeFalse();
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        _vm.SelectedPlacement = _vm.Placements.Single();
+
+        _vm.CurrentSelection.Should().BeOfType<ViewGrid.Application.Selection.PlacementSelection>();
+        var sel = (ViewGrid.Application.Selection.PlacementSelection)_vm.CurrentSelection;
+        sel.GridId.Should().Be(grid.Id);
+        sel.PlacementId.Should().Be(placed.Value.Id);
+        sel.CopyId.Should().Be(copy.Id);
+        _vm.IsPlacementSelected.Should().BeTrue();
+        _vm.IsGridOnlySelected.Should().BeFalse();
+    }
+
+    /// <summary>配置選択を解除すると GridSelection に戻る。</summary>
+    [Fact]
+    public async Task Clearing_Placement_Falls_Back_To_GridSelection()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        _vm.SelectedPlacement = _vm.Placements.Single();
+        _vm.IsPlacementSelected.Should().BeTrue();
+
+        _vm.SelectedPlacement = null;
+
+        _vm.CurrentSelection.Should().BeOfType<ViewGrid.Application.Selection.GridSelection>();
+        _vm.IsGridOnlySelected.Should().BeTrue();
+    }
 }

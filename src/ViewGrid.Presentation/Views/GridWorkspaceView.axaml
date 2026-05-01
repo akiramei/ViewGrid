@@ -7,6 +7,7 @@
              xmlns:conv="clr-namespace:ViewGrid.Presentation.Converters"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="ViewGrid.Presentation.Views.GridWorkspaceView"
+             x:Name="GridWorkspaceRoot"
              x:DataType="vm:GridWorkspaceViewModel">
 
     <UserControl.Resources>
@@ -157,34 +158,64 @@
                               Background="{DynamicResource SystemBaseLowColor}"
                               Margin="0,4" />
 
-                <!-- Row 3: インスペクタとアクション（伸縮可、最低 160px、Inspector 内 ScrollViewer が効く） -->
+                <!--
+                    Row 3: 文脈依存プロパティパネル（伸縮可、最低 160px）。
+                    CurrentSelection (ISelectionContext) の派生フラグで 3 状態を切替:
+                      ・PlacementSelection → PlacementInspectorView（配置固有プロパティ + 共有編集ナビ）
+                      ・GridSelection → GridPropertiesView（グリッド名 / サイズ / 比率の読み取り専用）
+                      ・NoSelection → 「グリッドを選択してください」案内
+                    将来 3 ペイン化するときは ContentControl + DataTemplates ベースに移行する。
+                -->
                 <DockPanel Grid.Row="3" MinHeight="160" LastChildFill="True">
                     <TextBlock DockPanel.Dock="Top"
                                FontSize="11"
                                Opacity="0.75"
-                               Margin="0,0,0,4">
+                               Margin="0,0,0,4"
+                               IsVisible="{Binding HasGrid}">
                         <Run Text="配置済み:" />
                         <Run Text="{Binding Placements.Count}" />
                         <Run Text="件" />
                     </TextBlock>
-                    <TextBlock DockPanel.Dock="Top"
-                               Text="キャンバス上のアイテムをクリックで選択"
-                               FontSize="10"
-                               Opacity="0.55"
-                               Margin="0,0,0,4"
-                               IsVisible="{Binding SelectedPlacement, Converter={x:Static ObjectConverters.IsNull}}" />
 
                     <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0">
                         <Button Content="配置を削除"
                                 HorizontalAlignment="Stretch"
                                 Command="{Binding RemoveSelectedPlacementCommand}"
-                                IsEnabled="{Binding SelectedPlacement, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                IsEnabled="{Binding IsPlacementSelected}" />
                         <ProgressBar Height="3"
                                      IsIndeterminate="True"
                                      IsVisible="{Binding IsBusy}" />
                     </StackPanel>
 
-                    <views:PlacementInspectorView DataContext="{Binding Inspector}" />
+                    <!--
+                        子 View の DataContext を切り替えると IsVisible バインドも子側で解決されてしまうため、
+                        IsVisible の参照は ElementName=GridWorkspaceRoot 経由で親 VM
+                        (GridWorkspaceViewModel) のフラグを明示的に指す。
+                    -->
+                    <!-- 配置選択中: 既存の Inspector を表示 -->
+                    <views:PlacementInspectorView DataContext="{Binding Inspector}"
+                                                  IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsPlacementSelected}" />
+
+                    <!-- グリッドのみ選択中（配置未選択）: グリッド情報を表示 -->
+                    <views:GridPropertiesView DataContext="{Binding CurrentGrid}"
+                                              IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsGridOnlySelected}" />
+
+                    <!-- グリッド未選択: 案内 -->
+                    <Border IsVisible="{Binding IsNoSelection}"
+                            Padding="12">
+                        <StackPanel Spacing="6"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="グリッドを選択してください"
+                                       Opacity="0.7"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="左の一覧から作成・選択するとプロパティが表示されます"
+                                       Opacity="0.5"
+                                       FontSize="11"
+                                       HorizontalAlignment="Center"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
                 </DockPanel>
 
             </Grid>

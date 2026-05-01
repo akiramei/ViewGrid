@@ -1,0 +1,71 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
+             xmlns:conv="clr-namespace:ViewGrid.Presentation.Converters"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="320"
+             x:Class="ViewGrid.Presentation.Views.GridPropertiesView"
+             x:DataType="vm:GridCanvasItemViewModel">
+
+    <UserControl.Resources>
+        <conv:ImmutableArrayJoinConverter x:Key="ArrayJoin" />
+        <conv:LockedCountConverter x:Key="LockedCount" />
+    </UserControl.Resources>
+
+    <!--
+        配置タブの右ペイン下段で、グリッド選択中（配置未選択）に表示される情報パネル。
+        編集 UI ではなく読み取り専用の状態確認用。リネームは左の GridCanvasListView、
+        重み/ロックはキャンバスの境界ハンドル / ヘッダクリックから操作する設計を維持。
+    -->
+    <Border Padding="10,8"
+            CornerRadius="4"
+            Background="{DynamicResource SystemChromeLowColor}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Classes="FormGroup">
+
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="グリッド名" />
+                    <TextBlock Text="{Binding Name}"
+                               FontWeight="SemiBold"
+                               FontSize="13"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <StackPanel Classes="FormSection">
+                    <TextBlock Classes="FieldLabel" Text="サイズ" />
+                    <TextBlock Text="{Binding GridSizeLabel}" FontSize="12" />
+                    <TextBlock Text="{Binding CanvasSizeLabel}" FontSize="12" Opacity="0.75" />
+                </StackPanel>
+
+                <StackPanel Classes="FormSection">
+                    <TextBlock Classes="FieldLabel" Text="列比率" />
+                    <TextBlock Text="{Binding ColWeights, Converter={StaticResource ArrayJoin}}"
+                               FontSize="12"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel Classes="FormSection">
+                    <TextBlock Classes="FieldLabel" Text="行比率" />
+                    <TextBlock Text="{Binding RowWeights, Converter={StaticResource ArrayJoin}}"
+                               FontSize="12"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel Classes="FormSection">
+                    <TextBlock Classes="FieldLabel" Text="ロック" />
+                    <TextBlock FontSize="12">
+                        <Run Text="列: " />
+                        <Run Text="{Binding ColLocked, Converter={StaticResource LockedCount}, Mode=OneWay}" />
+                        <Run Text="  /  行: " />
+                        <Run Text="{Binding RowLocked, Converter={StaticResource LockedCount}, Mode=OneWay}" />
+                    </TextBlock>
+                </StackPanel>
+
+                <TextBlock Classes="HintText"
+                           Text="キャンバス上の境界ドラッグで比率調整、ヘッダの 🔒 でロック切替ができます。" />
+
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

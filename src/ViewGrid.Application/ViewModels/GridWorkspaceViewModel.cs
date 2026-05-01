@@ -13,6 +13,7 @@ using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
+using ViewGrid.Application.Selection;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.Interfaces;
@@ -84,6 +85,28 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     public bool HasGrid => CurrentGrid is not null;
 
+    /// <summary>
+    /// 配置タブの右ペイン下段（プロパティ領域）が「いま誰のプロパティを表示すべきか」の文脈。
+    /// <see cref="CurrentGrid"/> / <see cref="SelectedPlacement"/> の組合せで派生し、
+    /// View 側は <c>ContentControl</c> + <c>DataTemplates</c> でこの値の型に応じて
+    /// テンプレート（Inspector / GridProperties / 空状態案内）を出し分ける。
+    /// </summary>
+    public ISelectionContext CurrentSelection
+    {
+        get
+        {
+            if (CurrentGrid is null) return NoSelection.Instance;
+            if (SelectedPlacement is { } p)
+                return new PlacementSelection(CurrentGrid.GridId, p.PlacementId, p.CopyId);
+            return new GridSelection(CurrentGrid.GridId);
+        }
+    }
+
+    /// <summary>View 側で <c>IsVisible</c> バインドを使う場合の利便プロパティ（DataTemplate 切替なら不要）。</summary>
+    public bool IsPlacementSelected => CurrentSelection is PlacementSelection;
+    public bool IsGridOnlySelected => CurrentSelection is GridSelection;
+    public bool IsNoSelection => CurrentSelection is NoSelection;
+
     public GridWorkspaceViewModel(
         IGridCanvasRepository gridRepository,
         IImageCopyRepository copyRepository,
@@ -134,11 +157,26 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _messenger.Register(this);
     }
 
-    /// <summary>SelectedPlacement 変更時に Inspector を Attach する。
+    /// <summary>SelectedPlacement 変更時に Inspector を Attach し、CurrentSelection も再計算する。
     /// 描画域サイズの計算に CurrentGrid（重み・キャンバスサイズ）が必要なので渡す。</summary>
     partial void OnSelectedPlacementChanged(PlacementItemViewModel? value)
     {
         _ = Inspector.AttachAsync(value, CurrentGrid);
+        NotifySelectionChanged();
+    }
+
+    /// <summary>CurrentGrid 変更時にも CurrentSelection を再評価する。</summary>
+    partial void OnCurrentGridChanged(GridCanvasItemViewModel? value)
+    {
+        NotifySelectionChanged();
+    }
+
+    private void NotifySelectionChanged()
+    {
+        OnPropertyChanged(nameof(CurrentSelection));
+        OnPropertyChanged(nameof(IsPlacementSelected));
+        OnPropertyChanged(nameof(IsGridOnlySelected));
+        OnPropertyChanged(nameof(IsNoSelection));
     }
 
     /// <summary>
