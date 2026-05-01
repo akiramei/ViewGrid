@@ -55,14 +55,16 @@
         <!-- 下部: 数値入力 + OK/キャンセル -->
         <Grid Grid.Row="2" Margin="12,6,12,12" ColumnDefinitions="Auto,*,Auto,Auto">
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <!-- NumericUpDown はスピナーボタン（▲▼）に幅を取られるため、本体テキスト分も含めて
+                     MinWidth=140 にする（4 桁ピクセル値 + スピナーが収まるサイズ）。 -->
                 <TextBlock Text="X:" VerticalAlignment="Center" />
-                <NumericUpDown x:Name="XInput" Width="100" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
+                <NumericUpDown x:Name="XInput" MinWidth="140" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
                 <TextBlock Text="Y:" VerticalAlignment="Center" Margin="8,0,0,0" />
-                <NumericUpDown x:Name="YInput" Width="100" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
+                <NumericUpDown x:Name="YInput" MinWidth="140" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
                 <TextBlock Text="幅:" VerticalAlignment="Center" Margin="8,0,0,0" />
-                <NumericUpDown x:Name="WInput" Width="100" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
+                <NumericUpDown x:Name="WInput" MinWidth="140" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
                 <TextBlock Text="高さ:" VerticalAlignment="Center" Margin="8,0,0,0" />
-                <NumericUpDown x:Name="HInput" Width="100" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
+                <NumericUpDown x:Name="HInput" MinWidth="140" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
             </StackPanel>
             <Button Grid.Column="2"
                     Content="OK"
