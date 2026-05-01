@@ -18,14 +18,30 @@ public partial class CopyListView : UserControl
     /// <summary>
     /// ListBox のマルチセレクト状態を VM の <see cref="CopyListViewModel.SelectedCopies"/>
     /// コレクションに同期する。
+    /// <para>
+    /// 副作用として、編集中の項目が新しい選択集合に含まれていない場合は確定する。
+    /// 別 ListBoxItem をクリックして選択が変わるとき、編集中 TextBox の LostFocus が
+    /// 発火しないケース（ListBox 内の選択遷移で focus 経路が変わる）の保険。
+    /// </para>
     /// </summary>
-    private void OnCopyListSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private async void OnCopyListSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (DataContext is not CopyListViewModel vm || sender is not ListBox listBox)
             return;
 
-        var items = listBox.SelectedItems?.OfType<CopyItemViewModel>().ToList() ?? new();
-        vm.UpdateSelectedCopies(items);
+        var selectedSet = listBox.SelectedItems?.OfType<CopyItemViewModel>().ToHashSet() ?? new();
+
+        // 選択から外れた項目で編集中のものを確定する。Copies のスナップショットでループし、
+        // CommitEditAsync の中で IsEditing=false にされても問題ないようにする。
+        foreach (var item in vm.Copies.ToList())
+        {
+            if (item.IsEditing && !selectedSet.Contains(item))
+            {
+                await vm.CommitEditAsync(item);
+            }
+        }
+
+        vm.UpdateSelectedCopies(selectedSet.ToList());
     }
 
     /// <summary>
