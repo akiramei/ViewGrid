@@ -29,6 +29,20 @@ public interface IUndoRedoService
     /// <summary>スタック状態が変化したときに発火する。MainWindowViewModel 等が購読して CanExecute を更新する。</summary>
     event Action? StateChanged;
 
+    /// <summary>
+    /// Undo が成功してスタックが移動した直後に発火する。引数は取り消された Command。
+    /// MainWindowViewModel がこれを購読し、<see cref="IUndoableCommand.AffectedGridId"/> を見て
+    /// 必要に応じて配置タブのアクティブグリッドを当該グリッドへ切り替える。
+    /// 失敗時（依存破綻による Clear 経路）や no-op（空スタック）では発火しない。
+    /// </summary>
+    event Action<IUndoableCommand>? Undone;
+
+    /// <summary>
+    /// Redo が成功してスタックが移動した直後に発火する。引数は再適用された Command。
+    /// 用途・条件は <see cref="Undone"/> と同様。
+    /// </summary>
+    event Action<IUndoableCommand>? Redone;
+
     /// <summary>新規操作を実行して Undo スタックに積む。Redo スタックはクリアされる。</summary>
     Task<ErrorOr<Success>> ExecuteAsync(IUndoableCommand command, CancellationToken ct = default);
 

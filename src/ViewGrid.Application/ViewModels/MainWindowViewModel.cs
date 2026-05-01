@@ -39,6 +39,14 @@ public sealed partial class MainWindowViewModel
     /// </summary>
     private readonly SemaphoreSlim _copyLoadGate = new(1, 1);
 
+    /// <summary>
+    /// 直近 Undo/Redo で取り消された/再適用された Command の <see cref="IUndoableCommand.AffectedGridId"/>。
+    /// <see cref="IUndoRedoService.Undone"/> / <see cref="IUndoRedoService.Redone"/> ハンドラ内で退避し、
+    /// <see cref="RefreshAfterHistoryAsync"/> 末尾でアクティブグリッド切替に使ったあとに <c>null</c> へ戻す。
+    /// グリッドに紐付かない操作（共有コピー編集など）は <c>null</c> なので切替対象外。
+    /// </summary>
+    private Guid? _pendingAffectedGridId;
+
     [ObservableProperty]
     public partial string Title { get; set; } = "ViewGrid";
 
@@ -101,6 +109,8 @@ public sealed partial class MainWindowViewModel
         GridList.PropertyChanged += OnGridListPropertyChanged;
 
         _history.StateChanged += OnHistoryStateChanged;
+        _history.Undone += OnHistoryUndoneOrRedone;
+        _history.Redone += OnHistoryUndoneOrRedone;
         OnHistoryStateChanged();
 
         _messenger.Register(this);
@@ -191,6 +201,17 @@ public sealed partial class MainWindowViewModel
         }
 
         _messenger.Send(new CopyLibraryChangedMessage());
+
+        // Undo/Redo 対象が現在のアクティブグリッドと異なる場合、当該グリッドへ自動切替する。
+        // GridList.LoadAsync 後に行うことで、Grids 再構築後の最新インスタンスから検索できる。
+        // JumpToAsync 内の連続 Undo/Redo は最後の event のみが反映される（_pendingAffectedGridId の上書き）。
+        if (_pendingAffectedGridId is { } gridId)
+        {
+            _pendingAffectedGridId = null;
+            var target = GridList.Grids.FirstOrDefault(g => g.GridId == gridId);
+            if (target is not null && !ReferenceEquals(GridList.SelectedGrid, target))
+                GridList.SelectedGrid = target;
+        }
     }
 
     private bool CanUndoCommand() => CanUndo;
@@ -211,6 +232,13 @@ public sealed partial class MainWindowViewModel
 
         UndoCommand.NotifyCanExecuteChanged();
         RedoCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnHistoryUndoneOrRedone(IUndoableCommand command)
+    {
+        // Command 自体は短命で AffectedGridId だけが必要なので、Guid? を退避する。
+        // RefreshAfterHistoryAsync 末尾で読み出し → クリアする。
+        _pendingAffectedGridId = command.AffectedGridId;
     }
 
     /// <summary>
@@ -370,6 +398,8 @@ public sealed partial class MainWindowViewModel
     {
         _messenger.UnregisterAll(this);
         _history.StateChanged -= OnHistoryStateChanged;
+        _history.Undone -= OnHistoryUndoneOrRedone;
+        _history.Redone -= OnHistoryUndoneOrRedone;
         _copyLoadCts?.Cancel();
         _copyLoadCts?.Dispose();
         _copyLoadCts = null;

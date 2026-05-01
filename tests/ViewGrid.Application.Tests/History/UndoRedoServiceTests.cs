@@ -357,6 +357,62 @@ public sealed class UndoRedoServiceTests
     }
 
     [Fact]
+    public async Task UndoAsync_Raises_Undone_With_Command()
+    {
+        var svc = new UndoRedoService();
+        var cmd = new RecordingCommand("op1");
+        await svc.ExecuteAsync(cmd);
+        IUndoableCommand? captured = null;
+        svc.Undone += c => captured = c;
+
+        await svc.UndoAsync();
+
+        captured.Should().BeSameAs(cmd);
+    }
+
+    [Fact]
+    public async Task RedoAsync_Raises_Redone_With_Command()
+    {
+        var svc = new UndoRedoService();
+        var cmd = new RecordingCommand("op1");
+        await svc.ExecuteAsync(cmd);
+        await svc.UndoAsync();
+        IUndoableCommand? captured = null;
+        svc.Redone += c => captured = c;
+
+        await svc.RedoAsync();
+
+        captured.Should().BeSameAs(cmd);
+    }
+
+    [Fact]
+    public async Task UndoAsync_NoOp_Does_Not_Raise_Undone()
+    {
+        var svc = new UndoRedoService();
+        var raised = false;
+        svc.Undone += _ => raised = true;
+
+        await svc.UndoAsync();
+
+        raised.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task UndoAsync_Failure_Does_Not_Raise_Undone()
+    {
+        var svc = new UndoRedoService();
+        var bad = new RecordingCommand("bad", failOnUndo: true);
+        await svc.ExecuteAsync(bad);
+        var raised = false;
+        svc.Undone += _ => raised = true;
+
+        var result = await svc.UndoAsync();
+
+        result.IsError.Should().BeTrue();
+        raised.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task JumpToAsync_Failure_Stops_And_Clears_Stack()
     {
         var svc = new UndoRedoService();

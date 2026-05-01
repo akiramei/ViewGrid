@@ -59,6 +59,8 @@ public sealed class UndoRedoService : IUndoRedoService, IDisposable
     }
 
     public event Action? StateChanged;
+    public event Action<IUndoableCommand>? Undone;
+    public event Action<IUndoableCommand>? Redone;
 
     public async Task<ErrorOr<Success>> ExecuteAsync(IUndoableCommand command, CancellationToken ct = default)
     {
@@ -116,6 +118,7 @@ public sealed class UndoRedoService : IUndoRedoService, IDisposable
             lock (_undo)
                 _redo.Push(command);
             RaiseStateChanged();
+            Undone?.Invoke(command);
             return Result.Success;
         }
         finally
@@ -157,6 +160,7 @@ public sealed class UndoRedoService : IUndoRedoService, IDisposable
                     _undo.RemoveFirst();
             }
             RaiseStateChanged();
+            Redone?.Invoke(command);
             return Result.Success;
         }
         finally
