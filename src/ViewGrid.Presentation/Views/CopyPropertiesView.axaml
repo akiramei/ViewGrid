@@ -215,10 +215,16 @@
                                         Background="{DynamicResource SystemAltMediumLowColor}"
                                         Margin="0,8,0,0"
                                         IsVisible="{Binding HasThumbnail}">
-                                    <Grid>
+                                    <!--
+                                        MaxHeight は Image ではなく親 Grid に設定する。
+                                        Image につけると Image.RenderSize がクランプされ、Canvas (Grid サイズ
+                                        いっぱいに広がる) と RenderSize が乖離して overlay が Image からずれる。
+                                        Grid に持たせれば Image / Canvas が同じサイズに揃い、overlay 座標と
+                                        Image の表示矩形が同期する。
+                                    -->
+                                    <Grid MaxHeight="240">
                                         <Image x:Name="AutoCropPreviewImage"
                                                Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
-                                               MaxHeight="240"
                                                Stretch="Uniform"
                                                Cursor="Cross"
                                                PointerPressed="OnColorPickerPointerPressed" />
@@ -247,11 +253,13 @@
                                         IsVisible="{Binding HasThumbnail}">
                                     <!-- Image とオーバーレイ Canvas を Grid で重ねる。
                                          Canvas 上で PointerPressed/Moved/Released を扱い、
-                                         CodeBehind がサムネ座標 → 元画像比率に等比換算する。 -->
-                                    <Grid x:Name="ManualCropContainer">
+                                         CodeBehind がサムネ座標 → 元画像比率に等比換算する。
+                                         MaxHeight は Image でなく Grid に設定（Image につけると
+                                         Image.RenderSize がクランプされ、Canvas とサイズ乖離して
+                                         overlay 矩形が Image からずれる）。 -->
+                                    <Grid x:Name="ManualCropContainer" MaxHeight="240">
                                         <Image x:Name="ManualCropImage"
                                                Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
-                                               MaxHeight="240"
                                                Stretch="Uniform" />
                                         <Canvas x:Name="ManualCropOverlay"
                                                 Background="Transparent"
