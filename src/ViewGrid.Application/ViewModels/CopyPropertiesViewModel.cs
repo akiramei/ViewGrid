@@ -78,8 +78,8 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(IsAutoCropCustom))]
     public partial AutoCropPreset AutoCropPreset { get; set; } = AutoCropPreset.White;
 
-    /// <summary>許容色差（Chebyshev、0–128）。0 で完全一致のみ余白扱い。</summary>
-    [ObservableProperty] public partial int AutoCropThreshold { get; set; } = 8;
+    /// <summary>許容色差（Chebyshev、0–128）。0 で完全一致のみ余白扱い（既定）。</summary>
+    [ObservableProperty] public partial int AutoCropThreshold { get; set; }
 
     /// <summary>カスタム対象色の HEX 表記（<c>#RRGGBB</c>）。<see cref="AutoCropPreset.Custom"/>
     /// 選択時のみ <c>BuildAutoCropFromInputs</c> で参照される。
@@ -288,7 +288,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 OccupyHeight = 1;
                 AutoCropEnabled = false;
                 AutoCropPreset = AutoCropPreset.White;
-                AutoCropThreshold = 8;
+                AutoCropThreshold = 0;
                 AutoCropCustomColorHex = "#FFFFFF";
                 ManualCropEnabled = false;
                 ManualCropPixelX = 0;
@@ -329,7 +329,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 {
                     AutoCropEnabled = false;
                     AutoCropPreset = AutoCropPreset.White;
-                    AutoCropThreshold = 8;
+                    AutoCropThreshold = 0;
                     AutoCropCustomColorHex = "#FFFFFF";
                 }
                 if (source.ManualCrop is { } mc && source.SourceWidth > 0 && source.SourceHeight > 0)

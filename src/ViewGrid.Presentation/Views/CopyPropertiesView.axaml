@@ -186,7 +186,7 @@
                                                Minimum="0" Maximum="128"
                                                FormatString="0" />
                                 <TextBlock Classes="HintText"
-                                           Text="0 で完全一致のみ余白扱い。大きいほど許容（推奨 8）。" />
+                                           Text="0 で完全一致のみ余白扱い（既定）。大きいほど許容。" />
 
                                 <!-- 走査結果メッセージ（クロップ範囲なし等） -->
                                 <TextBlock Classes="HintText"
