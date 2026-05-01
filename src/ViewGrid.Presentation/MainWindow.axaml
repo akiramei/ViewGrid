@@ -77,10 +77,12 @@
     </Window.Resources>
 
     <!--
-        P1+P5 全体レイアウト: Row 0 にメニュー + 履歴ツールバー、Row 1 に TabControl、Row 2 に
-        ステータスバー（最下部固定）。Row 1 のキャンバス領域は伸縮し、上下の補助 UI と区別される。
+        P1+P5 全体レイアウト: Row 0 にメニュー + 履歴ツールバー、Row 1 に TabControl、
+        Row 2 にコンテキスト依存ヒントバー（永続ヒントバー）、Row 3 にステータスバー（最下部固定）。
+        Row 1 のキャンバス領域は伸縮し、上下の補助 UI と区別される。
+        ヒントバーは <see cref="MainWindowViewModel.CurrentHints"/> が空のとき折り畳まれる。
     -->
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
         <DockPanel Grid.Row="0" LastChildFill="False">
             <!-- P3: メニューバー充実（ファイル / 編集 / 表示 / ヘルプ） -->
             <Menu DockPanel.Dock="Left">
@@ -264,17 +266,40 @@
         </TabControl>
 
         <!--
-            P5: ステータスバー。準備タブ/配置タブの状態 + 履歴件数を最下部に常駐表示する。
+            永続ヒントバー（Row 2）: 現在のコンテキスト（タブ + 主な選択）に応じた操作ヒントを
+            1 行で表示する。CurrentHints が空文字の時は IsVisible=False で折り畳んで占有 0 にする。
+            邪魔だと感じるユーザー向けに将来「閉じる」ボタンや設定で無効化できるようにする余地を残す。
+        -->
+        <Border Grid.Row="2"
+                Classes="HintStripe"
+                IsVisible="{Binding CurrentHints, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Classes="HintStripeText"
+                       Text="{Binding CurrentHints}"
+                       TextTrimming="CharacterEllipsis" />
+        </Border>
+
+        <!--
+            P5: ステータスバー。準備タブ/配置タブの状態 + 未保存バッジ + 履歴件数を最下部に常駐表示する。
             VS Code / IntelliJ などのプロ向け IDE と同じ位置感。
             左: フェーズ + 件数（準備: N 件 / 配置: グリッド名 N×M セル）
+            中央: 未保存バッジ（CopyProperties / PlacementInspector の IsDirty 集計）。アクセント色で強調。
             右: 履歴件数（履歴: 5/12）
         -->
-        <Border Grid.Row="2" Classes="StatusBar">
-            <Grid ColumnDefinitions="*,Auto">
+        <Border Grid.Row="3" Classes="StatusBar">
+            <Grid ColumnDefinitions="*,Auto,Auto">
                 <TextBlock Grid.Column="0"
                            Classes="StatusBarText"
                            Text="{Binding StatusSummary}" />
                 <TextBlock Grid.Column="1"
+                           Classes="StatusBarText"
+                           Foreground="{DynamicResource SystemAccentColor}"
+                           FontWeight="SemiBold"
+                           Opacity="1"
+                           Margin="0,0,16,0"
+                           Text="{Binding UnsavedSummary}"
+                           ToolTip.Tip="特性編集 / Inspector に未保存の編集があります。各タブの「保存」ボタンで永続化してください。"
+                           IsVisible="{Binding HasUnsavedChanges}" />
+                <TextBlock Grid.Column="2"
                            Classes="StatusBarText"
                            Text="{Binding HistorySummary}" />
             </Grid>

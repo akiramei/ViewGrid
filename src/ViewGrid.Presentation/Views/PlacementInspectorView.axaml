@@ -30,7 +30,7 @@
                     Margin="0,0,0,8">
                 <StackPanel Spacing="4">
                     <TextBlock Classes="HintText"
-                               Text="回転・反転・スケーリング等の共有特性は準備タブの「特性編集」で編集します（同じ論理コピーの全配置に反映）。" />
+                               Text="回転・反転・スケーリング等の共有特性は準備タブの「特性編集」で編集します（同じバリアントの全配置に反映）。" />
                     <Button Content="特性を編集 →"
                             HorizontalAlignment="Stretch"
                             Padding="6,2"

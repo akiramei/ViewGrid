@@ -461,6 +461,71 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         _vm.HoveredJumpDirection.Should().Be(ViewGrid.Application.History.JumpDirection.None);
     }
 
+    /// <summary>
+    /// 初期状態（アセット 0 件・準備タブ）では「ドラッグ&ドロップで取り込み」案内が出る。
+    /// </summary>
+    [Fact]
+    public void CurrentHints_Empty_Library_Shows_Drop_Hint()
+    {
+        _vm.SelectedTabIndex = MainWindowViewModel.PreparationTabIndex;
+        _vm.CurrentHints.Should().Contain("ドラッグ");
+    }
+
+    /// <summary>
+    /// 配置タブに切り替えてグリッドが未選択なら、グリッド作成案内が出る。
+    /// </summary>
+    [Fact]
+    public void CurrentHints_Layout_Tab_With_No_Grid_Shows_Create_Hint()
+    {
+        _vm.SelectedTabIndex = MainWindowViewModel.LayoutTabIndex;
+        _vm.CurrentHints.Should().Contain("新規グリッド");
+    }
+
+    /// <summary>
+    /// CopyProperties.IsDirty が立つと未保存バッジが表示される（UnsavedSummary が空文字でなくなる）。
+    /// </summary>
+    [Fact]
+    public void UnsavedSummary_Reflects_CopyProperties_IsDirty()
+    {
+        _vm.HasUnsavedChanges.Should().BeFalse();
+        _vm.UnsavedSummary.Should().BeEmpty();
+
+        _copyProperties.IsDirty = true;
+
+        _vm.HasUnsavedChanges.Should().BeTrue();
+        _vm.UnsavedCount.Should().Be(1);
+        _vm.UnsavedSummary.Should().Contain("未保存");
+    }
+
+    /// <summary>
+    /// CopyProperties / Inspector の両方が IsDirty なら件数 2、Summary に件数表示が含まれる。
+    /// </summary>
+    [Fact]
+    public void UnsavedSummary_Sums_Both_VMs()
+    {
+        _copyProperties.IsDirty = true;
+        _gridWorkspace.Inspector.IsDirty = true;
+
+        _vm.UnsavedCount.Should().Be(2);
+        _vm.HasUnsavedChanges.Should().BeTrue();
+        _vm.UnsavedSummary.Should().Contain("2 件");
+    }
+
+    /// <summary>
+    /// IsDirty が false に戻ると未保存バッジは消える（保存ボタン押下後の動きを想定）。
+    /// </summary>
+    [Fact]
+    public void UnsavedSummary_Cleared_When_Dirty_Becomes_False()
+    {
+        _copyProperties.IsDirty = true;
+        _vm.HasUnsavedChanges.Should().BeTrue();
+
+        _copyProperties.IsDirty = false;
+
+        _vm.HasUnsavedChanges.Should().BeFalse();
+        _vm.UnsavedSummary.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task Send_NavigateMessage_Triggers_Tab_Switch_And_Selection()
     {

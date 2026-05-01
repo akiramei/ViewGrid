@@ -64,7 +64,7 @@ public sealed class CopyListViewModelTests : IAsyncLifetime
 
         _vm.Copies.Should().HaveCount(1);
         _vm.SelectedCopy.Should().NotBeNull();
-        _vm.SelectedCopy!.DisplayName.Should().Be("コピー 1");
+        _vm.SelectedCopy!.DisplayName.Should().Be("バリアント 1");
     }
 
     [Fact]
@@ -198,7 +198,7 @@ public sealed class CopyListViewModelTests : IAsyncLifetime
 
         await _vm.CommitCreateAsync();
 
-        _vm.SelectedCopy!.CopyName.Should().Be("コピー 1");
+        _vm.SelectedCopy!.CopyName.Should().Be("バリアント 1");
     }
 
     [Fact]

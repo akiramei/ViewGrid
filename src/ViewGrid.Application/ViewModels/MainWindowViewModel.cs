@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using ViewGrid.Application.History;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 
 namespace ViewGrid.Application.ViewModels;
@@ -54,8 +55,12 @@ public sealed partial class MainWindowViewModel
     [ObservableProperty]
     public partial int SelectedTabIndex { get; set; }
 
-    /// <summary>タブ切替時にステータスバーの表示を更新する。</summary>
-    partial void OnSelectedTabIndexChanged(int value) => OnPropertyChanged(nameof(StatusSummary));
+    /// <summary>タブ切替時にステータスバーとヒントバーの表示を更新する。</summary>
+    partial void OnSelectedTabIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(StatusSummary));
+        OnPropertyChanged(nameof(CurrentHints));
+    }
 
     /// <summary>Undo 可能な操作があるか。<see cref="UndoCommand"/> の CanExecute と連動する。</summary>
     [ObservableProperty]
@@ -83,7 +88,7 @@ public sealed partial class MainWindowViewModel
 
     /// <summary>
     /// ステータスバー（最下部）の左側に表示する、現在のフェーズ + 件数の要約。
-    /// 例: 「準備: 12 件のアセット / 3 件のコピー」「配置: 5/9 セル使用」。
+    /// 例: 「準備: 12 件のアセット / バリアント 3 件」「配置: 5/9 セル使用」。
     /// 派生プロパティ（再計算は OnAssetLibraryPropertyChanged / OnCopyListPropertyChanged 等から
     /// 通知される）。<see cref="StatusSummary"/> プロパティ経由で View にバインド。
     /// </summary>
@@ -99,7 +104,7 @@ public sealed partial class MainWindowViewModel
                     ? $"{assetCount} 件のアセット"
                     : $"{assetCount} 件のアセット / 選択中 1 件";
                 return copyCount > 0
-                    ? $"準備: {assetText} / コピー {copyCount} 件"
+                    ? $"準備: {assetText} / {Terminology.Variant} {copyCount} 件"
                     : $"準備: {assetText}";
             }
             else
@@ -129,6 +134,65 @@ public sealed partial class MainWindowViewModel
 
     /// <summary>履歴 UI から見て、何かしらエントリがあるか。プレースホルダ表示用。</summary>
     public bool HasHistory => _history.History.Count > 0;
+
+    /// <summary>
+    /// アプリ全体で未保存の編集を持つ VM の件数。
+    /// 現状は <see cref="CopyPropertiesViewModel.IsDirty"/> と
+    /// <see cref="PlacementInspectorViewModel.IsDirty"/> の 2 経路のみ。
+    /// </summary>
+    public int UnsavedCount =>
+        (CopyProperties.IsDirty ? 1 : 0)
+        + (GridWorkspace.Inspector.IsDirty ? 1 : 0);
+
+    /// <summary>未保存の編集が 1 件以上あるか。バッジ可視化のトリガー。</summary>
+    public bool HasUnsavedChanges => UnsavedCount > 0;
+
+    /// <summary>
+    /// ステータスバー右側に表示する未保存バッジの文字列。
+    /// 0 件のときは空文字（View 側で <see cref="HasUnsavedChanges"/> により非表示にする）。
+    /// </summary>
+    public string UnsavedSummary => UnsavedCount switch
+    {
+        0 => string.Empty,
+        1 => "● 未保存の変更",
+        _ => $"● 未保存の変更 ({UnsavedCount} 件)",
+    };
+
+    /// <summary>
+    /// ステータスバー上のコンテキスト依存ヒント（永続ヒントバー）。
+    /// 現在のタブ + 主要な選択状態に応じて、いま使えるショートカットや操作を 1 行で示す。
+    /// 空文字を返した場合 View 側で <c>Border.HintStripe</c> ごと折り畳み非表示にする。
+    /// 派生プロパティで、各 VM の <c>SelectedAsset</c>/<c>SelectedCopy</c>/<c>SelectedGrid</c>/
+    /// <c>SelectedPlacement</c>/<c>Assets.Count</c> の変化で再評価される。
+    /// </summary>
+    public string CurrentHints
+    {
+        get
+        {
+            if (SelectedTabIndex == PreparationTabIndex)
+            {
+                if (AssetLibrary.Assets.Count == 0)
+                    return "画像をドラッグ&ドロップ または「画像を追加」ボタンから取り込みを開始します";
+                if (AssetLibrary.SelectedAssets.Count > 1)
+                    return "複数アセット選択中: Ctrl/Shift+クリックで集合変更、削除で一括実行";
+                if (CopyList.SelectedCopies.Count > 1)
+                    return "複数バリアント選択中: Ctrl/Shift+クリックで集合変更、削除で一括実行";
+                if (CopyList.SelectedCopy is not null)
+                    return "F2 / ダブルクリックで名前変更、Enter で確定 / Esc でキャンセル";
+                if (AssetLibrary.SelectedAsset is not null)
+                    return "「+ 新規」でバリアントを作成、F2 で名前変更";
+                return "アセットを選択するとバリアントを編集できます";
+            }
+            else
+            {
+                if (GridList.SelectedGrid is null)
+                    return "左ペインの「+ 新規グリッド」でグリッドを作成すると配置を始められます";
+                if (GridWorkspace.SelectedPlacement is not null)
+                    return "Shift+ドラッグ で微調整 / Ctrl+矢印 1px / Ctrl+Shift+矢印 10px / 境界をドラッグで比率調整";
+                return "右の候補をセルへドラッグ&ドロップで配置 / 境界ドラッグで比率 / ヘッダ 🔒 で固定";
+            }
+        }
+    }
 
     /// <summary>
     /// 履歴 UI で hover 中のエントリの Index。<c>null</c> なら hover 解除中。
@@ -178,8 +242,12 @@ public sealed partial class MainWindowViewModel
         _history = history;
 
         AssetLibrary.PropertyChanged += OnAssetLibraryPropertyChanged;
+        AssetLibrary.Assets.CollectionChanged += OnAssetLibraryAssetsChanged;
         CopyList.PropertyChanged += OnCopyListPropertyChanged;
+        CopyProperties.PropertyChanged += OnDirtyTrackedPropertyChanged;
         GridList.PropertyChanged += OnGridListPropertyChanged;
+        GridWorkspace.PropertyChanged += OnGridWorkspacePropertyChanged;
+        GridWorkspace.Inspector.PropertyChanged += OnDirtyTrackedPropertyChanged;
 
         _history.StateChanged += OnHistoryStateChanged;
         _history.Undone += OnHistoryUndoneOrRedone;
@@ -424,6 +492,14 @@ public sealed partial class MainWindowViewModel
 
     private async void OnAssetLibraryPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // 選択集合の変化はステータスバー / ヒントバーの再評価トリガー（busy 抑止より先に通知）。
+        if (e.PropertyName == nameof(AssetLibraryViewModel.SelectedAsset)
+            || e.PropertyName == nameof(AssetLibraryViewModel.SelectedAssets))
+        {
+            OnPropertyChanged(nameof(StatusSummary));
+            OnPropertyChanged(nameof(CurrentHints));
+        }
+
         // IsBusy が false に戻った時点で最終状態を 1 回反映（削除ループ等の終了後）
         var isBusyTransition = e.PropertyName == nameof(AssetLibraryViewModel.IsBusy);
         if (isBusyTransition)
@@ -477,6 +553,14 @@ public sealed partial class MainWindowViewModel
 
     private void OnCopyListPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // 選択 / 件数の変化はステータスバー・ヒントバー再評価のトリガー。
+        if (e.PropertyName == nameof(CopyListViewModel.SelectedCopy)
+            || e.PropertyName == nameof(CopyListViewModel.SelectedCopies))
+        {
+            OnPropertyChanged(nameof(StatusSummary));
+            OnPropertyChanged(nameof(CurrentHints));
+        }
+
         var isBusyTransition = e.PropertyName == nameof(CopyListViewModel.IsBusy);
         if (isBusyTransition)
         {
@@ -510,7 +594,44 @@ public sealed partial class MainWindowViewModel
         if (e.PropertyName != nameof(GridCanvasListViewModel.SelectedGrid))
             return;
 
+        OnPropertyChanged(nameof(StatusSummary));
+        OnPropertyChanged(nameof(CurrentHints));
         await GridWorkspace.LoadGridAsync(GridList.SelectedGrid);
+    }
+
+    /// <summary>
+    /// 配置ワークスペース側の <see cref="GridWorkspaceViewModel.SelectedPlacement"/> 変化を
+    /// ヒントバーに反映するための購読。配置選択の有無で「微調整 / Shift+ドラッグ」案内を出し分ける。
+    /// </summary>
+    private void OnGridWorkspacePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(GridWorkspaceViewModel.SelectedPlacement))
+            OnPropertyChanged(nameof(CurrentHints));
+    }
+
+    /// <summary>
+    /// アセット件数変化時にステータスバー / ヒントバーを更新するためのフック。
+    /// 0 → 1 件目を取り込んだとき、空状態案内から通常ヒントへ切り替えるのが主目的。
+    /// </summary>
+    private void OnAssetLibraryAssetsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(StatusSummary));
+        OnPropertyChanged(nameof(CurrentHints));
+    }
+
+    /// <summary>
+    /// <see cref="CopyPropertiesViewModel"/> / <see cref="PlacementInspectorViewModel"/> の
+    /// <c>IsDirty</c> 変化を集約し、ステータスバーの未保存バッジ（<see cref="UnsavedSummary"/>）を更新する。
+    /// </summary>
+    private void OnDirtyTrackedPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CopyPropertiesViewModel.IsDirty)
+            || e.PropertyName == nameof(PlacementInspectorViewModel.IsDirty))
+        {
+            OnPropertyChanged(nameof(UnsavedCount));
+            OnPropertyChanged(nameof(HasUnsavedChanges));
+            OnPropertyChanged(nameof(UnsavedSummary));
+        }
     }
 
     public void Dispose()
@@ -519,6 +640,13 @@ public sealed partial class MainWindowViewModel
         _history.StateChanged -= OnHistoryStateChanged;
         _history.Undone -= OnHistoryUndoneOrRedone;
         _history.Redone -= OnHistoryUndoneOrRedone;
+        AssetLibrary.PropertyChanged -= OnAssetLibraryPropertyChanged;
+        AssetLibrary.Assets.CollectionChanged -= OnAssetLibraryAssetsChanged;
+        CopyList.PropertyChanged -= OnCopyListPropertyChanged;
+        CopyProperties.PropertyChanged -= OnDirtyTrackedPropertyChanged;
+        GridList.PropertyChanged -= OnGridListPropertyChanged;
+        GridWorkspace.PropertyChanged -= OnGridWorkspacePropertyChanged;
+        GridWorkspace.Inspector.PropertyChanged -= OnDirtyTrackedPropertyChanged;
         _copyLoadCts?.Cancel();
         _copyLoadCts?.Dispose();
         _copyLoadCts = null;

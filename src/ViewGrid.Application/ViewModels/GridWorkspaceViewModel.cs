@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
@@ -356,7 +357,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         {
             IsBusy = true;
             var candidate = Candidates.FirstOrDefault(c => c.CopyId == copyId);
-            var copyLabel = candidate?.CopyDisplayName ?? "(不明なコピー)";
+            var copyLabel = candidate?.CopyDisplayName ?? Terminology.VariantUnknown;
             var description = $"配置: 「{copyLabel}」→ ({position.X},{position.Y})";
             var command = new PlaceCommand(
                 _placeUseCase, _removeUseCase, _placementRepository,

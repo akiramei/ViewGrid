@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Interfaces;
@@ -18,7 +19,7 @@ using ViewGrid.Core.Services;
 namespace ViewGrid.Application.ViewModels;
 
 /// <summary>
-/// 選択中アセットに紐づく論理コピー一覧を管理する。
+/// 選択中アセットに紐づくバリアント（旧称: 論理コピー）一覧を管理する。
 /// アセット選択の変更は外部（MainWindowViewModel）から LoadForAssetAsync 経由で通知する。
 /// </summary>
 public sealed partial class CopyListViewModel : ViewModelBase
@@ -52,7 +53,7 @@ public sealed partial class CopyListViewModel : ViewModelBase
     public partial bool IsCreating { get; set; }
 
     /// <summary>
-    /// 新規作成フライアウトの名前ドラフト。空白だけ / 空文字なら従来通り「コピー N」自動採番、
+    /// 新規作成フライアウトの名前ドラフト。空白だけ / 空文字なら従来通り「バリアント N」自動採番、
     /// 値があればそれを <see cref="CreateLogicalCopyUseCase"/> に渡す。
     /// </summary>
     [ObservableProperty]
@@ -201,7 +202,7 @@ public sealed partial class CopyListViewModel : ViewModelBase
     /// <summary>
     /// 新規作成フライアウトの確定。<see cref="DraftCopyName"/> を渡して
     /// <see cref="CreateCopyAsync"/> を呼び、成功/失敗にかかわらず最後に閉じる。
-    /// 空白 / 空文字なら従来通り「コピー N」自動採番。
+    /// 空白 / 空文字なら従来通り「バリアント N」自動採番。
     /// </summary>
     [RelayCommand]
     public async Task CommitCreateAsync(CancellationToken ct = default)
@@ -214,7 +215,7 @@ public sealed partial class CopyListViewModel : ViewModelBase
 
     /// <summary>
     /// 新規論理コピーを作成して一覧に追加・選択する。
-    /// <paramref name="customName"/> が <c>null</c> または空なら「コピー N」（N = 既存件数+1）を自動採番。
+    /// <paramref name="customName"/> が <c>null</c> または空なら「バリアント N」（N = 既存件数+1）を自動採番。
     /// 値があれば trim して使う。新規作成は Undo 対象外（履歴は <see cref="IUndoRedoService.Clear"/> で消去）。
     /// テストやプログラム経由で直接呼べるよう RelayCommand から外し public method として残す。
     /// </summary>
@@ -228,7 +229,7 @@ public sealed partial class CopyListViewModel : ViewModelBase
             IsBusy = true;
             var ordinal = Copies.Count + 1;
             var nameToUse = string.IsNullOrWhiteSpace(customName)
-                ? $"コピー {ordinal}"
+                ? $"{Terminology.VariantPrefix} {ordinal}"
                 : customName!.Trim();
             var result = await _createUseCase.ExecuteAsync(
                 _currentAssetId.Value,
@@ -373,9 +374,9 @@ public sealed partial class CopyListViewModel : ViewModelBase
             CopyName = trimmed,
             ClearCopyName = trimmed is null,
         };
-        var beforeLabel = string.IsNullOrWhiteSpace(beforeName) ? "(無名)" : beforeName!;
-        var afterLabel = string.IsNullOrWhiteSpace(trimmed) ? "(無名)" : trimmed!;
-        var description = $"コピー名変更: 「{beforeLabel}」→「{afterLabel}」";
+        var beforeLabel = string.IsNullOrWhiteSpace(beforeName) ? Terminology.VariantUnnamed : beforeName!;
+        var afterLabel = string.IsNullOrWhiteSpace(trimmed) ? Terminology.VariantUnnamed : trimmed!;
+        var description = $"{Terminology.Variant}名変更: 「{beforeLabel}」→「{afterLabel}」";
         var command = new UpdateImageCopyCommand(_updateUseCase, item.CopyId, before, after, description);
 
         var result = await _history.ExecuteAsync(command, ct);
@@ -390,9 +391,9 @@ public sealed partial class CopyListViewModel : ViewModelBase
         _messenger.Send(new CopyLibraryChangedMessage());
     }
 
-    [LoggerMessage(EventId = 3001, Level = LogLevel.Information, Message = "論理コピー一覧を読み込み: asset={AssetId} count={Count}")]
+    [LoggerMessage(EventId = 3001, Level = LogLevel.Information, Message = "バリアント一覧を読み込み: asset={AssetId} count={Count}")]
     private static partial void LogLoaded(ILogger logger, Guid assetId, int count);
 
-    [LoggerMessage(EventId = 3002, Level = LogLevel.Debug, Message = "論理コピーのインラインリネームをキャンセル: {CopyId}")]
+    [LoggerMessage(EventId = 3002, Level = LogLevel.Debug, Message = "バリアントのインラインリネームをキャンセル: {CopyId}")]
     private static partial void LogRenameCanceled(ILogger logger, Guid copyId);
 }

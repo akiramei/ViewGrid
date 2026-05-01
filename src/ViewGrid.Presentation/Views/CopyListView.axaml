@@ -15,7 +15,7 @@
                 <PathIcon Data="{StaticResource ImageGeometry}"
                           Width="16" Height="16"
                           Foreground="{DynamicResource SystemAccentColor}" />
-                <TextBlock Text="論理コピー"
+                <TextBlock Text="バリアント"
                            FontSize="14"
                            FontWeight="SemiBold"
                            VerticalAlignment="Center" />
@@ -26,14 +26,14 @@
                 <Button Command="{Binding BeginCreateCommand}"
                         IsEnabled="{Binding HasAsset}"
                         Classes="accent"
-                        ToolTip.Tip="新しい論理コピーを作成">
+                        ToolTip.Tip="新しいバリアントを作成">
                     <StackPanel Classes="IconButtonContent">
                         <PathIcon Data="{StaticResource AddGeometry}" Width="14" Height="14" />
                         <TextBlock Text="新規" />
                     </StackPanel>
                 </Button>
                 <Button Command="{Binding DeleteSelectedCopyCommand}"
-                        ToolTip.Tip="選択中のコピーを削除">
+                        ToolTip.Tip="選択中のバリアントを削除">
                     <StackPanel Classes="IconButtonContent">
                         <PathIcon Data="{StaticResource DeleteGeometry}" Width="14" Height="14" />
                         <TextBlock Text="削除" />
@@ -52,7 +52,7 @@
 
             <!--
                 新規作成フライアウト: 「+ 新規」を押すと展開。名前を空のまま「作成」すれば
-                従来通り「コピー N」自動採番。Enter で確定、Esc でキャンセル（KeyBindings）。
+                従来通り「バリアント N」自動採番。Enter で確定、Esc でキャンセル（KeyBindings）。
             -->
             <Border DockPanel.Dock="Top"
                     IsVisible="{Binding IsCreating}"
@@ -61,10 +61,10 @@
                     Background="{DynamicResource SystemAltMediumLowColor}"
                     CornerRadius="4">
                 <StackPanel Spacing="6">
-                    <TextBlock Text="新規コピー" FontWeight="SemiBold" />
+                    <TextBlock Text="新規バリアント" FontWeight="SemiBold" />
                     <TextBox x:Name="DraftCopyNameBox"
                              Text="{Binding DraftCopyName, Mode=TwoWay}"
-                             PlaceholderText="名前（空欄で「コピー N」自動採番）">
+                             PlaceholderText="名前（空欄で「バリアント N」自動採番）">
                         <TextBox.KeyBindings>
                             <KeyBinding Gesture="Enter" Command="{Binding CommitCreateCommand}" />
                             <KeyBinding Gesture="Escape" Command="{Binding CancelCreateCommand}" />

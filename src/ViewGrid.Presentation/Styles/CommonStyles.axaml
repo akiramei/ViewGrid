@@ -160,6 +160,24 @@
     </Style>
 
     <!--
+        永続ヒントバー（ステータスバー直上）。コンテキスト依存のショートカット案内を 1 行で表示。
+        StatusBar より一段背景色を強めにしてバー間の視覚分離を出すが、
+        本文 (キャンバス) より控えめな配色を維持。空文字なら View 側で IsVisible=False に折り畳む。
+    -->
+    <Style Selector="Border.HintStripe">
+        <Setter Property="Background" Value="{DynamicResource SystemAltMediumLowColor}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ViewGridCardBorder}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="Padding" Value="12,3" />
+        <Setter Property="MinHeight" Value="22" />
+    </Style>
+    <Style Selector="TextBlock.HintStripeText">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Opacity" Value="0.85" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!--
         P6: アイコン + テキストのボタン（「+ 新規」「削除」など）。
         PathIcon を左、TextBlock を右に並べたコンテンツ用。Spacing は CommonStyles の 1 単位。
     -->

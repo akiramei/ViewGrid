@@ -68,7 +68,7 @@
                 <!-- Row 0: ヘッダと操作ボタン群（固定高さ） -->
                 <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,8">
                     <TextBlock Classes="SectionHeader"
-                               Text="配置元（論理コピー）" />
+                               Text="配置元（バリアント）" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="配置"
                                 Command="{Binding PlaceSelectedToFirstFreeCellCommand}"
