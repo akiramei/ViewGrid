@@ -15,9 +15,15 @@
     </UserControl.Resources>
 
     <Grid ColumnDefinitions="*,300">
-        <!-- 中央: キャンバス -->
-        <DockPanel Grid.Column="0">
-            <Border DockPanel.Dock="Top"
+        <!--
+            中央: キャンバス。Grid 3 行構成で空状態案内とキャンバスを Row 1（*）に重ね、
+            IsVisible で切替する。旧実装は DockPanel で Border に DockPanel.Dock 未指定 →
+            既定の Left dock により空状態案内が左寄せで表示される問題があった。
+            Row 1 の Stretch 領域内に StackPanel を Center/Center で置くことで、
+            準備タブ (AssetLibraryView) の空状態と同じ視覚配置を保つ。
+        -->
+        <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
+            <Border Grid.Row="0"
                     Padding="12,8"
                     IsVisible="{Binding HasGrid}">
                 <StackPanel DataContext="{Binding CurrentGrid}"
@@ -32,8 +38,35 @@
                 </StackPanel>
             </Border>
 
+            <!-- 空状態案内（HasGrid=false 時）。AssetLibraryView の「まだ画像がありません」と同じ
+                 アイコン + 大見出し + 補足のレイアウトで視覚一貫性を保つ -->
+            <Border Grid.Row="1"
+                    IsVisible="{Binding !HasGrid}"
+                    Padding="32">
+                <StackPanel Spacing="12"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <PathIcon Data="{StaticResource LayoutGeometry}"
+                              Width="48" Height="48"
+                              Opacity="0.4"
+                              HorizontalAlignment="Center" />
+                    <TextBlock Text="グリッドが選択されていません"
+                               FontSize="16"
+                               Opacity="0.7"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="左側の一覧から作成・選択してください"
+                               FontSize="12"
+                               Opacity="0.5"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+
+            <views:GridCanvasView Grid.Row="1"
+                                  IsVisible="{Binding HasGrid}"
+                                  Margin="12,0,12,12" />
+
             <!-- ステータスは高さ固定（テキスト有無で中央領域が伸縮するのを防ぐ） -->
-            <Border DockPanel.Dock="Bottom"
+            <Border Grid.Row="2"
                     Padding="12,4"
                     MinHeight="22">
                 <TextBlock Text="{Binding StatusMessage}"
@@ -41,22 +74,7 @@
                            FontSize="11"
                            VerticalAlignment="Center" />
             </Border>
-
-            <Border IsVisible="{Binding !HasGrid}"
-                    Padding="24">
-                <StackPanel Spacing="6"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="グリッドが選択されていません"
-                               Opacity="0.7" HorizontalAlignment="Center" />
-                    <TextBlock Text="左側の一覧から作成・選択してください。"
-                               Opacity="0.55" FontSize="12" HorizontalAlignment="Center" />
-                </StackPanel>
-            </Border>
-
-            <views:GridCanvasView IsVisible="{Binding HasGrid}"
-                                  Margin="12,0,12,12" />
-        </DockPanel>
+        </Grid>
 
         <!-- 右: 配置候補 + 操作。GridSplitter で「候補リスト」と「インスペクタ」を上下分割 -->
         <Border Grid.Column="1"
