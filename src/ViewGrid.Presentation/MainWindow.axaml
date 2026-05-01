@@ -256,10 +256,16 @@
                         <TextBlock Text="配置" />
                     </StackPanel>
                 </TabItem.Header>
-                <Grid ColumnDefinitions="300,*">
-                    <views:GridCanvasListView Grid.Column="0"
+                <!--
+                    配置タブを「上=コンパクトなグリッド切替バー / 下=ワークスペース」の縦 2 段構造へ変更。
+                    旧来の左 300px 縦長グリッド一覧は「複数グリッドを行き来する作業ではない」割に
+                    大きなスペースを占有していたため、ComboBox + 操作ボタンに縮約してその分の幅を
+                    GridWorkspaceView 内部の 3 ペイン（配置元 / キャンバス / プロパティ）へ譲る。
+                -->
+                <Grid RowDefinitions="Auto,*">
+                    <views:GridCanvasListView Grid.Row="0"
                                               DataContext="{Binding GridList}" />
-                    <views:GridWorkspaceView Grid.Column="1"
+                    <views:GridWorkspaceView Grid.Row="1"
                                              DataContext="{Binding GridWorkspace}" />
                 </Grid>
             </TabItem>

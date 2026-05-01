@@ -15,15 +15,102 @@
         <conv:TrimModeLabelConverter x:Key="TrimModeLabel" />
     </UserControl.Resources>
 
-    <Grid ColumnDefinitions="*,300">
+    <!--
+        配置タブの本体を 3 ペイン構造に再編:
+        ・Column 0 (320px): 配置元（バリアント）リストを大きく表示。「配置」「プレビュー」「PNG 出力」
+          「トリム」操作も同居（旧右ペイン上部から移動）。
+        ・Column 1 (*): 中央キャンバス（タイトル / GridCanvasView / ステータス、旧 Column 0 の構造維持）。
+        ・Column 2 (300px): プロパティパネル（ISelectionContext 駆動、旧右ペイン下部）。
+          「配置済み」要約 / 「配置を削除」ボタンも同居。
+        旧構造（中央 + 右ペイン 300px に候補とプロパティを混在）から、候補とプロパティを左右に分離する形。
+    -->
+    <Grid ColumnDefinitions="320,*,300">
+
         <!--
-            中央: キャンバス。Grid 3 行構成で空状態案内とキャンバスを Row 1（*）に重ね、
+            Column 0: 配置元（バリアント）リスト + 操作ボタン。
+            旧 Column 1 (Row 0+1) を独立したペインとして抽出し、サムネが視認しやすい広さに。
+        -->
+        <Border Grid.Column="0"
+                BorderBrush="{DynamicResource SystemBaseLowColor}"
+                BorderThickness="0,0,1,0"
+                Padding="12">
+            <Grid RowDefinitions="Auto,*">
+                <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,8">
+                    <TextBlock Classes="SectionHeader"
+                               Text="配置元（バリアント）" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="配置"
+                                Command="{Binding PlaceSelectedToFirstFreeCellCommand}"
+                                IsEnabled="{Binding SelectedCandidate, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                Classes="accent" />
+                        <Button x:Name="PreviewButton"
+                                Content="プレビュー"
+                                Click="OnPreviewClicked"
+                                IsEnabled="{Binding HasGrid}" />
+                        <Button Content="PNG 出力"
+                                Command="{Binding ExportToPngCommand}"
+                                IsEnabled="{Binding HasGrid}" />
+                    </StackPanel>
+                    <StackPanel Classes="FormSection">
+                        <TextBlock Classes="FieldLabel" Text="トリム（プレビュー / PNG 出力共通）" />
+                        <ComboBox ItemsSource="{Binding TrimModeOptions}"
+                                  SelectedItem="{Binding SelectedTrimMode}"
+                                  HorizontalAlignment="Stretch"
+                                  ToolTip.Tip="プレビューと PNG 出力で適用">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource TrimModeLabel}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+                    <Separator />
+                </StackPanel>
+
+                <ListBox x:Name="CandidateList"
+                         Grid.Row="1"
+                         ItemsSource="{Binding Candidates}"
+                         SelectedItem="{Binding SelectedCandidate}"
+                         Background="Transparent">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:CopyCandidateViewModel">
+                            <Grid ColumnDefinitions="64,*" Margin="2,4" ColumnSpacing="10">
+                                <Border Grid.Column="0"
+                                        Width="64" Height="64"
+                                        Background="{DynamicResource SystemChromeMediumLowColor}"
+                                        CornerRadius="4">
+                                    <Image Source="{Binding ThumbnailPath, Converter={StaticResource PathToBitmap}}"
+                                           Stretch="UniformToFill" />
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="{Binding AssetFilename}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding CopyDisplayName}"
+                                               FontSize="11"
+                                               Opacity="0.75"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding SummaryLine}"
+                                               FontSize="10"
+                                               Opacity="0.55"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <!--
+            Column 1: 中央キャンバス。Grid 3 行構成で空状態案内とキャンバスを Row 1（*）に重ね、
             IsVisible で切替する。旧実装は DockPanel で Border に DockPanel.Dock 未指定 →
             既定の Left dock により空状態案内が左寄せで表示される問題があった。
             Row 1 の Stretch 領域内に StackPanel を Center/Center で置くことで、
             準備タブ (AssetLibraryView) の空状態と同じ視覚配置を保つ。
         -->
-        <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
+        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
             <Border Grid.Row="0"
                     Padding="12,8"
                     IsVisible="{Binding HasGrid}">
@@ -77,148 +164,66 @@
             </Border>
         </Grid>
 
-        <!-- 右: 配置候補 + 操作。GridSplitter で「候補リスト」と「インスペクタ」を上下分割 -->
-        <Border Grid.Column="1"
+        <!--
+            Column 2: プロパティパネル。ISelectionContext (CurrentSelection) 駆動で 3 状態を切替。
+            「配置済み」要約と「配置を削除」操作も同居（旧右ペイン下部の構造を継承）。
+            旧 Column 1 (300px) に混在していた候補リストは Column 0 へ分離した。
+        -->
+        <Border Grid.Column="2"
                 BorderBrush="{DynamicResource SystemBaseLowColor}"
                 BorderThickness="1,0,0,0"
                 Padding="12">
-            <Grid RowDefinitions="Auto,3*,Auto,4*">
+            <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Top"
+                           FontSize="11"
+                           Opacity="0.75"
+                           Margin="0,0,0,8"
+                           IsVisible="{Binding HasGrid}">
+                    <Run Text="配置済み:" />
+                    <Run Text="{Binding Placements.Count}" />
+                    <Run Text="件" />
+                </TextBlock>
 
-                <!-- Row 0: ヘッダと操作ボタン群（固定高さ） -->
-                <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,8">
-                    <TextBlock Classes="SectionHeader"
-                               Text="配置元（バリアント）" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="配置"
-                                Command="{Binding PlaceSelectedToFirstFreeCellCommand}"
-                                IsEnabled="{Binding SelectedCandidate, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                Classes="accent" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="PreviewButton"
-                                Content="プレビュー"
-                                Click="OnPreviewClicked"
-                                IsEnabled="{Binding HasGrid}" />
-                        <Button Content="PNG 出力"
-                                Command="{Binding ExportToPngCommand}"
-                                IsEnabled="{Binding HasGrid}" />
-                    </StackPanel>
-                    <!--
-                        プレビューと PNG 出力の両方に適用される共通トリミング設定。
-                        None: キャンバス全面 / OccupiedCells: 占有セル bbox / DrawnPixels: α>0 の bbox
-                    -->
-                    <StackPanel Classes="FormSection">
-                        <TextBlock Classes="FieldLabel" Text="トリム" />
-                        <ComboBox ItemsSource="{Binding TrimModeOptions}"
-                                  SelectedItem="{Binding SelectedTrimMode}"
-                                  HorizontalAlignment="Stretch"
-                                  ToolTip.Tip="プレビューと PNG 出力で適用">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Converter={StaticResource TrimModeLabel}}" />
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                    </StackPanel>
-                    <Separator />
+                <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,8,0,0">
+                    <Button Content="配置を削除"
+                            HorizontalAlignment="Stretch"
+                            Command="{Binding RemoveSelectedPlacementCommand}"
+                            IsEnabled="{Binding IsPlacementSelected}" />
+                    <ProgressBar Height="3"
+                                 IsIndeterminate="True"
+                                 IsVisible="{Binding IsBusy}" />
                 </StackPanel>
 
-                <!-- Row 1: 候補リスト（伸縮可、最低 120px） -->
-                <ListBox x:Name="CandidateList"
-                         Grid.Row="1"
-                         MinHeight="120"
-                         ItemsSource="{Binding Candidates}"
-                         SelectedItem="{Binding SelectedCandidate}"
-                         Background="Transparent">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="vm:CopyCandidateViewModel">
-                            <Grid ColumnDefinitions="48,*" Margin="2" ColumnSpacing="8">
-                                <Border Grid.Column="0"
-                                        Width="48" Height="48"
-                                        Background="{DynamicResource SystemChromeMediumLowColor}"
-                                        CornerRadius="3">
-                                    <Image Source="{Binding ThumbnailPath, Converter={StaticResource PathToBitmap}}"
-                                           Stretch="UniformToFill" />
-                                </Border>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding AssetFilename}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding CopyDisplayName}" FontSize="10" Opacity="0.7" />
-                                    <TextBlock Text="{Binding SummaryLine}" FontSize="10" Opacity="0.55" />
-                                </StackPanel>
-                            </Grid>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-
-                <!-- Row 2: 上下分割スプリッター -->
-                <GridSplitter Grid.Row="2"
-                              Height="4"
-                              HorizontalAlignment="Stretch"
-                              ResizeDirection="Rows"
-                              Background="{DynamicResource SystemBaseLowColor}"
-                              Margin="0,4" />
-
                 <!--
-                    Row 3: 文脈依存プロパティパネル（伸縮可、最低 160px）。
-                    CurrentSelection (ISelectionContext) の派生フラグで 3 状態を切替:
-                      ・PlacementSelection → PlacementInspectorView（配置固有プロパティ + 共有編集ナビ）
-                      ・GridSelection → GridPropertiesView（グリッド名 / サイズ / 比率の読み取り専用）
-                      ・NoSelection → 「グリッドを選択してください」案内
-                    将来 3 ペイン化するときは ContentControl + DataTemplates ベースに移行する。
+                    子 View の DataContext を切り替えると IsVisible バインドも子側で解決されてしまうため、
+                    IsVisible の参照は ElementName=GridWorkspaceRoot 経由で親 VM
+                    (GridWorkspaceViewModel) のフラグを明示的に指す。
                 -->
-                <DockPanel Grid.Row="3" MinHeight="160" LastChildFill="True">
-                    <TextBlock DockPanel.Dock="Top"
-                               FontSize="11"
-                               Opacity="0.75"
-                               Margin="0,0,0,4"
-                               IsVisible="{Binding HasGrid}">
-                        <Run Text="配置済み:" />
-                        <Run Text="{Binding Placements.Count}" />
-                        <Run Text="件" />
-                    </TextBlock>
+                <!-- 配置選択中: Inspector を表示（配置固有プロパティ + 共有編集ナビ） -->
+                <views:PlacementInspectorView DataContext="{Binding Inspector}"
+                                              IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsPlacementSelected}" />
 
-                    <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0">
-                        <Button Content="配置を削除"
-                                HorizontalAlignment="Stretch"
-                                Command="{Binding RemoveSelectedPlacementCommand}"
-                                IsEnabled="{Binding IsPlacementSelected}" />
-                        <ProgressBar Height="3"
-                                     IsIndeterminate="True"
-                                     IsVisible="{Binding IsBusy}" />
+                <!-- グリッドのみ選択中（配置未選択）: グリッド情報を表示 -->
+                <views:GridPropertiesView DataContext="{Binding CurrentGrid}"
+                                          IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsGridOnlySelected}" />
+
+                <!-- グリッド未選択: 案内 -->
+                <Border IsVisible="{Binding IsNoSelection}"
+                        Padding="12">
+                    <StackPanel Spacing="6"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="グリッドを選択してください"
+                                   Opacity="0.7"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="上のグリッド切替バーから作成・選択するとプロパティが表示されます"
+                                   Opacity="0.5"
+                                   FontSize="11"
+                                   HorizontalAlignment="Center"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
-
-                    <!--
-                        子 View の DataContext を切り替えると IsVisible バインドも子側で解決されてしまうため、
-                        IsVisible の参照は ElementName=GridWorkspaceRoot 経由で親 VM
-                        (GridWorkspaceViewModel) のフラグを明示的に指す。
-                    -->
-                    <!-- 配置選択中: 既存の Inspector を表示 -->
-                    <views:PlacementInspectorView DataContext="{Binding Inspector}"
-                                                  IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsPlacementSelected}" />
-
-                    <!-- グリッドのみ選択中（配置未選択）: グリッド情報を表示 -->
-                    <views:GridPropertiesView DataContext="{Binding CurrentGrid}"
-                                              IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsGridOnlySelected}" />
-
-                    <!-- グリッド未選択: 案内 -->
-                    <Border IsVisible="{Binding IsNoSelection}"
-                            Padding="12">
-                        <StackPanel Spacing="6"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center">
-                            <TextBlock Text="グリッドを選択してください"
-                                       Opacity="0.7"
-                                       HorizontalAlignment="Center" />
-                            <TextBlock Text="左の一覧から作成・選択するとプロパティが表示されます"
-                                       Opacity="0.5"
-                                       FontSize="11"
-                                       HorizontalAlignment="Center"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-                </DockPanel>
-
-            </Grid>
+                </Border>
+            </DockPanel>
         </Border>
     </Grid>
 </UserControl>
