@@ -198,10 +198,17 @@
                                            Text="0 で完全一致のみ余白扱い。大きいほど許容（推奨 8）。" />
                             </StackPanel>
 
-                            <!-- 手動：サムネ上に矩形オーバーレイ + 数値入力 4 つ -->
+                            <!-- 手動：サムネ上に矩形オーバーレイ + 数値入力 4 つ + 詳細編集ボタン -->
                             <StackPanel Classes="FormSection" IsVisible="{Binding ManualCropEnabled}">
                                 <TextBlock Classes="HintText"
-                                           Text="サムネ上でドラッグして矩形を描画します。8 ハンドルでサイズ調整、内部ドラッグで位置調整。" />
+                                           Text="サムネ上でドラッグして矩形を描画。4 隅 / 4 辺の 8 ハンドルでサイズ変更、内部ドラッグで移動。細かい調整は『詳細編集』で。" />
+
+                                <Button x:Name="OpenDetailEditorButton"
+                                        Content="詳細編集（拡大表示）..."
+                                        Margin="0,4,0,0"
+                                        HorizontalAlignment="Stretch"
+                                        IsEnabled="{Binding HasThumbnail}"
+                                        Click="OnOpenDetailEditorClicked" />
 
                                 <Border BorderBrush="{DynamicResource SystemBaseLowColor}"
                                         BorderThickness="1"

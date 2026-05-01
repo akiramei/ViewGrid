@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using ViewGrid.Application.ViewModels;
@@ -351,6 +352,46 @@ public partial class CopyPropertiesView : UserControl
         _dragMode = DragMode.None;
         e.Pointer.Capture(null);
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// 「詳細編集（拡大表示）」ボタン。<see cref="ManualCropEditorWindow"/> をモーダル表示し、
+    /// OK で閉じられたら結果を VM の ManualCropPixel* に書き戻す（IsDirty が立つ → 既存 Save フロー）。
+    /// SourceImagePath / SourceWidth / SourceHeight が必要なので、未取得（取り込み済みでない論理コピー）
+    /// では IsEnabled=false でガード（XAML 側で HasThumbnail にバインド済み）。
+    /// </summary>
+    private async void OnOpenDetailEditorClicked(object? sender, RoutedEventArgs e)
+    {
+        if (_vm is null) return;
+        if (!_vm.ManualCropEnabled) return;
+        if (string.IsNullOrEmpty(_vm.SourceImagePath)) return;
+        if (_vm.SourceWidth <= 0 || _vm.SourceHeight <= 0) return;
+        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+
+        var window = new ManualCropEditorWindow();
+        try
+        {
+            window.Initialize(
+                _vm.SourceImagePath,
+                _vm.SourceWidth, _vm.SourceHeight,
+                _vm.ManualCropPixelX, _vm.ManualCropPixelY,
+                _vm.ManualCropPixelWidth, _vm.ManualCropPixelHeight);
+        }
+        catch
+        {
+            // 画像読み込み失敗等。ユーザー操作起点なので静かに諦める（StatusMessage 等で表示できるが省略）。
+            return;
+        }
+
+        await window.ShowDialog(owner);
+
+        if (window.GetResult() is { } r)
+        {
+            _vm.ManualCropPixelX = r.X;
+            _vm.ManualCropPixelY = r.Y;
+            _vm.ManualCropPixelWidth = r.W;
+            _vm.ManualCropPixelHeight = r.H;
+        }
     }
 
     /// <summary>
