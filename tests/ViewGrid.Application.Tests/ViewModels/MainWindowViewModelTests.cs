@@ -337,6 +337,131 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public void HoveredHistoryIndex_Null_Has_No_Range()
+    {
+        _vm.HoveredHistoryIndex = null;
+
+        _vm.HoveredJumpRangeLo.Should().Be(-1);
+        _vm.HoveredJumpRangeHi.Should().Be(-1);
+        _vm.HoveredJumpDirection.Should().Be(ViewGrid.Application.History.JumpDirection.None);
+    }
+
+    [Fact]
+    public async Task HoveredHistoryIndex_Newer_Than_Current_Sets_Redo_Range()
+    {
+        var grid = new ViewGrid.Core.Entities.GridCanvas
+        {
+            Id = System.Guid.NewGuid(),
+            Name = "g",
+            GridRows = 2, GridCols = 2,
+            ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
+            IsActive = true,
+            CreatedAt = System.DateTimeOffset.UtcNow,
+            UpdatedAt = System.DateTimeOffset.UtcNow,
+        };
+        await _fx.GridRepository.AddAsync(grid);
+        await _gridList.LoadAsync();
+        await _gridList.RenameSelectedAsync("a");
+        await _gridList.RenameSelectedAsync("b");
+        await _gridList.RenameSelectedAsync("c");
+        await _vm.UndoAsync(); // CurrentIndex = 1, Index 2 は redo 候補
+
+        _vm.HoveredHistoryIndex = 2;
+
+        _vm.HoveredJumpRangeLo.Should().Be(2);
+        _vm.HoveredJumpRangeHi.Should().Be(2);
+        _vm.HoveredJumpDirection.Should().Be(ViewGrid.Application.History.JumpDirection.Redo);
+    }
+
+    [Fact]
+    public async Task HoveredHistoryIndex_Older_Than_Current_Sets_Undo_Range()
+    {
+        var grid = new ViewGrid.Core.Entities.GridCanvas
+        {
+            Id = System.Guid.NewGuid(),
+            Name = "g",
+            GridRows = 2, GridCols = 2,
+            ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
+            IsActive = true,
+            CreatedAt = System.DateTimeOffset.UtcNow,
+            UpdatedAt = System.DateTimeOffset.UtcNow,
+        };
+        await _fx.GridRepository.AddAsync(grid);
+        await _gridList.LoadAsync();
+        await _gridList.RenameSelectedAsync("a");
+        await _gridList.RenameSelectedAsync("b");
+        await _gridList.RenameSelectedAsync("c");
+        // CurrentIndex = 2
+
+        _vm.HoveredHistoryIndex = 0;
+
+        // [hover+1, current] = [1, 2] が Undo 範囲
+        _vm.HoveredJumpRangeLo.Should().Be(1);
+        _vm.HoveredJumpRangeHi.Should().Be(2);
+        _vm.HoveredJumpDirection.Should().Be(ViewGrid.Application.History.JumpDirection.Undo);
+    }
+
+    [Fact]
+    public async Task HoveredHistoryIndex_Same_As_Current_Has_No_Range()
+    {
+        var grid = new ViewGrid.Core.Entities.GridCanvas
+        {
+            Id = System.Guid.NewGuid(),
+            Name = "g",
+            GridRows = 2, GridCols = 2,
+            ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
+            IsActive = true,
+            CreatedAt = System.DateTimeOffset.UtcNow,
+            UpdatedAt = System.DateTimeOffset.UtcNow,
+        };
+        await _fx.GridRepository.AddAsync(grid);
+        await _gridList.LoadAsync();
+        await _gridList.RenameSelectedAsync("a");
+
+        _vm.HoveredHistoryIndex = _vm.CurrentHistoryIndex;
+
+        _vm.HoveredJumpRangeLo.Should().Be(-1);
+        _vm.HoveredJumpRangeHi.Should().Be(-1);
+        _vm.HoveredJumpDirection.Should().Be(ViewGrid.Application.History.JumpDirection.None);
+    }
+
+    [Fact]
+    public async Task Undo_Recalculates_Hover_Range_When_Hover_Active()
+    {
+        var grid = new ViewGrid.Core.Entities.GridCanvas
+        {
+            Id = System.Guid.NewGuid(),
+            Name = "g",
+            GridRows = 2, GridCols = 2,
+            ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
+            IsActive = true,
+            CreatedAt = System.DateTimeOffset.UtcNow,
+            UpdatedAt = System.DateTimeOffset.UtcNow,
+        };
+        await _fx.GridRepository.AddAsync(grid);
+        await _gridList.LoadAsync();
+        await _gridList.RenameSelectedAsync("a");
+        await _gridList.RenameSelectedAsync("b");
+        // CurrentIndex = 1
+
+        _vm.HoveredHistoryIndex = 0; // Undo 方向、範囲 [1, 1]
+        _vm.HoveredJumpDirection.Should().Be(ViewGrid.Application.History.JumpDirection.Undo);
+
+        // Undo を実行すると CurrentIndex = 0 になり、hover 0 と一致 → None になる
+        await _vm.UndoAsync();
+
+        _vm.HoveredJumpDirection.Should().Be(ViewGrid.Application.History.JumpDirection.None);
+    }
+
+    [Fact]
     public async Task Send_NavigateMessage_Triggers_Tab_Switch_And_Selection()
     {
         // PlacementInspector の「特性を編集 →」が送る経路。

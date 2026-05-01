@@ -81,6 +81,30 @@ public sealed partial class MainWindowViewModel
     /// <summary>履歴 UI から見て、何かしらエントリがあるか。プレースホルダ表示用。</summary>
     public bool HasHistory => _history.History.Count > 0;
 
+    /// <summary>
+    /// 履歴 UI で hover 中のエントリの Index。<c>null</c> なら hover 解除中。
+    /// View 側（CodeBehind）が ListBoxItem の <c>PointerEntered</c> / <c>PointerExited</c> で
+    /// 設定し、Phase 3 の hover プレビュー（範囲色付け）に使う。
+    /// 値変更時に <see cref="UpdateHoveredJumpRange"/> 経由で派生プロパティが再計算される。
+    /// </summary>
+    [ObservableProperty]
+    public partial int? HoveredHistoryIndex { get; set; }
+
+    /// <summary>
+    /// hover プレビューで「ジャンプの影響を受ける範囲」の下端 Index（含む）。
+    /// 範囲なしのとき <c>-1</c>。Converter で各 HistoryEntry.Index と比較して範囲内判定に使う。
+    /// </summary>
+    [ObservableProperty]
+    public partial int HoveredJumpRangeLo { get; set; } = -1;
+
+    /// <summary>hover ジャンプ範囲の上端 Index（含む）。範囲なしのとき <c>-1</c>。</summary>
+    [ObservableProperty]
+    public partial int HoveredJumpRangeHi { get; set; } = -1;
+
+    /// <summary>hover が指す方向（Undo / Redo / None）。Converter で背景色の使い分けに使う。</summary>
+    [ObservableProperty]
+    public partial JumpDirection HoveredJumpDirection { get; set; }
+
     public AssetLibraryViewModel AssetLibrary { get; }
     public CopyListViewModel CopyList { get; }
     public CopyPropertiesViewModel CopyProperties { get; }
@@ -230,8 +254,53 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(CurrentHistoryIndex));
         OnPropertyChanged(nameof(HasHistory));
 
+        // CurrentIndex が変わると hover 範囲の意味も変わる（ジャンプ方向の判定が変わる）。
+        // hover 中ならその場で再計算しておく。hover 解除中なら no-op。
+        UpdateHoveredJumpRange();
+
         UndoCommand.NotifyCanExecuteChanged();
         RedoCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// <see cref="HoveredHistoryIndex"/> が変わったとき、または現在位置 (
+    /// <see cref="CurrentHistoryIndex"/>) が変わったときに呼ばれる。
+    /// hover が現在位置より新しければ Redo 方向、古ければ Undo 方向の範囲を計算する。
+    /// </summary>
+    partial void OnHoveredHistoryIndexChanged(int? value) => UpdateHoveredJumpRange();
+
+    private void UpdateHoveredJumpRange()
+    {
+        if (HoveredHistoryIndex is not int hover)
+        {
+            HoveredJumpRangeLo = -1;
+            HoveredJumpRangeHi = -1;
+            HoveredJumpDirection = JumpDirection.None;
+            return;
+        }
+
+        var current = CurrentHistoryIndex;
+        if (hover == current)
+        {
+            // 同じ位置 = no-op。プレビュー範囲なし。
+            HoveredJumpRangeLo = -1;
+            HoveredJumpRangeHi = -1;
+            HoveredJumpDirection = JumpDirection.None;
+        }
+        else if (hover > current)
+        {
+            // クリックすると [current+1, hover] の取消済みエントリを Redo で再適用する。
+            HoveredJumpRangeLo = current + 1;
+            HoveredJumpRangeHi = hover;
+            HoveredJumpDirection = JumpDirection.Redo;
+        }
+        else
+        {
+            // クリックすると [hover+1, current] の適用済みエントリを Undo で取り消す。
+            HoveredJumpRangeLo = hover + 1;
+            HoveredJumpRangeHi = current;
+            HoveredJumpDirection = JumpDirection.Undo;
+        }
     }
 
     private void OnHistoryUndoneOrRedone(IUndoableCommand command)

@@ -43,6 +43,34 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 履歴 ListBox の各項目（DataTemplate 内 Grid）に hover した時、VM の
+    /// <see cref="MainWindowViewModel.HoveredHistoryIndex"/> を更新する。
+    /// VM 側で「現在位置との差」を計算して Lo/Hi/Direction に反映され、
+    /// MultiBinding Converter で範囲内の各項目に Undo=赤 / Redo=緑 の背景が描画される。
+    /// </summary>
+    private void OnHistoryItemPointerEntered(object? sender, Avalonia.Input.PointerEventArgs e)
+    {
+        if (sender is Control ctrl && ctrl.DataContext is HistoryEntry entry
+            && DataContext is MainWindowViewModel vm)
+        {
+            vm.HoveredHistoryIndex = entry.Index;
+        }
+    }
+
+    /// <summary>
+    /// 項目から pointer が離れたら hover プレビューを解除する。
+    /// 別項目への移動の場合、先に Exit、続けて Enter が発火するため、
+    /// 順序として「null → 新 Index」で正しく更新される。
+    /// </summary>
+    private void OnHistoryItemPointerExited(object? sender, Avalonia.Input.PointerEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.HoveredHistoryIndex = null;
+        }
+    }
+
+    /// <summary>
     /// 履歴 Flyout 内の ListBox 項目クリック処理。<see cref="MainWindowViewModel.JumpToHistoryAsync"/>
     /// を発火し、Flyout を自動で閉じる。
     /// <para>

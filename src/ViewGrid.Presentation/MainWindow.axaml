@@ -8,6 +8,7 @@
         xmlns:views="clr-namespace:ViewGrid.Presentation.Views"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="720"
         x:Class="ViewGrid.Presentation.MainWindow"
+        x:Name="MainWindowRoot"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
         Width="1200" Height="720"
@@ -31,7 +32,25 @@
               Col2: 説明文（IsApplied=false なら Opacity 0.5）
         -->
         <DataTemplate x:Key="HistoryItemTemplate" x:DataType="history:HistoryEntry">
-            <Grid ColumnDefinitions="20,Auto,*" MinHeight="28">
+            <!--
+                Grid.Background は MultiBinding で「hover ジャンプ範囲内かどうか」を判定し、
+                Undo 方向は半透明赤、Redo 方向は半透明緑で塗る（Phase 3 のプレビュー）。
+                範囲外は Transparent で素通し。
+                PointerEntered/Exited は CodeBehind で MainWindowViewModel.HoveredHistoryIndex を
+                更新する（hover 解除は Exited で null セット）。
+            -->
+            <Grid ColumnDefinitions="20,Auto,*"
+                  MinHeight="28"
+                  PointerEntered="OnHistoryItemPointerEntered"
+                  PointerExited="OnHistoryItemPointerExited">
+                <Grid.Background>
+                    <MultiBinding Converter="{x:Static converters:HoveredJumpRangeBackgroundConverter.Instance}">
+                        <Binding Path="Index" />
+                        <Binding ElementName="MainWindowRoot" Path="DataContext.HoveredJumpRangeLo" />
+                        <Binding ElementName="MainWindowRoot" Path="DataContext.HoveredJumpRangeHi" />
+                        <Binding ElementName="MainWindowRoot" Path="DataContext.HoveredJumpDirection" />
+                    </MultiBinding>
+                </Grid.Background>
                 <TextBlock Grid.Column="0"
                            Text="▶"
                            FontSize="11"
@@ -154,8 +173,40 @@
                                           HorizontalAlignment="Stretch"
                                           ResizeDirection="Rows"
                                           Background="{DynamicResource SystemBaseLowColor}" />
-                            <views:CopyPropertiesView Grid.Row="2"
-                                                      DataContext="{Binding CopyProperties}" />
+                            <!--
+                                Phase 3 C 案: 右ペイン下部を TabControl 化し、「特性編集」と「履歴」を並べる。
+                                履歴 Flyout はツールバーに残しているため、配置タブからも引き続きアクセス可能。
+                                準備タブの常時表示で履歴を見ながら編集できる UX を提供する。
+                            -->
+                            <TabControl Grid.Row="2" Padding="0">
+                                <TabItem Header="特性編集">
+                                    <views:CopyPropertiesView DataContext="{Binding CopyProperties}" />
+                                </TabItem>
+                                <TabItem Header="履歴">
+                                    <Grid RowDefinitions="*,Auto">
+                                        <ListBox Grid.Row="0"
+                                                 ItemsSource="{Binding HistoryEntries}"
+                                                 ItemTemplate="{StaticResource HistoryItemTemplate}"
+                                                 SelectionMode="Single"
+                                                 BorderThickness="0"
+                                                 Background="Transparent"
+                                                 IsVisible="{Binding HasHistory}"
+                                                 PointerReleased="OnHistoryItemClicked" />
+                                        <TextBlock Grid.Row="0"
+                                                   Text="操作履歴はありません"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Opacity="0.5"
+                                                   IsVisible="{Binding !HasHistory}" />
+                                        <TextBlock Grid.Row="1"
+                                                   Text="hover で範囲を視覚化（赤=Undo / 緑=Redo）。クリックでジャンプ。"
+                                                   FontSize="10"
+                                                   Opacity="0.6"
+                                                   Margin="8,4"
+                                                   TextWrapping="Wrap" />
+                                    </Grid>
+                                </TabItem>
+                            </TabControl>
                         </Grid>
                     </Border>
                 </Grid>
