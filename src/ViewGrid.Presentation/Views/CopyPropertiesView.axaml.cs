@@ -19,10 +19,16 @@ public partial class CopyPropertiesView : UserControl
         None,
         CreateNew,
         Move,
+        // 4 隅: 両軸リサイズ
         ResizeNW,
         ResizeNE,
         ResizeSW,
         ResizeSE,
+        // 4 辺中央: 片軸のみリサイズ
+        ResizeN,
+        ResizeS,
+        ResizeE,
+        ResizeW,
     }
 
     private bool _isDragging;
@@ -178,7 +184,9 @@ public partial class CopyPropertiesView : UserControl
     }
 
     /// <summary>
-    /// 矩形 + 4 隅ハンドルを Canvas 上に再描画する。VM 値変更時 / レイアウト変更時に呼ばれる。
+    /// マット 4 領域 + 矩形 + 4 隅ハンドル + 4 辺中央ハンドルを Canvas 上に再描画する。
+    /// VM 値変更時 / Image レイアウト変更時に呼ばれる。
+    /// LayoutUpdated は再帰の原因になるため購読しない（Phase 5 のクラッシュ修正済み）。
     /// </summary>
     private void UpdateOverlay()
     {
@@ -187,33 +195,65 @@ public partial class CopyPropertiesView : UserControl
 
         if (_vm is null || !_vm.ManualCropEnabled || !_vm.IsManualCropDefined) return;
 
+        var metrics = GetThumbnailDisplayMetrics();
+        if (metrics is null) return;
+        var (_, _, displayW, displayH, _, padX, padY) = metrics.Value;
+
         var rect = ComputeOverlayRect();
         if (rect is not { } r) return;
         if (r.W <= 0 || r.H <= 0) return;
 
-        // 矩形本体（半透明青の枠 + 内部透過）
+        // マット 4 領域: サムネ表示領域 (padX, padY, displayW, displayH) のうち、
+        // 矩形外側を半透明黒で覆って選択範囲を強調する。座標系はオーバーレイ Canvas。
+        var mattBrush = new SolidColorBrush(Color.FromArgb(0x80, 0x00, 0x00, 0x00));
+        AddMatt(padX, padY, displayW, r.Y - padY, mattBrush);                          // 上
+        AddMatt(padX, r.Y + r.H, displayW, padY + displayH - (r.Y + r.H), mattBrush); // 下
+        AddMatt(padX, r.Y, r.X - padX, r.H, mattBrush);                               // 左
+        AddMatt(r.X + r.W, r.Y, padX + displayW - (r.X + r.W), r.H, mattBrush);       // 右
+
+        // 矩形枠（マットで内部は明るく見える形）
         var border = new Rectangle
         {
             Width = r.W,
             Height = r.H,
             Stroke = new SolidColorBrush(Color.FromArgb(0xFF, 0x33, 0x99, 0xFF)),
             StrokeThickness = 1.5,
-            Fill = new SolidColorBrush(Color.FromArgb(0x18, 0x33, 0x99, 0xFF)),
+            Fill = Brushes.Transparent,
             IsHitTestVisible = false,
         };
         Canvas.SetLeft(border, r.X);
         Canvas.SetTop(border, r.Y);
         ManualCropOverlay.Children.Add(border);
 
-        // 4 隅ハンドル（IsHitTestVisible=false にして、PointerPressed は Canvas 自体で処理。
-        // クリック判定は CodeBehind の HitTest 計算で行う）
-        AddCornerHandle(r.X, r.Y);
-        AddCornerHandle(r.X + r.W, r.Y);
-        AddCornerHandle(r.X, r.Y + r.H);
-        AddCornerHandle(r.X + r.W, r.Y + r.H);
+        // 4 隅ハンドル（両軸リサイズ）
+        AddHandle(r.X, r.Y);
+        AddHandle(r.X + r.W, r.Y);
+        AddHandle(r.X, r.Y + r.H);
+        AddHandle(r.X + r.W, r.Y + r.H);
+
+        // 4 辺中央ハンドル（片軸リサイズ）
+        AddHandle(r.X + r.W / 2, r.Y);
+        AddHandle(r.X + r.W / 2, r.Y + r.H);
+        AddHandle(r.X, r.Y + r.H / 2);
+        AddHandle(r.X + r.W, r.Y + r.H / 2);
     }
 
-    private void AddCornerHandle(double cx, double cy)
+    private void AddMatt(double x, double y, double w, double h, IBrush brush)
+    {
+        if (w <= 0 || h <= 0) return;
+        var rect = new Rectangle
+        {
+            Width = w,
+            Height = h,
+            Fill = brush,
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(rect, x);
+        Canvas.SetTop(rect, y);
+        ManualCropOverlay.Children.Add(rect);
+    }
+
+    private void AddHandle(double cx, double cy)
     {
         var h = new Rectangle
         {
@@ -229,14 +269,24 @@ public partial class CopyPropertiesView : UserControl
         ManualCropOverlay.Children.Add(h);
     }
 
-    /// <summary>クリック点が 4 隅ハンドルのいずれかに当たれば、対応するリサイズモードを返す。</summary>
+    /// <summary>クリック点が 4 隅 / 4 辺中央のハンドルに当たれば、対応するリサイズモードを返す。
+    /// 4 隅優先（隅と辺が重なる位置では隅のリサイズを優先、両軸変えられる方が直感的）。</summary>
     private static DragMode HitTestHandle(Point p, (double X, double Y, double W, double H) r)
     {
         var slack = HandleSize / 2 + HandleHitSlack;
+
+        // 4 隅: 両軸リサイズ
         if (Distance(p, new Point(r.X, r.Y)) <= slack) return DragMode.ResizeNW;
         if (Distance(p, new Point(r.X + r.W, r.Y)) <= slack) return DragMode.ResizeNE;
         if (Distance(p, new Point(r.X, r.Y + r.H)) <= slack) return DragMode.ResizeSW;
         if (Distance(p, new Point(r.X + r.W, r.Y + r.H)) <= slack) return DragMode.ResizeSE;
+
+        // 4 辺中央: 片軸リサイズ
+        if (Distance(p, new Point(r.X + r.W / 2, r.Y)) <= slack) return DragMode.ResizeN;
+        if (Distance(p, new Point(r.X + r.W / 2, r.Y + r.H)) <= slack) return DragMode.ResizeS;
+        if (Distance(p, new Point(r.X, r.Y + r.H / 2)) <= slack) return DragMode.ResizeW;
+        if (Distance(p, new Point(r.X + r.W, r.Y + r.H / 2)) <= slack) return DragMode.ResizeE;
+
         return DragMode.None;
     }
 
@@ -348,6 +398,7 @@ public partial class CopyPropertiesView : UserControl
             case DragMode.ResizeSW:
             case DragMode.ResizeSE:
             {
+                // 4 隅: 両軸リサイズ。対角の隅を fixed として、ドラッグ点との bbox を作る。
                 var startX = _dragStartRect.X;
                 var startY = _dragStartRect.Y;
                 var startRight = _dragStartRect.X + _dragStartRect.W;
@@ -362,6 +413,36 @@ public partial class CopyPropertiesView : UserControl
                 _vm.ManualCropPixelY = Math.Min(fixedY, moveY);
                 _vm.ManualCropPixelWidth = Math.Abs(moveX - fixedX);
                 _vm.ManualCropPixelHeight = Math.Abs(moveY - fixedY);
+                break;
+            }
+            case DragMode.ResizeN:
+            case DragMode.ResizeS:
+            {
+                // 上辺/下辺: Y 軸のみリサイズ。X / W は startRect そのまま、対辺を fixed Y として bbox 作る。
+                var startY = _dragStartRect.Y;
+                var startBottom = _dragStartRect.Y + _dragStartRect.H;
+                var fixedY = _dragMode is DragMode.ResizeN ? startBottom : startY;
+                var moveY = Math.Clamp(srcCurrent.Value.SrcY, 0, sh);
+
+                _vm.ManualCropPixelX = _dragStartRect.X;
+                _vm.ManualCropPixelWidth = _dragStartRect.W;
+                _vm.ManualCropPixelY = Math.Min(fixedY, moveY);
+                _vm.ManualCropPixelHeight = Math.Abs(moveY - fixedY);
+                break;
+            }
+            case DragMode.ResizeE:
+            case DragMode.ResizeW:
+            {
+                // 右辺/左辺: X 軸のみリサイズ。
+                var startX = _dragStartRect.X;
+                var startRight = _dragStartRect.X + _dragStartRect.W;
+                var fixedX = _dragMode is DragMode.ResizeW ? startRight : startX;
+                var moveX = Math.Clamp(srcCurrent.Value.SrcX, 0, sw);
+
+                _vm.ManualCropPixelY = _dragStartRect.Y;
+                _vm.ManualCropPixelHeight = _dragStartRect.H;
+                _vm.ManualCropPixelX = Math.Min(fixedX, moveX);
+                _vm.ManualCropPixelWidth = Math.Abs(moveX - fixedX);
                 break;
             }
         }
