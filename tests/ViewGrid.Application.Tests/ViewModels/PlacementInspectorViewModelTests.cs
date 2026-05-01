@@ -31,10 +31,13 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         _fx = await UseCaseFixture.CreateAsync();
         _messenger = new WeakReferenceMessenger();
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
+        var fork = new ForkPlacementVariantUseCase(_fx.CopyRepository, _fx.PlacementRepository);
         var history = new UndoRedoService();
         _vm = new PlacementInspectorViewModel(
             offset,
+            fork,
             _fx.PlacementRepository,
+            _fx.CopyRepository,
             history,
             _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);

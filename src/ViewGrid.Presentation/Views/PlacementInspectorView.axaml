@@ -24,11 +24,16 @@
                            Opacity="0.7" />
             </StackPanel>
 
-            <!-- 共有特性は準備タブで編集する旨を案内 + ナビゲーションボタン -->
+            <!--
+                共有特性は準備タブで編集する旨を案内 + 2 つの操作ボタン:
+                ・「特性を編集 →」: 準備タブの CopyPropertiesView へナビゲート（共有編集 = 同バリアント
+                  を参照する全配置に波及）
+                ・「この配置だけ分岐」: 元バリアントを fork して独立化（他の配置には影響しない）
+            -->
             <Border DockPanel.Dock="Top"
                     Classes="InfoBanner"
                     Margin="0,0,0,8">
-                <StackPanel Spacing="4">
+                <StackPanel Spacing="6">
                     <TextBlock Classes="HintText"
                                Text="回転・反転・スケーリング等の共有特性は準備タブの「特性編集」で編集します（同じバリアントの全配置に反映）。" />
                     <Button Content="特性を編集 →"
@@ -36,6 +41,12 @@
                             Padding="6,2"
                             FontSize="11"
                             Command="{Binding EditCopyPropertiesCommand}" />
+                    <Button Content="この配置だけ別バリアントに分岐"
+                            HorizontalAlignment="Stretch"
+                            Padding="6,2"
+                            FontSize="11"
+                            Command="{Binding ForkVariantCommand}"
+                            ToolTip.Tip="元バリアントを複製した独立バリアントに切替えます。他の配置には影響しません。" />
                 </StackPanel>
             </Border>
 

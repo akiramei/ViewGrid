@@ -84,8 +84,9 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             _fx.AssetRepository, _fx.Storage, new SkiaGridImageRenderer(new AutoCropCache()));
         var export = new ExportGridUseCase(render);
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
+        var fork = new ForkPlacementVariantUseCase(_fx.CopyRepository, _fx.PlacementRepository);
         var inspector = new PlacementInspectorViewModel(
-            offset, _fx.PlacementRepository, sharedHistory, _messenger,
+            offset, fork, _fx.PlacementRepository, _fx.CopyRepository, sharedHistory, _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);
         var updateWeights = new UpdateGridWeightsUseCase(_fx.GridRepository);
         var updateLocks = new UpdateGridLocksUseCase(_fx.GridRepository);

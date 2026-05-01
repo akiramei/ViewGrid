@@ -34,7 +34,9 @@ namespace ViewGrid.Application.ViewModels;
 public sealed partial class PlacementInspectorViewModel : ObservableObject
 {
     private readonly UpdatePlacementOffsetUseCase _offsetUseCase;
+    private readonly ForkPlacementVariantUseCase _forkUseCase;
     private readonly IGridPlacementRepository _placementRepository;
+    private readonly IImageCopyRepository _copyRepository;
     private readonly IUndoRedoService _history;
     private readonly IMessenger _messenger;
     private readonly ILogger<PlacementInspectorViewModel> _logger;
@@ -75,13 +77,17 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
 
     public PlacementInspectorViewModel(
         UpdatePlacementOffsetUseCase offsetUseCase,
+        ForkPlacementVariantUseCase forkUseCase,
         IGridPlacementRepository placementRepository,
+        IImageCopyRepository copyRepository,
         IUndoRedoService history,
         IMessenger messenger,
         ILogger<PlacementInspectorViewModel> logger)
     {
         _offsetUseCase = offsetUseCase;
+        _forkUseCase = forkUseCase;
         _placementRepository = placementRepository;
+        _copyRepository = copyRepository;
         _history = history;
         _messenger = messenger;
         _logger = logger;
@@ -137,6 +143,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         }
 
         EditCopyPropertiesCommand.NotifyCanExecuteChanged();
+        ForkVariantCommand.NotifyCanExecuteChanged();
         return Task.CompletedTask;
     }
 
@@ -275,7 +282,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 「特性を編集 →」コマンド。準備タブに切り替えて当該論理コピーを編集する画面に
+    /// 「特性を編集 →」コマンド。準備タブに切り替えて当該バリアントを編集する画面に
     /// 飛ばすため、<see cref="NavigateToCopyPropertiesMessage"/> を送る。
     /// 受信側は <c>MainWindowViewModel</c>。
     /// </summary>
@@ -288,6 +295,62 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     }
 
     private bool CanEditCopyProperties() => HasPlacement;
+
+    /// <summary>
+    /// 「この配置だけ別バリアントに分岐」コマンド。
+    /// <para>
+    /// 元の <see cref="ImageCopy"/> を複製した独立バリアントに当該 Placement の参照を付け替える。
+    /// 同じ元バリアントを参照する他の配置には影響しない。fork 後、ユーザーは新バリアントの
+    /// 名前 / 特性を編集して「○○ 用」「縦書き版」のように差別化できる。
+    /// </para>
+    /// <para>
+    /// 履歴に積まれる単位は「fork 1 回 = 1 ステップ」。Undo すると Placement の参照は元バリアント
+    /// に戻り、新バリアント自体は削除される（残骸が残らない）。
+    /// </para>
+    /// <para>
+    /// fork 完了後は <see cref="CopyLibraryChangedMessage"/> を送出して候補リスト・配置リストの
+    /// 自動再ロードを誘発する。VM 側でその後の選択保持は呼び出し側
+    /// (<see cref="GridWorkspaceViewModel.ReloadFromMessageAsync"/>) に委ねる。
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanForkVariant))]
+    public async Task ForkVariantAsync(CancellationToken ct = default)
+    {
+        var source = _source;
+        var grid = _grid;
+        if (source is null || grid is null) return;
+
+        // 元バリアント名はラベル（"アセット名 / バリアント名" の形式）から取得しても良いが、
+        // Description にはバリアント名のみ載せたいので Repository から確実に取得する。
+        var sourceCopy = await _copyRepository.FindByIdAsync(source.CopyId, ct);
+        if (sourceCopy is null)
+        {
+            StatusMessage = $"ImageCopy {source.CopyId} が見つかりません。";
+            return;
+        }
+        var sourceLabel = string.IsNullOrWhiteSpace(sourceCopy.CopyName)
+            ? Localization.Terminology.VariantUnnamed
+            : sourceCopy.CopyName!;
+        var description = $"バリアントを分岐: 「{sourceLabel}」 → 派生";
+
+        var command = new ForkPlacementVariantCommand(
+            _forkUseCase, _copyRepository, _placementRepository,
+            source.PlacementId, grid.GridId, description);
+
+        var result = await _history.ExecuteAsync(command, ct);
+        if (result.IsError)
+        {
+            StatusMessage = string.Join(", ", result.Errors);
+            return;
+        }
+
+        StatusMessage = "別バリアントに分岐しました。準備タブで名前と特性を編集できます。";
+        // 候補リスト・配置の再ロードを誘発（CopyId 付け替え後の整合性を取る）。
+        _messenger.Send(new CopyLibraryChangedMessage());
+        LogForked(_logger, source.PlacementId, command.CreatedCopyId ?? Guid.Empty);
+    }
+
+    private bool CanForkVariant() => HasPlacement;
 
     /// <summary>
     /// Shift+ドラッグ・Ctrl+Arrow からの <see cref="PlacementItemViewModel.PixelOffsetX"/> /
@@ -327,4 +390,8 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     [LoggerMessage(EventId = 5101, Level = LogLevel.Information,
         Message = "配置インスペクタからピクセル微調整を保存: {PlacementId}")]
     private static partial void LogSaved(ILogger logger, Guid placementId);
+
+    [LoggerMessage(EventId = 5102, Level = LogLevel.Information,
+        Message = "配置のバリアントを分岐: placement={PlacementId} newCopy={NewCopyId}")]
+    private static partial void LogForked(ILogger logger, Guid placementId, Guid newCopyId);
 }

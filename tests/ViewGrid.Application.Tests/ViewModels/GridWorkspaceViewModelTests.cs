@@ -38,10 +38,13 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         var export = new ExportGridUseCase(render);
         var picker = Substitute.For<IFilePickerService>();
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
+        var fork = new ForkPlacementVariantUseCase(_fx.CopyRepository, _fx.PlacementRepository);
         _history = new UndoRedoService();
         var inspector = new PlacementInspectorViewModel(
             offset,
+            fork,
             _fx.PlacementRepository,
+            _fx.CopyRepository,
             _history,
             _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);

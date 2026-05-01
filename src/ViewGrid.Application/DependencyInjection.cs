@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<UpdateGridWeightsUseCase>();
         services.AddScoped<UpdateGridLocksUseCase>();
         services.AddScoped<FitGridWeightToPlacementUseCase>();
+        services.AddScoped<ForkPlacementVariantUseCase>();
 
         // ViewModels
         services.AddTransient<AssetLibraryViewModel>();
