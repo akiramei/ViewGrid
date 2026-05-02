@@ -98,7 +98,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             _fx.GridRepository, _fx.CopyRepository, _fx.AssetRepository, _fx.PlacementRepository,
             _fx.Thumbnails, _fx.Storage, _fx.CropResolver,
             place, remove, move, swap, render, export, updateWeights, updateLocks, offset,
-            fitWeight, picker, _messenger, sharedHistory, inspector,
+            fitWeight, createCopy, updateCopy, picker, _messenger, sharedHistory, inspector,
             NullLogger<GridWorkspaceViewModel>.Instance);
 
         _vm = new MainWindowViewModel(

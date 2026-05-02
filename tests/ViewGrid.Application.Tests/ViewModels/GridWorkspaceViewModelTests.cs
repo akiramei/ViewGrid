@@ -55,6 +55,8 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository, _fx.AssetRepository,
             _fx.CropResolver, updateWeights,
             NullLogger<FitGridWeightToPlacementUseCase>.Instance);
+        var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
+        var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository);
 
         _vm = new GridWorkspaceViewModel(
             _fx.GridRepository,
@@ -74,6 +76,8 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             updateLocks,
             offset,
             fitWeight,
+            createCopy,
+            updateCopy,
             picker,
             _messenger,
             _history,
@@ -313,5 +317,150 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
 
         _vm.CurrentSelection.Should().BeOfType<ViewGrid.Application.Selection.GridSelection>();
         _vm.IsGridOnlySelected.Should().BeTrue();
+    }
+
+    // ─── 配置ファースト UI 第 2 段階 (Stage 2): バリアント新規作成 / リネーム / 削除 ───
+
+    /// <summary>新規バリアント作成: SelectedCandidate のアセットを起点に新 Copy が増える。</summary>
+    [Fact]
+    public async Task CommitCreateVariant_Creates_Copy_For_Selected_Candidate_Asset()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "base");
+        await _vm.ReloadFromMessageAsyncForTests();
+        _vm.SelectedCandidate = _vm.Candidates.Single();
+
+        _vm.BeginCreateVariant();
+        _vm.IsCreatingVariant.Should().BeTrue();
+        _vm.DraftVariantName = "派生 A";
+        await _vm.CommitCreateVariantAsync();
+
+        _vm.IsCreatingVariant.Should().BeFalse();
+        _vm.Candidates.Should().HaveCount(2);
+        _vm.Candidates.Should().Contain(c => c.CopyDisplayName == "派生 A");
+        // 新バリアントが選択されている
+        _vm.SelectedCandidate!.CopyDisplayName.Should().Be("派生 A");
+    }
+
+    /// <summary>新規バリアント作成: 名前未入力なら「バリアント N」自動採番。</summary>
+    [Fact]
+    public async Task CommitCreateVariant_Empty_Name_Uses_Auto_Numbered()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "v1");
+        await _vm.ReloadFromMessageAsyncForTests();
+        _vm.SelectedCandidate = _vm.Candidates.Single();
+
+        _vm.BeginCreateVariant();
+        _vm.DraftVariantName = "   "; // 空白だけ → null 扱い
+        await _vm.CommitCreateVariantAsync();
+
+        _vm.Candidates.Should().HaveCount(2);
+        // ordinal = 既存件数 (1) + 1 = 2 → "バリアント 2"
+        _vm.Candidates.Should().Contain(c => c.CopyDisplayName == "バリアント 2");
+    }
+
+    /// <summary>BeginCreateVariant: SelectedCandidate が null だと no-op。</summary>
+    [Fact]
+    public void BeginCreateVariant_NoOp_When_No_Candidate_Selected()
+    {
+        _vm.SelectedCandidate.Should().BeNull();
+        _vm.BeginCreateVariant();
+        _vm.IsCreatingVariant.Should().BeFalse();
+    }
+
+    /// <summary>削除: SelectedCandidate を物理削除し、Candidates から除去される。</summary>
+    [Fact]
+    public async Task DeleteSelectedCandidate_Removes_Copy_From_Candidates()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var c1 = await _fx.SeedCopyAsync(asset.Id, copyName: "keep");
+        var c2 = await _fx.SeedCopyAsync(asset.Id, copyName: "remove");
+        await _vm.ReloadFromMessageAsyncForTests();
+        _vm.SelectedCandidate = _vm.Candidates.First(c => c.CopyId == c2.Id);
+
+        await _vm.DeleteSelectedCandidateAsync();
+
+        _vm.Candidates.Should().HaveCount(1);
+        _vm.Candidates.Single().CopyId.Should().Be(c1.Id);
+    }
+
+    /// <summary>インラインリネーム: BeginEdit → CommitEdit で永続化 + DisplayName 更新。</summary>
+    [Fact]
+    public async Task CommitEditCandidate_Persists_New_Name_And_Updates_Display()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "old-name");
+        await _vm.ReloadFromMessageAsyncForTests();
+        var candidate = _vm.Candidates.Single();
+
+        _vm.BeginEditCandidate(candidate);
+        candidate.IsEditing.Should().BeTrue();
+        candidate.EditingName = "new-name";
+
+        await _vm.CommitEditCandidateAsync(candidate);
+
+        candidate.IsEditing.Should().BeFalse();
+        candidate.CopyName.Should().Be("new-name");
+        candidate.CopyDisplayName.Should().Be("new-name");
+        // DB にも反映されているはず
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        reloaded!.CopyName.Should().Be("new-name");
+    }
+
+    /// <summary>リネーム: 値変化なしなら no-op（履歴に積まない）。</summary>
+    [Fact]
+    public async Task CommitEditCandidate_NoOp_When_Name_Unchanged()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "same");
+        await _vm.ReloadFromMessageAsyncForTests();
+        var candidate = _vm.Candidates.Single();
+        var beforeHistoryCount = _history.History.Count;
+
+        _vm.BeginEditCandidate(candidate);
+        candidate.EditingName = "same"; // 同じ
+        await _vm.CommitEditCandidateAsync(candidate);
+
+        candidate.IsEditing.Should().BeFalse();
+        _history.History.Count.Should().Be(beforeHistoryCount);
+    }
+
+    /// <summary>キャンセル: EditingName 破棄、CopyName 維持。</summary>
+    [Fact]
+    public async Task CancelEditCandidate_Discards_Edits()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "original");
+        await _vm.ReloadFromMessageAsyncForTests();
+        var candidate = _vm.Candidates.Single();
+
+        _vm.BeginEditCandidate(candidate);
+        candidate.EditingName = "draft";
+
+        _vm.CancelEditCandidate(candidate);
+
+        candidate.IsEditing.Should().BeFalse();
+        candidate.EditingName.Should().BeNull();
+        candidate.CopyName.Should().Be("original");
+    }
+
+    /// <summary>リネーム後 Undo で旧名に戻る（UpdateImageCopyCommand 経由）。</summary>
+    [Fact]
+    public async Task CommitEditCandidate_Undo_Restores_Old_Name()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "v1");
+        await _vm.ReloadFromMessageAsyncForTests();
+        var candidate = _vm.Candidates.Single();
+
+        _vm.BeginEditCandidate(candidate);
+        candidate.EditingName = "v2";
+        await _vm.CommitEditCandidateAsync(candidate);
+
+        await _history.UndoAsync();
+
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        reloaded!.CopyName.Should().Be("v1");
     }
 }

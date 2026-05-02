@@ -45,6 +45,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly UpdateGridLocksUseCase _updateLocksUseCase;
     private readonly UpdatePlacementOffsetUseCase _updateOffsetUseCase;
     private readonly FitGridWeightToPlacementUseCase _fitWeightUseCase;
+    private readonly CreateLogicalCopyUseCase _createCopyUseCase;
+    private readonly UpdateImageCopyUseCase _updateCopyUseCase;
     private readonly IFilePickerService _filePicker;
     private readonly IMessenger _messenger;
     private readonly IUndoRedoService _history;
@@ -79,6 +81,21 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     public IReadOnlyList<TrimMode> TrimModeOptions { get; } =
         [TrimMode.None, TrimMode.OccupiedCells, TrimMode.DrawnPixels];
+
+    /// <summary>
+    /// 「+ 新規バリアント」フライアウトを開いているか。<c>true</c> の間だけ View 側で名前入力 TextBox と
+    /// 確定/キャンセルボタンが表示される（<see cref="CopyListViewModel.IsCreating"/> と同パターン）。
+    /// 生成先のアセットは <see cref="SelectedCandidate"/> の <see cref="CopyCandidateViewModel.AssetId"/>。
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsCreatingVariant { get; set; }
+
+    /// <summary>
+    /// 新規作成フライアウトの名前ドラフト。空白だけ / 空文字なら「バリアント N」自動採番、
+    /// 値があればそれを <see cref="CreateLogicalCopyUseCase"/> に渡す。
+    /// </summary>
+    [ObservableProperty]
+    public partial string DraftVariantName { get; set; } = string.Empty;
 
     public ObservableCollection<PlacementItemViewModel> Placements { get; } = [];
     public ObservableCollection<CopyCandidateViewModel> Candidates { get; } = [];
@@ -125,6 +142,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         UpdateGridLocksUseCase updateLocksUseCase,
         UpdatePlacementOffsetUseCase updateOffsetUseCase,
         FitGridWeightToPlacementUseCase fitWeightUseCase,
+        CreateLogicalCopyUseCase createCopyUseCase,
+        UpdateImageCopyUseCase updateCopyUseCase,
         IFilePickerService filePicker,
         IMessenger messenger,
         IUndoRedoService history,
@@ -148,6 +167,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _updateLocksUseCase = updateLocksUseCase;
         _updateOffsetUseCase = updateOffsetUseCase;
         _fitWeightUseCase = fitWeightUseCase;
+        _createCopyUseCase = createCopyUseCase;
+        _updateCopyUseCase = updateCopyUseCase;
         _filePicker = filePicker;
         _messenger = messenger;
         _history = history;
@@ -820,6 +841,218 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         return true;
     }
 
+    // ─── 配置ファースト UI 第 2 段階 (Stage 2): バリアント新規作成 / インラインリネーム / 削除 ───
+    //
+    // 配置タブの候補リストから直接バリアントを管理できるようにする。準備タブ
+    // (CopyListViewModel) で行っていた操作と意味的に同じだが、候補リストは
+    // 「全アセットのバリアントをフラット表示」なので、操作対象は SelectedCandidate を
+    // 起点とする。CopyLibraryChangedMessage で他 VM (CopyList 等) と同期する。
+
+    /// <summary>
+    /// 「+ 新規バリアント」フライアウトを開く。<see cref="DraftVariantName"/> を空にリセットして、
+    /// View 側で名前入力 TextBox を表示する。<see cref="SelectedCandidate"/> 未選択 / IsBusy 中は no-op。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanBeginCreateVariant))]
+    public void BeginCreateVariant()
+    {
+        if (SelectedCandidate is null || IsBusy) return;
+        DraftVariantName = string.Empty;
+        IsCreatingVariant = true;
+    }
+
+    private bool CanBeginCreateVariant() => SelectedCandidate is not null && !IsBusy;
+
+    /// <summary>新規作成フライアウトを閉じる（作成しない）。</summary>
+    [RelayCommand]
+    public void CancelCreateVariant()
+    {
+        IsCreatingVariant = false;
+        DraftVariantName = string.Empty;
+    }
+
+    /// <summary>
+    /// 新規作成フライアウトの確定。<see cref="DraftVariantName"/> を渡して
+    /// <see cref="CreateLogicalCopyUseCase"/> を呼び、<see cref="SelectedCandidate"/> の
+    /// アセットに紐づく新バリアントを生成する。空白 / 空文字なら「バリアント N」自動採番。
+    /// 新規 Copy 作成は Undo 対象外（履歴に積めないので _history.Clear()）。
+    /// </summary>
+    [RelayCommand]
+    public async Task CommitCreateVariantAsync(CancellationToken ct = default)
+    {
+        var candidate = SelectedCandidate;
+        if (candidate is null || IsBusy)
+        {
+            IsCreatingVariant = false;
+            DraftVariantName = string.Empty;
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            var assetId = candidate.AssetId;
+            // 命名規則は CopyListViewModel と揃える: 同じアセットに紐づく既存バリアント数 + 1
+            var ordinal = Candidates.Count(c => c.AssetId == assetId) + 1;
+            var nameToUse = string.IsNullOrWhiteSpace(DraftVariantName)
+                ? $"{Terminology.VariantPrefix} {ordinal}"
+                : DraftVariantName.Trim();
+
+            var result = await _createCopyUseCase.ExecuteAsync(assetId, copyName: nameToUse, ct: ct);
+            if (result.IsError)
+            {
+                StatusMessage = string.Join(", ", result.Errors);
+                return;
+            }
+
+            StatusMessage = $"「{nameToUse}」を作成しました。";
+            // 新規 Copy 作成は Undo 対象外。既存履歴の参照整合性が崩れる前にクリア。
+            _history.Clear();
+            _messenger.Send(new CopyLibraryChangedMessage());
+            // 新バリアントを選択状態にするため、Candidates 再ロード後に CopyId で再選択。
+            // ReloadFromMessageAsync は fire-and-forget なので await できないが、
+            // 自身が受信側でもあるため Receive → ReloadFromMessageAsync の経路で更新される。
+            await LoadCandidatesAsync(ct);
+            SelectedCandidate = Candidates.FirstOrDefault(c => c.CopyId == result.Value.Id) ?? SelectedCandidate;
+            LogVariantCreated(_logger, assetId, result.Value.Id);
+        }
+        finally
+        {
+            IsBusy = false;
+            IsCreatingVariant = false;
+            DraftVariantName = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// 選択中バリアントを削除する。Cascade で関連 Placement も消えるため、履歴は全消去。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteSelectedCandidate))]
+    public async Task DeleteSelectedCandidateAsync(CancellationToken ct = default)
+    {
+        var target = SelectedCandidate;
+        if (target is null || IsBusy) return;
+
+        try
+        {
+            IsBusy = true;
+            var result = await _copyRepository.DeleteAsync(target.CopyId, ct);
+            if (result.IsError)
+            {
+                StatusMessage = string.Join(", ", result.Errors);
+                return;
+            }
+
+            var label = target.CopyDisplayName;
+            Candidates.Remove(target);
+            SelectedCandidate = Candidates.FirstOrDefault();
+
+            StatusMessage = $"「{label}」を削除しました。";
+            // Copy 削除は cascade で Placement も消えるため履歴を全消去
+            _history.Clear();
+            _messenger.Send(new CopyLibraryChangedMessage());
+            LogVariantDeleted(_logger, target.CopyId);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private bool CanDeleteSelectedCandidate() => !IsBusy && SelectedCandidate is not null;
+
+    /// <summary>
+    /// インラインリネーム編集を開始する。<paramref name="candidate"/> の <see cref="CopyCandidateViewModel.IsEditing"/>=true、
+    /// <see cref="CopyCandidateViewModel.EditingName"/> に現在の <see cref="CopyCandidateViewModel.CopyName"/> をコピー。
+    /// 同時に他項目が編集中なら強制的にキャンセルする（同時編集を防ぐ）。
+    /// </summary>
+    public void BeginEditCandidate(CopyCandidateViewModel candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        foreach (var c in Candidates)
+        {
+            if (!ReferenceEquals(c, candidate) && c.IsEditing)
+            {
+                c.IsEditing = false;
+                c.EditingName = null;
+            }
+        }
+        candidate.EditingName = candidate.CopyName;
+        candidate.IsEditing = true;
+    }
+
+    /// <summary>インラインリネーム編集をキャンセル（保存しない）。</summary>
+    public void CancelEditCandidate(CopyCandidateViewModel candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        candidate.IsEditing = false;
+        candidate.EditingName = null;
+        LogVariantRenameCanceled(_logger, candidate.CopyId);
+    }
+
+    /// <summary>
+    /// インラインリネームを確定して DB に保存する。<see cref="CopyCandidateViewModel.EditingName"/> を
+    /// trim（空白だけなら null）した上で <see cref="CopyCandidateViewModel.CopyName"/> と比較し、
+    /// 同じなら no-op、違えば <see cref="UpdateImageCopyCommand"/> を組み立てて履歴に積む。
+    /// Undo/Redo round-trip 対応（CopyListViewModel.CommitEditAsync と同パターン）。
+    /// </summary>
+    public async Task CommitEditCandidateAsync(CopyCandidateViewModel candidate, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        if (!candidate.IsEditing) return;
+
+        var trimmed = string.IsNullOrWhiteSpace(candidate.EditingName) ? null : candidate.EditingName!.Trim();
+        var beforeName = candidate.CopyName;
+        // 編集状態は先に閉じる（保存中の View 再描画で TextBox にフォーカスが残らないように）
+        candidate.IsEditing = false;
+        candidate.EditingName = null;
+
+        if (string.Equals(trimmed, beforeName, StringComparison.Ordinal))
+            return; // 変更なしなら履歴に積まない
+
+        var before = new UpdateImageCopyChanges
+        {
+            CopyName = beforeName,
+            ClearCopyName = beforeName is null,
+        };
+        var after = new UpdateImageCopyChanges
+        {
+            CopyName = trimmed,
+            ClearCopyName = trimmed is null,
+        };
+        var beforeLabel = string.IsNullOrWhiteSpace(beforeName) ? Terminology.VariantUnnamed : beforeName!;
+        var afterLabel = string.IsNullOrWhiteSpace(trimmed) ? Terminology.VariantUnnamed : trimmed!;
+        var description = $"{Terminology.Variant}名変更: 「{beforeLabel}」→「{afterLabel}」";
+        var command = new UpdateImageCopyCommand(_updateCopyUseCase, candidate.CopyId, before, after, description);
+
+        var result = await _history.ExecuteAsync(command, ct);
+        if (result.IsError)
+        {
+            StatusMessage = string.Join(", ", result.Errors);
+            return;
+        }
+
+        // 永続化が成功したので VM の表示も即時更新（CopyDisplayName が再計算される）
+        candidate.CopyName = trimmed;
+        _messenger.Send(new CopyLibraryChangedMessage());
+        LogVariantRenamed(_logger, candidate.CopyId);
+    }
+
+    /// <summary>
+    /// SelectedCandidate / IsBusy / IsCreatingVariant 変化時に
+    /// 関連コマンドの CanExecute を再評価する。
+    /// </summary>
+    partial void OnSelectedCandidateChanged(CopyCandidateViewModel? value)
+    {
+        BeginCreateVariantCommand.NotifyCanExecuteChanged();
+        DeleteSelectedCandidateCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        BeginCreateVariantCommand.NotifyCanExecuteChanged();
+        DeleteSelectedCandidateCommand.NotifyCanExecuteChanged();
+    }
+
     [LoggerMessage(EventId = 5001, Level = LogLevel.Information, Message = "配置候補を読み込み: {Count} 件")]
     private static partial void LogCandidatesLoaded(ILogger logger, int count);
 
@@ -828,4 +1061,16 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     [LoggerMessage(EventId = 5003, Level = LogLevel.Warning, Message = "候補・配置の自動更新に失敗")]
     private static partial void LogReloadFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(EventId = 5004, Level = LogLevel.Information, Message = "配置タブから新規バリアント作成: asset={AssetId} copy={CopyId}")]
+    private static partial void LogVariantCreated(ILogger logger, Guid assetId, Guid copyId);
+
+    [LoggerMessage(EventId = 5005, Level = LogLevel.Information, Message = "配置タブからバリアント削除: copy={CopyId}")]
+    private static partial void LogVariantDeleted(ILogger logger, Guid copyId);
+
+    [LoggerMessage(EventId = 5006, Level = LogLevel.Information, Message = "配置タブからバリアントをリネーム: copy={CopyId}")]
+    private static partial void LogVariantRenamed(ILogger logger, Guid copyId);
+
+    [LoggerMessage(EventId = 5007, Level = LogLevel.Debug, Message = "配置タブからバリアントのリネームをキャンセル: copy={CopyId}")]
+    private static partial void LogVariantRenameCanceled(ILogger logger, Guid copyId);
 }

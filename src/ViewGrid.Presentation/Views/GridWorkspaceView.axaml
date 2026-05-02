@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
              xmlns:views="clr-namespace:ViewGrid.Presentation.Views"
+             xmlns:controls="clr-namespace:ViewGrid.Presentation.Controls"
              xmlns:conv="clr-namespace:ViewGrid.Presentation.Converters"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="ViewGrid.Presentation.Views.GridWorkspaceView"
@@ -78,12 +79,63 @@
                         </ComboBox>
                     </StackPanel>
                     <Separator />
+
+                    <!--
+                        配置ファースト UI 第 2 段階 (Stage 2): バリアント新規 / リネーム / 削除 を
+                        配置タブから直接できるように。新規ボタンは「現在選択中の候補のアセット」を起点とする。
+                        命名規則は CopyListView の新規作成フライアウトと揃え、空欄 → 自動採番。
+                        F2 / ダブルクリックでインラインリネーム、Delete キーは ListBox 上で扱う。
+                    -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                IsVisible="{Binding !IsCreatingVariant}">
+                        <Button Command="{Binding BeginCreateVariantCommand}"
+                                ToolTip.Tip="選択中バリアントと同じアセットから新規バリアントを作成">
+                            <StackPanel Classes="IconButtonContent">
+                                <PathIcon Data="{StaticResource AddGeometry}" Width="14" Height="14" />
+                                <TextBlock Text="新規バリアント" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding DeleteSelectedCandidateCommand}"
+                                ToolTip.Tip="選択中バリアントを削除（関連配置も削除されます）">
+                            <StackPanel Classes="IconButtonContent">
+                                <PathIcon Data="{StaticResource DeleteGeometry}" Width="14" Height="14" />
+                                <TextBlock Text="削除" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- 新規作成フライアウト: 名前入力 + 作成/キャンセル -->
+                    <Border IsVisible="{Binding IsCreatingVariant}"
+                            Padding="8"
+                            Background="{DynamicResource SystemAltMediumLowColor}"
+                            CornerRadius="4">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="新規バリアント" FontWeight="SemiBold" />
+                            <TextBox x:Name="DraftVariantNameBox"
+                                     Text="{Binding DraftVariantName, Mode=TwoWay}"
+                                     PlaceholderText="名前（空欄で「バリアント N」自動採番）">
+                                <TextBox.KeyBindings>
+                                    <KeyBinding Gesture="Enter" Command="{Binding CommitCreateVariantCommand}" />
+                                    <KeyBinding Gesture="Escape" Command="{Binding CancelCreateVariantCommand}" />
+                                </TextBox.KeyBindings>
+                            </TextBox>
+                            <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                                <Button Content="作成"
+                                        Command="{Binding CommitCreateVariantCommand}"
+                                        IsDefault="True" />
+                                <Button Content="キャンセル"
+                                        Command="{Binding CancelCreateVariantCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <ListBox x:Name="CandidateList"
                          Grid.Row="1"
                          ItemsSource="{Binding Candidates}"
                          SelectedItem="{Binding SelectedCandidate}"
+                         DoubleTapped="OnCandidateListDoubleTapped"
+                         KeyDown="OnCandidateListKeyDown"
                          Background="Transparent">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="vm:CopyCandidateViewModel">
@@ -100,10 +152,26 @@
                                                FontSize="12"
                                                FontWeight="SemiBold"
                                                TextTrimming="CharacterEllipsis" />
+                                    <!-- 通常表示: TextBlock。F2 / ダブルクリックで編集モードに切替 -->
                                     <TextBlock Text="{Binding CopyDisplayName}"
                                                FontSize="11"
                                                Opacity="0.75"
-                                               TextTrimming="CharacterEllipsis" />
+                                               TextTrimming="CharacterEllipsis"
+                                               IsVisible="{Binding !IsEditing}" />
+                                    <!--
+                                        編集モード: 標準 TextBox + FocusOnVisible Attached Property。
+                                        IsVisible が false → true に転じた瞬間に Focus + SelectAll を
+                                        DispatcherPriority.Loaded でポストする（実型一致スタイルの罠を
+                                        避けるためサブクラス化はしない）。Enter / フォーカス喪失で確定、
+                                        Esc でキャンセル。
+                                    -->
+                                    <TextBox Text="{Binding EditingName, Mode=TwoWay}"
+                                             FontSize="11"
+                                             IsVisible="{Binding IsEditing}"
+                                             PlaceholderText="（空欄で「既定」表示）"
+                                             controls:FocusOnVisible.IsEnabled="True"
+                                             KeyDown="OnEditingCandidateKeyDown"
+                                             LostFocus="OnEditingCandidateLostFocus" />
                                     <TextBlock Text="{Binding SummaryLine}"
                                                FontSize="10"
                                                Opacity="0.55"
