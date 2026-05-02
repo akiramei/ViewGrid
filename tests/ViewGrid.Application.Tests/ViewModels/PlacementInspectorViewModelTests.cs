@@ -33,7 +33,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
         var fork = new ForkPlacementVariantUseCase(_fx.CopyRepository, _fx.PlacementRepository);
         var history = new UndoRedoService();
-        var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository);
+        var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
         var copyProperties = new CopyPropertiesViewModel(
             updateCopy, history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver,
             NullLogger<CopyPropertiesViewModel>.Instance);

@@ -28,7 +28,7 @@ public sealed class IntegrationScenarioTests : IAsyncLifetime
         _place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
         _remove = new RemovePlacementUseCase(_fx.PlacementRepository);
         _move = new MovePlacementUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
-        _updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository);
+        _updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
         _updateWeights = new UpdateGridWeightsUseCase(_fx.GridRepository);
     }
 

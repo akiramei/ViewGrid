@@ -35,7 +35,7 @@ public sealed class GridAndCopyCommandTests : IAsyncLifetime
     {
         var asset = await _fx.SeedAssetAsync();
         var copy = await _fx.SeedCopyAsync(asset.Id, "before");
-        var useCase = new UpdateImageCopyUseCase(_fx.CopyRepository);
+        var useCase = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
 
         var before = UpdateImageCopyCommand.SnapshotFrom(copy);
         var after = new UpdateImageCopyChanges
@@ -181,7 +181,7 @@ public sealed class GridAndCopyCommandTests : IAsyncLifetime
     {
         var asset = await _fx.SeedAssetAsync();
         var copy = await _fx.SeedCopyAsync(asset.Id, copyName: null); // 元は無名
-        var useCase = new UpdateImageCopyUseCase(_fx.CopyRepository);
+        var useCase = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
 
         // before（無名状態）→ after（"new name"）
         var before = UpdateImageCopyCommand.SnapshotFrom(copy); // ClearCopyName=true のはず
@@ -208,7 +208,7 @@ public sealed class GridAndCopyCommandTests : IAsyncLifetime
     {
         var asset = await _fx.SeedAssetAsync();
         var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "original");
-        var useCase = new UpdateImageCopyUseCase(_fx.CopyRepository);
+        var useCase = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
 
         var before = UpdateImageCopyCommand.SnapshotFrom(copy); // ClearCopyName=false
         // 名前を消す（after は明示的 null + ClearCopyName=true）
@@ -231,7 +231,7 @@ public sealed class GridAndCopyCommandTests : IAsyncLifetime
     {
         var asset = await _fx.SeedAssetAsync();
         var copy = await _fx.SeedCopyAsync(asset.Id);
-        var useCase = new UpdateImageCopyUseCase(_fx.CopyRepository);
+        var useCase = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
 
         var before = UpdateImageCopyCommand.SnapshotFrom(copy);
         var command = new UpdateImageCopyCommand(useCase, copy.Id, before, before,

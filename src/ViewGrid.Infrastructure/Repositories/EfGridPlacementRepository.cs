@@ -19,6 +19,12 @@ internal sealed class EfGridPlacementRepository(ViewGridDbContext db) : IGridPla
             .OrderBy(x => x.PlacementOrder)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<GridPlacement>> FindByCopyIdAsync(Guid copyId, CancellationToken ct = default) =>
+        await db.GridPlacements
+            .AsNoTracking()
+            .Where(x => x.CopyId == copyId)
+            .ToListAsync(ct);
+
     public async Task<GridPlacement?> FindByIdAsync(Guid id, CancellationToken ct = default) =>
         await db.GridPlacements.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
 

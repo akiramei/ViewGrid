@@ -20,7 +20,7 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _fx = await UseCaseFixture.CreateAsync();
-        var update = new UpdateImageCopyUseCase(_fx.CopyRepository);
+        var update = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
         _messenger = new WeakReferenceMessenger();
         var history = new UndoRedoService();
         _vm = new CopyPropertiesViewModel(
