@@ -142,7 +142,19 @@
                     <TreeView.ItemTemplate>
                         <TreeDataTemplate DataType="vm:CandidateGroupViewModel"
                                           ItemsSource="{Binding Variants}">
+                            <!--
+                                グループヘッダの右クリックでアセット削除メニューを開く。
+                                ContextMenu の DataContext は親（TreeViewItem の DataContext = CandidateGroupViewModel）
+                                を引き継ぐので、Click で渡される sender / DataContext から
+                                対象 AssetId と件数を取り出せる。
+                            -->
                             <Grid ColumnDefinitions="*,Auto" Margin="0,2" ColumnSpacing="6">
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="アセットを削除..."
+                                                  Click="OnDeleteAssetClicked" />
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
                                 <TextBlock Grid.Column="0"
                                            Text="{Binding AssetFilename}"
                                            FontSize="12"

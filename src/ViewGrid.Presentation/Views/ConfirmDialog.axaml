@@ -1,0 +1,42 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="180"
+        x:Class="ViewGrid.Presentation.Views.ConfirmDialog"
+        Width="420"
+        SizeToContent="Height"
+        MinHeight="160"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="20">
+        <TextBlock x:Name="TitleText"
+                   Grid.Row="0"
+                   FontWeight="SemiBold"
+                   FontSize="14"
+                   Margin="0,0,0,12" />
+
+        <TextBlock x:Name="MessageText"
+                   Grid.Row="1"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,16" />
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8">
+            <Button x:Name="ConfirmButton"
+                    Content="削除"
+                    Classes="accent"
+                    MinWidth="80"
+                    Click="OnConfirmClicked" />
+            <Button x:Name="CancelButton"
+                    Content="キャンセル"
+                    MinWidth="80"
+                    IsCancel="True"
+                    Click="OnCancelClicked" />
+        </StackPanel>
+    </Grid>
+</Window>

@@ -234,4 +234,64 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
             File.Delete(file);
         }
     }
+
+    /// <summary>
+    /// DeleteByIdAsync は Selection を介さず指定 Id のアセットを削除する。
+    /// 配置タブ候補ツリーの右クリックメニュー経由で呼ばれる経路。
+    /// </summary>
+    [Fact]
+    public async Task DeleteByIdAsync_Removes_Asset_And_Sends_LibraryChangedMessage()
+    {
+        var file = TestImageFactory.WritePngToTempFile(100, 100);
+        try
+        {
+            await _vm.AddFilesAsync([file]);
+            var target = _vm.Assets.Single();
+            var received = false;
+            _messenger.Register<CopyLibraryChangedMessage>(this, (_, _) => received = true);
+
+            var ok = await _vm.DeleteByIdAsync(target.AssetId);
+
+            ok.Should().BeTrue();
+            _vm.Assets.Should().BeEmpty();
+            _vm.StatusMessage.Should().Contain("削除");
+            received.Should().BeTrue();
+        }
+        finally
+        {
+            File.Delete(file);
+            _messenger.UnregisterAll(this);
+        }
+    }
+
+    /// <summary>未知の AssetId に対しては Error を返し StatusMessage に理由を出す。</summary>
+    [Fact]
+    public async Task DeleteByIdAsync_Returns_False_For_Unknown_AssetId()
+    {
+        var ok = await _vm.DeleteByIdAsync(System.Guid.NewGuid());
+
+        ok.Should().BeFalse();
+        _vm.StatusMessage.Should().NotBeNullOrEmpty();
+    }
+
+    /// <summary>削除対象のアセットが SelectedAsset / SelectedAssets に含まれていれば一緒に解除する。</summary>
+    [Fact]
+    public async Task DeleteByIdAsync_Clears_Selection_If_Target_Was_Selected()
+    {
+        var file = TestImageFactory.WritePngToTempFile(100, 100);
+        try
+        {
+            await _vm.AddFilesAsync([file]);
+            var target = _vm.Assets.Single();
+            _vm.SelectedAsset = target;
+
+            await _vm.DeleteByIdAsync(target.AssetId);
+
+            _vm.SelectedAsset.Should().BeNull();
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
 }

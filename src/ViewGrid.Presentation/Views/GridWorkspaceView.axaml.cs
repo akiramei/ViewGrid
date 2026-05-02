@@ -197,4 +197,27 @@ public partial class GridWorkspaceView : UserControl
 
         await vm.CommitEditCandidateAsync(candidate);
     }
+
+    /// <summary>
+    /// グループヘッダ ContextMenu の「アセットを削除...」クリック。確認ダイアログを表示し、
+    /// 承認されたら親 Window 経由で <c>MainWindowViewModel.AssetLibrary.DeleteByIdAsync</c> を呼ぶ。
+    /// 削除は cascade で関連バリアント・配置を消す（既存の <see cref="DeleteImageAssetUseCase"/> 挙動）。
+    /// </summary>
+    private async void OnDeleteAssetClicked(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem mi) return;
+        if (mi.DataContext is not CandidateGroupViewModel group) return;
+        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (owner.DataContext is not MainWindowViewModel mainVm) return;
+
+        var variantCount = group.Variants.Count;
+        var message =
+            $"アセット「{group.AssetFilename}」と紐づく {variantCount} バリアントを削除します。\n" +
+            "このアセットを参照している全配置も削除され、操作履歴はリセットされます。\n" +
+            "この操作は元に戻せません。続行しますか？";
+        var confirmed = await ConfirmDialog.ShowAsync(owner, "アセットの削除", message, "削除");
+        if (!confirmed) return;
+
+        await mainVm.AssetLibrary.DeleteByIdAsync(group.AssetId);
+    }
 }

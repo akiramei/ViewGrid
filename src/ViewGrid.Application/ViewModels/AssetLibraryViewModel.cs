@@ -275,6 +275,50 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
 
     private bool CanDeleteSelected() => !IsBusy && (SelectedAssets.Count > 0 || SelectedAsset is not null);
 
+    /// <summary>
+    /// 単一の Asset を Id 指定で削除する。配置タブの候補ツリーから右クリックメニュー経由で
+    /// 呼ばれる経路用。<see cref="DeleteSelectedAsync"/> と異なり Selection 状態を介さない。
+    /// Cascade で関連 ImageCopy / GridPlacement も DB から消える。
+    /// </summary>
+    public async Task<bool> DeleteByIdAsync(Guid assetId, CancellationToken ct = default)
+    {
+        if (IsBusy) return false;
+        try
+        {
+            IsBusy = true;
+            var target = Assets.FirstOrDefault(a => a.AssetId == assetId);
+            var displayName = target?.DisplayName;
+
+            var result = await _deleteUseCase.ExecuteAsync(assetId, ct);
+            if (result.IsError)
+            {
+                StatusMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+                return false;
+            }
+
+            if (target is not null)
+            {
+                Assets.Remove(target);
+                if (ReferenceEquals(SelectedAsset, target)) SelectedAsset = null;
+                SelectedAssets.Remove(target);
+            }
+
+            StatusMessage = displayName is null
+                ? "アセットを削除しました。"
+                : $"{displayName} を削除しました。";
+
+            // Asset 削除は cascade で関連 ImageCopy も削除されるため候補にも反映。
+            // 履歴に該当 Copy を参照する Command が残ると Undo で NotFound になるので全消去。
+            _history.Clear();
+            _messenger.Send(new CopyLibraryChangedMessage());
+            return true;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private async Task ReloadAssetsAsync(CancellationToken ct)
     {
         var assets = await _assetRepository.FindAllAsync(ct);
