@@ -36,6 +36,19 @@
                 Padding="12">
             <Grid RowDefinitions="Auto,*">
                 <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,8">
+                    <!--
+                        配置ファースト UI 第 2 段階 (Stage 1): 画像追加を配置タブから直接できるように。
+                        ファイルピッカーは AssetLibrary.PickFilesAndImportCommand を経由する。
+                        DataContext は GridWorkspaceViewModel のため、親 Window 経由で
+                        MainWindowViewModel.AssetLibrary に到達する RelativeSource バインディング。
+                        D&D は MainWindow 全体で受けて AssetLibrary.AddFilesAsync に流れるので
+                        既に動作中（タブ非依存）。
+                    -->
+                    <Button Content="+ 画像を追加"
+                            HorizontalAlignment="Stretch"
+                            Classes="accent"
+                            Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).AssetLibrary.PickFilesAndImportCommand}"
+                            ToolTip.Tip="ファイルから画像を取り込みます（ドラッグ&amp;ドロップでも追加可）" />
                     <TextBlock Classes="SectionHeader"
                                Text="配置元（バリアント）" />
                     <StackPanel Orientation="Horizontal" Spacing="8">

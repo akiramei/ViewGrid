@@ -89,8 +89,8 @@
                 <MenuItem Header="ファイル">
                     <MenuItem Header="画像を追加..."
                               InputGesture="Ctrl+O"
-                              IsEnabled="False"
-                              ToolTip.Tip="（準備タブのボタンから操作してください）" />
+                              Command="{Binding AssetLibrary.PickFilesAndImportCommand}"
+                              ToolTip.Tip="ファイルダイアログから画像を取り込みます。ドラッグ&amp;ドロップでも追加できます。" />
                     <Separator />
                     <MenuItem Header="終了"
                               InputGesture="Alt+F4"
