@@ -64,12 +64,16 @@ public sealed class PlaceImageCopyUseCase(
         }
 
         var nextOrder = existing.Any() ? existing.Max(p => p.PlacementOrder) + 1 : 1;
+        // 新規配置時は元バリアントの OccupySize を初期値として継承する。
+        // 配置後はこの placement 固有として独立して編集できる（同じバリアントを別配置で
+        // 違う占有セルにすることが可能）。
         var placement = new GridPlacement
         {
             Id = Guid.NewGuid(),
             GridId = gridId,
             CopyId = copyId,
             Position = position,
+            OccupySize = copy.OccupySize,
             PlacementOrder = nextOrder,
             CreatedAt = DateTimeOffset.UtcNow,
         };

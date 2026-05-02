@@ -24,6 +24,12 @@ internal sealed class GridPlacementConfiguration : IEntityTypeConfiguration<Grid
             pos.Property(p => p.Y).HasColumnName("grid_y").IsRequired();
         });
 
+        builder.ComplexProperty(x => x.OccupySize, occ =>
+        {
+            occ.Property(p => p.Width).HasColumnName("occupy_width").IsRequired();
+            occ.Property(p => p.Height).HasColumnName("occupy_height").IsRequired();
+        });
+
         builder.HasOne<GridCanvas>()
             .WithMany()
             .HasForeignKey(x => x.GridId)

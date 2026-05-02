@@ -137,6 +137,7 @@ public sealed class ForkPlacementVariantCommandTests : IAsyncLifetime
             GridId = gridId,
             CopyId = copyId,
             Position = position ?? new CellPosition(0, 0),
+            OccupySize = OccupySize.OneByOne,
             PixelOffsetX = 0, PixelOffsetY = 0,
             PlacementOrder = 1,
             CreatedAt = DateTimeOffset.UtcNow,

@@ -204,7 +204,7 @@ public sealed class UpdateImageCopyUseCaseTests : IAsyncLifetime
     }
 
     private async Task<GridPlacement> SeedPlacementAsync(
-        Guid gridId, Guid copyId, int x, int y)
+        Guid gridId, Guid copyId, int x, int y, OccupySize? occupy = null)
     {
         var p = new GridPlacement
         {
@@ -212,6 +212,7 @@ public sealed class UpdateImageCopyUseCaseTests : IAsyncLifetime
             GridId = gridId,
             CopyId = copyId,
             Position = new CellPosition(x, y),
+            OccupySize = occupy ?? OccupySize.OneByOne,
             PlacementOrder = 0,
             CreatedAt = DateTimeOffset.UtcNow,
         };

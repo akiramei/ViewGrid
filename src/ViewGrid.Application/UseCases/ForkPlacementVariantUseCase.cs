@@ -94,6 +94,7 @@ public sealed class ForkPlacementVariantUseCase(
         GridId = source.GridId,
         CopyId = newCopyId,
         Position = source.Position,
+        OccupySize = source.OccupySize,
         PixelOffsetX = source.PixelOffsetX,
         PixelOffsetY = source.PixelOffsetY,
         PlacementOrder = source.PlacementOrder,

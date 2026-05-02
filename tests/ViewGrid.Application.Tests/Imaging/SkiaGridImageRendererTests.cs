@@ -415,24 +415,28 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
     };
 
     private static GridPlacement CreatePlacement(
-        Guid gridId, Guid copyId, CellPosition position, int order = 0) => new()
+        Guid gridId, Guid copyId, CellPosition position, int order = 0,
+        OccupySize? occupy = null) => new()
     {
         Id = Guid.NewGuid(),
         GridId = gridId,
         CopyId = copyId,
         Position = position,
+        OccupySize = occupy ?? OccupySize.OneByOne,
         PlacementOrder = order,
         CreatedAt = DateTimeOffset.UtcNow,
     };
 
     private static GridPlacement CreatePlacementWithOffset(
         Guid gridId, Guid copyId, CellPosition position,
-        int pxOffsetX, int pxOffsetY, int order = 0) => new()
+        int pxOffsetX, int pxOffsetY, int order = 0,
+        OccupySize? occupy = null) => new()
     {
         Id = Guid.NewGuid(),
         GridId = gridId,
         CopyId = copyId,
         Position = position,
+        OccupySize = occupy ?? OccupySize.OneByOne,
         PixelOffsetX = pxOffsetX,
         PixelOffsetY = pxOffsetY,
         PlacementOrder = order,
