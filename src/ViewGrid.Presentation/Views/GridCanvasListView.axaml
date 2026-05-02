@@ -40,14 +40,17 @@
                     <TextBlock Classes="SectionHeader" Text="新規グリッド" />
 
                     <!--
-                        名前 + 行 + 列 + 幅 + 高さ + 作成/キャンセル を可能な限り 1 行で詰める。
-                        ColumnSpacing は控えめにし、各フィールドの最低幅は MinWidth で保証。
-                        比率 (オプション) は次の段で 2 列レイアウト。
+                        名前 + 行 + 列 + 幅 + 高さ を 1 行に詰める。各フィールドは固定幅で
+                        値が確実に表示されるサイズを保証:
+                        ・名前: 240px（30 文字程度の見出しに十分。これ以上広げる必要性が薄い）
+                        ・行 / 列: 80px（最大値 20 = 2 桁 + スピナーボタン）
+                        ・幅 / 高さ: 130px（最大値 8192 = 4 桁 + スピナーボタン）
+                        ・末尾の * 列は余白（ウィンドウ幅が広いとき右に空く）
                     -->
-                    <Grid ColumnDefinitions="*,90,90,110,110" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="240,80,80,130,130,*" ColumnSpacing="8">
                         <StackPanel Grid.Column="0" Classes="FormSection">
                             <TextBlock Classes="FieldLabel" Text="名前" />
-                            <TextBox Text="{Binding DraftName}" MinWidth="120" />
+                            <TextBox Text="{Binding DraftName}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Classes="FormSection">
                             <TextBlock Classes="FieldLabel" Text="行" />
@@ -68,16 +71,17 @@
                     </Grid>
 
                     <!--
-                        比率（オプション）。空欄＝均等。例の文言はラベルに含めて行を増やさない。
+                        比率（オプション）。空欄＝均等。任意項目なので主張を抑えるため、
+                        固定幅 200px 程度に抑えて左寄せ、右側は空白にする。
                     -->
-                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="200,200,*" ColumnSpacing="8">
                         <StackPanel Grid.Column="0" Classes="FormSection">
-                            <TextBlock Classes="FieldLabel" Text="列比率（カンマ区切り、空=均等）" />
-                            <TextBox Text="{Binding DraftColWeights}" PlaceholderText="例: 2,1,1" />
+                            <TextBlock Classes="FieldLabel" Text="列比率（任意・カンマ区切り）" />
+                            <TextBox Text="{Binding DraftColWeights}" PlaceholderText="例: 2,1,1（空=均等）" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Classes="FormSection">
-                            <TextBlock Classes="FieldLabel" Text="行比率（カンマ区切り、空=均等）" />
-                            <TextBox Text="{Binding DraftRowWeights}" PlaceholderText="例: 2,1,1" />
+                            <TextBlock Classes="FieldLabel" Text="行比率（任意・カンマ区切り）" />
+                            <TextBox Text="{Binding DraftRowWeights}" PlaceholderText="例: 2,1,1（空=均等）" />
                         </StackPanel>
                     </Grid>
 
