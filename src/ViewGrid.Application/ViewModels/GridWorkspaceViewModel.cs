@@ -484,8 +484,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                     StatusMessage = string.Join(", ", result.Errors);
                     return false;
                 }
-                await ReloadPlacementsAsync(grid.GridId, ct);
-                SelectedPlacement = Placements.FirstOrDefault(p => p.PlacementId == sourcePlacementId);
+                // Move では Position だけが変わる。共有特性 / Crop 設定 / サムネは不変なので、
+                // ReloadPlacementsAsync (全件再ロード + AutoCrop 再走査) は不要。
+                // PlacementItemViewModel.Position は ObservableProperty なので View が反応する。
+                source.Position = dropPosition;
+                SelectedPlacement = source;
                 StatusMessage = $"({dropPosition.X},{dropPosition.Y}) に移動しました。";
                 return true;
             }
@@ -501,8 +504,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                     StatusMessage = string.Join(", ", result.Errors);
                     return false;
                 }
-                await ReloadPlacementsAsync(grid.GridId, ct);
-                SelectedPlacement = Placements.FirstOrDefault(p => p.PlacementId == sourcePlacementId);
+                // Swap も Position の交換のみで View は反応する。同上の理由で全件再ロード不要。
+                var sourceOldPosition = source.Position;
+                source.Position = target.Position;
+                target.Position = sourceOldPosition;
+                SelectedPlacement = source;
                 StatusMessage = "配置を入れ替えました。";
                 return true;
             }
