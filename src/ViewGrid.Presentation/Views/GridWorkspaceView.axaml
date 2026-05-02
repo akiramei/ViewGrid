@@ -130,10 +130,13 @@
                         CopyLibraryChangedMessage 経由）でもグループの展開状態が保持される。
                         葉ノード (CopyCandidateViewModel) も同名プロパティを持っているので
                         バインドエラーは出ない。
+                        Style 内バインドはコンパイル時に DataContext 型が解決できない
+                        （UserControl の x:DataType=GridWorkspaceViewModel と取り違えて AVLN2000）。
+                        ReflectionBinding でランタイム解決に切り替える。
                     -->
                     <TreeView.Styles>
                         <Style Selector="TreeViewItem">
-                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                            <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}" />
                         </Style>
                     </TreeView.Styles>
                     <TreeView.ItemTemplate>
