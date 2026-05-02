@@ -37,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<RenderGridUseCase>();
         services.AddScoped<ExportGridUseCase>();
         services.AddScoped<UpdatePlacementOffsetUseCase>();
+        services.AddScoped<UpdatePlacementOccupySizeUseCase>();
         services.AddScoped<UpdateGridWeightsUseCase>();
         services.AddScoped<UpdateGridLocksUseCase>();
         services.AddScoped<FitGridWeightToPlacementUseCase>();
