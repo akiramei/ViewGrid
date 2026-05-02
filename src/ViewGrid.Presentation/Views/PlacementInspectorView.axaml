@@ -19,17 +19,16 @@
             CopyProperties は Inspector が AttachAsync で当該 placement の variant に紐付ける。
         -->
         <!--
-            右ペイン全体を 1 本の ScrollViewer にする。
-            共有特性だけを残り高さに閉じ込めると、低いウィンドウで最後の入力欄が
-            カード下端に欠けてしまうため、各セクションは自然な高さで縦に流す。
+            旧版は外側 ScrollViewer + 内側 CopyPropertiesView の TabItem ScrollViewer の
+            二重スクロール構造で、内側の有効高さが Tab 領域に縛られて最後のフィールド
+            （占有セル NumericUpDown）の下端が見切れる問題があった。外側 ScrollViewer を
+            撤去し、Grid の RowDefinitions で「配置固有 = Auto / 共有特性 = *」に分けて、
+            共有特性 = CopyPropertiesView 内部の ScrollViewer が割り当てられた高さを
+            使い切って必要なら自前でスクロールする設計にする。
         -->
-        <ScrollViewer VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled"
-                      AllowAutoHide="True"
-                      Padding="0,0,8,0">
-            <StackPanel Spacing="10">
-            <!-- ヘッダ + 統一保存バー -->
-            <StackPanel Spacing="6">
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <!-- Row 0: ヘッダ + 統一保存バー -->
+            <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,8">
                 <StackPanel Spacing="2">
                     <TextBlock Text="{Binding HeaderLabel}"
                                FontWeight="SemiBold"
@@ -68,8 +67,8 @@
                 </Border>
             </StackPanel>
 
-            <!-- 配置固有 -->
-            <Border Classes="SubtleCard" Padding="8">
+            <!-- Row 1: 配置固有 (Auto = 必要分の高さ) -->
+            <Border Grid.Row="1" Classes="SubtleCard" Padding="8" Margin="0,0,0,10">
                 <StackPanel Spacing="6">
                     <TextBlock Text="配置固有"
                                FontWeight="SemiBold"
@@ -107,21 +106,37 @@
                 </StackPanel>
             </Border>
 
-            <!-- 共有特性 -->
-            <Border Classes="SubtleCard" Padding="8">
-                <StackPanel Spacing="4">
-                    <TextBlock Text="共有特性（同バリアントを参照する全配置に反映）"
+            <!--
+                Row 2: 共有特性 (* = 残りの高さ全て)。
+                スクロール責務はここで親が所有する: 共有特性カード内部を Grid Auto,* に分け、
+                Auto = タイトル / * = ScrollViewer + CopyPropertiesView。
+                ScrollViewer は finite height をもつ親 (共有特性カードの * 行) に置かれているため
+                正しい viewport を持ち、CopyPropertiesView の自然な高さがそれを越えたときだけ
+                AllowAutoHide=True でフェードインする overlay scrollbar を出す。
+                CopyPropertiesView 自身は内部 ScrollViewer を持たず、自然な高さで縦に流れるだけ。
+            -->
+            <Border Grid.Row="2" Classes="SubtleCard" Padding="8">
+                <Grid RowDefinitions="Auto,*">
+                    <TextBlock Grid.Row="0"
+                               Text="共有特性（同バリアントを参照する全配置に反映）"
                                FontWeight="SemiBold"
                                FontSize="11"
                                Opacity="0.85"
+                               Margin="0,0,0,6"
                                TextWrapping="Wrap" />
-                    <views:CopyPropertiesView DataContext="{Binding CopyProperties}"
-                                              ShowSaveBar="False" />
-                </StackPanel>
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  AllowAutoHide="True"
+                                  Padding="0,0,8,0">
+                        <views:CopyPropertiesView DataContext="{Binding CopyProperties}"
+                                                  ShowSaveBar="False" />
+                    </ScrollViewer>
+                </Grid>
             </Border>
 
-            <!-- 分岐ボタン + ステータス -->
-            <StackPanel Spacing="4">
+            <!-- Row 3: 分岐ボタン + ステータス -->
+            <StackPanel Grid.Row="3" Spacing="4" Margin="0,8,0,0">
                 <Button HorizontalAlignment="Stretch"
                         Padding="6,4"
                         FontSize="11"
@@ -137,7 +152,6 @@
                            TextWrapping="Wrap"
                            IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
-            </StackPanel>
-        </ScrollViewer>
+        </Grid>
     </Border>
 </UserControl>

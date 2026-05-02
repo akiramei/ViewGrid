@@ -28,6 +28,24 @@ public partial class CopyPropertiesView : UserControl
         set => SetValue(ShowSaveBarProperty, value);
     }
 
+    public static readonly StyledProperty<bool> IsPropertiesTabSelectedProperty =
+        AvaloniaProperty.Register<CopyPropertiesView, bool>(nameof(IsPropertiesTabSelected), defaultValue: true);
+
+    public bool IsPropertiesTabSelected
+    {
+        get => GetValue(IsPropertiesTabSelectedProperty);
+        set => SetValue(IsPropertiesTabSelectedProperty, value);
+    }
+
+    public static readonly StyledProperty<bool> IsCropTabSelectedProperty =
+        AvaloniaProperty.Register<CopyPropertiesView, bool>(nameof(IsCropTabSelected), defaultValue: false);
+
+    public bool IsCropTabSelected
+    {
+        get => GetValue(IsCropTabSelectedProperty);
+        set => SetValue(IsCropTabSelectedProperty, value);
+    }
+
     private CopyPropertiesViewModel? _vm;
 
     private enum DragMode
@@ -59,6 +77,11 @@ public partial class CopyPropertiesView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        // 旧版は LayoutUpdated + Bounds 変化を監視して内部 ScrollViewer の MaxHeight を
+        // 動的に決めていたが、子 View 内で実 viewport を推測する経路は計測タイミングが
+        // 親レイアウトと乖離するため信頼できない（バーは出るがスクロール量 0 になる症状）。
+        // スクロール責務は親 (PlacementInspectorView) が finite height の * 行で所有する
+        // 設計に変更し、子側は自然な高さでコンテンツを縦に流すだけにした。
         // ManualCropImage のサイズ変更（コンテナリサイズや初回 Source 設定時）で再描画。
         // 旧版は ManualCropOverlay.LayoutUpdated を購読していたが、
         // Canvas.Children.Clear/Add が InvalidateMeasure → LayoutUpdated を再発火させて
@@ -87,6 +110,18 @@ public partial class CopyPropertiesView : UserControl
                 UpdateAutoCropPreviewOverlay();
             }
         };
+    }
+
+    private void OnPropertiesTabClicked(object? sender, RoutedEventArgs e)
+    {
+        IsPropertiesTabSelected = true;
+        IsCropTabSelected = false;
+    }
+
+    private void OnCropTabClicked(object? sender, RoutedEventArgs e)
+    {
+        IsPropertiesTabSelected = false;
+        IsCropTabSelected = true;
     }
 
     /// <summary>
