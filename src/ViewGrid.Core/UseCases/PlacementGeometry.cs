@@ -152,17 +152,17 @@ public static class PlacementGeometry
         IReadOnlyList<int>? colWeights,
         IReadOnlyList<int>? rowWeights,
         CellPosition position,
+        OccupySize occupy,
         int sourceWidth,
         int sourceHeight,
         ImageCopy copy)
         => ComputeRenderedRect(
             canvas, gridCols, gridRows, colWeights, rowWeights,
-            position, sourceWidth, sourceHeight, copy,
+            position, occupy, sourceWidth, sourceHeight, copy,
             pixelOffsetX: 0, pixelOffsetY: 0);
 
     /// <summary>
-    /// PixelOffset を含めた版。<see cref="ComputeRenderedRect(PixelSize, int, int, IReadOnlyList{int}?, IReadOnlyList{int}?, CellPosition, int, int, ImageCopy)"/>
-    /// に PixelOffset を加えてクリップ後の矩形を返す。
+    /// PixelOffset を含めた版。OccupySize は配置単位の固有特性として呼び出し元から渡す。
     /// </summary>
     public static PixelRect ComputeRenderedRect(
         PixelSize canvas,
@@ -171,6 +171,7 @@ public static class PlacementGeometry
         IReadOnlyList<int>? colWeights,
         IReadOnlyList<int>? rowWeights,
         CellPosition position,
+        OccupySize occupy,
         int sourceWidth,
         int sourceHeight,
         ImageCopy copy,
@@ -187,7 +188,7 @@ public static class PlacementGeometry
 
         var cellRect = ComputeDestRect(
             canvas, gridCols, gridRows, colWeights, rowWeights,
-            position, copy.OccupySize, 0, 0);
+            position, occupy, 0, 0);
 
         var destX = (double)cellRect.X + pixelOffsetX;
         var destY = (double)cellRect.Y + pixelOffsetY;

@@ -383,7 +383,7 @@ public sealed class PlacementGeometryTests
         var copy = MakeCopy(ScalingMode.UniformContain);
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(1, 1),
+            new CellPosition(1, 1), copy.OccupySize,
             sourceWidth: 100, sourceHeight: 100, copy);
 
         rect.X.Should().Be(200);
@@ -402,7 +402,7 @@ public sealed class PlacementGeometryTests
         var copy = MakeCopy(ScalingMode.UniformContain);
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(1, 1),
+            new CellPosition(1, 1), copy.OccupySize,
             sourceWidth: 100, sourceHeight: 200, copy);
 
         // セル 200x200 内に画像 100x200 (scale=1, drawSize=100x200)、Center 配置
@@ -423,7 +423,7 @@ public sealed class PlacementGeometryTests
         var copy = MakeCopy(ScalingMode.UniformContain);
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(1, 1),
+            new CellPosition(1, 1), copy.OccupySize,
             sourceWidth: 200, sourceHeight: 100, copy);
 
         rect.X.Should().Be(200);
@@ -442,7 +442,7 @@ public sealed class PlacementGeometryTests
         var copy = MakeCopy(ScalingMode.UniformCover);
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(1, 1),
+            new CellPosition(1, 1), copy.OccupySize,
             sourceWidth: 100, sourceHeight: 200, copy);
 
         rect.X.Should().Be(200);
@@ -459,7 +459,7 @@ public sealed class PlacementGeometryTests
         var copy = MakeCopy(ScalingMode.Fill);
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(0, 0),
+            new CellPosition(0, 0), copy.OccupySize,
             sourceWidth: 50, sourceHeight: 300, copy);
 
         rect.Width.Should().Be(200);
@@ -474,7 +474,7 @@ public sealed class PlacementGeometryTests
         var copy = MakeCopy(ScalingMode.None); // Alignment デフォルト (Center, Center)
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(1, 1),
+            new CellPosition(1, 1), copy.OccupySize,
             sourceWidth: 80, sourceHeight: 80, copy);
 
         // セル (200, 200, 200, 200)、画像 80x80 中央 → (260, 260, 80, 80)
@@ -496,8 +496,8 @@ public sealed class PlacementGeometryTests
         // PixelOffset.X=+50: dst (250, 200, 200, 200)、cellRect (200, 200, 200, 200) → 交差 (250, 200, 150, 200)
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(1, 1),
-            sourceWidth: 100, sourceHeight: 100, copy,
+            new CellPosition(1, 1), copy.OccupySize,
+            sourceWidth: 100, sourceHeight: 100, copy: copy,
             pixelOffsetX: 50, pixelOffsetY: 0);
 
         rect.X.Should().Be(250);
@@ -516,8 +516,8 @@ public sealed class PlacementGeometryTests
         var copy = MakeCopy(ScalingMode.Fill);
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(1, 1),
-            sourceWidth: 100, sourceHeight: 100, copy,
+            new CellPosition(1, 1), copy.OccupySize,
+            sourceWidth: 100, sourceHeight: 100, copy: copy,
             pixelOffsetX: 1000, pixelOffsetY: 0);
 
         (rect.Width == 0 || rect.Height == 0).Should().BeTrue();
@@ -534,7 +534,7 @@ public sealed class PlacementGeometryTests
         // 元 200x100 (横長) → 回転後 100x200 (縦長) → セル 200x200 で左右余白
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(1, 1),
+            new CellPosition(1, 1), copy.OccupySize,
             sourceWidth: 200, sourceHeight: 100, copy);
 
         rect.X.Should().Be(250);
@@ -555,7 +555,7 @@ public sealed class PlacementGeometryTests
         // 画像 100x100 で fitContain = min(4, 2) = 2 → drawSize = 200x200、Center で水平 100 余白
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(1, 1),
+            new CellPosition(1, 1), copy.OccupySize,
             sourceWidth: 100, sourceHeight: 100, copy);
 
         rect.X.Should().Be(300);
@@ -572,7 +572,7 @@ public sealed class PlacementGeometryTests
         var copy = MakeCopy(ScalingMode.UniformContain);
         var rect = PlacementGeometry.ComputeRenderedRect(
             canvas, 3, 3, null, null,
-            position: new CellPosition(0, 0),
+            new CellPosition(0, 0), copy.OccupySize,
             sourceWidth: 0, sourceHeight: 100, copy);
         rect.Width.Should().Be(0);
         rect.Height.Should().Be(0);

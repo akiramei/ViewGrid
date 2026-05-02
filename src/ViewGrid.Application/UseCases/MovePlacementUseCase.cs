@@ -37,16 +37,16 @@ public sealed class MovePlacementUseCase(
         if (grid is null)
             return Error.NotFound("Grid.NotFound", $"GridCanvas {placement.GridId} が見つかりません。");
 
+        // OccupySize は配置単位の固有特性。各 placement から直接取得する。
         var existing = await placementRepository.FindByGridIdAsync(placement.GridId, ct);
         var descriptors = new List<ExistingPlacement>(existing.Count);
         foreach (var p in existing)
         {
-            var pCopy = await copyRepository.FindByIdAsync(p.CopyId, ct);
-            descriptors.Add(new ExistingPlacement(p.Id, p.Position, pCopy?.OccupySize ?? OccupySize.OneByOne));
+            descriptors.Add(new ExistingPlacement(p.Id, p.Position, p.OccupySize));
         }
 
         var validation = PlacementValidator.Validate(
-            copy.OccupySize,
+            placement.OccupySize,
             newPosition,
             grid.GridRows,
             grid.GridCols,

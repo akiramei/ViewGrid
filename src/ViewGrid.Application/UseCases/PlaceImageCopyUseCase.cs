@@ -34,18 +34,18 @@ public sealed class PlaceImageCopyUseCase(
 
         var existing = await placementRepository.FindByGridIdAsync(gridId, ct);
 
-        // 既存配置の OccupySize は各 ImageCopy から取得する必要がある（N+1 だが Phase 3-B では許容）
+        // OccupySize は配置固有なので、各 placement から直接取得する。
         var existingDescriptors = new ExistingPlacement[existing.Count];
         for (var i = 0; i < existing.Count; i++)
         {
             var p = existing[i];
-            var pCopy = await copyRepository.FindByIdAsync(p.CopyId, ct);
-            var occupySize = pCopy?.OccupySize ?? OccupySize.OneByOne;
-            existingDescriptors[i] = new ExistingPlacement(p.Id, p.Position, occupySize);
+            existingDescriptors[i] = new ExistingPlacement(p.Id, p.Position, p.OccupySize);
         }
 
+        // 新規配置時は元バリアント copy.OccupySize を初期値として継承する（配置後は固有編集可）。
+        var initialOccupy = copy.OccupySize;
         var validation = PlacementValidator.Validate(
-            copy.OccupySize,
+            initialOccupy,
             position,
             grid.GridRows,
             grid.GridCols,
@@ -73,7 +73,7 @@ public sealed class PlaceImageCopyUseCase(
             GridId = gridId,
             CopyId = copyId,
             Position = position,
-            OccupySize = copy.OccupySize,
+            OccupySize = initialOccupy,
             PlacementOrder = nextOrder,
             CreatedAt = DateTimeOffset.UtcNow,
         };

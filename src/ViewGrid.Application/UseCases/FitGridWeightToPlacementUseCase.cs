@@ -61,16 +61,17 @@ public sealed partial class FitGridWeightToPlacementUseCase(
         // 描画結果と一致する（AutoCrop でアスペクト比が変わっても余白計算が正しい）。
         var (effectiveSourceW, effectiveSourceH) = await ResolveEffectiveSourceSizeAsync(asset, copy, ct);
 
-        // セル矩形（PixelOffset=0）と実描画矩形（PixelOffset 込み + クリップ済み）
+        // セル矩形（PixelOffset=0）と実描画矩形（PixelOffset 込み + クリップ済み）。
+        // OccupySize は配置固有の特性として placement から取得する。
         var cellRect = PlacementGeometry.ComputeDestRect(
             grid.CanvasSize, grid.GridCols, grid.GridRows,
             grid.ColWeights, grid.RowWeights,
-            placement.Position, copy.OccupySize, 0, 0);
+            placement.Position, placement.OccupySize, 0, 0);
 
         var renderedRect = PlacementGeometry.ComputeRenderedRect(
             grid.CanvasSize, grid.GridCols, grid.GridRows,
             grid.ColWeights, grid.RowWeights,
-            placement.Position,
+            placement.Position, placement.OccupySize,
             effectiveSourceW, effectiveSourceH, copy,
             placement.PixelOffsetX, placement.PixelOffsetY);
 
@@ -93,7 +94,7 @@ public sealed partial class FitGridWeightToPlacementUseCase(
 
             var newColWeights = WeightRedistributor.FitToOccupant(
                 grid.ColWeights,
-                placement.Position.X, copy.OccupySize.Width,
+                placement.Position.X, placement.OccupySize.Width,
                 leftPad, inner, rightPad,
                 grid.ColLocked.IsDefaultOrEmpty ? null : grid.ColLocked);
 
@@ -119,7 +120,7 @@ public sealed partial class FitGridWeightToPlacementUseCase(
 
             var newRowWeights = WeightRedistributor.FitToOccupant(
                 grid.RowWeights,
-                placement.Position.Y, copy.OccupySize.Height,
+                placement.Position.Y, placement.OccupySize.Height,
                 topPad, inner, bottomPad,
                 grid.RowLocked.IsDefaultOrEmpty ? null : grid.RowLocked);
 

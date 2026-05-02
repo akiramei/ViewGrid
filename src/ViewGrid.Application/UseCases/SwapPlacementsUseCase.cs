@@ -41,14 +41,14 @@ public sealed class SwapPlacementsUseCase(
         if (grid is null)
             return Error.NotFound("Grid.NotFound", $"GridCanvas {a.GridId} が見つかりません。");
 
-        // 既存配置（a, b 自身を除いたもの）を OccupySize 付きで取得
+        // 既存配置（a, b 自身を除いたもの）を OccupySize 付きで取得。
+        // OccupySize は配置単位の固有特性なので各 placement から直接読む。
         var existing = await placementRepository.FindByGridIdAsync(a.GridId, ct);
         var others = new List<ExistingPlacement>(existing.Count);
         foreach (var p in existing)
         {
             if (p.Id == aId || p.Id == bId) continue;
-            var pCopy = await copyRepository.FindByIdAsync(p.CopyId, ct);
-            others.Add(new ExistingPlacement(p.Id, p.Position, pCopy?.OccupySize ?? OccupySize.OneByOne));
+            others.Add(new ExistingPlacement(p.Id, p.Position, p.OccupySize));
         }
 
         var aOriginal = a.Position;
@@ -56,19 +56,19 @@ public sealed class SwapPlacementsUseCase(
 
         // 検証 1: a を b 元位置に置けるか（境界 + others と非重複）
         var validateA = PlacementValidator.Validate(
-            aCopy.OccupySize, bOriginal, grid.GridRows, grid.GridCols, others);
+            a.OccupySize, bOriginal, grid.GridRows, grid.GridCols, others);
         if (!validateA.IsValid)
             return MapValidation(validateA);
 
         // 検証 2: b を a 元位置に置けるか
         var validateB = PlacementValidator.Validate(
-            bCopy.OccupySize, aOriginal, grid.GridRows, grid.GridCols, others);
+            b.OccupySize, aOriginal, grid.GridRows, grid.GridCols, others);
         if (!validateB.IsValid)
             return MapValidation(validateB);
 
         // 検証 3: a の新位置と b の新位置が互いに重ならないか
-        var aNewCells = PlacementValidator.OccupiedCells(bOriginal, aCopy.OccupySize).ToHashSet();
-        foreach (var cell in PlacementValidator.OccupiedCells(aOriginal, bCopy.OccupySize))
+        var aNewCells = PlacementValidator.OccupiedCells(bOriginal, a.OccupySize).ToHashSet();
+        foreach (var cell in PlacementValidator.OccupiedCells(aOriginal, b.OccupySize))
         {
             if (aNewCells.Contains(cell))
                 return Error.Conflict(

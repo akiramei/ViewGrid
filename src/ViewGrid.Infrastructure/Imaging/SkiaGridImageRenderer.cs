@@ -140,7 +140,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             return SKRectI.Empty;
 
         var placementsForBbox = items
-            .Select(i => (i.Placement.Position, i.Copy.OccupySize))
+            .Select(i => (i.Placement.Position, i.Placement.OccupySize))
             .ToArray();
 
         var bbox = PlacementGeometry.ComputeOccupiedBoundingBox(
@@ -277,7 +277,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 grid.ColWeights,
                 grid.RowWeights,
                 item.Placement.Position,
-                item.Copy.OccupySize,
+                item.Placement.OccupySize,
                 pixelOffsetX: 0,
                 pixelOffsetY: 0);
 
@@ -288,7 +288,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 grid.ColWeights,
                 grid.RowWeights,
                 item.Placement.Position,
-                item.Copy.OccupySize,
+                item.Placement.OccupySize,
                 item.Placement.PixelOffsetX,
                 item.Placement.PixelOffsetY);
 
@@ -411,7 +411,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             grid.ColWeights,
             grid.RowWeights,
             item.Placement.Position,
-            item.Copy.OccupySize,
+            item.Placement.OccupySize,
             pixelOffsetX: 0,
             pixelOffsetY: 0);
 
@@ -423,7 +423,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             grid.ColWeights,
             grid.RowWeights,
             item.Placement.Position,
-            item.Copy.OccupySize,
+            item.Placement.OccupySize,
             item.Placement.PixelOffsetX,
             item.Placement.PixelOffsetY);
 

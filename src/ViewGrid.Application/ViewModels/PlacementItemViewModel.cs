@@ -97,7 +97,8 @@ public sealed partial class PlacementItemViewModel : ObservableObject
         Position = placement.Position;
         PixelOffsetX = placement.PixelOffsetX;
         PixelOffsetY = placement.PixelOffsetY;
-        OccupySize = copy.OccupySize;
+        // OccupySize は配置単位の固有特性として placement から直接取得する。
+        OccupySize = placement.OccupySize;
         Rotation = copy.Transform.Rotation;
         FlipX = copy.Transform.FlipX;
         FlipY = copy.Transform.FlipY;
@@ -113,11 +114,11 @@ public sealed partial class PlacementItemViewModel : ObservableObject
         Label = $"{assetLabel} / {copyLabel}";
     }
 
-    /// <summary>編集後の <see cref="ImageCopy"/> から共有特性を反映する。</summary>
+    /// <summary>編集後の <see cref="ImageCopy"/> から共有特性を反映する。
+    /// OccupySize は配置単位なのでここでは更新しない（配置別の更新ルートで個別に反映する）。</summary>
     public void ApplyCopyChanges(ImageCopy copy)
     {
         ArgumentNullException.ThrowIfNull(copy);
-        OccupySize = copy.OccupySize;
         Rotation = copy.Transform.Rotation;
         FlipX = copy.Transform.FlipX;
         FlipY = copy.Transform.FlipY;
