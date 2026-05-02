@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -432,7 +433,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         var execResult = await _history.ExecuteAsync(command, ct);
         if (execResult.IsError)
         {
-            StatusMessage = string.Join(", ", execResult.Errors);
+            // ErrorOr.Error の自動 ToString は record dump 形式（"Error { Code=..., Description=..., ... }"）で
+            // ユーザーには冗長すぎるため Description のみを連結する。検証エラーがそのまま画面に出る経路。
+            StatusMessage = string.Join(", ", execResult.Errors.Select(e => e.Description));
             return;
         }
 

@@ -135,7 +135,14 @@
                 </Grid>
             </Border>
 
-            <!-- Row 3: 分岐ボタン + ステータス -->
+            <!--
+                Row 3: 分岐ボタン + ステータス。
+                ステータスは「配置固有 (Inspector.StatusMessage)」と「共有特性 (CopyProperties.StatusMessage)」を
+                両方表示する。ScrollViewer 内の CopyPropertiesView 末尾にも StatusMessage はあるが、
+                スクロールしないと見えない位置になりがちなので、保存エラー（OccupySize 範囲外等）が
+                ユーザーに即座に伝わるよう Inspector 直下にも表示する。
+                エラー時は SystemErrorTextColor で強調する。
+            -->
             <StackPanel Grid.Row="3" Spacing="4" Margin="0,8,0,0">
                 <Button HorizontalAlignment="Stretch"
                         Padding="6,4"
@@ -151,6 +158,11 @@
                            FontSize="10"
                            TextWrapping="Wrap"
                            IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Text="{Binding CopyProperties.StatusMessage}"
+                           Foreground="{DynamicResource SystemErrorTextColor}"
+                           FontSize="10"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding CopyProperties.StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
         </Grid>
     </Border>
