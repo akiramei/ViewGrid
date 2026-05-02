@@ -31,6 +31,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         _fx = await UseCaseFixture.CreateAsync();
         _messenger = new WeakReferenceMessenger();
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
+        var occupy = new UpdatePlacementOccupySizeUseCase(_fx.PlacementRepository, _fx.GridRepository);
         var fork = new ForkPlacementVariantUseCase(_fx.CopyRepository, _fx.PlacementRepository);
         var history = new UndoRedoService();
         var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
@@ -39,6 +40,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
             NullLogger<CopyPropertiesViewModel>.Instance);
         _vm = new PlacementInspectorViewModel(
             offset,
+            occupy,
             fork,
             _fx.PlacementRepository,
             _fx.CopyRepository,

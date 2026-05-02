@@ -38,6 +38,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         var export = new ExportGridUseCase(render);
         var picker = Substitute.For<IFilePickerService>();
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
+        var occupy = new UpdatePlacementOccupySizeUseCase(_fx.PlacementRepository, _fx.GridRepository);
         var fork = new ForkPlacementVariantUseCase(_fx.CopyRepository, _fx.PlacementRepository);
         _history = new UndoRedoService();
         var updateCopyForInspector = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
@@ -46,6 +47,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             NullLogger<CopyPropertiesViewModel>.Instance);
         var inspector = new PlacementInspectorViewModel(
             offset,
+            occupy,
             fork,
             _fx.PlacementRepository,
             _fx.CopyRepository,

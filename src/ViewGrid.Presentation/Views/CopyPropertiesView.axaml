@@ -197,21 +197,11 @@
                                 </Grid>
                             </StackPanel>
 
-                            <StackPanel Classes="FormSection">
-                                <TextBlock Classes="FieldLabel" Text="占有セル (W×H)" />
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                                    <NumericUpDown Grid.Column="0"
-                                                   Value="{Binding OccupyWidth}"
-                                                   Minimum="1" Maximum="20"
-                                                   FormatString="0"
-                                                   LostFocus="OnNumericUpDownLostFocus" />
-                                    <NumericUpDown Grid.Column="1"
-                                                   Value="{Binding OccupyHeight}"
-                                                   Minimum="1" Maximum="20"
-                                                   FormatString="0"
-                                                   LostFocus="OnNumericUpDownLostFocus" />
-                                </Grid>
-                            </StackPanel>
+                            <!--
+                                占有セル UI は配置固有特性として PlacementInspector の
+                                「配置固有」セクションへ移管した。同じバリアントを別グリッドの
+                                別セルに配置しても、占有セルはそれぞれ独立して設定できる。
+                            -->
                 </StackPanel>
 
                 <!--

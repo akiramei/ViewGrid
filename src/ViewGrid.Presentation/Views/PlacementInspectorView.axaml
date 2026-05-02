@@ -74,7 +74,27 @@
                                FontWeight="SemiBold"
                                FontSize="11"
                                Opacity="0.85" />
-                    <Grid ColumnDefinitions="*,Auto">
+
+                    <!-- 占有セル W×H (配置単位の固有特性) -->
+                    <TextBlock Classes="FieldLabel" Text="占有セル (W×H)" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
+                        <NumericUpDown Grid.Column="0"
+                                       Value="{Binding OccupyWidth}"
+                                       Minimum="1" Maximum="20"
+                                       Increment="1"
+                                       FormatString="0" />
+                        <NumericUpDown Grid.Column="1"
+                                       Value="{Binding OccupyHeight}"
+                                       Minimum="1" Maximum="20"
+                                       Increment="1"
+                                       FormatString="0" />
+                    </Grid>
+                    <TextBlock Classes="HintText"
+                               FontStyle="Italic"
+                               Text="この配置のみ占有セルが変わります（同バリアントの別配置には影響しません）" />
+
+                    <!-- ピクセル微調整 ΔX/ΔY -->
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
                         <TextBlock Grid.Column="0"
                                    Classes="FieldLabel"
                                    Text="ピクセル微調整 (ΔX/ΔY)"

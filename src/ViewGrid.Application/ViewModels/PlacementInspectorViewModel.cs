@@ -33,6 +33,7 @@ namespace ViewGrid.Application.ViewModels;
 public sealed partial class PlacementInspectorViewModel : ObservableObject
 {
     private readonly UpdatePlacementOffsetUseCase _offsetUseCase;
+    private readonly UpdatePlacementOccupySizeUseCase _occupyUseCase;
     private readonly ForkPlacementVariantUseCase _forkUseCase;
     private readonly IGridPlacementRepository _placementRepository;
     private readonly IImageCopyRepository _copyRepository;
@@ -89,6 +90,15 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     [ObservableProperty] public partial int PixelOffsetY { get; set; }
 
     /// <summary>
+    /// 占有セル幅（W）の編集バッファ。配置固有特性として placement に持たせる。
+    /// 同じバリアントを別グリッド・別セルに配置しても、それぞれで独立に変えられる。
+    /// </summary>
+    [ObservableProperty] public partial int OccupyWidth { get; set; } = 1;
+
+    /// <summary>占有セル高さ（H）の編集バッファ。</summary>
+    [ObservableProperty] public partial int OccupyHeight { get; set; } = 1;
+
+    /// <summary>
     /// 配置固有 (<see cref="IsDirty"/>) と共有特性 (<see cref="CopyProperties"/>.IsDirty) の
     /// いずれかに未保存編集があるか。Inspector 上部の統一保存バーの CanExecute と
     /// 「●」未保存マーカー可視化に使う。<see cref="CopyProperties"/>.PropertyChanged を
@@ -98,6 +108,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
 
     public PlacementInspectorViewModel(
         UpdatePlacementOffsetUseCase offsetUseCase,
+        UpdatePlacementOccupySizeUseCase occupyUseCase,
         ForkPlacementVariantUseCase forkUseCase,
         IGridPlacementRepository placementRepository,
         IImageCopyRepository copyRepository,
@@ -110,6 +121,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         ILogger<PlacementInspectorViewModel> logger)
     {
         _offsetUseCase = offsetUseCase;
+        _occupyUseCase = occupyUseCase;
         _forkUseCase = forkUseCase;
         _placementRepository = placementRepository;
         _copyRepository = copyRepository;
@@ -170,6 +182,8 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
                 ImageDrawSizeLabel = string.Empty;
                 PixelOffsetX = 0;
                 PixelOffsetY = 0;
+                OccupyWidth = 1;
+                OccupyHeight = 1;
             }
             else
             {
@@ -179,6 +193,8 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
                 ImageDrawSizeLabel = ComputeImageDrawSizeLabel(source, grid);
                 PixelOffsetX = source.PixelOffsetX;
                 PixelOffsetY = source.PixelOffsetY;
+                OccupyWidth = Math.Max(1, source.OccupyWidth);
+                OccupyHeight = Math.Max(1, source.OccupyHeight);
             }
             IsDirty = false;
             StatusMessage = null;
@@ -254,6 +270,9 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
 
         var clampedX = Math.Clamp(PixelOffsetX, -MaxPixelOffset, MaxPixelOffset);
         var clampedY = Math.Clamp(PixelOffsetY, -MaxPixelOffset, MaxPixelOffset);
+        var newOccupyW = Math.Max(1, OccupyWidth);
+        var newOccupyH = Math.Max(1, OccupyHeight);
+        var newOccupy = new OccupySize(newOccupyW, newOccupyH);
 
         // before の値は DB の永続化済み値から取得（Shift+ドラッグで _source が書き換わっている可能性がある）
         var current = await _placementRepository.FindByIdAsync(source.PlacementId, ct);
@@ -262,7 +281,11 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
             StatusMessage = $"GridPlacement {source.PlacementId} が見つかりません。";
             return;
         }
-        if (current.PixelOffsetX == clampedX && current.PixelOffsetY == clampedY)
+
+        var offsetChanged = current.PixelOffsetX != clampedX || current.PixelOffsetY != clampedY;
+        var occupyChanged = current.OccupySize != newOccupy;
+
+        if (!offsetChanged && !occupyChanged)
         {
             // 値変化なし — 履歴に積まない
             _suppressDirty = true;
@@ -271,15 +294,34 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
             return;
         }
 
-        var description = $"ピクセル微調整: 「{source.Label}」 ΔX={clampedX}, ΔY={clampedY}";
-        var command = new UpdatePlacementOffsetCommand(
-            _offsetUseCase, grid.GridId, source.PlacementId,
-            current.PixelOffsetX, current.PixelOffsetY, clampedX, clampedY, description);
-        var execResult = await _history.ExecuteAsync(command, ct);
-        if (execResult.IsError)
+        // OccupySize → PixelOffset の順で永続化（OccupySize は Validation 失敗の可能性が高いので先）。
+        // OccupySize で失敗した場合は PixelOffset の変更も保留して IsDirty を維持する。
+        if (occupyChanged)
         {
-            StatusMessage = string.Join(", ", execResult.Errors);
-            return;
+            var occupyDesc = $"占有セル変更: 「{source.Label}」 {current.OccupySize.Width}×{current.OccupySize.Height} → {newOccupy.Width}×{newOccupy.Height}";
+            var occupyCommand = new UpdatePlacementOccupySizeCommand(
+                _occupyUseCase, grid.GridId, source.PlacementId,
+                current.OccupySize, newOccupy, occupyDesc);
+            var occupyResult = await _history.ExecuteAsync(occupyCommand, ct);
+            if (occupyResult.IsError)
+            {
+                StatusMessage = string.Join(", ", occupyResult.Errors);
+                return;
+            }
+        }
+
+        if (offsetChanged)
+        {
+            var description = $"ピクセル微調整: 「{source.Label}」 ΔX={clampedX}, ΔY={clampedY}";
+            var command = new UpdatePlacementOffsetCommand(
+                _offsetUseCase, grid.GridId, source.PlacementId,
+                current.PixelOffsetX, current.PixelOffsetY, clampedX, clampedY, description);
+            var execResult = await _history.ExecuteAsync(command, ct);
+            if (execResult.IsError)
+            {
+                StatusMessage = string.Join(", ", execResult.Errors);
+                return;
+            }
         }
 
         // VM 側の表示用 PlacementItemViewModel にも同期。
@@ -288,8 +330,18 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         _suppressDirty = true;
         try
         {
-            source.PixelOffsetX = clampedX;
-            source.PixelOffsetY = clampedY;
+            if (offsetChanged)
+            {
+                source.PixelOffsetX = clampedX;
+                source.PixelOffsetY = clampedY;
+            }
+            if (occupyChanged)
+            {
+                source.OccupySize = newOccupy;
+                // PositionLabel は占有も含むので再計算
+                PositionLabel = $"位置: ({source.GridX},{source.GridY}) / 占有: {source.OccupyWidth}×{source.OccupyHeight}";
+                ImageDrawSizeLabel = ComputeImageDrawSizeLabel(source, grid);
+            }
             IsDirty = false;
             StatusMessage = "保存しました。";
         }
@@ -330,10 +382,13 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
             // source を DB 値に戻す（View が PropertyChanged で追従する）
             source.PixelOffsetX = current.PixelOffsetX;
             source.PixelOffsetY = current.PixelOffsetY;
+            source.OccupySize = current.OccupySize;
             // Inspector Buffer は OnSourcePropertyChanged 経由で同期されるが、
             // 既に同値だった場合に変更通知が出ないこともあるので明示的に上書き。
             PixelOffsetX = current.PixelOffsetX;
             PixelOffsetY = current.PixelOffsetY;
+            OccupyWidth = current.OccupySize.Width;
+            OccupyHeight = current.OccupySize.Height;
             IsDirty = false;
             StatusMessage = null;
         }
@@ -434,6 +489,11 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
             PixelOffsetX = src.PixelOffsetX;
         else if (e.PropertyName is nameof(PlacementItemViewModel.PixelOffsetY))
             PixelOffsetY = src.PixelOffsetY;
+        else if (e.PropertyName is nameof(PlacementItemViewModel.OccupySize))
+        {
+            OccupyWidth = Math.Max(1, src.OccupyWidth);
+            OccupyHeight = Math.Max(1, src.OccupyHeight);
+        }
     }
 
     private void OnAnyPropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -70,13 +70,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial ScalingMode ScalingMode { get; set; } = ScalingMode.UniformContain;
     [ObservableProperty] public partial AnchorX AlignX { get; set; } = AnchorX.Center;
     [ObservableProperty] public partial AnchorY AlignY { get; set; } = AnchorY.Center;
-    // NumericUpDown.Value は decimal? のため、非 nullable int にバインドすると
-    // ユーザーがテキストを空にした瞬間に「null → int」変換失敗のバインディング例外が
-    // 発生し赤字エラーが UI に出る。型設計レベルで吸収するため int? としてエクスポーズし、
-    // 保存・換算時に null を 1（最小値）に coerce する（CSS error template 抑止のような
-    // 視覚パッチではなく、null 状態を許容することで例外そのものを発生させない方針）。
-    [ObservableProperty] public partial int? OccupyWidth { get; set; } = 1;
-    [ObservableProperty] public partial int? OccupyHeight { get; set; } = 1;
+    // OccupySize はバリアント単位の共有特性ではなく、配置 (GridPlacement) 単位の固有特性に
+    // 移管された。本タブでは編集 UI を持たない（PlacementInspector の「配置固有」セクションで
+    // 編集する）。新規配置時は ImageCopy のデフォルト OccupySize がそのまま継承される。
 
     /// <summary>単色余白の自動トリミング機能の ON/OFF。OFF なら <see cref="AutoCropPreset"/> /
     /// <see cref="AutoCropThreshold"/> は無視され、保存時に AutoCrop=null となる。</summary>
@@ -300,8 +296,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 ScalingMode = ScalingMode.UniformContain;
                 AlignX = AnchorX.Center;
                 AlignY = AnchorY.Center;
-                OccupyWidth = 1;
-                OccupyHeight = 1;
                 AutoCropEnabled = false;
                 AutoCropPreset = AutoCropPreset.White;
                 AutoCropThreshold = 0;
@@ -325,8 +319,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 ScalingMode = source.ScalingMode;
                 AlignX = source.Alignment.X;
                 AlignY = source.Alignment.Y;
-                OccupyWidth = source.OccupySize.Width;
-                OccupyHeight = source.OccupySize.Height;
                 ThumbnailPath = source.ThumbnailPath;
                 SourceImagePath = source.SourceImagePath;
                 SourceWidth = source.SourceWidth;
@@ -395,7 +387,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
             Transform = new ImageTransform(_source.Rotation, _source.FlipX, _source.FlipY),
             ScalingMode = _source.ScalingMode,
             Alignment = _source.Alignment,
-            OccupySize = _source.OccupySize,
+            // OccupySize は本タブの編集対象外（配置固有に移管）。null = 変更しない。
             AutoCrop = _source.AutoCrop,
             ClearAutoCrop = _source.AutoCrop is null,
             ManualCrop = _source.ManualCrop,
@@ -418,7 +410,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
             Transform = new ImageTransform(Rotation, FlipX, FlipY),
             ScalingMode = ScalingMode,
             Alignment = new Alignment(AlignX, AlignY),
-            OccupySize = BuildOccupySizeOrDefault(),
+            // OccupySize は本タブで触らない（配置固有）。null で「変更しない」を明示。
             AutoCrop = afterAutoCrop,
             ClearAutoCrop = afterAutoCrop is null,
             ManualCrop = afterManualCrop,
@@ -446,7 +438,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         _source.FlipY = after.Transform.Value.FlipY;
         _source.ScalingMode = after.ScalingMode!.Value;
         _source.Alignment = after.Alignment!.Value;
-        _source.OccupySize = after.OccupySize!.Value;
+        // OccupySize は本タブの編集対象外なので _source への反映も行わない。
         _source.AutoCrop = after.AutoCrop;
         _source.ManualCrop = after.ManualCrop;
 
@@ -473,14 +465,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
 
     private bool CanSave() => HasCopy && IsDirty;
     private bool CanRevert() => HasCopy && IsDirty;
-
-    private OccupySize BuildOccupySizeOrDefault()
-    {
-        // null（ユーザーが入力中で空欄）/ < 1 はいずれも 1 として扱う。
-        var w = (OccupyWidth ?? 1) < 1 ? 1 : (OccupyWidth ?? 1);
-        var h = (OccupyHeight ?? 1) < 1 ? 1 : (OccupyHeight ?? 1);
-        return new OccupySize(w, h);
-    }
 
     /// <summary>
     /// 編集バッファ（プリセット + 閾値 + Custom HEX）から <see cref="AutoCropSettings"/> を組み立てる。

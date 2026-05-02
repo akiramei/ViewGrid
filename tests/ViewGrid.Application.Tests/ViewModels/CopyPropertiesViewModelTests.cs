@@ -80,7 +80,6 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         _vm.HasCopy.Should().BeTrue();
         _vm.IsDirty.Should().BeFalse();
         _vm.Rotation.Should().Be(source.Rotation);
-        _vm.OccupyWidth.Should().Be(source.OccupySize.Width);
         _vm.ScalingMode.Should().Be(source.ScalingMode);
     }
 
@@ -101,7 +100,6 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         var source = await SeedSourceAsync();
         _vm.Attach(source);
         _vm.Rotation = Rotation.Cw180;
-        _vm.OccupyWidth = 3;
         _vm.ScalingMode = ScalingMode.UniformCover;
 
         await _vm.SaveAsync();
@@ -113,12 +111,10 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         var reloaded = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
         reloaded.Should().NotBeNull();
         reloaded!.Transform.Rotation.Should().Be(Rotation.Cw180);
-        reloaded.OccupySize.Width.Should().Be(3);
         reloaded.ScalingMode.Should().Be(ScalingMode.UniformCover);
 
         // source (リスト側 VM) への反映
         source.Rotation.Should().Be(Rotation.Cw180);
-        source.OccupySize.Width.Should().Be(3);
     }
 
     [Fact]
@@ -127,13 +123,11 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         var source = await SeedSourceAsync();
         _vm.Attach(source);
         _vm.Rotation = Rotation.Cw90;
-        _vm.OccupyHeight = 5;
         _vm.IsDirty.Should().BeTrue();
 
         _vm.Revert();
 
         _vm.Rotation.Should().Be(source.Rotation);
-        _vm.OccupyHeight.Should().Be(source.OccupySize.Height);
         _vm.IsDirty.Should().BeFalse();
     }
 
