@@ -229,18 +229,17 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
             // 候補ライブラリ変更は cascade（Asset/Copy 削除 → 配置も削除）を伴うため、
             // DB 上の最新状態に追随するよう配置済み一覧も再ロードする。
+            // LoadPlacementsAsync は差分更新化されており、PlacementId 索引で既存インスタンスを
+            // 再利用するので、SelectedPlacement の参照同一性は自動的に維持される（Clear して
+            // 選択を保存・復元する必要なし）。cascade 削除で消えた placement だけが Remove される。
             var grid = CurrentGrid;
             if (grid is null) return;
 
-            var previousSelectedId = SelectedPlacement?.PlacementId;
-            Placements.Clear();
-            SelectedPlacement = null;
             await LoadPlacementsAsync(grid.GridId, default);
 
-            // 再ロード前に選択していた配置がまだ存在するなら新インスタンスを選び直す
-            // （Inspector の表示が消えないようにするため）
-            if (previousSelectedId is not null)
-                SelectedPlacement = Placements.FirstOrDefault(p => p.PlacementId == previousSelectedId.Value);
+            // SelectedPlacement が cascade 削除で消えていたら null にフォールバック。
+            if (SelectedPlacement is not null && !Placements.Contains(SelectedPlacement))
+                SelectedPlacement = null;
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -257,6 +256,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         CurrentGrid = grid;
         OnPropertyChanged(nameof(HasGrid));
 
+        // グリッド切替は別グリッドの配置で全置換されるので、Clear で確実にリセットする
+        // （LoadPlacementsAsync の差分更新も同じ結果になるが、見た目に「以前のグリッドの
+        // 配置が一瞬残る」ような遷移を避けるため明示的にクリア）。
         Placements.Clear();
         SelectedPlacement = null;
         StatusMessage = null;
@@ -400,12 +402,22 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         }
     }
 
+    /// <summary>
+    /// 配置リストを差分更新する（Candidates / CandidateGroups と同パターン）。
+    /// PlacementId 索引で既存 <see cref="PlacementItemViewModel"/> を再利用することで、
+    /// (1) GridCanvasView の Border 再生成（disk read + Skia decode/encode）を回避、
+    /// (2) PlacementInspector の Inspector.AttachAsync で Attach 中だったインスタンスの
+    /// 参照同一性を維持、(3) GridCanvasView の <c>OnPlacementItemPropertyChanged</c>
+    /// 経由で位置・占有・PixelOffset の最小更新パスを生かす。
+    /// </summary>
     private async Task LoadPlacementsAsync(Guid gridId, CancellationToken ct)
     {
         var placements = await _placementRepository.FindByGridIdAsync(gridId, ct);
 
         var copyCache = new Dictionary<Guid, ImageCopy>();
         var assetCache = new Dictionary<Guid, ImageAsset>();
+        var existingByPlacementId = Placements.ToDictionary(p => p.PlacementId);
+        var desired = new List<PlacementItemViewModel>(placements.Count);
 
         foreach (var p in placements)
         {
@@ -423,8 +435,23 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 assetCache[copy.AssetId] = asset;
             }
 
-            var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
-            var item = new PlacementItemViewModel(p, copy, asset, thumb);
+            PlacementItemViewModel item;
+            if (existingByPlacementId.TryGetValue(p.Id, out var existing))
+            {
+                // 既存インスタンスを最新の DB 値で同期（参照同一性を保つ）。
+                // ApplyCopyChanges で共有特性を、各 setter で配置固有特性を反映。
+                existing.Position = p.Position;
+                existing.OccupySize = p.OccupySize;
+                existing.PixelOffsetX = p.PixelOffsetX;
+                existing.PixelOffsetY = p.PixelOffsetY;
+                existing.ApplyCopyChanges(copy);
+                item = existing;
+            }
+            else
+            {
+                var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
+                item = new PlacementItemViewModel(p, copy, asset, thumb);
+            }
 
             // ManualCrop / AutoCrop の優先順位を Resolver で解決し、実効的なクロップ比率を
             // PlacementItemViewModel.EffectiveCropFraction に保存。Renderer / View / Use case が
@@ -440,8 +467,10 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 item.EffectiveCropFraction = null;
             }
 
-            Placements.Add(item);
+            desired.Add(item);
         }
+
+        SyncObservableCollection(Placements, desired);
 
         LogPlacementsLoaded(_logger, gridId, Placements.Count);
     }
@@ -624,7 +653,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     private async Task ReloadPlacementsAsync(Guid gridId, CancellationToken ct)
     {
-        Placements.Clear();
+        // 差分更新により Clear は不要（LoadPlacementsAsync が消えた placement を Remove する）。
+        // SelectedPlacement の参照同一性も維持される。
         await LoadPlacementsAsync(gridId, ct);
     }
 
