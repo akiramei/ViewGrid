@@ -13,6 +13,21 @@ namespace ViewGrid.Presentation.Views;
 
 public partial class CopyPropertiesView : UserControl
 {
+    /// <summary>
+    /// CopyPropertiesView 内部の「保存 / リセット」ボタンバーを表示するか。
+    /// 既定は <c>true</c>（準備タブなどスタンドアロン使用時）。配置タブの
+    /// PlacementInspectorView に inline embed する場合は親側で「両方を一括保存」する
+    /// ボタンを提供するため、こちらを <c>false</c> にして二重表示を避ける。
+    /// </summary>
+    public static readonly StyledProperty<bool> ShowSaveBarProperty =
+        AvaloniaProperty.Register<CopyPropertiesView, bool>(nameof(ShowSaveBar), defaultValue: true);
+
+    public bool ShowSaveBar
+    {
+        get => GetValue(ShowSaveBarProperty);
+        set => SetValue(ShowSaveBarProperty, value);
+    }
+
     private CopyPropertiesViewModel? _vm;
 
     private enum DragMode
@@ -282,10 +297,15 @@ public partial class CopyPropertiesView : UserControl
         var m = GetThumbnailDisplayMetrics();
         if (m is null) return null;
         var (_, _, _, _, scale, padX, padY) = m.Value;
-        var x = padX + _vm.ManualCropPixelX * scale;
-        var y = padY + _vm.ManualCropPixelY * scale;
-        var w = _vm.ManualCropPixelWidth * scale;
-        var h = _vm.ManualCropPixelHeight * scale;
+        // null（入力中で空欄）は 0 として扱う
+        var mx = _vm.ManualCropPixelX ?? 0.0;
+        var my = _vm.ManualCropPixelY ?? 0.0;
+        var mw = _vm.ManualCropPixelWidth ?? 0.0;
+        var mh = _vm.ManualCropPixelHeight ?? 0.0;
+        var x = padX + mx * scale;
+        var y = padY + my * scale;
+        var w = mw * scale;
+        var h = mh * scale;
         return (x, y, w, h);
     }
 
@@ -447,8 +467,8 @@ public partial class CopyPropertiesView : UserControl
 
         _isDragging = true;
         _dragStartPoint = pos;
-        _dragStartRect = (_vm.ManualCropPixelX, _vm.ManualCropPixelY,
-                          _vm.ManualCropPixelWidth, _vm.ManualCropPixelHeight);
+        _dragStartRect = (_vm.ManualCropPixelX ?? 0.0, _vm.ManualCropPixelY ?? 0.0,
+                          _vm.ManualCropPixelWidth ?? 0.0, _vm.ManualCropPixelHeight ?? 0.0);
         e.Pointer.Capture(ManualCropOverlay);
         e.Handled = true;
     }
@@ -489,8 +509,8 @@ public partial class CopyPropertiesView : UserControl
             window.Initialize(
                 _vm.SourceImagePath,
                 _vm.SourceWidth, _vm.SourceHeight,
-                _vm.ManualCropPixelX, _vm.ManualCropPixelY,
-                _vm.ManualCropPixelWidth, _vm.ManualCropPixelHeight);
+                _vm.ManualCropPixelX ?? 0.0, _vm.ManualCropPixelY ?? 0.0,
+                _vm.ManualCropPixelWidth ?? 0.0, _vm.ManualCropPixelHeight ?? 0.0);
         }
         catch
         {
@@ -602,5 +622,18 @@ public partial class CopyPropertiesView : UserControl
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// 非 nullable int にバインドした NumericUpDown のテキストを空にすると Avalonia の Value が
+    /// null になり「Could not convert '(null)' to System.Int32」のバインディングエラーが赤字で
+    /// 表示され、レイアウトが崩れる。フォーカスが外れたタイミングで空のまま残っていれば
+    /// <see cref="NumericUpDown.Minimum"/> に強制的に戻すことで二度と null が source に書かれない
+    /// 状態にする（連続入力中の一時的 null は許容）。
+    /// </summary>
+    private void OnNumericUpDownLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is NumericUpDown nud && nud.Value is null)
+            nud.Value = nud.Minimum;
     }
 }

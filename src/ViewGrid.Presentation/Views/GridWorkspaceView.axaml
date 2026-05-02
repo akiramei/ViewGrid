@@ -25,7 +25,7 @@
           「配置済み」要約 / 「配置を削除」ボタンも同居。
         旧構造（中央 + 右ペイン 300px に候補とプロパティを混在）から、候補とプロパティを左右に分離する形。
     -->
-    <Grid ColumnDefinitions="320,*,300">
+    <Grid ColumnDefinitions="320,*,380">
 
         <!--
             Column 0: 配置元（バリアント）リスト + 操作ボタン。
@@ -253,9 +253,17 @@
         <Border Grid.Column="2"
                 BorderBrush="{DynamicResource SystemBaseLowColor}"
                 BorderThickness="1,0,0,0"
-                Padding="12">
-            <DockPanel LastChildFill="True">
-                <TextBlock DockPanel.Dock="Top"
+                Padding="8">
+            <!--
+                旧版は DockPanel に PlacementInspectorView / GridPropertiesView / 空状態 Border を
+                直接並べ「LastChildFill=true で最後の子が伸縮」する設計だった。しかし DockPanel の
+                子に <c>DockPanel.Dock</c> 未指定の場合は<b>既定で Dock=Left</b>として扱われ、
+                PlacementInspectorView は preferred width しか取れず右側に大きな余白が残っていた。
+                Grid RowDefinitions=Auto,*,Auto に変更し、中央行 (*) に Grid を重ねて 3 状態の
+                View を同じセルに置くことで、IsVisible=true の View が必ず幅一杯まで伸縮する。
+            -->
+            <Grid RowDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Row="0"
                            FontSize="11"
                            Opacity="0.75"
                            Margin="0,0,0,8"
@@ -265,7 +273,39 @@
                     <Run Text="件" />
                 </TextBlock>
 
-                <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,8,0,0">
+                <!--
+                    子 View の DataContext を切り替えると IsVisible バインドも子側で解決されてしまうため、
+                    IsVisible の参照は ElementName=GridWorkspaceRoot 経由で親 VM
+                    (GridWorkspaceViewModel) のフラグを明示的に指す。
+                -->
+                <Grid Grid.Row="1">
+                    <!-- 配置選択中: Inspector を表示（配置固有プロパティ + 共有特性編集 inline） -->
+                    <views:PlacementInspectorView DataContext="{Binding Inspector}"
+                                                  IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsPlacementSelected}" />
+
+                    <!-- グリッドのみ選択中（配置未選択）: グリッド情報を表示 -->
+                    <views:GridPropertiesView DataContext="{Binding CurrentGrid}"
+                                              IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsGridOnlySelected}" />
+
+                    <!-- グリッド未選択: 案内 -->
+                    <Border IsVisible="{Binding IsNoSelection}"
+                            Padding="12">
+                        <StackPanel Spacing="6"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="グリッドを選択してください"
+                                       Opacity="0.7"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="上のグリッド切替バーから作成・選択するとプロパティが表示されます"
+                                       Opacity="0.5"
+                                       FontSize="11"
+                                       HorizontalAlignment="Center"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <StackPanel Grid.Row="2" Spacing="4" Margin="0,8,0,0">
                     <Button Content="配置を削除"
                             HorizontalAlignment="Stretch"
                             Command="{Binding RemoveSelectedPlacementCommand}"
@@ -274,37 +314,7 @@
                                  IsIndeterminate="True"
                                  IsVisible="{Binding IsBusy}" />
                 </StackPanel>
-
-                <!--
-                    子 View の DataContext を切り替えると IsVisible バインドも子側で解決されてしまうため、
-                    IsVisible の参照は ElementName=GridWorkspaceRoot 経由で親 VM
-                    (GridWorkspaceViewModel) のフラグを明示的に指す。
-                -->
-                <!-- 配置選択中: Inspector を表示（配置固有プロパティ + 共有編集ナビ） -->
-                <views:PlacementInspectorView DataContext="{Binding Inspector}"
-                                              IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsPlacementSelected}" />
-
-                <!-- グリッドのみ選択中（配置未選択）: グリッド情報を表示 -->
-                <views:GridPropertiesView DataContext="{Binding CurrentGrid}"
-                                          IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsGridOnlySelected}" />
-
-                <!-- グリッド未選択: 案内 -->
-                <Border IsVisible="{Binding IsNoSelection}"
-                        Padding="12">
-                    <StackPanel Spacing="6"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center">
-                        <TextBlock Text="グリッドを選択してください"
-                                   Opacity="0.7"
-                                   HorizontalAlignment="Center" />
-                        <TextBlock Text="上のグリッド切替バーから作成・選択するとプロパティが表示されます"
-                                   Opacity="0.5"
-                                   FontSize="11"
-                                   HorizontalAlignment="Center"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-            </DockPanel>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

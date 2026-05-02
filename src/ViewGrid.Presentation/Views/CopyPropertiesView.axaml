@@ -6,6 +6,7 @@
              xmlns:conv="clr-namespace:ViewGrid.Presentation.Converters"
              mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="520"
              x:Class="ViewGrid.Presentation.Views.CopyPropertiesView"
+             x:Name="CopyPropertiesRoot"
              x:DataType="vm:CopyPropertiesViewModel">
 
     <UserControl.Resources>
@@ -15,16 +16,39 @@
     </UserControl.Resources>
 
     <!--
-        外側の TabControl で「特性編集」タブが見出しを担当しているため、内部の SectionHeader は削除。
-        Padding 12 → 8（タブの内側余白を抑え、編集領域を広げる）。
+        外側 (準備タブ TabControl / 配置タブ Inspector) が Padding を確保するため、内側は 0 にして
+        CopyPropertiesView の編集領域に最大限の幅を確保する。
     -->
-    <Border Padding="8">
-        <DockPanel LastChildFill="True">
-            <TextBlock DockPanel.Dock="Top"
-                       Text="バリアントを選択してください"
-                       Opacity="0.55"
-                       IsVisible="{Binding !HasCopy}" />
+    <Border Padding="0">
+        <Grid>
+            <!--
+                バリアント未選択時の案内（HasCopy=false）。コントロール一式は IsVisible=false で
+                完全に隠し、案内文だけを領域中央に大きく表示する。旧版は IsEnabled で disabled 表示
+                していたが「グレーアウトされた半端な UI」「スクロールできない」「右の一部が見切れる」
+                といった違和感があり、ユーザー指摘で「コントロールごと隠す」設計に変更した。
+            -->
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="6"
+                        IsVisible="{Binding !HasCopy}">
+                <PathIcon Data="{StaticResource ImageGeometry}"
+                          Width="36" Height="36"
+                          Opacity="0.35"
+                          HorizontalAlignment="Center" />
+                <TextBlock Text="バリアントを選択してください"
+                           FontSize="14"
+                           Opacity="0.7"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="左の一覧から 1 件選ぶと特性を編集できます"
+                           FontSize="11"
+                           Opacity="0.5"
+                           HorizontalAlignment="Center"
+                           TextWrapping="Wrap" />
+            </StackPanel>
 
+            <!-- バリアント選択時の編集 UI 一式（HasCopy=true のみ表示） -->
+            <DockPanel LastChildFill="True"
+                       IsVisible="{Binding HasCopy}">
             <!-- マルチセレクト中の案内（編集は 1 件選択時のみ可能） -->
             <Border DockPanel.Dock="Top"
                     Classes="WarningBanner"
@@ -34,7 +58,12 @@
                            FontSize="12" />
             </Border>
 
-            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+            <!--
+                スタンドアロン用「保存 / リセット」バー。配置タブの Inspector に inline embed する
+                場合は ShowSaveBar=False で隠し、Inspector 側の統一保存ボタンに任せる。
+            -->
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0"
+                        IsVisible="{Binding #CopyPropertiesRoot.ShowSaveBar}">
                 <Button Command="{Binding SaveCommand}"
                         Classes="accent"
                         ToolTip.Tip="特性編集を保存">
@@ -70,9 +99,9 @@
                 「トリミング」は AutoCrop 全体（サムネプレビューを必要なときに広く使える）。
                 IsDirty 状態はタブ間で共有、保存/リセットは下部共通なので両タブを跨いで一括編集可能。
             -->
-            <TabControl IsEnabled="{Binding HasCopy}">
+            <TabControl>
                 <TabItem Header="特性">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,0,0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,0,8">
                         <StackPanel Classes="FormGroup">
                             <!--
                                 バリアント名の編集はリスト上のインラインリネーム（F2 / ダブルクリック → Enter）
@@ -133,11 +162,13 @@
                                     <NumericUpDown Grid.Column="0"
                                                    Value="{Binding OccupyWidth}"
                                                    Minimum="1" Maximum="20"
-                                                   FormatString="0" />
+                                                   FormatString="0"
+                                                   LostFocus="OnNumericUpDownLostFocus" />
                                     <NumericUpDown Grid.Column="1"
                                                    Value="{Binding OccupyHeight}"
                                                    Minimum="1" Maximum="20"
-                                                   FormatString="0" />
+                                                   FormatString="0"
+                                                   LostFocus="OnNumericUpDownLostFocus" />
                                 </Grid>
                             </StackPanel>
                         </StackPanel>
@@ -150,7 +181,7 @@
                     どちらの場合も適用順序は「元画像 → Crop → 回転・反転 → ScalingMode/Alignment」。
                 -->
                 <TabItem Header="トリミング">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,0,0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,0,8">
                         <StackPanel Classes="FormGroup">
                             <!-- ラジオ 3 択（GroupName で排他化、VM 側でも排他連動） -->
                             <StackPanel Classes="FormSection">
@@ -193,7 +224,8 @@
                                 <TextBlock Classes="FieldLabel" Text="許容色差（0–128）" Margin="0,8,0,0" />
                                 <NumericUpDown Value="{Binding AutoCropThreshold}"
                                                Minimum="0" Maximum="128"
-                                               FormatString="0" />
+                                               FormatString="0"
+                                               LostFocus="OnNumericUpDownLostFocus" />
                                 <TextBlock Classes="HintText"
                                            Text="0 で完全一致のみ余白扱い（既定）。大きいほど許容。" />
 
@@ -282,14 +314,16 @@
                                         <NumericUpDown Value="{Binding ManualCropPixelX}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}" />
+                                                       IsEnabled="{Binding IsManualCropDefined}"
+                                                       LostFocus="OnNumericUpDownLostFocus" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Classes="FieldLabel" Text="Y (px)" />
                                         <NumericUpDown Value="{Binding ManualCropPixelY}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}" />
+                                                       IsEnabled="{Binding IsManualCropDefined}"
+                                                       LostFocus="OnNumericUpDownLostFocus" />
                                     </StackPanel>
                                 </Grid>
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
@@ -298,14 +332,16 @@
                                         <NumericUpDown Value="{Binding ManualCropPixelWidth}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}" />
+                                                       IsEnabled="{Binding IsManualCropDefined}"
+                                                       LostFocus="OnNumericUpDownLostFocus" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Classes="FieldLabel" Text="高さ (px)" />
                                         <NumericUpDown Value="{Binding ManualCropPixelHeight}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}" />
+                                                       IsEnabled="{Binding IsManualCropDefined}"
+                                                       LostFocus="OnNumericUpDownLostFocus" />
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
@@ -313,6 +349,7 @@
                     </ScrollViewer>
                 </TabItem>
             </TabControl>
-        </DockPanel>
+            </DockPanel>
+        </Grid>
     </Border>
 </UserControl>

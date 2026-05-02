@@ -33,11 +33,19 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
         var fork = new ForkPlacementVariantUseCase(_fx.CopyRepository, _fx.PlacementRepository);
         var history = new UndoRedoService();
+        var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository);
+        var copyProperties = new CopyPropertiesViewModel(
+            updateCopy, history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver,
+            NullLogger<CopyPropertiesViewModel>.Instance);
         _vm = new PlacementInspectorViewModel(
             offset,
             fork,
             _fx.PlacementRepository,
             _fx.CopyRepository,
+            _fx.AssetRepository,
+            _fx.Thumbnails,
+            _fx.Storage,
+            copyProperties,
             history,
             _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);
@@ -151,34 +159,34 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         _vm.PixelOffsetY.Should().Be(0);
     }
 
+    /// <summary>
+    /// Stage 3: AttachAsync は CopyProperties に当該 placement の variant を直接 attach する
+    /// （旧: NavigateToCopyPropertiesMessage 経由でタブ切替）。inline embed された
+    /// CopyPropertiesView がそのまま編集対象を表示する基盤。
+    /// </summary>
     [Fact]
-    public async Task EditCopyPropertiesCommand_Sends_Navigate_Message_With_Asset_And_Copy_Ids()
+    public async Task AttachAsync_Attaches_CopyProperties_To_Placement_Variant()
     {
         var (item, copy, _) = await SeedAndPlaceAsync();
+
         await _vm.AttachAsync(item);
 
-        NavigateToCopyPropertiesMessage? received = null;
-        var listener = new object();
-        _messenger.Register<NavigateToCopyPropertiesMessage>(listener, (_, m) => received = m);
-
-        try
-        {
-            _vm.EditCopyPropertiesCommand.Execute(null);
-
-            received.Should().NotBeNull();
-            received!.AssetId.Should().Be(copy.AssetId);
-            received.CopyId.Should().Be(copy.Id);
-        }
-        finally
-        {
-            _messenger.UnregisterAll(listener);
-        }
+        _vm.CopyProperties.HasCopy.Should().BeTrue();
+        _vm.CopyProperties.AttachedSourceForTests.Should().NotBeNull();
+        _vm.CopyProperties.AttachedSourceForTests!.CopyId.Should().Be(copy.Id);
     }
 
+    /// <summary>AttachAsync(null) で CopyProperties も detach（HasCopy=false）。</summary>
     [Fact]
-    public void EditCopyPropertiesCommand_Is_Disabled_When_No_Placement_Attached()
+    public async Task AttachAsync_Null_Detaches_CopyProperties()
     {
-        _vm.EditCopyPropertiesCommand.CanExecute(null).Should().BeFalse();
+        var (item, _, _) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item);
+        _vm.CopyProperties.HasCopy.Should().BeTrue();
+
+        await _vm.AttachAsync(null);
+
+        _vm.CopyProperties.HasCopy.Should().BeFalse();
     }
 
     private async Task<(PlacementItemViewModel item, ImageCopy copy, GridCanvasItemViewModel gridVm)> SeedAndPlaceAsync()

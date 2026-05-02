@@ -33,6 +33,10 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     private CopyItemViewModel? _source;
     private bool _suppressDirty;
 
+    /// <summary>テスト専用: 現在 attach されている source を覗くためのアクセサ。
+    /// プロダクションコードからは使わない（<see cref="HasCopy"/> や個別プロパティで判定する）。</summary>
+    internal CopyItemViewModel? AttachedSourceForTests => _source;
+
     /// <summary>
     /// AutoCrop プレビュー計算の進行中タスクをキャンセルするための CTS。
     /// 閾値スライダーや HEX 入力で連続変更されるたびに古い計算を打ち切り、
@@ -65,8 +69,13 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial ScalingMode ScalingMode { get; set; } = ScalingMode.UniformContain;
     [ObservableProperty] public partial AnchorX AlignX { get; set; } = AnchorX.Center;
     [ObservableProperty] public partial AnchorY AlignY { get; set; } = AnchorY.Center;
-    [ObservableProperty] public partial int OccupyWidth { get; set; } = 1;
-    [ObservableProperty] public partial int OccupyHeight { get; set; } = 1;
+    // NumericUpDown.Value は decimal? のため、非 nullable int にバインドすると
+    // ユーザーがテキストを空にした瞬間に「null → int」変換失敗のバインディング例外が
+    // 発生し赤字エラーが UI に出る。型設計レベルで吸収するため int? としてエクスポーズし、
+    // 保存・換算時に null を 1（最小値）に coerce する（CSS error template 抑止のような
+    // 視覚パッチではなく、null 状態を許容することで例外そのものを発生させない方針）。
+    [ObservableProperty] public partial int? OccupyWidth { get; set; } = 1;
+    [ObservableProperty] public partial int? OccupyHeight { get; set; } = 1;
 
     /// <summary>単色余白の自動トリミング機能の ON/OFF。OFF なら <see cref="AutoCropPreset"/> /
     /// <see cref="AutoCropThreshold"/> は無視され、保存時に AutoCrop=null となる。</summary>
@@ -78,8 +87,10 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(IsAutoCropCustom))]
     public partial AutoCropPreset AutoCropPreset { get; set; } = AutoCropPreset.White;
 
-    /// <summary>許容色差（Chebyshev、0–128）。0 で完全一致のみ余白扱い（既定）。</summary>
-    [ObservableProperty] public partial int AutoCropThreshold { get; set; }
+    /// <summary>許容色差（Chebyshev、0–128）。0 で完全一致のみ余白扱い（既定）。
+    /// nullable 化の理由は <see cref="OccupyWidth"/> と同じ（null 状態を許容して
+    /// バインディング例外を回避し、保存・換算時に 0 へ coerce）。</summary>
+    [ObservableProperty] public partial int? AutoCropThreshold { get; set; }
 
     /// <summary>カスタム対象色の HEX 表記（<c>#RRGGBB</c>）。<see cref="AutoCropPreset.Custom"/>
     /// 選択時のみ <c>BuildAutoCropFromInputs</c> で参照される。
@@ -90,30 +101,34 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// AutoCrop と排他で、こちらを ON にすると AutoCropEnabled が自動的に OFF になる。</summary>
     [ObservableProperty] public partial bool ManualCropEnabled { get; set; }
 
+    // ManualCropPixel* も同じ理由で double? として nullable 化。
+    // 一時的な null（入力中の空白）はバインディング層で受けて、IsManualCropDefined や Save 時に
+    // 0 として扱う（換算は既に 0 で「未確定」として扱う仕様）。
+
     /// <summary>矩形左上 X（元画像ピクセル）。永続化時に SourceWidth で割って 0–1 比率に換算。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
-    public partial double ManualCropPixelX { get; set; }
+    public partial double? ManualCropPixelX { get; set; }
 
     /// <summary>矩形左上 Y（元画像ピクセル）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
-    public partial double ManualCropPixelY { get; set; }
+    public partial double? ManualCropPixelY { get; set; }
 
     /// <summary>矩形幅（元画像ピクセル）。0 のときは「未確定」状態（手動ラジオを選んだ直後など）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
-    public partial double ManualCropPixelWidth { get; set; }
+    public partial double? ManualCropPixelWidth { get; set; }
 
     /// <summary>矩形高さ（元画像ピクセル）。0 のときは未確定。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
-    public partial double ManualCropPixelHeight { get; set; }
+    public partial double? ManualCropPixelHeight { get; set; }
 
     /// <summary>矩形が確定しているか（W&gt;0 かつ H&gt;0）。「手動」ラジオ ON 直後でドラッグ前は false。
     /// 数値入力フィールドや矩形ハンドルの IsEnabled、Save 時の永続化判定に使う。</summary>
     public bool IsManualCropDefined =>
-        ManualCropPixelWidth > 0.0 && ManualCropPixelHeight > 0.0;
+        (ManualCropPixelWidth ?? 0.0) > 0.0 && (ManualCropPixelHeight ?? 0.0) > 0.0;
 
     /// <summary>
     /// 「OFF / 自動 / 手動」ラジオの「OFF」用バインド。両方 OFF なら true。
@@ -208,7 +223,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     partial void OnAutoCropPresetChanged(AutoCropPreset value) => TriggerAutoCropPreviewUpdate();
 
     /// <summary>閾値変更時にプレビュー再計算（スライダー連続変更でもキャンセル合流で最新だけ反映）。</summary>
-    partial void OnAutoCropThresholdChanged(int value) => TriggerAutoCropPreviewUpdate();
+    partial void OnAutoCropThresholdChanged(int? value) => TriggerAutoCropPreviewUpdate();
 
     /// <summary>カスタム HEX 変更時にプレビュー再計算（採取 / 手入力 両方）。</summary>
     partial void OnAutoCropCustomColorHexChanged(string value) => TriggerAutoCropPreviewUpdate();
@@ -392,10 +407,10 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         // 「手動」選択 + 未確定（W=0 or H=0）は実質 OFF として保存する（ユーザー認識と一致）。
         var afterManualCrop = (ManualCropEnabled && IsManualCropDefined && SourceWidth > 0 && SourceHeight > 0)
             ? new ManualCropFraction(
-                ManualCropPixelX / SourceWidth,
-                ManualCropPixelY / SourceHeight,
-                ManualCropPixelWidth / SourceWidth,
-                ManualCropPixelHeight / SourceHeight)
+                (ManualCropPixelX ?? 0.0) / SourceWidth,
+                (ManualCropPixelY ?? 0.0) / SourceHeight,
+                (ManualCropPixelWidth ?? 0.0) / SourceWidth,
+                (ManualCropPixelHeight ?? 0.0) / SourceHeight)
             : (ManualCropFraction?)null;
         var after = new UpdateImageCopyChanges
         {
@@ -458,8 +473,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
 
     private OccupySize BuildOccupySizeOrDefault()
     {
-        var w = OccupyWidth < 1 ? 1 : OccupyWidth;
-        var h = OccupyHeight < 1 ? 1 : OccupyHeight;
+        // null（ユーザーが入力中で空欄）/ < 1 はいずれも 1 として扱う。
+        var w = (OccupyWidth ?? 1) < 1 ? 1 : (OccupyWidth ?? 1);
+        var h = (OccupyHeight ?? 1) < 1 ? 1 : (OccupyHeight ?? 1);
         return new OccupySize(w, h);
     }
 
@@ -469,7 +485,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// </summary>
     private AutoCropSettings BuildAutoCropFromInputs()
     {
-        var threshold = (byte)Math.Clamp(AutoCropThreshold, 0, 128);
+        var threshold = (byte)Math.Clamp(AutoCropThreshold ?? 0, 0, 128);
         return AutoCropPreset switch
         {
             AutoCropPreset.Black => new AutoCropSettings(AutoCropSettings.Black.TargetColorArgb, threshold),

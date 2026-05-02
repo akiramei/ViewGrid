@@ -3,79 +3,82 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
-             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="320"
+             xmlns:views="clr-namespace:ViewGrid.Presentation.Views"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
              x:Class="ViewGrid.Presentation.Views.PlacementInspectorView"
              x:DataType="vm:PlacementInspectorViewModel">
 
-    <Border Padding="10,8"
+    <Border Padding="6,8"
             CornerRadius="4"
             Background="{DynamicResource SystemChromeLowColor}"
             IsVisible="{Binding HasPlacement}">
-        <DockPanel LastChildFill="True">
-
-            <!-- ヘッダ -->
-            <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,6">
-                <TextBlock Text="{Binding HeaderLabel}"
-                           FontWeight="SemiBold"
-                           FontSize="12"
-                           TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding PositionLabel}"
-                           FontSize="10"
-                           Opacity="0.7" />
-            </StackPanel>
-
-            <!--
-                共有特性は準備タブで編集する旨を案内 + 2 つの操作ボタン:
-                ・「特性を編集 →」: 準備タブの CopyPropertiesView へナビゲート（共有編集 = 同バリアント
-                  を参照する全配置に波及）
-                ・「この配置だけ分岐」: 元バリアントを fork して独立化（他の配置には影響しない）
-            -->
-            <Border DockPanel.Dock="Top"
-                    Classes="InfoBanner"
-                    Margin="0,0,0,8">
-                <StackPanel Spacing="6">
-                    <TextBlock Classes="HintText"
-                               Text="回転・反転・スケーリング等の共有特性は準備タブの「特性編集」で編集します（同じバリアントの全配置に反映）。" />
-                    <Button Content="特性を編集 →"
-                            HorizontalAlignment="Stretch"
-                            Padding="6,2"
-                            FontSize="11"
-                            Command="{Binding EditCopyPropertiesCommand}" />
-                    <Button Content="この配置だけ別バリアントに分岐"
-                            HorizontalAlignment="Stretch"
-                            Padding="6,2"
-                            FontSize="11"
-                            Command="{Binding ForkVariantCommand}"
-                            ToolTip.Tip="元バリアントを複製した独立バリアントに切替えます。他の配置には影響しません。" />
+        <!--
+            配置ファースト UI 第 2 段階 Stage 3: PlacementInspector に CopyPropertiesView を inline embed。
+            「特性を編集 →」のタブ遷移は撤去（CopyPropertiesView を直下に置くのでナビゲーション不要）。
+            上から: ヘッダ → 配置固有 (PixelOffset + 保存/リセット) → 分岐ボタン → 共有特性 (CopyPropertiesView)。
+            CopyProperties は Inspector が AttachAsync で当該 placement の variant に紐付ける。
+        -->
+        <!--
+            外側 ScrollViewer 右側にスクロールバー幅 (~12px) を予約しておくことで、
+            内側 NumericUpDown の右端がスクロールバーと重なって視認性が落ちる事象を回避する。
+            Padding="0,0,12,0" によりスクロール有無に関わらずレイアウト幅が安定する。
+        -->
+        <!--
+            旧版は外側 ScrollViewer + 内側 CopyPropertiesView の TabItem ScrollViewer の
+            二重スクロール構造で、内側の有効高さが Tab 領域に縛られて最後のフィールド
+            （占有セル NumericUpDown）の下端が見切れる問題があった。外側 ScrollViewer を
+            撤去し、Grid の RowDefinitions で「配置固有 = Auto / 共有特性 = *」に分けて、
+            共有特性 = CopyPropertiesView 内部の ScrollViewer が割り当てられた高さを
+            使い切って必要なら自前でスクロールする設計にする。
+        -->
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <!-- Row 0: ヘッダ + 統一保存バー -->
+            <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,8">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding HeaderLabel}"
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding PositionLabel}"
+                               FontSize="10"
+                               Opacity="0.7" />
                 </StackPanel>
-            </Border>
 
-            <!-- アクション -->
-            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
-                <Button Content="保存"
-                        Command="{Binding SaveCommand}"
-                        Classes="accent" />
-                <Button Content="リセット"
-                        Command="{Binding RevertCommand}" />
-                <TextBlock Text="*"
-                           FontWeight="Bold"
-                           Foreground="{DynamicResource SystemAccentColor}"
-                           VerticalAlignment="Center"
-                           IsVisible="{Binding IsDirty}"
-                           ToolTip.Tip="未保存の変更があります" />
+                <!-- 統一保存バー: 配置固有 (PixelOffset) + 共有特性 (Rotation/Flip/etc) を一括処理 -->
+                <Border Classes="SubtleCard" Padding="8,6">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button Command="{Binding SaveAllCommand}"
+                                Classes="accent"
+                                ToolTip.Tip="配置固有 + 共有特性 をまとめて保存">
+                            <StackPanel Classes="IconButtonContent">
+                                <PathIcon Data="{StaticResource SaveGeometry}" Width="14" Height="14" />
+                                <TextBlock Text="保存" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding RevertAllCommand}"
+                                ToolTip.Tip="編集前の値に戻す">
+                            <StackPanel Classes="IconButtonContent">
+                                <PathIcon Data="{StaticResource RefreshGeometry}" Width="14" Height="14" />
+                                <TextBlock Text="リセット" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="●"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource SystemAccentColor}"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding IsAnyDirty}"
+                                   ToolTip.Tip="未保存の変更があります" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
 
-            <TextBlock DockPanel.Dock="Bottom"
-                       Text="{Binding StatusMessage}"
-                       Opacity="0.7"
-                       FontSize="10"
-                       Margin="0,6,0,0"
-                       TextWrapping="Wrap"
-                       IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-            <!-- ピクセル微調整（配置固有プロパティ） -->
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel Classes="FormSection">
+            <!-- Row 1: 配置固有 (Auto = 必要分の高さ) -->
+            <Border Grid.Row="1" Classes="SubtleCard" Padding="8" Margin="0,0,0,10">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="配置固有"
+                               FontWeight="SemiBold"
+                               FontSize="11"
+                               Opacity="0.85" />
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Grid.Column="0"
                                    Classes="FieldLabel"
@@ -104,10 +107,47 @@
                     </Grid>
                     <TextBlock Classes="HintText"
                                FontStyle="Italic"
-                               Text="ヒント: キャンバス上で Shift+ドラッグでも微調整可能（保存ボタンで永続化）" />
+                               Text="ヒント: Shift+ドラッグ / Ctrl+矢印でも微調整可" />
                 </StackPanel>
-            </ScrollViewer>
+            </Border>
 
-        </DockPanel>
+            <!--
+                Row 2: 共有特性 (* = 残りの高さ全て)。CopyPropertiesView 内部の TabItem
+                ScrollViewer がこの確定した高さを基準に動作するため、コンテンツが収まる場合は
+                スクロールバー無し、はみ出す場合のみスクロールバーが出る。
+            -->
+            <Border Grid.Row="2" Classes="SubtleCard" Padding="8">
+                <Grid RowDefinitions="Auto,*">
+                    <TextBlock Grid.Row="0"
+                               Text="共有特性（同バリアントを参照する全配置に反映）"
+                               FontWeight="SemiBold"
+                               FontSize="11"
+                               Opacity="0.85"
+                               Margin="0,0,0,4"
+                               TextWrapping="Wrap" />
+                    <views:CopyPropertiesView Grid.Row="1"
+                                              DataContext="{Binding CopyProperties}"
+                                              ShowSaveBar="False" />
+                </Grid>
+            </Border>
+
+            <!-- Row 3: 分岐ボタン + ステータス -->
+            <StackPanel Grid.Row="3" Spacing="4" Margin="0,8,0,0">
+                <Button HorizontalAlignment="Stretch"
+                        Padding="6,4"
+                        FontSize="11"
+                        Command="{Binding ForkVariantCommand}"
+                        ToolTip.Tip="元バリアントを複製した独立バリアントに切替えます。他の配置には影響しません。">
+                    <TextBlock Text="この配置だけ別バリアントに分岐"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center" />
+                </Button>
+                <TextBlock Text="{Binding StatusMessage}"
+                           Opacity="0.7"
+                           FontSize="10"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+        </Grid>
     </Border>
 </UserControl>

@@ -86,7 +86,9 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
         var fork = new ForkPlacementVariantUseCase(_fx.CopyRepository, _fx.PlacementRepository);
         var inspector = new PlacementInspectorViewModel(
-            offset, fork, _fx.PlacementRepository, _fx.CopyRepository, sharedHistory, _messenger,
+            offset, fork, _fx.PlacementRepository, _fx.CopyRepository,
+            _fx.AssetRepository, _fx.Thumbnails, _fx.Storage,
+            _copyProperties, sharedHistory, _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);
         var updateWeights = new UpdateGridWeightsUseCase(_fx.GridRepository);
         var updateLocks = new UpdateGridLocksUseCase(_fx.GridRepository);

@@ -40,11 +40,19 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         var offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
         var fork = new ForkPlacementVariantUseCase(_fx.CopyRepository, _fx.PlacementRepository);
         _history = new UndoRedoService();
+        var updateCopyForInspector = new UpdateImageCopyUseCase(_fx.CopyRepository);
+        var copyPropertiesForInspector = new CopyPropertiesViewModel(
+            updateCopyForInspector, _history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver,
+            NullLogger<CopyPropertiesViewModel>.Instance);
         var inspector = new PlacementInspectorViewModel(
             offset,
             fork,
             _fx.PlacementRepository,
             _fx.CopyRepository,
+            _fx.AssetRepository,
+            _fx.Thumbnails,
+            _fx.Storage,
+            copyPropertiesForInspector,
             _history,
             _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);
