@@ -16,9 +16,9 @@ using Xunit;
 namespace ViewGrid.Application.Tests.ViewModels;
 
 /// <summary>
-/// MainWindowViewModel のナビゲーション機能（<see cref="NavigateToCopyPropertiesMessage"/>
-/// 受信時の挙動）を検証する。Inspector の「特性を編集 →」コマンドから飛ばすルートと、
-/// 直接 NavigateAsync を呼ぶルートの両方を確認する。
+/// MainWindowViewModel の Undo/Redo + ステータス / ヒント / 未保存バッジを検証する。
+/// 配置ファースト UI 第 2 段階 Stage 4 で準備タブが廃止されたため、
+/// SelectedTabIndex / NavigateAsync / NavigateToCopyPropertiesMessage 関連のテストは撤去された。
 /// </summary>
 public sealed class MainWindowViewModelTests : IAsyncLifetime
 {
@@ -113,40 +113,8 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         await _fx.DisposeAsync();
     }
 
-    [Fact]
-    public async Task NavigateAsync_Switches_To_Preparation_Tab_And_Selects_Asset_And_Copy()
-    {
-        // Arrange: アセットとコピーをシードして、AssetLibrary を読み込み
-        var asset = await _fx.SeedAssetAsync();
-        var copy = await _fx.SeedCopyAsync(asset.Id);
-        await _assetLibrary.LoadAsync();
-        // 配置タブから始まる想定
-        _vm.SelectedTabIndex = MainWindowViewModel.LayoutTabIndex;
-
-        // Act
-        await _vm.NavigateAsync(asset.Id, copy.Id);
-
-        // Assert
-        _vm.SelectedTabIndex.Should().Be(MainWindowViewModel.PreparationTabIndex);
-        _assetLibrary.SelectedAsset.Should().NotBeNull();
-        _assetLibrary.SelectedAsset!.AssetId.Should().Be(asset.Id);
-        _copyList.SelectedCopy.Should().NotBeNull();
-        _copyList.SelectedCopy!.CopyId.Should().Be(copy.Id);
-        _copyList.SelectedCopies.Should().ContainSingle(c => c.CopyId == copy.Id);
-    }
-
-    [Fact]
-    public async Task NavigateAsync_With_Unknown_Asset_Does_Not_Throw_And_Still_Switches_Tab()
-    {
-        // 存在しない AssetId を渡しても例外を投げず、タブだけ切り替わる
-        await _assetLibrary.LoadAsync();
-        _vm.SelectedTabIndex = MainWindowViewModel.LayoutTabIndex;
-
-        await _vm.NavigateAsync(System.Guid.NewGuid(), System.Guid.NewGuid());
-
-        _vm.SelectedTabIndex.Should().Be(MainWindowViewModel.PreparationTabIndex);
-        _assetLibrary.SelectedAsset.Should().BeNull();
-    }
+    // Stage 4 で NavigateAsync / NavigateToCopyPropertiesMessage は撤去された。
+    // 共有特性の編集は配置タブ Inspector の inline embed で完結する。
 
     /// <summary>
     /// グリッドリネームを Undo すると、サイドバー（GridList.Grids）にも旧名が反映されることを確認。
@@ -187,75 +155,9 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         _gridList.Grids[0].Name.Should().Be("old");
     }
 
-    /// <summary>
-    /// Copy 特性の Undo を MainWindow 経由で実行すると、CopyList の VM も DB と同期される。
-    /// CopyPropertiesViewModel.SaveAsync が _source（CopyItemViewModel）に書いた値が
-    /// Undo の DB ロールバックと乖離する問題を解消する。
-    /// CopyName は特性タブの編集対象から外したため、Rotation を編集対象として round-trip を検証する。
-    /// </summary>
-    [Fact]
-    public async Task UndoAsync_Reloads_CopyList_After_Property_Edit()
-    {
-        var asset = await _fx.SeedAssetAsync();
-        var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "name");
-
-        await _assetLibrary.LoadAsync();
-        _assetLibrary.SelectedAsset = _assetLibrary.Assets.Single();
-        // OnAssetLibraryPropertyChanged の自動ロード完了を待つ
-        for (var i = 0; i < 20 && _copyList.Copies.Count == 0; i++)
-            await Task.Delay(50);
-        _copyList.Copies.Should().ContainSingle();
-        var copyItem = _copyList.Copies[0];
-        _copyList.SelectedCopy = copyItem;
-        copyItem.Rotation.Should().Be(Rotation.None);
-
-        // Save 経由で Rotation を更新（特性タブの編集対象）
-        _copyProperties.Rotation = Rotation.Cw90;
-        await _copyProperties.SaveAsync();
-        copyItem.Rotation.Should().Be(Rotation.Cw90);
-
-        // Ctrl+Z で Undo → CopyList の VM も None に戻る（DB ロールバックと同期）
-        await _vm.UndoAsync();
-        for (var i = 0; i < 20 && _copyList.Copies.FirstOrDefault()?.Rotation != Rotation.None; i++)
-            await Task.Delay(50);
-        _copyList.Copies[0].Rotation.Should().Be(Rotation.None);
-    }
-
-    /// <summary>
-    /// 先頭以外のコピーを選択して特性編集 → Save → Undo したとき、
-    /// CopyList の SelectedCopy が「編集していたコピー」のまま維持されること（先頭にジャンプしない）。
-    /// LoadForAssetAsync は SelectedCopy を Copies.FirstOrDefault() に強制リセットするため、
-    /// MainWindowViewModel.RefreshAfterHistoryAsync で復元処理を入れている。
-    /// </summary>
-    [Fact]
-    public async Task UndoAsync_Preserves_SelectedCopy_After_Refresh()
-    {
-        var asset = await _fx.SeedAssetAsync();
-        var copy0 = await _fx.SeedCopyAsync(asset.Id, copyName: "first");
-        var copy1 = await _fx.SeedCopyAsync(asset.Id, copyName: "second");
-
-        await _assetLibrary.LoadAsync();
-        _assetLibrary.SelectedAsset = _assetLibrary.Assets.Single();
-        // 自動ロードを待つ
-        for (var i = 0; i < 20 && _copyList.Copies.Count < 2; i++)
-            await Task.Delay(50);
-        _copyList.Copies.Should().HaveCount(2);
-
-        // 先頭ではない 2 番目のコピーを選択して編集（CopyName は特性タブ対象外なので Rotation で代替）
-        var second = _copyList.Copies.Single(c => c.CopyId == copy1.Id);
-        _copyList.SelectedCopy = second;
-        _copyProperties.Rotation = Rotation.Cw180;
-        await _copyProperties.SaveAsync();
-
-        // Undo → SelectedCopy は second のまま、Rotation は元に戻る
-        await _vm.UndoAsync();
-        for (var i = 0; i < 20 && _copyList.Copies.FirstOrDefault(c => c.CopyId == copy1.Id)?.Rotation != Rotation.None; i++)
-            await Task.Delay(50);
-
-        _copyList.SelectedCopy.Should().NotBeNull();
-        _copyList.SelectedCopy!.CopyId.Should().Be(copy1.Id); // 先頭（copy0）にジャンプしない
-        _copyList.SelectedCopy.Rotation.Should().Be(Rotation.None);
-    }
+    // Stage 4 で「準備タブで Asset 選択 → CopyList 自動ロード → Undo で再同期」の経路は撤去された。
+    // CopyList ベースの Undo 整合性テストは廃止し、Inspector / Placement 経路の Undo round-trip
+    // 検証は PlacementInspectorViewModelTests / GridWorkspaceViewModelTests に集約されている。
 
     /// <summary>
     /// MainWindowViewModel.HistoryEntries が IUndoRedoService.History を反映する。
@@ -465,53 +367,54 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 初期状態（アセット 0 件・準備タブ）では「ドラッグ&ドロップで取り込み」案内が出る。
+    /// アセット 0 件のときは「ドラッグ&ドロップで取り込み」案内が出る（Stage 4 後はタブに依存しない）。
     /// </summary>
     [Fact]
     public void CurrentHints_Empty_Library_Shows_Drop_Hint()
     {
-        _vm.SelectedTabIndex = MainWindowViewModel.PreparationTabIndex;
         _vm.CurrentHints.Should().Contain("ドラッグ");
     }
 
     /// <summary>
-    /// 配置タブに切り替えてグリッドが未選択なら、グリッド作成案内が出る。
+    /// アセットがありグリッドが未選択なら、グリッド作成案内が出る。
     /// </summary>
     [Fact]
-    public void CurrentHints_Layout_Tab_With_No_Grid_Shows_Create_Hint()
+    public async Task CurrentHints_With_Assets_But_No_Grid_Shows_Create_Hint()
     {
-        _vm.SelectedTabIndex = MainWindowViewModel.LayoutTabIndex;
-        _vm.CurrentHints.Should().Contain("新規グリッド");
+        await _fx.SeedAssetAsync();
+        await _assetLibrary.LoadAsync();
+        _vm.CurrentHints.Should().Contain("グリッド");
     }
 
     /// <summary>
-    /// CopyProperties.IsDirty が立つと未保存バッジが表示される（UnsavedSummary が空文字でなくなる）。
+    /// Inspector.IsAnyDirty が立つと未保存バッジが表示される。
+    /// Stage 3 で Inspector 統合の IsAnyDirty (placement + shared) を一本化、
+    /// Stage 4 で MainWindow はこれだけを未保存集約に使う。
     /// </summary>
     [Fact]
-    public void UnsavedSummary_Reflects_CopyProperties_IsDirty()
+    public void UnsavedSummary_Reflects_Inspector_IsAnyDirty()
     {
         _vm.HasUnsavedChanges.Should().BeFalse();
         _vm.UnsavedSummary.Should().BeEmpty();
 
-        _copyProperties.IsDirty = true;
+        _gridWorkspace.Inspector.IsDirty = true;
 
         _vm.HasUnsavedChanges.Should().BeTrue();
-        _vm.UnsavedCount.Should().Be(1);
         _vm.UnsavedSummary.Should().Contain("未保存");
     }
 
     /// <summary>
-    /// CopyProperties / Inspector の両方が IsDirty なら件数 2、Summary に件数表示が含まれる。
+    /// 共有特性 (CopyProperties.IsDirty) が立っても Inspector.IsAnyDirty 経由でバッジに反映される。
     /// </summary>
     [Fact]
-    public void UnsavedSummary_Sums_Both_VMs()
+    public void UnsavedSummary_Reflects_CopyProperties_Through_Inspector()
     {
-        _copyProperties.IsDirty = true;
-        _gridWorkspace.Inspector.IsDirty = true;
+        _vm.HasUnsavedChanges.Should().BeFalse();
 
-        _vm.UnsavedCount.Should().Be(2);
+        _copyProperties.IsDirty = true; // Inspector.CopyProperties と同じ実体
+
         _vm.HasUnsavedChanges.Should().BeTrue();
-        _vm.UnsavedSummary.Should().Contain("2 件");
+        _vm.UnsavedSummary.Should().Contain("未保存");
     }
 
     /// <summary>
@@ -520,33 +423,12 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
     [Fact]
     public void UnsavedSummary_Cleared_When_Dirty_Becomes_False()
     {
-        _copyProperties.IsDirty = true;
+        _gridWorkspace.Inspector.IsDirty = true;
         _vm.HasUnsavedChanges.Should().BeTrue();
 
-        _copyProperties.IsDirty = false;
+        _gridWorkspace.Inspector.IsDirty = false;
 
         _vm.HasUnsavedChanges.Should().BeFalse();
         _vm.UnsavedSummary.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task Send_NavigateMessage_Triggers_Tab_Switch_And_Selection()
-    {
-        // PlacementInspector の「特性を編集 →」が送る経路。
-        // Receive は async void なので、ハンドラ完了を待つために少し sleep する。
-        var asset = await _fx.SeedAssetAsync();
-        var copy = await _fx.SeedCopyAsync(asset.Id);
-        await _assetLibrary.LoadAsync();
-        _vm.SelectedTabIndex = MainWindowViewModel.LayoutTabIndex;
-
-        _messenger.Send(new NavigateToCopyPropertiesMessage(asset.Id, copy.Id));
-
-        // Receive が fire-and-forget なので、最大 1 秒待ってアサート
-        for (var i = 0; i < 20 && _copyList.SelectedCopy?.CopyId != copy.Id; i++)
-            await Task.Delay(50);
-
-        _vm.SelectedTabIndex.Should().Be(MainWindowViewModel.PreparationTabIndex);
-        _copyList.SelectedCopy.Should().NotBeNull();
-        _copyList.SelectedCopy!.CopyId.Should().Be(copy.Id);
     }
 }

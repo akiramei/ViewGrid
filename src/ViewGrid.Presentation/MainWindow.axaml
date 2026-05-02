@@ -104,14 +104,6 @@
                               Command="{Binding RedoCommand}"
                               InputGesture="Ctrl+Y" />
                 </MenuItem>
-                <MenuItem Header="表示">
-                    <MenuItem Header="準備タブ"
-                              InputGesture="Ctrl+1"
-                              Click="OnShowPreparationTabClicked" />
-                    <MenuItem Header="配置タブ"
-                              InputGesture="Ctrl+2"
-                              Click="OnShowLayoutTabClicked" />
-                </MenuItem>
                 <MenuItem Header="ヘルプ">
                     <MenuItem Header="ViewGrid について"
                               Click="OnAboutClicked" />
@@ -178,98 +170,19 @@
             </StackPanel>
         </DockPanel>
 
-        <TabControl Grid.Row="1"
-                    Classes="MainTabs"
-                    SelectedIndex="{Binding SelectedTabIndex}"
-                    Padding="0">
-            <TabItem>
-                <TabItem.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <PathIcon Data="{StaticResource PrepareGeometry}" Width="18" Height="18" />
-                        <TextBlock Text="準備" />
-                    </StackPanel>
-                </TabItem.Header>
-                <!-- 右ペイン幅 380 → 440 で特性編集の窮屈さを緩和。アセット領域は伸縮 -->
-                <Grid ColumnDefinitions="*,440">
-                    <views:AssetLibraryView Grid.Column="0"
-                                            DataContext="{Binding AssetLibrary}" />
-
-                    <Border Grid.Column="1"
-                            BorderBrush="{DynamicResource SystemBaseLowColor}"
-                            BorderThickness="1,0,0,0">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="3*" MinHeight="120" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="4*" MinHeight="200" />
-                            </Grid.RowDefinitions>
-                            <views:CopyListView Grid.Row="0"
-                                                DataContext="{Binding CopyList}" />
-                            <GridSplitter Grid.Row="1"
-                                          Height="4"
-                                          HorizontalAlignment="Stretch"
-                                          ResizeDirection="Rows"
-                                          Background="{DynamicResource SystemBaseLowColor}" />
-                            <!--
-                                Phase 3 C 案: 右ペイン下部を TabControl 化し、「特性編集」と「履歴」を並べる。
-                                履歴 Flyout はツールバーに残しているため、配置タブからも引き続きアクセス可能。
-                                準備タブの常時表示で履歴を見ながら編集できる UX を提供する。
-                            -->
-                            <TabControl Grid.Row="2" Padding="0">
-                                <TabItem Header="特性編集">
-                                    <views:CopyPropertiesView DataContext="{Binding CopyProperties}" />
-                                </TabItem>
-                                <TabItem Header="履歴">
-                                    <Grid RowDefinitions="*,Auto">
-                                        <ListBox Grid.Row="0"
-                                                 ItemsSource="{Binding HistoryEntries}"
-                                                 ItemTemplate="{StaticResource HistoryItemTemplate}"
-                                                 SelectionMode="Single"
-                                                 BorderThickness="0"
-                                                 Background="Transparent"
-                                                 IsVisible="{Binding HasHistory}"
-                                                 PointerReleased="OnHistoryItemClicked" />
-                                        <TextBlock Grid.Row="0"
-                                                   Text="操作履歴はありません"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   Opacity="0.5"
-                                                   IsVisible="{Binding !HasHistory}" />
-                                        <TextBlock Grid.Row="1"
-                                                   Text="hover で範囲を視覚化（赤=Undo / 青=Redo）。クリックでジャンプ。"
-                                                   FontSize="10"
-                                                   Opacity="0.6"
-                                                   Margin="8,4"
-                                                   TextWrapping="Wrap" />
-                                    </Grid>
-                                </TabItem>
-                            </TabControl>
-                        </Grid>
-                    </Border>
-                </Grid>
-            </TabItem>
-
-            <TabItem>
-                <TabItem.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <PathIcon Data="{StaticResource LayoutGeometry}" Width="18" Height="18" />
-                        <TextBlock Text="配置" />
-                    </StackPanel>
-                </TabItem.Header>
-                <!--
-                    配置タブを「上=コンパクトなグリッド切替バー / 下=ワークスペース」の縦 2 段構造へ変更。
-                    旧来の左 300px 縦長グリッド一覧は「複数グリッドを行き来する作業ではない」割に
-                    大きなスペースを占有していたため、ComboBox + 操作ボタンに縮約してその分の幅を
-                    GridWorkspaceView 内部の 3 ペイン（配置元 / キャンバス / プロパティ）へ譲る。
-                -->
-                <Grid RowDefinitions="Auto,*">
-                    <views:GridCanvasListView Grid.Row="0"
-                                              DataContext="{Binding GridList}" />
-                    <views:GridWorkspaceView Grid.Row="1"
-                                             DataContext="{Binding GridWorkspace}" />
-                </Grid>
-            </TabItem>
-        </TabControl>
+        <!--
+            配置ファースト UI 第 2 段階 Stage 4: 準備タブ完全廃止。
+            旧 TabControl (準備 / 配置) を撤去し、配置ワークスペースを直接表示する。
+            画像追加 / バリアント新規・リネーム / 特性編集 はすべて配置タブ内に統合済み
+            （Stage 1〜3）。準備タブにあった「履歴」サブタブはツールバー右の Flyout に集約。
+            上 = コンパクトなグリッド切替バー、下 = ワークスペース 3 ペイン構造を保持。
+        -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,*">
+            <views:GridCanvasListView Grid.Row="0"
+                                      DataContext="{Binding GridList}" />
+            <views:GridWorkspaceView Grid.Row="1"
+                                     DataContext="{Binding GridWorkspace}" />
+        </Grid>
 
         <!--
             永続ヒントバー（Row 2）: 現在のコンテキスト（タブ + 主な選択）に応じた操作ヒントを

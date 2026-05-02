@@ -45,20 +45,6 @@ public partial class MainWindow : Window
     /// <summary>「ファイル → 終了」: Window を閉じる。</summary>
     private void OnExitClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Close();
 
-    /// <summary>「表示 → 準備タブ」: SelectedTabIndex=0 に切替（Ctrl+1 と同じ）。</summary>
-    private void OnShowPreparationTabClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is MainWindowViewModel vm)
-            vm.SelectedTabIndex = MainWindowViewModel.PreparationTabIndex;
-    }
-
-    /// <summary>「表示 → 配置タブ」: SelectedTabIndex=1 に切替（Ctrl+2 と同じ）。</summary>
-    private void OnShowLayoutTabClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is MainWindowViewModel vm)
-            vm.SelectedTabIndex = MainWindowViewModel.LayoutTabIndex;
-    }
-
     /// <summary>「ヘルプ → ViewGrid について」: 簡易な情報ダイアログ。</summary>
     private async void OnAboutClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {

@@ -17,9 +17,8 @@ public sealed partial class PlacementItemViewModel : ObservableObject
     public Guid CopyId { get; }
 
     /// <summary>
-    /// この配置が参照する論理コピーの基となるアセット ID。Inspector から
-    /// 「特性を編集 →」で <see cref="ViewGrid.Application.Messages.NavigateToCopyPropertiesMessage"/>
-    /// を送る際に必要となる（受信側で準備タブのアセット選択を伴うため）。
+    /// この配置が参照する論理コピーの基となるアセット ID。Inspector embed の
+    /// CopyPropertiesView 用 CopyItemViewModel 構築時に asset 情報の取得に使う。
     /// </summary>
     public Guid AssetId { get; }
 

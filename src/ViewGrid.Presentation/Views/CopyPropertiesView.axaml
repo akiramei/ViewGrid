@@ -99,11 +99,13 @@
                 「トリミング」は AutoCrop 全体（サムネプレビューを必要なときに広く使える）。
                 IsDirty 状態はタブ間で共有、保存/リセットは下部共通なので両タブを跨いで一括編集可能。
             -->
-            <TabControl>
+            <TabControl HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch">
                 <TabItem Header="特性">
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                  AllowAutoHide="False"
-                                  Padding="0,4,4,8">
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  AllowAutoHide="True"
+                                  Padding="0,6,12,16">
                         <StackPanel Classes="FormGroup">
                             <!--
                                 バリアント名の編集はリスト上のインラインリネーム（F2 / ダブルクリック → Enter）
@@ -184,8 +186,9 @@
                 -->
                 <TabItem Header="トリミング">
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                  AllowAutoHide="False"
-                                  Padding="0,4,4,8">
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  AllowAutoHide="True"
+                                  Padding="0,6,12,16">
                         <StackPanel Classes="FormGroup">
                             <!-- ラジオ 3 択（GroupName で排他化、VM 側でも排他連動） -->
                             <StackPanel Classes="FormSection">

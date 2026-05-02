@@ -18,18 +18,16 @@ using ViewGrid.Core.UseCases;
 namespace ViewGrid.Application.ViewModels;
 
 /// <summary>
-/// 配置タブで選択された <see cref="PlacementItemViewModel"/> の<b>配置固有プロパティ</b>を編集する。
+/// 配置タブで選択された <see cref="PlacementItemViewModel"/> の編集を司る。
 /// <para>
-/// 配置固有プロパティは現状 <see cref="PlacementItemViewModel.PixelOffsetX"/> /
-/// <see cref="PlacementItemViewModel.PixelOffsetY"/> のみ。共有特性（Rotation/Flip/Scaling/
-/// Trim/Align/Occupy）は <see cref="ImageCopy"/> 単位で持つため、
-/// 「特性を編集 →」コマンドで <see cref="NavigateToCopyPropertiesMessage"/> を送出し、
-/// 準備タブの <c>CopyPropertiesView</c> に編集を委譲する。
+/// <b>配置固有</b>: <see cref="PlacementItemViewModel.PixelOffsetX"/> /
+/// <see cref="PlacementItemViewModel.PixelOffsetY"/> をこの VM 自身で扱う。
+/// <b>共有特性</b>（Rotation/Flip/Scaling/Trim/Align/Occupy）は <see cref="ImageCopy"/> 単位で
+/// 持つため、Stage 3 以降は <see cref="CopyProperties"/> サブ VM (CopyPropertiesViewModel) を
+/// inline embed で同居させ、attach 時に当該 placement の variant を渡す。
 /// </para>
 /// <para>
-/// この設計により、配置タブの Inspector と準備タブの CopyProperties で共有特性を
-/// 二重に編集できる従来構造（共有バナーが必要だった原因）を解消し、
-/// Inspector を「配置固有の微調整」だけの最小構成に絞れる。
+/// 統一保存 (<see cref="SaveAllAsync"/>) で配置固有 + 共有特性を 1 ボタン操作で永続化する。
 /// </para>
 /// </summary>
 public sealed partial class PlacementInspectorViewModel : ObservableObject
