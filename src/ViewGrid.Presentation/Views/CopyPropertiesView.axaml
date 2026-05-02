@@ -101,7 +101,9 @@
             -->
             <TabControl>
                 <TabItem Header="特性">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,0,8">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  AllowAutoHide="False"
+                                  Padding="0,4,4,8">
                         <StackPanel Classes="FormGroup">
                             <!--
                                 バリアント名の編集はリスト上のインラインリネーム（F2 / ダブルクリック → Enter）
@@ -181,7 +183,9 @@
                     どちらの場合も適用順序は「元画像 → Crop → 回転・反転 → ScalingMode/Alignment」。
                 -->
                 <TabItem Header="トリミング">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,0,8">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  AllowAutoHide="False"
+                                  Padding="0,4,4,8">
                         <StackPanel Classes="FormGroup">
                             <!-- ラジオ 3 択（GroupName で排他化、VM 側でも排他連動） -->
                             <StackPanel Classes="FormSection">
