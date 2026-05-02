@@ -50,6 +50,58 @@ public partial class GridCanvasView : UserControl
     // 配置済み Border → 対応する placement VM。SizeChanged 時に PixelOffset の換算を再適用する。
     private readonly Dictionary<Border, PlacementItemViewModel> _placementBorders = new();
 
+    // ---------- 焼き込み済みサムネ Bitmap キャッシュ（LoadAndPreRotateBitmap） ----------
+    // Rebuild の都度 disk read + Skia decode/encode が走るのを避けるため、
+    // (ThumbnailPath, Rotation, FlipX, FlipY, Crop) でキャッシュ。LRU 上限 64 件、
+    // evict 時に Bitmap.Dispose() で確実にメモリ解放する。
+    private const int BitmapCacheCapacity = 64;
+
+    private readonly LinkedList<KeyValuePair<BitmapCacheKey, Bitmap>> _bitmapCacheLru = new();
+    private readonly Dictionary<BitmapCacheKey, LinkedListNode<KeyValuePair<BitmapCacheKey, Bitmap>>> _bitmapCacheIndex = new();
+
+    private readonly record struct BitmapCacheKey(
+        string Path,
+        ViewGrid.Core.Entities.Rotation Rotation,
+        bool FlipX,
+        bool FlipY,
+        double CropX,
+        double CropY,
+        double CropW,
+        double CropH);
+
+    private Bitmap GetOrCreatePreRotatedBitmap(
+        string thumbnailPath,
+        ViewGrid.Core.Entities.Rotation rotation,
+        bool flipX, bool flipY,
+        ViewGrid.Core.Entities.CropFraction? cropFraction)
+    {
+        // null の Crop は (0,0,1,1) と同じ「変換なし」扱いで正規化（キーが一意になる）。
+        var c = cropFraction ?? new ViewGrid.Core.Entities.CropFraction(0, 0, 1, 1);
+        var key = new BitmapCacheKey(thumbnailPath, rotation, flipX, flipY, c.X, c.Y, c.Width, c.Height);
+
+        if (_bitmapCacheIndex.TryGetValue(key, out var node))
+        {
+            // LRU 末尾へ昇格
+            _bitmapCacheLru.Remove(node);
+            _bitmapCacheLru.AddLast(node);
+            return node.Value.Value;
+        }
+
+        var bitmap = LoadAndPreRotateBitmap(thumbnailPath, rotation, flipX, flipY, cropFraction);
+        var newNode = _bitmapCacheLru.AddLast(new KeyValuePair<BitmapCacheKey, Bitmap>(key, bitmap));
+        _bitmapCacheIndex[key] = newNode;
+
+        // 上限超え分は最古を evict + Dispose
+        while (_bitmapCacheLru.Count > BitmapCacheCapacity)
+        {
+            var oldest = _bitmapCacheLru.First!;
+            _bitmapCacheLru.RemoveFirst();
+            _bitmapCacheIndex.Remove(oldest.Value.Key);
+            oldest.Value.Value.Dispose();
+        }
+        return bitmap;
+    }
+
     public GridCanvasView()
     {
         InitializeComponent();
@@ -131,10 +183,23 @@ public partial class GridCanvasView : UserControl
 
         if (e.PropertyName == nameof(PlacementItemViewModel.Position))
         {
-            // Move/Swap で Position が変わった: Grid.Row/Column の差し替えが必要なので Rebuild。
-            // SelectedPlacement が同インスタンスのまま Position だけ動くケース
-            // （選択中の配置を別セルへドラッグ）でも確実に再描画される。
-            Rebuild();
+            // Move/Swap で Position が変わった: 占有サイズ・回転・サムネは不変なので
+            // Grid.Row/Column の差し替えだけで View が反応する。Border 自体の再構築は
+            // 不要 → LoadAndPreRotateBitmap (disk read + Skia decode/encode) を完全に
+            // スキップでき、Swap で 2 回連続呼ばれても軽量。
+            // 占有サイズが変わるケース（共有特性編集）は Rebuild() 経路（CopyLibraryChangedMessage）
+            // で別途処理されるため、ここでは Position のみに着目した最小更新で十分。
+            foreach (var (border, vm) in _placementBorders)
+            {
+                if (vm == placement)
+                {
+                    Grid.SetRow(border, placement.GridY);
+                    Grid.SetColumn(border, placement.GridX);
+                    Grid.SetRowSpan(border, Math.Max(1, placement.OccupyHeight));
+                    Grid.SetColumnSpan(border, Math.Max(1, placement.OccupyWidth));
+                    return;
+                }
+            }
         }
     }
 
@@ -671,7 +736,7 @@ public partial class GridCanvasView : UserControl
                 // ScalingMode.None については explicit Width/Height + Stretch.Uniform で
                 // 視覚サイズを source × displayScale DIPs に固定する（後述）。
                 var grid = _vm?.CurrentGrid;
-                Bitmap bitmap = LoadAndPreRotateBitmap(
+                Bitmap bitmap = GetOrCreatePreRotatedBitmap(
                     placement.ThumbnailPath, placement.Rotation, placement.FlipX, placement.FlipY,
                     placement.EffectiveCropFraction);
                 var cropFractionW = placement.EffectiveCropFraction?.Width ?? 1.0;
