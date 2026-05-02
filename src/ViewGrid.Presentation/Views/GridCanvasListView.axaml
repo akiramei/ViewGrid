@@ -42,12 +42,14 @@
                     <!--
                         名前 + 行 + 列 + 幅 + 高さ を 1 行に詰める。各フィールドは固定幅で
                         値が確実に表示されるサイズを保証:
-                        ・名前: 240px（30 文字程度の見出しに十分。これ以上広げる必要性が薄い）
-                        ・行 / 列: 80px（最大値 20 = 2 桁 + スピナーボタン）
-                        ・幅 / 高さ: 130px（最大値 8192 = 4 桁 + スピナーボタン）
-                        ・末尾の * 列は余白（ウィンドウ幅が広いとき右に空く）
+                        ・名前: 240px（30 文字程度の見出しに十分）
+                        ・行 / 列: 110px（最大値 20 = 2 桁 + ▲▼ スピナーボタン分の幅）
+                          NumericUpDown はスピナー部分が 40px 前後使うため、2 桁を確実に
+                          見せるには 110px 必要（80px だと数値部分が 0 近くまで潰れる）
+                        ・幅 / 高さ: 150px（最大値 8192 = 4 桁 + スピナーボタン）
+                        ・末尾の * 列は余白（ウィンドウ幅に依存しない安定レイアウト）
                     -->
-                    <Grid ColumnDefinitions="240,80,80,130,130,*" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="240,110,110,150,150,*" ColumnSpacing="8">
                         <StackPanel Grid.Column="0" Classes="FormSection">
                             <TextBlock Classes="FieldLabel" Text="名前" />
                             <TextBox Text="{Binding DraftName}" />
