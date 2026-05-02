@@ -130,14 +130,38 @@
                     </Border>
                 </StackPanel>
 
-                <ListBox x:Name="CandidateList"
-                         Grid.Row="1"
-                         ItemsSource="{Binding Candidates}"
-                         SelectedItem="{Binding SelectedCandidate}"
-                         DoubleTapped="OnCandidateListDoubleTapped"
-                         KeyDown="OnCandidateListKeyDown"
-                         Background="Transparent">
-                    <ListBox.ItemTemplate>
+                <!--
+                    バリアント候補リストを Asset でグループ化。各 Asset がグループヘッダ、
+                    その配下に CopyCandidateViewModel が並ぶ 2 階層 TreeView。
+                    SelectedItem は CopyCandidateViewModel のみ受け付ける（Group ヘッダクリック時は
+                    型不一致で SelectedCandidate は変更されない）。
+                    既存の D&D / インラインリネーム / F2 / DoubleTapped は CodeBehind が
+                    TreeViewItem.DataContext の型を見て CopyCandidateViewModel のときだけ反応する。
+                -->
+                <TreeView x:Name="CandidateTree"
+                          Grid.Row="1"
+                          ItemsSource="{Binding CandidateGroups}"
+                          SelectedItem="{Binding SelectedCandidate}"
+                          DoubleTapped="OnCandidateListDoubleTapped"
+                          KeyDown="OnCandidateListKeyDown"
+                          Background="Transparent">
+                    <TreeView.ItemTemplate>
+                        <TreeDataTemplate DataType="vm:CandidateGroupViewModel"
+                                          ItemsSource="{Binding Variants}">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,2" ColumnSpacing="6">
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding AssetFilename}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding SummaryLine}"
+                                           FontSize="11"
+                                           Opacity="0.6" />
+                            </Grid>
+                        </TreeDataTemplate>
+                    </TreeView.ItemTemplate>
+                    <TreeView.DataTemplates>
                         <DataTemplate DataType="vm:CopyCandidateViewModel">
                             <Grid ColumnDefinitions="64,*" Margin="2,4" ColumnSpacing="10">
                                 <Border Grid.Column="0"
@@ -148,14 +172,10 @@
                                            Stretch="UniformToFill" />
                                 </Border>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                    <TextBlock Text="{Binding AssetFilename}"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               TextTrimming="CharacterEllipsis" />
                                     <!-- 通常表示: TextBlock。F2 / ダブルクリックで編集モードに切替 -->
                                     <TextBlock Text="{Binding CopyDisplayName}"
-                                               FontSize="11"
-                                               Opacity="0.75"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
                                                TextTrimming="CharacterEllipsis"
                                                IsVisible="{Binding !IsEditing}" />
                                     <!--
@@ -166,7 +186,7 @@
                                         Esc でキャンセル。
                                     -->
                                     <TextBox Text="{Binding EditingName, Mode=TwoWay}"
-                                             FontSize="11"
+                                             FontSize="12"
                                              IsVisible="{Binding IsEditing}"
                                              PlaceholderText="（空欄で「既定」表示）"
                                              controls:FocusOnVisible.IsEnabled="True"
@@ -179,8 +199,8 @@
                                 </StackPanel>
                             </Grid>
                         </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                    </TreeView.DataTemplates>
+                </TreeView>
             </Grid>
         </Border>
 

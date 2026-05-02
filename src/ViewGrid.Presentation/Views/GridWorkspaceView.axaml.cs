@@ -19,15 +19,15 @@ public partial class GridWorkspaceView : UserControl
     public GridWorkspaceView()
     {
         InitializeComponent();
-        // ListBox 配下のアイテムから発生するイベントをトンネルでフックする
-        CandidateList.AddHandler(PointerPressedEvent, OnCandidatePointerPressed, RoutingStrategies.Tunnel);
-        CandidateList.AddHandler(PointerMovedEvent, OnCandidatePointerMoved, RoutingStrategies.Tunnel);
-        CandidateList.AddHandler(PointerReleasedEvent, OnCandidatePointerReleased, RoutingStrategies.Tunnel);
+        // TreeView 配下のアイテムから発生するイベントをトンネルでフックする
+        CandidateTree.AddHandler(PointerPressedEvent, OnCandidatePointerPressed, RoutingStrategies.Tunnel);
+        CandidateTree.AddHandler(PointerMovedEvent, OnCandidatePointerMoved, RoutingStrategies.Tunnel);
+        CandidateTree.AddHandler(PointerReleasedEvent, OnCandidatePointerReleased, RoutingStrategies.Tunnel);
     }
 
     private void OnCandidatePointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!e.GetCurrentPoint(CandidateList).Properties.IsLeftButtonPressed)
+        if (!e.GetCurrentPoint(CandidateTree).Properties.IsLeftButtonPressed)
             return;
 
         var item = FindCandidateItem(e.Source);
@@ -38,7 +38,7 @@ public partial class GridWorkspaceView : UserControl
         // 誤ってドラッグ操作と解釈しないため）
         if (item.IsEditing) return;
 
-        _pressOrigin = e.GetPosition(CandidateList);
+        _pressOrigin = e.GetPosition(CandidateTree);
         _pressItem = item;
         _pressEvent = e;
     }
@@ -48,7 +48,7 @@ public partial class GridWorkspaceView : UserControl
         if (_pressOrigin is null || _pressItem is null || _pressEvent is null)
             return;
 
-        var current = e.GetPosition(CandidateList);
+        var current = e.GetPosition(CandidateTree);
         var dx = Math.Abs(current.X - _pressOrigin.Value.X);
         var dy = Math.Abs(current.Y - _pressOrigin.Value.Y);
         if (dx < DragThreshold && dy < DragThreshold)
@@ -110,16 +110,21 @@ public partial class GridWorkspaceView : UserControl
         }
     }
 
+    /// <summary>
+    /// TreeView 内の任意 Visual から、最も内側の TreeViewItem を遡って
+    /// その DataContext が <see cref="CopyCandidateViewModel"/> のときだけ返す。
+    /// グループヘッダ（<see cref="CandidateGroupViewModel"/>）配下では null を返し、
+    /// D&D / インラインリネームの起動を抑止する。
+    /// </summary>
     private static CopyCandidateViewModel? FindCandidateItem(object? source)
     {
         if (source is not Visual visual)
             return null;
 
-        // ListBoxItem を遡って DataContext から候補 VM を取得
         var current = visual;
         while (current is not null)
         {
-            if (current is ListBoxItem lbi && lbi.DataContext is CopyCandidateViewModel vm)
+            if (current is TreeViewItem tvi && tvi.DataContext is CopyCandidateViewModel vm)
                 return vm;
             current = current.GetVisualParent();
         }
@@ -130,20 +135,14 @@ public partial class GridWorkspaceView : UserControl
 
     /// <summary>
     /// ダブルクリックでインラインリネーム編集を開始する（CopyListView と同パターン）。
-    /// <para>
-    /// 既に編集中の場合は no-op。編集中 TextBox 内でユーザーがテキスト選択のために
-    /// ダブルクリックすると本ハンドラまでイベントがバブルアップして
-    /// <see cref="GridWorkspaceViewModel.BeginEditCandidate"/> を再度呼び、
-    /// <see cref="CopyCandidateViewModel.EditingName"/> が保存済み <c>CopyName</c> に
-    /// リセットされる（= 入力中のリネーム文字が消える）回帰を防ぐ。
-    /// </para>
+    /// グループヘッダ上のダブルクリックは展開/折り畳みの標準動作に任せて no-op。
     /// </summary>
     private void OnCandidateListDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (DataContext is not GridWorkspaceViewModel vm) return;
         if (e.Source is not Control src) return;
 
-        var item = src as ListBoxItem ?? src.FindAncestorOfType<ListBoxItem>();
+        var item = src as TreeViewItem ?? src.FindAncestorOfType<TreeViewItem>();
         if (item?.DataContext is not CopyCandidateViewModel candidate) return;
         if (candidate.IsEditing) return;
 

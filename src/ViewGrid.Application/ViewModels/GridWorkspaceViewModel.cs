@@ -100,6 +100,14 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     public ObservableCollection<PlacementItemViewModel> Placements { get; } = [];
     public ObservableCollection<CopyCandidateViewModel> Candidates { get; } = [];
 
+    /// <summary>
+    /// <see cref="Candidates"/> を Asset 単位でまとめたグループ表示用コレクション。
+    /// View 側は TreeView の <c>ItemsSource</c> としてこの collection を使う。
+    /// <see cref="LoadCandidatesAsync"/> および <see cref="DeleteSelectedCandidateAsync"/> 等の
+    /// 個別操作の中で Candidates と二重管理される（Candidates は VM 内ロジック互換のため残置）。
+    /// </summary>
+    public ObservableCollection<CandidateGroupViewModel> CandidateGroups { get; } = [];
+
     public bool HasGrid => CurrentGrid is not null;
 
     /// <summary>
@@ -287,11 +295,34 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             Candidates.Add(new CopyCandidateViewModel(copy, asset, thumb));
         }
 
+        RebuildCandidateGroups();
+
         if (SelectedCandidate is not null && !Candidates.Any(c => c.CopyId == SelectedCandidate.CopyId))
             SelectedCandidate = null;
         SelectedCandidate ??= Candidates.FirstOrDefault();
 
         LogCandidatesLoaded(_logger, Candidates.Count);
+    }
+
+    /// <summary>
+    /// <see cref="Candidates"/> から <see cref="CandidateGroups"/> を再構築する。
+    /// アセットごとにまとめ、グループ内のバリアントは <see cref="Candidates"/> での出現順を保つ
+    /// （DB 側の <see cref="IImageCopyRepository.FindAllAsync"/> 順を踏襲）。
+    /// </summary>
+    private void RebuildCandidateGroups()
+    {
+        CandidateGroups.Clear();
+        var groupByAsset = new Dictionary<Guid, CandidateGroupViewModel>();
+        foreach (var candidate in Candidates)
+        {
+            if (!groupByAsset.TryGetValue(candidate.AssetId, out var group))
+            {
+                group = new CandidateGroupViewModel(candidate.AssetId, candidate.AssetFilename);
+                groupByAsset[candidate.AssetId] = group;
+                CandidateGroups.Add(group);
+            }
+            group.Variants.Add(candidate);
+        }
     }
 
     private async Task LoadPlacementsAsync(Guid gridId, CancellationToken ct)
@@ -944,6 +975,14 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
             var label = target.CopyDisplayName;
             Candidates.Remove(target);
+            // CandidateGroups からも対応 Variant を除去。グループが空になったらグループごと削除。
+            var group = CandidateGroups.FirstOrDefault(g => g.AssetId == target.AssetId);
+            if (group is not null)
+            {
+                group.Variants.Remove(target);
+                if (group.Variants.Count == 0)
+                    CandidateGroups.Remove(group);
+            }
             SelectedCandidate = Candidates.FirstOrDefault();
 
             StatusMessage = $"「{label}」を削除しました。";

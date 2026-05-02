@@ -471,4 +471,95 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         var reloaded = await _fx.CopyRepository.FindByIdAsync(copy.Id);
         reloaded!.CopyName.Should().Be("v1");
     }
+
+    // ─── CandidateGroups: バリアント候補リストを Asset でグループ化 ───
+
+    /// <summary>1 アセット 2 バリアント → 1 グループ + 2 Variants。</summary>
+    [Fact]
+    public async Task CandidateGroups_Single_Asset_Multiple_Variants_Creates_One_Group()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "v1");
+        await _fx.SeedCopyAsync(asset.Id, copyName: "v2");
+
+        await _vm.ReloadFromMessageAsyncForTests();
+
+        _vm.CandidateGroups.Should().HaveCount(1);
+        var group = _vm.CandidateGroups.Single();
+        group.AssetId.Should().Be(asset.Id);
+        group.Variants.Should().HaveCount(2);
+        group.SummaryLine.Should().Contain("2");
+    }
+
+    /// <summary>2 アセット各 1 バリアント → 2 グループ各 1 Variants（出現順は Candidates 順を踏襲）。</summary>
+    [Fact]
+    public async Task CandidateGroups_Multiple_Assets_Create_Separate_Groups()
+    {
+        var asset1 = await _fx.SeedAssetAsync(
+            fileHash: "hash000000000000000000000000000000000000000000000000000000000001");
+        var asset2 = await _fx.SeedAssetAsync(
+            fileHash: "hash000000000000000000000000000000000000000000000000000000000002");
+        await _fx.SeedCopyAsync(asset1.Id, copyName: "a1");
+        await _fx.SeedCopyAsync(asset2.Id, copyName: "b1");
+
+        await _vm.ReloadFromMessageAsyncForTests();
+
+        _vm.CandidateGroups.Should().HaveCount(2);
+        _vm.CandidateGroups.Should().OnlyContain(g => g.Variants.Count == 1);
+        _vm.CandidateGroups.Select(g => g.AssetId).Should().BeEquivalentTo(new[] { asset1.Id, asset2.Id });
+    }
+
+    /// <summary>最後のバリアントを削除するとグループ自体も CandidateGroups から消える。</summary>
+    [Fact]
+    public async Task DeleteSelectedCandidate_Removes_Group_When_Last_Variant_Removed()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "only");
+        await _vm.ReloadFromMessageAsyncForTests();
+        _vm.SelectedCandidate = _vm.Candidates.Single();
+        _vm.CandidateGroups.Should().HaveCount(1);
+
+        await _vm.DeleteSelectedCandidateAsync();
+
+        _vm.Candidates.Should().BeEmpty();
+        _vm.CandidateGroups.Should().BeEmpty();
+    }
+
+    /// <summary>同アセット内の 1 バリアントを削除しても、もう 1 つあればグループは残る。</summary>
+    [Fact]
+    public async Task DeleteSelectedCandidate_Keeps_Group_When_Other_Variants_Remain()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "keep");
+        var c2 = await _fx.SeedCopyAsync(asset.Id, copyName: "remove");
+        await _vm.ReloadFromMessageAsyncForTests();
+        _vm.SelectedCandidate = _vm.Candidates.First(c => c.CopyId == c2.Id);
+
+        await _vm.DeleteSelectedCandidateAsync();
+
+        _vm.CandidateGroups.Should().HaveCount(1);
+        _vm.CandidateGroups.Single().Variants.Should().HaveCount(1);
+        _vm.CandidateGroups.Single().Variants.Single().CopyDisplayName.Should().Be("keep");
+    }
+
+    /// <summary>
+    /// 新規バリアント作成は ReloadFromMessage 経由で CandidateGroups も再構築されるため、
+    /// 既存アセットへの追加ではグループ件数が増えず Variants が 1 → 2 に増える。
+    /// </summary>
+    [Fact]
+    public async Task CommitCreateVariant_Adds_To_Existing_Group()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "base");
+        await _vm.ReloadFromMessageAsyncForTests();
+        _vm.SelectedCandidate = _vm.Candidates.Single();
+        _vm.CandidateGroups.Should().HaveCount(1);
+
+        _vm.BeginCreateVariant();
+        _vm.DraftVariantName = "派生";
+        await _vm.CommitCreateVariantAsync();
+
+        _vm.CandidateGroups.Should().HaveCount(1);
+        _vm.CandidateGroups.Single().Variants.Should().HaveCount(2);
+    }
 }
