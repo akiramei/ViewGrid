@@ -17,14 +17,22 @@
         DragDrop.AllowDrop="True">
 
     <!--
-        Window レベル KeyBinding。
-        Undo/Redo: Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z
-        タブ切替: Ctrl+1（準備）/ Ctrl+2（配置）— P8 のショートカット拡充
+        Window レベル KeyBinding。MenuItem.InputGesture は表示ヒントのみで実際のキー入力には
+        反応しないため（Avalonia 12 既定）、KeyBinding として明示的に登録する必要がある。
+        Undo/Redo:        Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z
+        画像追加:         Ctrl+O
+        新規バリアント:   Ctrl+N（配置タブ専用、SelectedCandidate 必須）
+        PNG エクスポート: Ctrl+E（CurrentGrid 必須）
+
+        ※ タブ切替 (Ctrl+1/2) は Stage 4 で TabControl 撤去のため不要。
     -->
     <Window.KeyBindings>
         <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
         <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
         <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}" />
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding AssetLibrary.PickFilesAndImportCommand}" />
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding GridWorkspace.BeginCreateVariantCommand}" />
+        <KeyBinding Gesture="Ctrl+E" Command="{Binding GridWorkspace.ExportToPngCommand}" />
     </Window.KeyBindings>
 
     <Window.Resources>
@@ -91,6 +99,14 @@
                               InputGesture="Ctrl+O"
                               Command="{Binding AssetLibrary.PickFilesAndImportCommand}"
                               ToolTip.Tip="ファイルダイアログから画像を取り込みます。ドラッグ&amp;ドロップでも追加できます。" />
+                    <MenuItem Header="新規バリアント..."
+                              InputGesture="Ctrl+N"
+                              Command="{Binding GridWorkspace.BeginCreateVariantCommand}"
+                              ToolTip.Tip="選択中の画像から新しいバリアントを作成します（左ペインで画像を選んでください）。" />
+                    <MenuItem Header="PNG として保存..."
+                              InputGesture="Ctrl+E"
+                              Command="{Binding GridWorkspace.ExportToPngCommand}"
+                              ToolTip.Tip="現在のグリッドを PNG 画像として書き出します。" />
                     <Separator />
                     <MenuItem Header="終了"
                               InputGesture="Alt+F4"
