@@ -569,10 +569,12 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 return false;
             }
 
-            await ReloadPlacementsAsync(grid.GridId, ct);
-            SelectedPlacement = command.CreatedPlacementId is { } pid
-                ? Placements.FirstOrDefault(p => p.PlacementId == pid)
+            // 局所追加: 新規 1 件だけ取得して Placements に Add する。
+            // 全件再ロードは不要（既存配置は何も変わらない）。
+            var added = command.CreatedPlacementId is { } pid
+                ? await AppendPlacementToViewAsync(pid, ct)
                 : null;
+            SelectedPlacement = added;
             StatusMessage = $"({position.X},{position.Y}) に配置しました。";
             return true;
         }
@@ -607,11 +609,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 return;
             }
 
-            // 反映: VM 側のリストにアイテムを追加（再ロードで一括更新する）
-            await ReloadPlacementsAsync(grid.GridId, ct);
-            SelectedPlacement = command.CreatedPlacementId is { } pid
-                ? Placements.FirstOrDefault(p => p.PlacementId == pid)
+            // 局所追加: 新規 1 件のみ取得して Placements に Add する。
+            var added = command.CreatedPlacementId is { } pid
+                ? await AppendPlacementToViewAsync(pid, ct)
                 : null;
+            SelectedPlacement = added;
             StatusMessage = $"({position.Value.X},{position.Value.Y}) に配置しました。";
         }
         finally { IsBusy = false; }
@@ -656,6 +658,37 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         // 差分更新により Clear は不要（LoadPlacementsAsync が消えた placement を Remove する）。
         // SelectedPlacement の参照同一性も維持される。
         await LoadPlacementsAsync(gridId, ct);
+    }
+
+    /// <summary>
+    /// 新規配置 1 件だけを取得して <see cref="Placements"/> に Add する局所最適化版。
+    /// 既存配置への影響がないケース（PlaceCopyAtAsync / PlaceSelectedToFirstFreeCellAsync）で
+    /// 全件再ロード（DB 全件 SELECT + 既存全インスタンスへの代入）を回避する。
+    /// </summary>
+    private async Task<PlacementItemViewModel?> AppendPlacementToViewAsync(Guid placementId, CancellationToken ct)
+    {
+        var p = await _placementRepository.FindByIdAsync(placementId, ct);
+        if (p is null) return null;
+        var copy = await _copyRepository.FindByIdAsync(p.CopyId, ct);
+        if (copy is null) return null;
+        var asset = await _assetRepository.FindByIdAsync(copy.AssetId, ct);
+        if (asset is null) return null;
+
+        var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
+        var item = new PlacementItemViewModel(p, copy, asset, thumb);
+
+        try
+        {
+            item.EffectiveCropFraction = await _cropResolver.ResolveAsync(copy, asset, ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch
+        {
+            item.EffectiveCropFraction = null;
+        }
+
+        Placements.Add(item);
+        return item;
     }
 
     /// <summary>
