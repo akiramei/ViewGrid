@@ -52,42 +52,21 @@
                             ToolTip.Tip="ファイルから画像を取り込みます（ドラッグ&amp;ドロップでも追加可）" />
                     <TextBlock Classes="SectionHeader"
                                Text="配置元（バリアント）" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="配置"
-                                Command="{Binding PlaceSelectedToFirstFreeCellCommand}"
-                                IsEnabled="{Binding SelectedCandidate, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                Classes="accent" />
-                        <Button x:Name="PreviewButton"
-                                Content="プレビュー"
-                                Click="OnPreviewClicked"
-                                IsEnabled="{Binding HasGrid}" />
-                        <Button Content="PNG 出力"
-                                Command="{Binding ExportToPngCommand}"
-                                IsEnabled="{Binding HasGrid}" />
-                    </StackPanel>
-                    <StackPanel Classes="FormSection">
-                        <TextBlock Classes="FieldLabel" Text="トリム（プレビュー / PNG 出力共通）" />
-                        <ComboBox ItemsSource="{Binding TrimModeOptions}"
-                                  SelectedItem="{Binding SelectedTrimMode}"
-                                  HorizontalAlignment="Stretch"
-                                  ToolTip.Tip="プレビューと PNG 出力で適用">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Converter={StaticResource TrimModeLabel}}" />
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                    </StackPanel>
-                    <Separator />
 
                     <!--
-                        配置ファースト UI 第 2 段階 (Stage 2): バリアント新規 / リネーム / 削除 を
-                        配置タブから直接できるように。新規ボタンは「現在選択中の候補のアセット」を起点とする。
-                        命名規則は CopyListView の新規作成フライアウトと揃え、空欄 → 自動採番。
+                        操作対象（バリアント / グリッド）でグループ分けする原則に従い、
+                        「配置」「新規バリアント」「削除」をバリアント操作グループにまとめる。
+                        プレビュー / PNG 出力 / トリムはグリッド全体への操作なので
+                        中央キャンバス上ヘッダへ移動済み。
                         F2 / ダブルクリックでインラインリネーム、Delete キーは ListBox 上で扱う。
                     -->
                     <StackPanel Orientation="Horizontal" Spacing="8"
                                 IsVisible="{Binding !IsCreatingVariant}">
+                        <Button Content="配置"
+                                Command="{Binding PlaceSelectedToFirstFreeCellCommand}"
+                                IsEnabled="{Binding SelectedCandidate, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                Classes="accent"
+                                ToolTip.Tip="選択中のバリアントを最初の空きセルに配置します" />
                         <Button Command="{Binding BeginCreateVariantCommand}"
                                 ToolTip.Tip="選択中バリアントと同じアセットから新規バリアントを作成">
                             <StackPanel Classes="IconButtonContent">
@@ -212,19 +191,51 @@
             準備タブ (AssetLibraryView) の空状態と同じ視覚配置を保つ。
         -->
         <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
+            <!--
+                グリッド全体への操作（プレビュー / PNG 出力 / トリム設定）を上ヘッダの右側に集約。
+                これらは「アクティブグリッドのレンダリング」が対象なので、バリアント操作（左ペイン）と
+                空間的に分離する。トリム ComboBox は MinWidth で必要十分な幅を確保し、
+                ラベルは ToolTip と placeholder 的に省略してヘッダ内のスペースを節約。
+            -->
             <Border Grid.Row="0"
                     Padding="12,8"
                     IsVisible="{Binding HasGrid}">
-                <StackPanel DataContext="{Binding CurrentGrid}"
-                            x:DataType="vm:GridCanvasItemViewModel">
-                    <TextBlock FontWeight="SemiBold" FontSize="14">
-                        <Run Text="{Binding Name}" />
-                        <Run Text=" — " />
-                        <Run Text="{Binding GridSizeLabel}" />
-                        <Run Text=" / " />
-                        <Run Text="{Binding CanvasSizeLabel}" />
-                    </TextBlock>
-                </StackPanel>
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0"
+                                VerticalAlignment="Center"
+                                DataContext="{Binding CurrentGrid}"
+                                x:DataType="vm:GridCanvasItemViewModel">
+                        <TextBlock FontWeight="SemiBold" FontSize="14">
+                            <Run Text="{Binding Name}" />
+                            <Run Text=" — " />
+                            <Run Text="{Binding GridSizeLabel}" />
+                            <Run Text=" / " />
+                            <Run Text="{Binding CanvasSizeLabel}" />
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                        <Button x:Name="PreviewButton"
+                                Content="プレビュー"
+                                Click="OnPreviewClicked"
+                                IsEnabled="{Binding HasGrid}" />
+                        <Button Content="PNG 出力"
+                                Command="{Binding ExportToPngCommand}"
+                                IsEnabled="{Binding HasGrid}" />
+                        <ComboBox MinWidth="180"
+                                  ItemsSource="{Binding TrimModeOptions}"
+                                  SelectedItem="{Binding SelectedTrimMode}"
+                                  ToolTip.Tip="トリム（プレビュー / PNG 出力共通）">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource TrimModeLabel}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!-- 空状態案内（HasGrid=false 時）。AssetLibraryView の「まだ画像がありません」と同じ
