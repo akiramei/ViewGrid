@@ -50,6 +50,35 @@ public partial class GridCanvasView : UserControl
     // 配置済み Border → 対応する placement VM。SizeChanged 時に PixelOffset の換算を再適用する。
     private readonly Dictionary<Border, PlacementItemViewModel> _placementBorders = new();
 
+    // ---------- 占有セル → 配置 VM の高速逆引きマップ ----------
+    // DragOver は高頻度で発火し、AnalyzeHoverRangeRaw が NxM のホバー範囲セル
+    // それぞれに対して FindOccupantPlacement を呼ぶ。線形走査だと配置数 N と
+    // ホバー範囲 M で O(N×M) になるため、Dictionary 索引で O(1) 化する。
+    // Rebuild 時に全構築、Position/OccupySize 変更時に該当 placement の登録を
+    // 差し替える（_placementBorders と同じ寿命）。
+    private readonly Dictionary<CellPosition, PlacementItemViewModel> _occupantMap = new();
+
+    private void AddPlacementToOccupantMap(PlacementItemViewModel placement)
+    {
+        var w = Math.Max(1, placement.OccupyWidth);
+        var h = Math.Max(1, placement.OccupyHeight);
+        for (var dy = 0; dy < h; dy++)
+            for (var dx = 0; dx < w; dx++)
+                _occupantMap[new CellPosition(placement.GridX + dx, placement.GridY + dy)] = placement;
+    }
+
+    private void RemovePlacementFromOccupantMap(PlacementItemViewModel placement)
+    {
+        // 値 == placement のエントリを線形検索して削除（dict 全走査だが、
+        // Move/Swap/OccupySize 編集の頻度は低いので問題なし）。
+        var keysToRemove = new List<CellPosition>();
+        foreach (var (key, value) in _occupantMap)
+        {
+            if (value == placement) keysToRemove.Add(key);
+        }
+        foreach (var key in keysToRemove) _occupantMap.Remove(key);
+    }
+
     // ---------- 焼き込み済みサムネ Bitmap キャッシュ（LoadAndPreRotateBitmap） ----------
     // Rebuild の都度 disk read + Skia decode/encode が走るのを避けるため、
     // (ThumbnailPath, Rotation, FlipX, FlipY, Crop) でキャッシュ。LRU 上限 64 件、
@@ -187,8 +216,6 @@ public partial class GridCanvasView : UserControl
             // Grid.Row/Column の差し替えだけで View が反応する。Border 自体の再構築は
             // 不要 → LoadAndPreRotateBitmap (disk read + Skia decode/encode) を完全に
             // スキップでき、Swap で 2 回連続呼ばれても軽量。
-            // 占有サイズが変わるケース（共有特性編集）は Rebuild() 経路（CopyLibraryChangedMessage）
-            // で別途処理されるため、ここでは Position のみに着目した最小更新で十分。
             foreach (var (border, vm) in _placementBorders)
             {
                 if (vm == placement)
@@ -197,6 +224,28 @@ public partial class GridCanvasView : UserControl
                     Grid.SetColumn(border, placement.GridX);
                     Grid.SetRowSpan(border, Math.Max(1, placement.OccupyHeight));
                     Grid.SetColumnSpan(border, Math.Max(1, placement.OccupyWidth));
+                    // 占有マップも当該 placement だけ更新する（高頻度呼び出しではないので
+                    // 「全削除 + 再登録」で十分シンプル）
+                    RemovePlacementFromOccupantMap(placement);
+                    AddPlacementToOccupantMap(placement);
+                    return;
+                }
+            }
+            return;
+        }
+
+        if (e.PropertyName == nameof(PlacementItemViewModel.OccupySize))
+        {
+            // Inspector の配置固有 OccupySize 編集（保存後）で発火。
+            // RowSpan/ColumnSpan を更新して View に反映 + 占有マップを再登録。
+            foreach (var (border, vm) in _placementBorders)
+            {
+                if (vm == placement)
+                {
+                    Grid.SetRowSpan(border, Math.Max(1, placement.OccupyHeight));
+                    Grid.SetColumnSpan(border, Math.Max(1, placement.OccupyWidth));
+                    RemovePlacementFromOccupantMap(placement);
+                    AddPlacementToOccupantMap(placement);
                     return;
                 }
             }
@@ -222,6 +271,7 @@ public partial class GridCanvasView : UserControl
         _placementVisualOriginals.Clear();
         _cellBorders.Clear();
         _placementBorders.Clear();
+        _occupantMap.Clear();
 
         var grid = _vm?.CurrentGrid;
         if (grid is null)
@@ -285,6 +335,7 @@ public partial class GridCanvasView : UserControl
             CanvasGrid.Children.Add(visual);
 
             _placementBorders[visual] = placement;
+            AddPlacementToOccupantMap(placement);
             // 配置 VM の PixelOffsetX/Y 変更をキャンバスに即時反映するため購読する。
             // Inspector の「保存」ボタンや RevertAsync などキャンバスを介さない経路で値が
             // 変わっても、対応する Border の TranslateTransform を再計算して追従させる。
@@ -1482,16 +1533,7 @@ public partial class GridCanvasView : UserControl
     }
 
     private PlacementItemViewModel? FindOccupantPlacement(CellPosition pos)
-    {
-        if (_vm is null) return null;
-        foreach (var p in _vm.Placements)
-        {
-            if (pos.X >= p.GridX && pos.X < p.GridX + Math.Max(1, p.OccupyWidth) &&
-                pos.Y >= p.GridY && pos.Y < p.GridY + Math.Max(1, p.OccupyHeight))
-                return p;
-        }
-        return null;
-    }
+        => _occupantMap.TryGetValue(pos, out var p) ? p : null;
 
     private DragSourceInfo ResolveDragSource(string text)
     {
