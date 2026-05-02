@@ -99,88 +99,36 @@ public sealed class UpdateImageCopyUseCaseTests : IAsyncLifetime
         result.FirstError.Type.Should().Be(ErrorOr.ErrorType.NotFound);
     }
 
-    // ─── OccupySize 変更時の検証（クラッシュ根本対策） ───
+    // ─── OccupySize はバリアント単位のデフォルト値として扱われる（配置単位へ移管後）───
     //
-    // 共有特性として OccupySize を変更すると、当該 ImageCopy を参照する全 Placement に
-    // 即座に伝播する。グリッド外にはみ出したり既存配置と競合したりする状態を永続化すると、
-    // View 再描画時にクラッシュする。UseCase 層で事前検証して拒否する。
+    // 旧版では OccupySize 変更が当該 ImageCopy を参照する全 Placement に伝播し、
+    // 検証エラーで拒否される設計だった。配置単位の固有特性へ移管された後は:
+    //   - ImageCopy.OccupySize はバリアント新規作成時のデフォルト値として残る
+    //   - 既存配置の占有セルには伝播しない（GridPlacement.OccupySize が独立に保持）
+    //   - 検証は配置単位の UpdatePlacementOccupySizeUseCase 側で行う
 
-    /// <summary>新 OccupySize で配置がグリッド外にはみ出す場合は OutOfBounds で拒否する。</summary>
+    /// <summary>OccupySize 変更は既存 placement に伝播せず、バリアント側だけ更新される。</summary>
     [Fact]
-    public async Task Returns_OutOfBounds_When_New_OccupySize_Exceeds_Grid_From_Existing_Placement()
+    public async Task OccupySize_Update_Does_Not_Affect_Existing_Placements()
     {
         var asset = await _fx.SeedAssetAsync();
         var copy = await _fx.SeedCopyAsync(asset.Id);
-        // 3×3 グリッドの (2,2) に 1×1 で配置
         var grid = await SeedActiveGridAsync(rows: 3, cols: 3);
-        await SeedPlacementAsync(grid.Id, copy.Id, 2, 2);
+        // (2,2) に 1×1 で配置（旧設計では OccupySize=1×2 への変更で範囲外エラーが出ていた）
+        var placement = await SeedPlacementAsync(grid.Id, copy.Id, 2, 2);
 
-        // OccupySize を 1×2 に変更しようとすると、(2,2)-(2,3) で行 3 が範囲外
+        // バリアント側の OccupySize を 1×2 に変更。新設計では既存 placement の
+        // OccupySize は GridPlacement 側で独立保持されており、この変更で影響を受けない。
         var result = await _useCase.ExecuteAsync(
             copy.Id,
             new UpdateImageCopyChanges { OccupySize = new OccupySize(1, 2) });
 
-        result.IsError.Should().BeTrue();
-        result.FirstError.Code.Should().Be("ImageCopy.OccupySizeOutOfBounds");
-        // 永続化されていない
-        var reloaded = await _fx.CopyRepository.FindByIdAsync(copy.Id);
-        reloaded!.OccupySize.Should().Be(OccupySize.OneByOne);
-    }
-
-    /// <summary>新 OccupySize で他配置と重なる場合は Conflict で拒否する。</summary>
-    [Fact]
-    public async Task Returns_Conflict_When_New_OccupySize_Overlaps_Other_Placement()
-    {
-        var asset = await _fx.SeedAssetAsync();
-        var copyA = await _fx.SeedCopyAsync(asset.Id, copyName: "A");
-        var copyB = await _fx.SeedCopyAsync(asset.Id, copyName: "B");
-        var grid = await SeedActiveGridAsync(rows: 3, cols: 3);
-        await SeedPlacementAsync(grid.Id, copyA.Id, 0, 0);
-        await SeedPlacementAsync(grid.Id, copyB.Id, 1, 0);
-
-        // copyA を 2×1 に変更しようとすると (0,0)-(1,0) で copyB と重なる
-        var result = await _useCase.ExecuteAsync(
-            copyA.Id,
-            new UpdateImageCopyChanges { OccupySize = new OccupySize(2, 1) });
-
-        result.IsError.Should().BeTrue();
-        result.FirstError.Code.Should().Be("ImageCopy.OccupySizeConflict");
-    }
-
-    /// <summary>全配置がグリッド内かつ競合しなければ OccupySize 変更は成功する。</summary>
-    [Fact]
-    public async Task Allows_OccupySize_Change_When_All_Placements_Fit()
-    {
-        var asset = await _fx.SeedAssetAsync();
-        var copy = await _fx.SeedCopyAsync(asset.Id);
-        var grid = await SeedActiveGridAsync(rows: 3, cols: 3);
-        await SeedPlacementAsync(grid.Id, copy.Id, 0, 0);
-
-        // (0,0) で 2×2 ならグリッド内に収まり、他配置もないので成功
-        var result = await _useCase.ExecuteAsync(
-            copy.Id,
-            new UpdateImageCopyChanges { OccupySize = new OccupySize(2, 2) });
-
         result.IsError.Should().BeFalse();
-        result.Value.OccupySize.Width.Should().Be(2);
-        result.Value.OccupySize.Height.Should().Be(2);
-    }
+        result.Value.OccupySize.Should().Be(new OccupySize(1, 2));
 
-    /// <summary>OccupySize が同一値（変更なし）なら検証はスキップして成功する。</summary>
-    [Fact]
-    public async Task Skips_Validation_When_OccupySize_Unchanged()
-    {
-        var asset = await _fx.SeedAssetAsync();
-        var copy = await _fx.SeedCopyAsync(asset.Id);
-        var grid = await SeedActiveGridAsync(rows: 1, cols: 1);
-        await SeedPlacementAsync(grid.Id, copy.Id, 0, 0);
-
-        // OccupySize を渡さず、CopyName のみ変更（既存値と同じ OccupySize 1×1 でも検証パスはスキップされる）
-        var result = await _useCase.ExecuteAsync(
-            copy.Id,
-            new UpdateImageCopyChanges { CopyName = "renamed" });
-
-        result.IsError.Should().BeFalse();
+        // 既存 placement の OccupySize は変わっていない（1×1 のまま）
+        var reloadedPlacement = await _fx.PlacementRepository.FindByIdAsync(placement.Id);
+        reloadedPlacement!.OccupySize.Should().Be(OccupySize.OneByOne);
     }
 
     private async Task<GridCanvas> SeedActiveGridAsync(int rows, int cols)

@@ -70,9 +70,9 @@ public sealed partial class CopyItemViewModel : ObservableObject
     [ObservableProperty]
     public partial Alignment Alignment { get; set; }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SummaryLine))]
-    public partial OccupySize OccupySize { get; set; }
+    // OccupySize は配置 (GridPlacement) 単位の固有特性へ移管されたため、バリアント候補
+    // リストの表示プロパティとしては保持しない（表示すると「バリアントの占有」と
+    // 「配置済みの占有」が異なるケースが混乱を招くため）。
 
     /// <summary>単色余白の自動トリミング設定。<c>null</c> なら機能 OFF。</summary>
     [ObservableProperty]
@@ -99,7 +99,6 @@ public sealed partial class CopyItemViewModel : ObservableObject
         FlipY = copy.Transform.FlipY;
         ScalingMode = copy.ScalingMode;
         Alignment = copy.Alignment;
-        OccupySize = copy.OccupySize;
         AutoCrop = copy.AutoCrop;
         ManualCrop = copy.ManualCrop;
         ThumbnailPath = thumbnailPath;
@@ -112,5 +111,5 @@ public sealed partial class CopyItemViewModel : ObservableObject
         string.IsNullOrWhiteSpace(CopyName) ? "既定" : CopyName!;
 
     public string SummaryLine =>
-        $"{OccupySize.Width}×{OccupySize.Height} / {(int)Rotation}°{(FlipX ? " H" : "")}{(FlipY ? " V" : "")}";
+        $"{(int)Rotation}°{(FlipX ? " H" : "")}{(FlipY ? " V" : "")}";
 }
