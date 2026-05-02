@@ -84,7 +84,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     /// <summary>
     /// 「+ 新規バリアント」フライアウトを開いているか。<c>true</c> の間だけ View 側で名前入力 TextBox と
-    /// 確定/キャンセルボタンが表示される（<see cref="CopyListViewModel.IsCreating"/> と同パターン）。
+    /// 確定/キャンセルボタンが表示される（<see cref="GridCanvasListViewModel.IsCreating"/> と同パターン）。
     /// 生成先のアセットは <see cref="SelectedCandidate"/> の <see cref="CopyCandidateViewModel.AssetId"/>。
     /// </summary>
     [ObservableProperty]
@@ -1018,10 +1018,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     // ─── 配置ファースト UI 第 2 段階 (Stage 2): バリアント新規作成 / インラインリネーム / 削除 ───
     //
-    // 配置タブの候補リストから直接バリアントを管理できるようにする。準備タブ
-    // (CopyListViewModel) で行っていた操作と意味的に同じだが、候補リストは
-    // 「全アセットのバリアントをフラット表示」なので、操作対象は SelectedCandidate を
-    // 起点とする。CopyLibraryChangedMessage で他 VM (CopyList 等) と同期する。
+    // 配置タブの候補リストから直接バリアントを管理できるようにする。配置タブが
+    // 「全アセットのバリアントをツリー表示」する設計なので、操作対象は SelectedCandidate を
+    // 起点とする。CopyLibraryChangedMessage で他 VM と同期する。
 
     /// <summary>
     /// 「+ 新規バリアント」フライアウトを開く。<see cref="DraftVariantName"/> を空にリセットして、
@@ -1066,7 +1065,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         {
             IsBusy = true;
             var assetId = candidate.AssetId;
-            // 命名規則は CopyListViewModel と揃える: 同じアセットに紐づく既存バリアント数 + 1
+            // 命名規則: 同じアセットに紐づく既存バリアント数 + 1
             var ordinal = Candidates.Count(c => c.AssetId == assetId) + 1;
             var nameToUse = string.IsNullOrWhiteSpace(DraftVariantName)
                 ? $"{Terminology.VariantPrefix} {ordinal}"
@@ -1176,7 +1175,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// インラインリネームを確定して DB に保存する。<see cref="CopyCandidateViewModel.EditingName"/> を
     /// trim（空白だけなら null）した上で <see cref="CopyCandidateViewModel.CopyName"/> と比較し、
     /// 同じなら no-op、違えば <see cref="UpdateImageCopyCommand"/> を組み立てて履歴に積む。
-    /// Undo/Redo round-trip 対応（CopyListViewModel.CommitEditAsync と同パターン）。
+    /// Undo/Redo round-trip 対応。
     /// </summary>
     public async Task CommitEditCandidateAsync(CopyCandidateViewModel candidate, CancellationToken ct = default)
     {

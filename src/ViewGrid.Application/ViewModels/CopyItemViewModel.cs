@@ -36,21 +36,9 @@ public sealed partial class CopyItemViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SummaryLine))]
     public partial string? CopyName { get; set; }
 
-    /// <summary>
-    /// リスト上でインラインリネーム編集中かどうか。<c>true</c> の間だけ View 側で
-    /// TextBlock が TextBox に切り替わる。F2 / ダブルクリックで <c>true</c>、Enter / フォーカス喪失で
-    /// 確定 → <c>false</c>、Esc でキャンセル → <c>false</c>。
-    /// </summary>
-    [ObservableProperty]
-    public partial bool IsEditing { get; set; }
-
-    /// <summary>
-    /// インラインリネーム中の編集バッファ。<see cref="IsEditing"/>=true で View にバインドされる。
-    /// 編集開始時に <see cref="CopyName"/> を初期値としてコピー、確定時に
-    /// <see cref="CopyListViewModel.RenameCopyAsync"/> 経由で永続化される。
-    /// </summary>
-    [ObservableProperty]
-    public partial string? EditingName { get; set; }
+    // インラインリネーム編集状態（IsEditing / EditingName）は CopyCandidateViewModel
+    // (配置タブ候補ツリー) 側で別途保持する。本 VM はバリアントの「特性編集」コンテキスト
+    // 専用なのでリネーム編集状態は不要。
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SummaryLine))]
