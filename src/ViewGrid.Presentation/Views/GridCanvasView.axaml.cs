@@ -103,26 +103,38 @@ public partial class GridCanvasView : UserControl
     private void OnPlacementsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Rebuild();
 
     /// <summary>
-    /// 配置 VM の <see cref="PlacementItemViewModel.PixelOffsetX"/> / <c>Y</c> 変更を
-    /// 検知して、対応する Border の TranslateTransform を再計算する。
+    /// 配置 VM のプロパティ変更を検知して View を最小コストで更新する。
+    /// PixelOffsetX/Y は Border の TranslateTransform 再計算で済むが、
+    /// Position 変更（Move/Swap で発生）は Grid.Row/Column が変わるため
+    /// Rebuild が必要。
     /// 購読は <see cref="Rebuild"/> の Layer 2 ループで配置ごとに張り、
     /// <see cref="UnsubscribePlacementChanges"/> で一括解除する。
     /// </summary>
     private void OnPlacementItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is not PlacementItemViewModel placement) return;
-        if (e.PropertyName is not (nameof(PlacementItemViewModel.PixelOffsetX)
-            or nameof(PlacementItemViewModel.PixelOffsetY)))
-            return;
 
-        // 対応する Border を逆引き（_placementBorders は Border → VM の dict）
-        foreach (var (border, vm) in _placementBorders)
+        if (e.PropertyName is nameof(PlacementItemViewModel.PixelOffsetX)
+            or nameof(PlacementItemViewModel.PixelOffsetY))
         {
-            if (vm == placement)
+            // 対応する Border を逆引き（_placementBorders は Border → VM の dict）
+            foreach (var (border, vm) in _placementBorders)
             {
-                ApplyPixelOffsetTransform(border, placement);
-                return;
+                if (vm == placement)
+                {
+                    ApplyPixelOffsetTransform(border, placement);
+                    return;
+                }
             }
+            return;
+        }
+
+        if (e.PropertyName == nameof(PlacementItemViewModel.Position))
+        {
+            // Move/Swap で Position が変わった: Grid.Row/Column の差し替えが必要なので Rebuild。
+            // SelectedPlacement が同インスタンスのまま Position だけ動くケース
+            // （選択中の配置を別セルへドラッグ）でも確実に再描画される。
+            Rebuild();
         }
     }
 
