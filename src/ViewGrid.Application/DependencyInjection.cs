@@ -44,7 +44,6 @@ public static class DependencyInjection
 
         // ViewModels
         services.AddTransient<AssetLibraryViewModel>();
-        services.AddTransient<CopyListViewModel>();
         services.AddTransient<CopyPropertiesViewModel>();
         services.AddTransient<GridCanvasListViewModel>();
         services.AddTransient<PlacementInspectorViewModel>();

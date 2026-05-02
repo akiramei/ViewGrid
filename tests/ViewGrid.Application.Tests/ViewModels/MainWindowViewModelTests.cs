@@ -25,8 +25,6 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
     private UseCaseFixture _fx = null!;
     private WeakReferenceMessenger _messenger = null!;
     private AssetLibraryViewModel _assetLibrary = null!;
-    private CopyListViewModel _copyList = null!;
-    private CopyPropertiesViewModel _copyProperties = null!;
     private GridCanvasListViewModel _gridList = null!;
     private GridWorkspaceViewModel _gridWorkspace = null!;
     private MainWindowViewModel _vm = null!;
@@ -52,16 +50,11 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             import, deleteAsset, _fx.AssetRepository, _fx.Thumbnails, picker, _messenger, sharedHistory,
             NullLogger<AssetLibraryViewModel>.Instance);
 
-        // CopyListViewModel
         var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
         var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
-        _copyList = new CopyListViewModel(
-            _fx.CopyRepository, _fx.AssetRepository, _fx.Thumbnails, _fx.Storage,
-            createCopy, updateCopy, _messenger, sharedHistory,
-            NullLogger<CopyListViewModel>.Instance);
 
-        // CopyPropertiesViewModel
-        _copyProperties = new CopyPropertiesViewModel(
+        // CopyPropertiesViewModel: PlacementInspector に inline embed されるため必要
+        var copyProperties = new CopyPropertiesViewModel(
             updateCopy, sharedHistory, _messenger, _fx.ColorPicker, _fx.AutoCropResolver,
             NullLogger<CopyPropertiesViewModel>.Instance);
 
@@ -88,7 +81,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         var inspector = new PlacementInspectorViewModel(
             offset, fork, _fx.PlacementRepository, _fx.CopyRepository,
             _fx.AssetRepository, _fx.Thumbnails, _fx.Storage,
-            _copyProperties, sharedHistory, _messenger,
+            copyProperties, sharedHistory, _messenger,
             NullLogger<PlacementInspectorViewModel>.Instance);
         var updateWeights = new UpdateGridWeightsUseCase(_fx.GridRepository);
         var updateLocks = new UpdateGridLocksUseCase(_fx.GridRepository);
@@ -104,7 +97,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             NullLogger<GridWorkspaceViewModel>.Instance);
 
         _vm = new MainWindowViewModel(
-            _assetLibrary, _copyList, _copyProperties, _gridList, _gridWorkspace, _messenger, sharedHistory);
+            _assetLibrary, _gridList, _gridWorkspace, _messenger, sharedHistory);
     }
 
     public async Task DisposeAsync()
@@ -411,7 +404,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
     {
         _vm.HasUnsavedChanges.Should().BeFalse();
 
-        _copyProperties.IsDirty = true; // Inspector.CopyProperties と同じ実体
+        _gridWorkspace.Inspector.CopyProperties.IsDirty = true;
 
         _vm.HasUnsavedChanges.Should().BeTrue();
         _vm.UnsavedSummary.Should().Contain("未保存");

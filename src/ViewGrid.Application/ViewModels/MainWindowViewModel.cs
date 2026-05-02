@@ -148,23 +148,17 @@ public sealed partial class MainWindowViewModel
     public partial JumpDirection HoveredJumpDirection { get; set; }
 
     public AssetLibraryViewModel AssetLibrary { get; }
-    public CopyListViewModel CopyList { get; }
-    public CopyPropertiesViewModel CopyProperties { get; }
     public GridCanvasListViewModel GridList { get; }
     public GridWorkspaceViewModel GridWorkspace { get; }
 
     public MainWindowViewModel(
         AssetLibraryViewModel assetLibrary,
-        CopyListViewModel copyList,
-        CopyPropertiesViewModel copyProperties,
         GridCanvasListViewModel gridList,
         GridWorkspaceViewModel gridWorkspace,
         IMessenger messenger,
         IUndoRedoService history)
     {
         AssetLibrary = assetLibrary;
-        CopyList = copyList;
-        CopyProperties = copyProperties;
         GridList = gridList;
         GridWorkspace = gridWorkspace;
         _messenger = messenger;
