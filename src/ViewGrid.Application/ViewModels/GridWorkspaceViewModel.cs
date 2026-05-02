@@ -274,7 +274,12 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         finally { IsBusy = false; }
     }
 
-    /// <summary>論理コピー候補リストを最新化する（タブ表示更新時にも呼ぶ）。</summary>
+    /// <summary>
+    /// 論理コピー候補リストを最新化する（タブ表示更新時にも呼ぶ）。
+    /// 既存の <see cref="CopyCandidateViewModel"/> / <see cref="CandidateGroupViewModel"/>
+    /// インスタンスは可能な限り再利用し、TreeView の展開状態 (<see cref="CandidateGroupViewModel.IsExpanded"/>)
+    /// と <see cref="SelectedCandidate"/> の参照を Save / CopyLibraryChangedMessage 経由の再ロード後も維持する。
+    /// </summary>
     public async Task LoadCandidatesAsync(CancellationToken ct = default)
     {
         var copies = await _copyRepository.FindAllAsync(ct);
@@ -286,18 +291,35 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             if (a is not null) assets[id] = a;
         }
 
-        Candidates.Clear();
+        // 既存 CopyCandidateViewModel を CopyId 索引で再利用、無ければ新規生成。
+        // 同 CopyId のインスタンスを使い回すことで TreeView.SelectedItem の参照同一性を保つ。
+        var existingByCopyId = Candidates.ToDictionary(c => c.CopyId);
+        var desiredCandidates = new List<CopyCandidateViewModel>(copies.Count);
         foreach (var copy in copies)
         {
             if (!assets.TryGetValue(copy.AssetId, out var asset))
                 continue;
-            var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
-            Candidates.Add(new CopyCandidateViewModel(copy, asset, thumb));
+            if (existingByCopyId.TryGetValue(copy.Id, out var existing))
+            {
+                // CopyName 変更を反映（OccupySize 等の他プロパティは init only なので、変更時は
+                // 別 Save 経路で View が直接更新される。SummaryLine のリアルタイム更新が必要なら
+                // CopyCandidateViewModel 側に [ObservableProperty] 化が必要になるが、現状は不要）。
+                existing.CopyName = copy.CopyName;
+                desiredCandidates.Add(existing);
+            }
+            else
+            {
+                var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
+                desiredCandidates.Add(new CopyCandidateViewModel(copy, asset, thumb));
+            }
         }
 
-        RebuildCandidateGroups();
+        SyncObservableCollection(Candidates, desiredCandidates);
+        SyncCandidateGroups();
 
-        if (SelectedCandidate is not null && !Candidates.Any(c => c.CopyId == SelectedCandidate.CopyId))
+        // 選択を維持: SelectedCandidate が新リストに残っていれば（参照そのままで）OK、
+        // 消えていれば null に落として最初の候補にフォールバック。
+        if (SelectedCandidate is not null && !Candidates.Contains(SelectedCandidate))
             SelectedCandidate = null;
         SelectedCandidate ??= Candidates.FirstOrDefault();
 
@@ -305,23 +327,76 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     }
 
     /// <summary>
-    /// <see cref="Candidates"/> から <see cref="CandidateGroups"/> を再構築する。
-    /// アセットごとにまとめ、グループ内のバリアントは <see cref="Candidates"/> での出現順を保つ
-    /// （DB 側の <see cref="IImageCopyRepository.FindAllAsync"/> 順を踏襲）。
+    /// <see cref="CandidateGroups"/> を <see cref="Candidates"/> に合わせて差分更新する。
+    /// AssetId が一致するグループは既存インスタンスを再利用し <see cref="CandidateGroupViewModel.IsExpanded"/>
+    /// を保持する。各グループの Variants も差分更新で参照同一性を保つ。
     /// </summary>
-    private void RebuildCandidateGroups()
+    private void SyncCandidateGroups()
     {
-        CandidateGroups.Clear();
-        var groupByAsset = new Dictionary<Guid, CandidateGroupViewModel>();
+        var existingGroups = CandidateGroups.ToDictionary(g => g.AssetId);
+        var desiredGroups = new List<CandidateGroupViewModel>();
+        var variantsByAssetId = new Dictionary<Guid, List<CopyCandidateViewModel>>();
+
         foreach (var candidate in Candidates)
         {
-            if (!groupByAsset.TryGetValue(candidate.AssetId, out var group))
+            if (!variantsByAssetId.TryGetValue(candidate.AssetId, out var list))
             {
-                group = new CandidateGroupViewModel(candidate.AssetId, candidate.AssetFilename);
-                groupByAsset[candidate.AssetId] = group;
-                CandidateGroups.Add(group);
+                list = [];
+                variantsByAssetId[candidate.AssetId] = list;
             }
-            group.Variants.Add(candidate);
+            list.Add(candidate);
+        }
+
+        foreach (var (assetId, variants) in variantsByAssetId)
+        {
+            CandidateGroupViewModel group;
+            if (existingGroups.TryGetValue(assetId, out var existing))
+            {
+                group = existing;
+            }
+            else
+            {
+                group = new CandidateGroupViewModel(assetId, variants[0].AssetFilename);
+            }
+            SyncObservableCollection(group.Variants, variants);
+            desiredGroups.Add(group);
+        }
+
+        SyncObservableCollection(CandidateGroups, desiredGroups);
+    }
+
+    /// <summary>
+    /// <see cref="ObservableCollection{T}"/> を <paramref name="desired"/> の順序・要素に揃える。
+    /// 既存インスタンスは参照同一性を保ったまま位置調整され、新規要素は追加、消えた要素は削除される。
+    /// TreeView / ListBox の選択 / 展開状態を Clear+再構築なしに維持するためのヘルパ。
+    /// </summary>
+    private static void SyncObservableCollection<T>(ObservableCollection<T> target, IList<T> desired)
+        where T : class
+    {
+        // 削除: target にあって desired にないもの
+        var desiredSet = new HashSet<T>(desired);
+        for (var i = target.Count - 1; i >= 0; i--)
+        {
+            if (!desiredSet.Contains(target[i]))
+                target.RemoveAt(i);
+        }
+
+        // 並び替え + 追加: desired の順に target を整える
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var item = desired[i];
+            if (i >= target.Count)
+            {
+                target.Add(item);
+            }
+            else if (!ReferenceEquals(target[i], item))
+            {
+                var existingIndex = target.IndexOf(item);
+                if (existingIndex >= 0)
+                    target.Move(existingIndex, i);
+                else
+                    target.Insert(i, item);
+            }
         }
     }
 

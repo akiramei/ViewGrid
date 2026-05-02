@@ -562,4 +562,80 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         _vm.CandidateGroups.Should().HaveCount(1);
         _vm.CandidateGroups.Single().Variants.Should().HaveCount(2);
     }
+
+    /// <summary>
+    /// 候補ライブラリ再ロード時に <see cref="CandidateGroupViewModel"/> インスタンスが
+    /// 再利用され、<see cref="CandidateGroupViewModel.IsExpanded"/> 等の UI 状態が維持される。
+    /// これにより Save 後の TreeView 展開状態が崩れないことを保証する。
+    /// </summary>
+    [Fact]
+    public async Task LoadCandidatesAsync_Preserves_Group_Instance_Across_Reloads()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "v1");
+        await _vm.ReloadFromMessageAsyncForTests();
+        var originalGroup = _vm.CandidateGroups.Single();
+        originalGroup.IsExpanded = false; // ユーザーが折り畳んだ状態を模擬
+
+        // 別 Save 等で再ロードが走ったとみなす
+        await _fx.SeedCopyAsync(asset.Id, copyName: "v2");
+        await _vm.ReloadFromMessageAsyncForTests();
+
+        var groupAfter = _vm.CandidateGroups.Single();
+        groupAfter.Should().BeSameAs(originalGroup); // 同インスタンス
+        groupAfter.IsExpanded.Should().BeFalse();    // ユーザー操作の状態が維持
+        groupAfter.Variants.Should().HaveCount(2);   // 新バリアントが追加されている
+    }
+
+    /// <summary>
+    /// 同 CopyId の <see cref="CopyCandidateViewModel"/> インスタンスは再ロード時も再利用される。
+    /// これにより TreeView.SelectedItem の参照同一性が保たれ、選択状態が崩れない。
+    /// </summary>
+    [Fact]
+    public async Task LoadCandidatesAsync_Preserves_Candidate_Instance_For_Same_CopyId()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "stable");
+        await _vm.ReloadFromMessageAsyncForTests();
+        var originalCandidate = _vm.Candidates.Single();
+
+        // 同 CopyId で再ロード
+        await _vm.ReloadFromMessageAsyncForTests();
+
+        _vm.Candidates.Single().Should().BeSameAs(originalCandidate);
+    }
+
+    /// <summary>
+    /// CopyName が外部経路で変更されたとき、同インスタンスを保ったまま CopyName が更新される
+    /// （SyncObservableCollection 内で existing.CopyName = copy.CopyName）。
+    /// </summary>
+    [Fact]
+    public async Task LoadCandidatesAsync_Updates_CopyName_On_Existing_Instance()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "old");
+        await _vm.ReloadFromMessageAsyncForTests();
+        var candidate = _vm.Candidates.Single();
+
+        // 別経路（DB 直接更新を想定）で CopyName を書き換え
+        var renamed = new ImageCopy
+        {
+            Id = copy.Id,
+            AssetId = copy.AssetId,
+            CopyName = "new",
+            Transform = copy.Transform,
+            ScalingMode = copy.ScalingMode,
+            Alignment = copy.Alignment,
+            OccupySize = copy.OccupySize,
+            CreatedAt = copy.CreatedAt,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        await _fx.CopyRepository.UpdateAsync(renamed);
+
+        await _vm.ReloadFromMessageAsyncForTests();
+
+        // インスタンスは同じ + CopyName が新値に更新されている
+        _vm.Candidates.Single().Should().BeSameAs(candidate);
+        candidate.CopyName.Should().Be("new");
+    }
 }

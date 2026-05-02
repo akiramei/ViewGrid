@@ -36,6 +36,14 @@ public sealed partial class CandidateGroupViewModel : ObservableObject
     /// </summary>
     public string SummaryLine => $"{Variants.Count} {Terminology.Variant}";
 
+    /// <summary>
+    /// TreeView での展開状態。<c>TreeViewItem.IsExpanded</c> に TwoWay バインドされ、
+    /// ユーザーがクリックで展開/折り畳みするとここに保存される。既定 <c>true</c>（展開）。
+    /// 候補ライブラリ再ロード時はインスタンスが維持されるため、この値も維持される。
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; } = true;
+
     private void OnVariantsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         OnPropertyChanged(nameof(SummaryLine));

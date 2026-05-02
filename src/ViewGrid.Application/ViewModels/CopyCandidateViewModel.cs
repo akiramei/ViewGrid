@@ -45,6 +45,13 @@ public sealed partial class CopyCandidateViewModel : ObservableObject
     [ObservableProperty]
     public partial string? EditingName { get; set; }
 
+    /// <summary>
+    /// TreeView の <c>TreeViewItem.IsExpanded</c> 共通バインド先。葉ノードなので意味を持たないが、
+    /// グループ用 (<see cref="CandidateGroupViewModel.IsExpanded"/>) と同名プロパティを揃えて
+    /// バインドエラーを抑止する。<c>false</c> 固定（葉なので展開操作は無視される）。
+    /// </summary>
+    public bool IsExpanded { get; set; }
+
     public string CopyDisplayName => string.IsNullOrWhiteSpace(CopyName)
         ? Terminology.VariantUnnamed
         : CopyName!;
