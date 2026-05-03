@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -44,6 +45,20 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         RenderOptions options,
         CancellationToken ct)
     {
+        // PhotoBoard モードかつ chaos>0 のときだけ再合成パイプラインへ。chaos=0 は
+        // 効果ゼロのため Flat パイプラインで直接描画 (TrimMode.None と同一バイト出力)。
+        if (options.TrimMode == TrimMode.PhotoBoard && options.PhotoBoardChaos > 0.0)
+            return RenderPhotoBoard(grid, items, options, ct);
+
+        return RenderFlat(grid, items, options, ct);
+    }
+
+    private ErrorOr<byte[]> RenderFlat(
+        GridCanvas grid,
+        IReadOnlyList<PlacementRenderItem> items,
+        RenderOptions options,
+        CancellationToken ct)
+    {
         var info = new SKImageInfo(
             grid.CanvasSize.Width, grid.CanvasSize.Height,
             SKColorType.Rgba8888, SKAlphaType.Premul);
@@ -67,7 +82,10 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         }
 
         using var image = surface.Snapshot();
-        return EncodeWithTrim(image, grid, items, options.TrimMode);
+        // PhotoBoard モードかつ chaos=0 で来るケースは TrimMode.None と同一出力すべきなので
+        // EncodeWithTrim には None を渡す (PhotoBoard には外周クロップ系の意味がない)。
+        var encodeMode = options.TrimMode == TrimMode.PhotoBoard ? TrimMode.None : options.TrimMode;
+        return EncodeWithTrim(image, grid, items, encodeMode);
     }
 
     /// <summary>
@@ -644,4 +662,196 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
 
     private static bool IsNearlyInteger(double value) =>
         Math.Abs(value - Math.Round(value)) < 0.000001;
+
+    // ─────────────────────────────────────────────────────────
+    // PhotoBoard モード (TrimMode.PhotoBoard + chaos > 0)
+    // ─────────────────────────────────────────────────────────
+
+    /// <summary>ポラロイド風フレームの色 (純白からわずかに黄味がかった #FAFAF8)。</summary>
+    private static readonly SKColor PhotoBoardFrameColor = new(0xFA, 0xFA, 0xF8);
+
+    /// <summary>
+    /// 写真ボード風レンダリング。各 placement をセル矩形サイズの SKImage に切り出し、
+    /// <see cref="PhotoBoardLayout"/> で計算された変換 (ジッター + 回転 + フレーム + シャドウ)
+    /// を適用して最終キャンバスに再合成する。
+    ///
+    /// <para>
+    /// メモリ上限: 各中間 SKImage は **セル矩形サイズに上限**。N 個の placement で最大セル
+    /// W×H の場合の中間バッファ合計 = N × W × H × 4 バイト。例: 12 placement × 最大セル
+    /// 1000×1000 → 約 48 MB。フルキャンバスサイズの中間バッファは作らない。
+    /// </para>
+    /// </summary>
+    private ErrorOr<byte[]> RenderPhotoBoard(
+        GridCanvas grid,
+        IReadOnlyList<PlacementRenderItem> items,
+        RenderOptions options,
+        CancellationToken ct)
+    {
+        var sortedItems = items.OrderBy(i => i.Placement.PlacementOrder).ToList();
+        if (sortedItems.Count == 0)
+        {
+            // 空 → グリッド全面の透過 PNG (Flat と同等)
+            return RenderFlat(grid, items, options, ct);
+        }
+
+        using var paint = new SKPaint { IsAntialias = true };
+        var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear);
+
+        // 中間 SKImage の解放を確実にするため List<IDisposable> で追跡。
+        var toDispose = new List<IDisposable>();
+        try
+        {
+            // 1. 各 placement をセル矩形サイズの SKImage に切り出す (白背景でフレーム下地に)
+            var placementImages = new List<SKImage>(sortedItems.Count);
+            var baseRects = new List<PlacementBaseRect>(sortedItems.Count);
+            foreach (var item in sortedItems)
+            {
+                ct.ThrowIfCancellationRequested();
+                var cellRect = PlacementGeometry.ComputeDestRect(
+                    grid.CanvasSize, grid.GridCols, grid.GridRows,
+                    grid.ColWeights, grid.RowWeights,
+                    item.Placement.Position, item.Placement.OccupySize,
+                    pixelOffsetX: 0, pixelOffsetY: 0);
+
+                if (cellRect.Width <= 0 || cellRect.Height <= 0)
+                    continue;
+
+                var cellInfo = new SKImageInfo(
+                    cellRect.Width, cellRect.Height,
+                    SKColorType.Rgba8888, SKAlphaType.Premul);
+                var cellSurface = SKSurface.Create(cellInfo);
+                if (cellSurface is null)
+                    return Error.Failure("Render.SurfaceFailed", "中間サーフェスの作成に失敗しました。");
+                toDispose.Add(cellSurface);
+
+                var cellCanvas = cellSurface.Canvas;
+                cellCanvas.Clear(SKColors.White);
+                // DrawOne は cellRect (絶対座標) で動くので、surface 内の (0,0) が cellRect.X, cellRect.Y
+                // になるよう事前に translate する。これで DrawOne の ClipRect / DrawImage が
+                // surface 内に収まる。
+                cellCanvas.Translate(-cellRect.X, -cellRect.Y);
+
+                var error = DrawOne(cellCanvas, grid, item, sampling, paint);
+                if (error is not null)
+                    return error.Value;
+
+                var snapshot = cellSurface.Snapshot();
+                toDispose.Add(snapshot);
+                placementImages.Add(snapshot);
+                baseRects.Add(new PlacementBaseRect(
+                    item.Placement.Position.Y, item.Placement.Position.X, cellRect));
+            }
+
+            if (placementImages.Count == 0)
+                return RenderFlat(grid, items, options, ct);
+
+            // 2. レイアウト計算
+            var seed = options.PhotoBoardSeedOverride is { } overrideSeed
+                ? unchecked((int)overrideSeed)
+                : DeriveSeedFromGridId(grid.Id);
+            var layoutItems = PhotoBoardLayout.Compute(baseRects, options.PhotoBoardChaos, seed);
+
+            // 3. 最終キャンバスサイズ (マージンを 4 辺に追加)
+            var margin = PhotoBoardLayout.RequiredCanvasMargin(baseRects, options.PhotoBoardChaos);
+            var finalWidth = grid.CanvasSize.Width + 2 * margin;
+            var finalHeight = grid.CanvasSize.Height + 2 * margin;
+            var finalInfo = new SKImageInfo(
+                finalWidth, finalHeight, SKColorType.Rgba8888, SKAlphaType.Premul);
+
+            using var finalSurface = SKSurface.Create(finalInfo);
+            if (finalSurface is null)
+                return Error.Failure("Render.SurfaceFailed", "最終サーフェスの作成に失敗しました。");
+
+            var finalCanvas = finalSurface.Canvas;
+            finalCanvas.Clear(SKColors.Transparent);
+
+            // 4. 配置順 (PlacementOrder 昇順) に最終キャンバスへ描画
+            for (int i = 0; i < placementImages.Count; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var placementImage = placementImages[i];
+                var layoutItem = layoutItems[i];
+
+                var composite = ComposeWithFrame(placementImage, layoutItem);
+                if (!ReferenceEquals(composite, placementImage))
+                    toDispose.Add(composite);
+
+                // ピボット位置 (回転中心): セル中心 + 位置オフセット + ピボットオフセット + マージン
+                var pivotX = layoutItem.BaseRect.X + layoutItem.BaseRect.Width / 2.0
+                           + layoutItem.OffsetX + layoutItem.RotationPivotOffsetX + margin;
+                var pivotY = layoutItem.BaseRect.Y + layoutItem.BaseRect.Height / 2.0
+                           + layoutItem.OffsetY + layoutItem.RotationPivotOffsetY + margin;
+
+                using var drawPaint = new SKPaint { IsAntialias = true };
+                if (layoutItem.ShadowAlpha > 0 && layoutItem.ShadowSigma > 0.0)
+                {
+                    drawPaint.ImageFilter = SKImageFilter.CreateDropShadow(
+                        (float)layoutItem.ShadowOffsetX, (float)layoutItem.ShadowOffsetY,
+                        (float)layoutItem.ShadowSigma, (float)layoutItem.ShadowSigma,
+                        new SKColor(0, 0, 0, layoutItem.ShadowAlpha));
+                }
+
+                finalCanvas.Save();
+                finalCanvas.Translate((float)pivotX, (float)pivotY);
+                if (layoutItem.RotationDeg != 0.0)
+                    finalCanvas.RotateDegrees((float)layoutItem.RotationDeg);
+
+                // composite の中心 (回転ピボット) が原点に来るよう -W/2 へ平行移動。
+                // ピボット自体が baseCenter からズレているのでローカル原点も -RotationPivotOffset 分補正。
+                var localX = -composite.Width / 2.0 - layoutItem.RotationPivotOffsetX;
+                var localY = -composite.Height / 2.0 - layoutItem.RotationPivotOffsetY;
+                finalCanvas.DrawImage(composite, (float)localX, (float)localY, drawPaint);
+                finalCanvas.Restore();
+            }
+
+            using var finalImage = finalSurface.Snapshot();
+            using var data = finalImage.Encode(SKEncodedImageFormat.Png, 100);
+            return data.ToArray();
+        }
+        finally
+        {
+            // 中間 SKImage / SKSurface を確実に解放
+            for (int i = toDispose.Count - 1; i >= 0; i--)
+                toDispose[i].Dispose();
+        }
+    }
+
+    /// <summary>
+    /// placement 画像にポラロイド風フレームを巻いた合成 SKImage を返す。
+    /// <paramref name="layout"/> の <c>FrameAlpha == 0</c> なら入力をそのまま返す
+    /// (chaos=0 ショートカット)。返値が入力と同じインスタンスかどうかは
+    /// <c>ReferenceEquals</c> で判定可能。
+    /// </summary>
+    private static SKImage ComposeWithFrame(SKImage placementImage, PhotoBoardItem layout)
+    {
+        if (layout.FrameAlpha == 0 || (layout.FrameSidePx == 0 && layout.FrameBottomPx == 0))
+            return placementImage;
+
+        var compW = placementImage.Width + 2 * layout.FrameSidePx;
+        var compH = placementImage.Height + layout.FrameSidePx + layout.FrameBottomPx;
+        var info = new SKImageInfo(compW, compH, SKColorType.Rgba8888, SKAlphaType.Premul);
+
+        using var surface = SKSurface.Create(info);
+        var canvas = surface.Canvas;
+        canvas.Clear(SKColors.Transparent);
+
+        var frameColor = PhotoBoardFrameColor.WithAlpha(layout.FrameAlpha);
+        using (var framePaint = new SKPaint { Color = frameColor })
+        {
+            canvas.DrawRect(0, 0, compW, compH, framePaint);
+        }
+        canvas.DrawImage(placementImage, layout.FrameSidePx, layout.FrameSidePx);
+        return surface.Snapshot();
+    }
+
+    /// <summary>
+    /// GridCanvas.Id 由来の決定論的シードを生成する。GUID の先頭 4 バイトを int として
+    /// 使うことで、<see cref="object.GetHashCode"/> よりプラットフォーム間で安定。
+    /// </summary>
+    private static int DeriveSeedFromGridId(Guid gridId)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        gridId.TryWriteBytes(bytes);
+        return BinaryPrimitives.ReadInt32LittleEndian(bytes[..4]);
+    }
 }
