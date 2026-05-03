@@ -261,6 +261,27 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
+                        <!-- 写真ボード風モード時のみ「整列 ↔ 散らかし」スライダーを表示。
+                             0 で整然と並んだグリッド (フレーム / 影 / 回転 / ジッター無効、
+                             TrimMode.None と同一バイト出力)、1 で最大効果。 -->
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="6"
+                                    VerticalAlignment="Center"
+                                    IsVisible="{Binding IsPhotoBoardMode}">
+                            <TextBlock Text="整列"
+                                       FontSize="11"
+                                       Opacity="0.7"
+                                       VerticalAlignment="Center" />
+                            <Slider Width="120"
+                                    Minimum="0" Maximum="1"
+                                    TickFrequency="0.1"
+                                    Value="{Binding SelectedChaosLevel}"
+                                    ToolTip.Tip="整列 ↔ 散らかし（写真ボード風の効果量）" />
+                            <TextBlock Text="散らかし"
+                                       FontSize="11"
+                                       Opacity="0.7"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Border>

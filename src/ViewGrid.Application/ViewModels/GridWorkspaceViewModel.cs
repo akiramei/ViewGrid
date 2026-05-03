@@ -77,10 +77,25 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// 永続化はせず、セッション内のオプション扱い（既定 None）。
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPhotoBoardMode))]
     public partial TrimMode SelectedTrimMode { get; set; } = TrimMode.None;
 
     public IReadOnlyList<TrimMode> TrimModeOptions { get; } =
         [TrimMode.None, TrimMode.OccupiedCells, TrimMode.DrawnPixels, TrimMode.PhotoBoard];
+
+    /// <summary>
+    /// PhotoBoard モードの「整列 ↔ 散らかし」軸の値。<c>0.0</c> で整然と並んだグリッド
+    /// (フレーム / シャドウ / ジッター / 回転すべて無効) → <c>1.0</c> で最大効果。
+    /// View 側は <see cref="IsPhotoBoardMode"/> でスライダーの表示制御を行う。
+    /// </summary>
+    [ObservableProperty]
+    public partial double SelectedChaosLevel { get; set; } = 0.3;
+
+    /// <summary>
+    /// <see cref="SelectedTrimMode"/> が <see cref="TrimMode.PhotoBoard"/> のときに <c>true</c>。
+    /// View 側で「整列 ↔ 散らかし」スライダーの表示切替に使う。
+    /// </summary>
+    public bool IsPhotoBoardMode => SelectedTrimMode == TrimMode.PhotoBoard;
 
     /// <summary>
     /// 「+ 新規バリアント」フライアウトを開いているか。<c>true</c> の間だけ View 側で名前入力 TextBox と
@@ -726,7 +741,10 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try
         {
             IsBusy = true;
-            var result = await _renderUseCase.ExecuteAsync(grid.GridId, SelectedTrimMode, ct);
+            var result = await _renderUseCase.ExecuteAsync(
+                grid.GridId,
+                new RenderOptions(SelectedTrimMode, SelectedChaosLevel),
+                ct);
             if (result.IsError)
             {
                 StatusMessage = string.Join(", ", result.Errors);
@@ -754,7 +772,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try
         {
             IsBusy = true;
-            var result = await _exportUseCase.ExecuteAsync(grid.GridId, path, SelectedTrimMode, ct);
+            var result = await _exportUseCase.ExecuteAsync(
+                grid.GridId,
+                path,
+                new RenderOptions(SelectedTrimMode, SelectedChaosLevel),
+                ct);
             StatusMessage = result.IsError
                 ? string.Join(", ", result.Errors)
                 : $"出力しました: {Path.GetFileName(path)} ({result.Value.FileSizeBytes:N0} bytes)";
