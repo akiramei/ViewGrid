@@ -758,6 +758,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 return null;
             }
             StatusMessage = $"プレビュー生成 {sw.ElapsedMilliseconds:N0} ms ({result.Value.Length:N0} bytes)";
+            LogPreviewRendered(_logger, SelectedTrimMode, SelectedChaosLevel, sw.ElapsedMilliseconds, result.Value.Length);
             return result.Value;
         }
         finally { IsBusy = false; }
@@ -789,6 +790,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             StatusMessage = result.IsError
                 ? string.Join(", ", result.Errors)
                 : $"出力 {sw.ElapsedMilliseconds:N0} ms: {Path.GetFileName(path)} ({result.Value.FileSizeBytes:N0} bytes)";
+            if (!result.IsError)
+                LogPngExported(_logger, SelectedTrimMode, SelectedChaosLevel, sw.ElapsedMilliseconds, result.Value.FileSizeBytes);
         }
         finally { IsBusy = false; }
     }
@@ -1286,4 +1289,10 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     [LoggerMessage(EventId = 5007, Level = LogLevel.Debug, Message = "配置タブからバリアントのリネームをキャンセル: copy={CopyId}")]
     private static partial void LogVariantRenameCanceled(ILogger logger, Guid copyId);
+
+    [LoggerMessage(EventId = 5008, Level = LogLevel.Information, Message = "プレビュー生成: trim={TrimMode} chaos={Chaos:F2} elapsed={ElapsedMs}ms bytes={Bytes}")]
+    private static partial void LogPreviewRendered(ILogger logger, TrimMode trimMode, double chaos, long elapsedMs, int bytes);
+
+    [LoggerMessage(EventId = 5009, Level = LogLevel.Information, Message = "PNG 出力: trim={TrimMode} chaos={Chaos:F2} elapsed={ElapsedMs}ms bytes={Bytes}")]
+    private static partial void LogPngExported(ILogger logger, TrimMode trimMode, double chaos, long elapsedMs, long bytes);
 }
