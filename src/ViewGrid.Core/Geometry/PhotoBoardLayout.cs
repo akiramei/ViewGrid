@@ -57,7 +57,7 @@ public static class PhotoBoardLayout
     private const double BaseShadowOffsetY = 4.0;
     private const double BaseShadowSigma = 4.0;
     private const double ShadowOffsetJitterPx = 1.0;  // ±1px
-    private const double ShadowSigmaJitterPx = 0.5;   // ±0.5
+    private const double ShadowSigmaJitterPx = 1.0;   // ±1.0 (UI 感を消すために強化)
     private const byte ShadowMaxAlpha = 64;
     // バイアス優位 (per-item jitter < row/col bias) にすることで、同じ行 / 列の placement が
     // 同方向に揺らぐ「波状の不規則性」を視覚的に強調する。i.i.d. ジッターが優位になると
@@ -65,7 +65,9 @@ public static class PhotoBoardLayout
     private const double MaxJitterFraction = 0.05;       // セル短辺に対する比率
     private const double MaxRowColBiasFraction = 0.10;
     private const double MaxRotationDeg = 8.0;
-    private const double MaxRotationPivotFraction = 0.10;
+    // 回転中心オフセット: 0.10 だと小さい回転角での視覚効果が薄い (8° で約 3px の動き)。
+    // 0.18 まで強化して「手で置いた」非対称感をはっきり出す。
+    private const double MaxRotationPivotFraction = 0.18;
 
     /// <summary>
     /// chaos の二段階カーブの境界。<c>[0, FrameRampThreshold]</c> でフレーム / シャドウが
