@@ -92,6 +92,14 @@ public static class PhotoBoardLayout
     private const double MaxGlobalDriftFraction = 0.06;
 
     /// <summary>
+    /// 重なり (overlap) を解禁する chaos 閾値。これ未満では各 placement の拡張倍率は
+    /// 一律 (= グリッド全体が同じ比率で広がる)。これ以上では per-item で拡張倍率を
+    /// ばらつかせ、一部の placement が内側に寄って隣の placement と重なる「写真を
+    /// 軽く重ねて並べた」感を出す。
+    /// </summary>
+    private const double OverlapChaosThreshold = 0.6;
+
+    /// <summary>
     /// 各 placement の PhotoBoard 描画パラメータを計算する。
     /// </summary>
     /// <param name="baseRects">配置順 (PlacementOrder 昇順) で渡す入力。</param>
@@ -178,10 +186,16 @@ public static class PhotoBoardLayout
 
             // グリッド拡張オフセット: セル中心がキャンバス中心から expansionFactor 倍に広がる。
             // chaos=0 で 0、chaos=1 で約 30% 外側へ移動 (4 隅は最も大きく動く)。
+            // chaos > OverlapChaosThreshold (=0.6) では per-item で拡張倍率を [-0.4, +1.0] の
+            // 範囲でばらつかせ、一部 placement が内側に寄って重なりを作る。
             var cellCenterX = rect.X + rect.Width / 2.0;
             var cellCenterY = rect.Y + rect.Height / 2.0;
-            var expansionOffsetX = (cellCenterX - canvasCenterX) * (expansionFactor - 1.0);
-            var expansionOffsetY = (cellCenterY - canvasCenterY) * (expansionFactor - 1.0);
+            var perItemExpansionMul = clamped > OverlapChaosThreshold
+                ? (rng.NextDouble() * 1.4 - 0.4)  // [-0.4, +1.0]
+                : 1.0;
+            var perItemExpansionFactor = 1.0 + (expansionFactor - 1.0) * perItemExpansionMul;
+            var expansionOffsetX = (cellCenterX - canvasCenterX) * (perItemExpansionFactor - 1.0);
+            var expansionOffsetY = (cellCenterY - canvasCenterY) * (perItemExpansionFactor - 1.0);
 
             // 散らかし (jitter / rotation / pivot + 拡張 + 全体ドリフト) は disorderRamp でスケール。
             // chaos <= FrameRampThreshold (既定 0.20) では 0 → 写真は整列して並ぶ。

@@ -113,15 +113,19 @@ public sealed class PhotoBoardLayoutTests
             sumOffsetY3 += result[3].OffsetY;  // 下側 → 平均 +40 期待
         }
 
-        // 平均が拡張方向 (left/up=負、right/down=正) に偏る
-        (sumOffsetX0 / trials).Should().BeLessThan(-20.0,
-            "左側 placement は拡張で左方向 (-X) にシフトするはず");
-        (sumOffsetX1 / trials).Should().BeGreaterThan(20.0,
-            "右側 placement は拡張で右方向 (+X) にシフトするはず");
-        (sumOffsetY0 / trials).Should().BeLessThan(-20.0,
-            "上側 placement は拡張で上方向 (-Y) にシフトするはず");
-        (sumOffsetY3 / trials).Should().BeGreaterThan(20.0,
-            "下側 placement は拡張で下方向 (+Y) にシフトするはず");
+        // 平均が拡張方向 (left/up=負、right/down=正) に偏る。
+        // 注意: chaos > OverlapChaosThreshold (=0.6) では per-item で拡張倍率が
+        // [-0.4, +1.0] の範囲でばらつく (重なり生成のため)。期待平均拡張倍率は
+        // 0.3 倍 → 平均拡張オフセットは -12 程度。閾値は -8 に設定 (符号が拡張方向
+        // である事を担保しつつ、ばらつきの影響でブレるので余裕を持たせる)。
+        (sumOffsetX0 / trials).Should().BeLessThan(-8.0,
+            "左側 placement は拡張で左方向 (-X) に平均的にシフトするはず");
+        (sumOffsetX1 / trials).Should().BeGreaterThan(8.0,
+            "右側 placement は拡張で右方向 (+X) に平均的にシフトするはず");
+        (sumOffsetY0 / trials).Should().BeLessThan(-8.0,
+            "上側 placement は拡張で上方向 (-Y) に平均的にシフトするはず");
+        (sumOffsetY3 / trials).Should().BeGreaterThan(8.0,
+            "下側 placement は拡張で下方向 (+Y) に平均的にシフトするはず");
     }
 
     [Fact]
