@@ -15,16 +15,24 @@ public sealed record ExportGridResult(string Path, long FileSizeBytes);
 /// </summary>
 public sealed class ExportGridUseCase(RenderGridUseCase render)
 {
-    public async Task<ErrorOr<ExportGridResult>> ExecuteAsync(
+    public Task<ErrorOr<ExportGridResult>> ExecuteAsync(
         Guid gridId,
         string outputPath,
         TrimMode trimMode = TrimMode.None,
         CancellationToken ct = default)
+        => ExecuteAsync(gridId, outputPath, new RenderOptions(trimMode), ct);
+
+    public async Task<ErrorOr<ExportGridResult>> ExecuteAsync(
+        Guid gridId,
+        string outputPath,
+        RenderOptions options,
+        CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
         if (string.IsNullOrWhiteSpace(outputPath))
             return Error.Validation("Export.InvalidPath", "出力パスが空です。");
 
-        var rendered = await render.ExecuteAsync(gridId, trimMode, ct);
+        var rendered = await render.ExecuteAsync(gridId, options, ct);
         if (rendered.IsError)
             return rendered.Errors;
 

@@ -28,19 +28,20 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     public Task<ErrorOr<byte[]>> RenderPngAsync(
         GridCanvas grid,
         IReadOnlyList<PlacementRenderItem> items,
-        TrimMode trimMode = TrimMode.None,
+        RenderOptions options,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(grid);
         ArgumentNullException.ThrowIfNull(items);
+        ArgumentNullException.ThrowIfNull(options);
 
-        return Task.Run<ErrorOr<byte[]>>(() => Render(grid, items, trimMode, ct), ct);
+        return Task.Run<ErrorOr<byte[]>>(() => Render(grid, items, options, ct), ct);
     }
 
     private ErrorOr<byte[]> Render(
         GridCanvas grid,
         IReadOnlyList<PlacementRenderItem> items,
-        TrimMode trimMode,
+        RenderOptions options,
         CancellationToken ct)
     {
         var info = new SKImageInfo(
@@ -66,7 +67,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         }
 
         using var image = surface.Snapshot();
-        return EncodeWithTrim(image, grid, items, trimMode);
+        return EncodeWithTrim(image, grid, items, options.TrimMode);
     }
 
     /// <summary>

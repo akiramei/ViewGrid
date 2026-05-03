@@ -21,11 +21,18 @@ public sealed class RenderGridUseCase(
     IImageStorage imageStorage,
     IGridImageRenderer renderer)
 {
-    public async Task<ErrorOr<byte[]>> ExecuteAsync(
+    public Task<ErrorOr<byte[]>> ExecuteAsync(
         Guid gridId,
         TrimMode trimMode = TrimMode.None,
         CancellationToken ct = default)
+        => ExecuteAsync(gridId, new RenderOptions(trimMode), ct);
+
+    public async Task<ErrorOr<byte[]>> ExecuteAsync(
+        Guid gridId,
+        RenderOptions options,
+        CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
         var grid = await gridRepository.FindByIdAsync(gridId, ct);
         if (grid is null)
             return Error.NotFound("Grid.NotFound", $"GridCanvas {gridId} が見つかりません。");
@@ -47,6 +54,6 @@ public sealed class RenderGridUseCase(
             items.Add(new PlacementRenderItem(placement, copy, absolutePath));
         }
 
-        return await renderer.RenderPngAsync(grid, items, trimMode, ct);
+        return await renderer.RenderPngAsync(grid, items, options, ct);
     }
 }

@@ -39,7 +39,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         var copy = CreateCopy();
         var placement = CreatePlacement(grid.Id, copy.Id, position: new CellPosition(0, 0));
 
-        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)]);
+        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)], RenderOptions.Default);
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -68,7 +68,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
             new(CreatePlacement(grid.Id, copy.Id, new CellPosition(1, 1), order: 3), copy, yellowPath),
         };
 
-        var result = await _renderer.RenderPngAsync(grid, items);
+        var result = await _renderer.RenderPngAsync(grid, items, RenderOptions.Default);
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -87,7 +87,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         var copy = CreateCopy(scaling: ScalingMode.UniformContain, alignment: Alignment.Center);
         var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
 
-        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)]);
+        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)], RenderOptions.Default);
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -109,7 +109,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         var copy = CreateCopy(scaling: ScalingMode.None, alignment: new Alignment(AnchorX.Left, AnchorY.Top));
         var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
 
-        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)]);
+        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)], RenderOptions.Default);
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -131,7 +131,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
             new(CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0), order: 1), copy, greenPath),
         };
 
-        var result = await _renderer.RenderPngAsync(grid, items);
+        var result = await _renderer.RenderPngAsync(grid, items, RenderOptions.Default);
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -149,7 +149,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         var copy = CreateCopy(scaling: ScalingMode.UniformCover, alignment: Alignment.Center);
         var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
 
-        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)]);
+        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)], RenderOptions.Default);
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -170,7 +170,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         var copy = CreateCopy(scaling: ScalingMode.Fill);
         var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
 
-        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)]);
+        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, imagePath)], RenderOptions.Default);
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -194,7 +194,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         var copy = CreateCopy(scaling: ScalingMode.None);
         var placement = CreatePlacementWithOffset(grid.Id, copy.Id, new CellPosition(0, 0), pxOffsetX: 30, pxOffsetY: 0);
 
-        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, redPath)]);
+        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, redPath)], RenderOptions.Default);
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -213,7 +213,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
         var missingPath = Path.Combine(_tempDir.FullName, "missing.png");
 
-        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, missingPath)]);
+        var result = await _renderer.RenderPngAsync(grid, [new PlacementRenderItem(placement, copy, missingPath)], RenderOptions.Default);
 
         result.IsError.Should().BeTrue();
         result.FirstError.Type.Should().Be(ErrorOr.ErrorType.NotFound);
@@ -224,7 +224,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
     {
         var grid = CreateGrid(rows: 3, cols: 4, canvas: new PixelSize(80, 60));
 
-        var result = await _renderer.RenderPngAsync(grid, []);
+        var result = await _renderer.RenderPngAsync(grid, [], RenderOptions.Default);
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -244,7 +244,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
 
         var result = await _renderer.RenderPngAsync(
             grid, [new PlacementRenderItem(placement, copy, imagePath)],
-            TrimMode.None);
+            new RenderOptions(TrimMode.None));
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -265,7 +265,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
             new(CreatePlacement(grid.Id, copy.Id, new CellPosition(1, 0), order: 1), copy, imagePath),
         };
 
-        var result = await _renderer.RenderPngAsync(grid, items, TrimMode.OccupiedCells);
+        var result = await _renderer.RenderPngAsync(grid, items, new RenderOptions(TrimMode.OccupiedCells));
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -288,7 +288,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
 
         var result = await _renderer.RenderPngAsync(
             grid, [new PlacementRenderItem(placement, copy, imagePath)],
-            TrimMode.DrawnPixels);
+            new RenderOptions(TrimMode.DrawnPixels));
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -311,7 +311,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
 
         var result = await _renderer.RenderPngAsync(
             grid, [new PlacementRenderItem(placement, copy, imagePath)],
-            TrimMode.DrawnPixels);
+            new RenderOptions(TrimMode.DrawnPixels));
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -334,7 +334,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
 
         var result = await _renderer.RenderPngAsync(
             grid, [new PlacementRenderItem(placement, copy, imagePath)],
-            TrimMode.DrawnPixels);
+            new RenderOptions(TrimMode.DrawnPixels));
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
@@ -350,7 +350,7 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         // 配置なしで OccupiedCells は bbox=空 → ファイル破損を避けるため 1×1 透過画像を返す
         var grid = CreateGrid(rows: 3, cols: 3, canvas: new PixelSize(120, 120));
 
-        var result = await _renderer.RenderPngAsync(grid, [], TrimMode.OccupiedCells);
+        var result = await _renderer.RenderPngAsync(grid, [], new RenderOptions(TrimMode.OccupiedCells));
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
