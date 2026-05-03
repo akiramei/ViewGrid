@@ -359,6 +359,111 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         rendered.GetPixel(0, 0).Alpha.Should().Be(0);
     }
 
+    // ─── PhotoBoard モード統合テスト ───
+
+    [Fact]
+    public async Task PhotoBoard_Chaos_Zero_Produces_Same_Bytes_As_TrimMode_None()
+    {
+        // chaos=0 は全効果ゼロ → TrimMode.None と同一バイト列を出すこと (UX 契約)
+        var imagePath = WriteSolidColorPng(40, 40, SKColors.Red);
+        var grid = CreateGrid(rows: 2, cols: 2, canvas: new PixelSize(100, 100));
+        var copy = CreateCopy();
+        var items = new List<PlacementRenderItem>
+        {
+            new(CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0), order: 0), copy, imagePath),
+            new(CreatePlacement(grid.Id, copy.Id, new CellPosition(1, 1), order: 1), copy, imagePath),
+        };
+
+        var photoBoardResult = await _renderer.RenderPngAsync(
+            grid, items,
+            new RenderOptions(TrimMode.PhotoBoard, PhotoBoardChaos: 0.0, PhotoBoardSeedOverride: 12345));
+        var noneResult = await _renderer.RenderPngAsync(grid, items, new RenderOptions(TrimMode.None));
+
+        photoBoardResult.IsError.Should().BeFalse();
+        noneResult.IsError.Should().BeFalse();
+        photoBoardResult.Value.Should().Equal(noneResult.Value);
+    }
+
+    [Fact]
+    public async Task PhotoBoard_Chaos_One_Returns_Image_Larger_Than_Canvas()
+    {
+        // chaos=1 ではマージンが追加されてキャンバスより大きい画像になる
+        var imagePath = WriteSolidColorPng(40, 40, SKColors.Red);
+        var grid = CreateGrid(rows: 2, cols: 2, canvas: new PixelSize(200, 200));
+        var copy = CreateCopy();
+        var items = new List<PlacementRenderItem>
+        {
+            new(CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0), order: 0), copy, imagePath),
+            new(CreatePlacement(grid.Id, copy.Id, new CellPosition(1, 1), order: 1), copy, imagePath),
+        };
+
+        var result = await _renderer.RenderPngAsync(
+            grid, items,
+            new RenderOptions(TrimMode.PhotoBoard, PhotoBoardChaos: 1.0, PhotoBoardSeedOverride: 42));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        rendered.Width.Should().BeGreaterThan(200);
+        rendered.Height.Should().BeGreaterThan(200);
+    }
+
+    [Fact]
+    public async Task PhotoBoard_Same_Seed_Produces_Same_Bytes()
+    {
+        // シード固定で 2 回呼べば完全に同一バイト列 (再現性の UX 契約)
+        var imagePath = WriteSolidColorPng(40, 40, SKColors.Red);
+        var grid = CreateGrid(rows: 2, cols: 2, canvas: new PixelSize(200, 200));
+        var copy = CreateCopy();
+        var items = new List<PlacementRenderItem>
+        {
+            new(CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0), order: 0), copy, imagePath),
+            new(CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 1), order: 1), copy, imagePath),
+            new(CreatePlacement(grid.Id, copy.Id, new CellPosition(1, 0), order: 2), copy, imagePath),
+        };
+        var options = new RenderOptions(TrimMode.PhotoBoard, PhotoBoardChaos: 0.7, PhotoBoardSeedOverride: 99);
+
+        var first = await _renderer.RenderPngAsync(grid, items, options);
+        var second = await _renderer.RenderPngAsync(grid, items, options);
+
+        first.IsError.Should().BeFalse();
+        second.IsError.Should().BeFalse();
+        first.Value.Should().Equal(second.Value);
+    }
+
+    [Fact]
+    public async Task PhotoBoard_Chaos_One_Has_Frame_Color_Pixel()
+    {
+        // chaos=1 ではフレーム色 #FAFAF8 のピクセルが出力に現れる
+        var imagePath = WriteSolidColorPng(40, 40, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(200, 200));
+        var copy = CreateCopy();
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode.PhotoBoard, PhotoBoardChaos: 1.0, PhotoBoardSeedOverride: 7));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+
+        // フレーム色 (#FAFAF8) のピクセルが少なくとも 1 つは存在する
+        // 12px の側面フレームなので画像周辺をスキャン
+        var frameColor = new SKColor(0xFA, 0xFA, 0xF8);
+        bool hasFramePixel = false;
+        for (int y = 0; y < rendered.Height && !hasFramePixel; y++)
+        {
+            for (int x = 0; x < rendered.Width; x++)
+            {
+                if (rendered.GetPixel(x, y) == frameColor)
+                {
+                    hasFramePixel = true;
+                    break;
+                }
+            }
+        }
+        hasFramePixel.Should().BeTrue("ポラロイド風フレーム (#FAFAF8) のピクセルが出力に現れること");
+    }
+
     private string WriteSolidColorPng(int w, int h, SKColor color)
     {
         var path = Path.Combine(_tempDir.FullName, $"{Guid.NewGuid():N}.png");
