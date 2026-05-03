@@ -772,7 +772,10 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 var placementImage = placementImages[i];
                 var layoutItem = layoutItems[i];
 
-                var composite = ComposeWithFrame(placementImage, layoutItem);
+                var compositeResult = ComposeWithFrame(placementImage, layoutItem);
+                if (compositeResult.IsError)
+                    return compositeResult.Errors;
+                var composite = compositeResult.Value;
                 if (!ReferenceEquals(composite, placementImage))
                     toDispose.Add(composite);
 
@@ -820,9 +823,10 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     /// placement 画像にポラロイド風フレームを巻いた合成 SKImage を返す。
     /// <paramref name="layout"/> の <c>FrameAlpha == 0</c> なら入力をそのまま返す
     /// (chaos=0 ショートカット)。返値が入力と同じインスタンスかどうかは
-    /// <c>ReferenceEquals</c> で判定可能。
+    /// <c>ReferenceEquals</c> で判定可能。中間サーフェス確保失敗時は
+    /// <see cref="Error.Failure"/> を返し、呼び出し元が描画を中断できるようにする。
     /// </summary>
-    private static SKImage ComposeWithFrame(SKImage placementImage, PhotoBoardItem layout)
+    private static ErrorOr<SKImage> ComposeWithFrame(SKImage placementImage, PhotoBoardItem layout)
     {
         if (layout.FrameAlpha == 0 || (layout.FrameSidePx == 0 && layout.FrameBottomPx == 0))
             return placementImage;
@@ -832,6 +836,11 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         var info = new SKImageInfo(compW, compH, SKColorType.Rgba8888, SKAlphaType.Premul);
 
         using var surface = SKSurface.Create(info);
+        if (surface is null)
+            return Error.Failure(
+                "Render.SurfaceFailed",
+                "フレーム合成サーフェスの作成に失敗しました。");
+
         var canvas = surface.Canvas;
         canvas.Clear(SKColors.Transparent);
 
