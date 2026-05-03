@@ -102,6 +102,16 @@ public static class PhotoBoardLayout
     private const double OverlapChaosThreshold = 0.6;
 
     /// <summary>
+    /// 明示的重なり (overlap nudge) を解禁する chaos 閾値。これ以上では K = max(1, N/4) 個の
+    /// placement を選んで、4 方向 (上下左右) のどれかに <see cref="OverlapNudgeFraction"/>
+    /// 倍だけ強制シフトして「隣の placement に食い込む」明示的な重なりを作る。
+    /// per-item 拡張倍率による暗黙の overlap だけだと「軽い隙間ができる」程度で
+    /// 「明確に重なって見える」効果が出ないため、明示メカニズムを追加。
+    /// </summary>
+    private const double OverlapNudgeThreshold = 0.7;
+    private const double OverlapNudgeFraction = 0.30;  // セル短辺の 30% シフト
+
+    /// <summary>
     /// 各 placement の PhotoBoard 描画パラメータを計算する。
     /// </summary>
     /// <param name="baseRects">配置順 (PlacementOrder 昇順) で渡す入力。</param>
@@ -144,6 +154,37 @@ public static class PhotoBoardLayout
         var globalDriftXFactor = Math.Cos(globalDriftAngle) * globalDriftMag;
         var globalDriftYFactor = Math.Sin(globalDriftAngle) * globalDriftMag;
 
+        // 明示的重なり (overlap nudge): chaos > OverlapNudgeThreshold (=0.7) で
+        // K = max(1, N/4) 個の placement を選び、4 方向のどれかに 30% シフトして
+        // 隣 placement と確実に重なるようにする。Z 順は PlacementOrder のままなので、
+        // 後ろ placement が前の placement の下に潜り込む見え方になる。
+        var overlapNudges = new Dictionary<int, (double X, double Y)>();
+        if (clamped > OverlapNudgeThreshold && baseRects.Count > 1)
+        {
+            var nudgeCount = Math.Max(1, baseRects.Count / 4);
+            var pool = new List<int>(baseRects.Count);
+            for (int i = 0; i < baseRects.Count; i++) pool.Add(i);
+
+            for (int i = 0; i < nudgeCount && pool.Count > 0; i++)
+            {
+                var poolIdx = rng.Next(pool.Count);
+                var chosen = pool[poolIdx];
+                pool.RemoveAt(poolIdx);
+
+                var rect = baseRects[chosen].Rect;
+                var nudgeMag = OverlapNudgeFraction * Math.Min(rect.Width, rect.Height);
+                var direction = rng.Next(4);
+                var nudge = direction switch
+                {
+                    0 => (-nudgeMag, 0.0),  // 左へ食い込む
+                    1 => (+nudgeMag, 0.0),  // 右へ食い込む
+                    2 => (0.0, -nudgeMag),  // 上へ食い込む
+                    _ => (0.0, +nudgeMag),  // 下へ食い込む
+                };
+                overlapNudges[chosen] = nudge;
+            }
+        }
+
         // 列・行バイアスの事前計算: 同じ行 / 列の placement は同じ方向に揺らぐ
         var rowBiases = new Dictionary<int, (double X, double Y)>();
         var colBiases = new Dictionary<int, (double X, double Y)>();
@@ -166,10 +207,14 @@ public static class PhotoBoardLayout
         }
 
         var items = new List<PhotoBoardItem>(baseRects.Count);
-        foreach (var baseRect in baseRects)
+        for (int itemIdx = 0; itemIdx < baseRects.Count; itemIdx++)
         {
+            var baseRect = baseRects[itemIdx];
             var rect = baseRect.Rect;
             var minSide = Math.Min(rect.Width, rect.Height);
+            var (overlapNudgeX, overlapNudgeY) = overlapNudges.TryGetValue(itemIdx, out var nudge)
+                ? nudge
+                : (0.0, 0.0);
             var (rowBiasX, rowBiasY) = rowBiases[baseRect.RowIndex];
             var (colBiasX, colBiasY) = colBiases[baseRect.ColIndex];
 
@@ -204,12 +249,13 @@ public static class PhotoBoardLayout
             // 散らかし (jitter / rotation / pivot + 拡張 + 全体ドリフト) は disorderRamp でスケール。
             // chaos <= FrameRampThreshold (既定 0.20) では 0 → 写真は整列して並ぶ。
             // 全体ドリフトは全 placement に同方向の微小シフトを加える「手の癖」効果。
-            var offsetX = expansionOffsetX + disorderRamp * minSide * (
+            // overlapNudge は明示的重なりのシフト (選ばれた K 件のみ非 0)。
+            var offsetX = expansionOffsetX + overlapNudgeX + disorderRamp * minSide * (
                 MaxJitterFraction * itemJitterX
                 + MaxRowColBiasFraction * rowBiasX
                 + MaxRowColBiasFraction * colBiasX
                 + globalDriftXFactor);
-            var offsetY = expansionOffsetY + disorderRamp * minSide * (
+            var offsetY = expansionOffsetY + overlapNudgeY + disorderRamp * minSide * (
                 MaxJitterFraction * itemJitterY
                 + MaxRowColBiasFraction * rowBiasY
                 + MaxRowColBiasFraction * colBiasY
@@ -278,6 +324,11 @@ public static class PhotoBoardLayout
         var maxOffset = disorderRamp * maxMinSide
             * (MaxJitterFraction + 2.0 * MaxRowColBiasFraction + MaxGlobalDriftFraction);
 
+        // 明示的重なり nudge (chaos > OverlapNudgeThreshold で K 個に最大 OverlapNudgeFraction シフト)
+        var overlapNudge = clamped > OverlapNudgeThreshold
+            ? OverlapNudgeFraction * maxMinSide
+            : 0.0;
+
         // グリッド拡張: 4 隅の placement は最大 (canvas/2) * (expansionFactor - 1) 外側へ動く
         var expansionGrowth = Math.Max(canvas.Width, canvas.Height) / 2.0
             * MaxExpansionFactor * disorderRamp;
@@ -292,6 +343,6 @@ public static class PhotoBoardLayout
         var shadow = (BaseShadowOffsetY + ShadowOffsetJitterPx
                     + 3.0 * (BaseShadowSigma + ShadowSigmaJitterPx)) * frameRamp;
 
-        return (int)Math.Ceiling(maxOffset + expansionGrowth + rotationGrowth + frame + shadow + 4.0);
+        return (int)Math.Ceiling(maxOffset + overlapNudge + expansionGrowth + rotationGrowth + frame + shadow + 4.0);
     }
 }

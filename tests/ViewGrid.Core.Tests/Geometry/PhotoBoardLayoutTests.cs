@@ -66,7 +66,8 @@ public sealed class PhotoBoardLayoutTests
         //   位置オフセット小計 = ±62
         // 拡張 (4 隅 placement): |cellCenter - canvasCenter|=100, MaxExpansionFactor=0.40
         //   → 拡張オフセット = ±40
-        // 合計 OffsetX/Y = ±102
+        // overlap nudge (K=1 件): chaos>0.7 で ±60 (片軸のみ)
+        //   合計 OffsetX/Y = ±102 + ±60 = ±162
         // 回転 ≤ ±8 度 (triangular distribution、依然として絶対値は max を超えない)
         // フレーム = 12 / 36
         // シャドウ alpha = 64
@@ -74,8 +75,8 @@ public sealed class PhotoBoardLayoutTests
 
         foreach (var item in result)
         {
-            item.OffsetX.Should().BeInRange(-102.0, 102.0);
-            item.OffsetY.Should().BeInRange(-102.0, 102.0);
+            item.OffsetX.Should().BeInRange(-162.0, 162.0);
+            item.OffsetY.Should().BeInRange(-162.0, 162.0);
             item.RotationDeg.Should().BeInRange(-8.0, 8.0);
             item.RotationPivotOffsetX.Should().BeInRange(-36.0, 36.0);  // 200×0.18
             item.RotationPivotOffsetY.Should().BeInRange(-36.0, 36.0);
@@ -87,6 +88,60 @@ public sealed class PhotoBoardLayoutTests
             item.ShadowOffsetY.Should().BeInRange(2.0, 6.0);  // base 4 ± 1
             item.ShadowSigma.Should().BeInRange(0.0, 6.0);    // base 4 ± 1 + clamp 余裕
         }
+    }
+
+    [Fact]
+    public void Compute_Chaos_Just_Below_Threshold_Has_No_Overlap_Nudge()
+    {
+        // chaos=0.7 ちょうどでは overlap nudge は発火しない (> 0.7 が条件)。
+        // 位置オフセットは ±102 (jitter+bias+drift+expansion) 以内に収まる。
+        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 0.7, seed: 42);
+
+        foreach (var item in result)
+        {
+            // disorderRamp(0.7) = (0.7-0.20)/0.80 = 0.625
+            // 位置オフセット最大 = 0.625 × 200 × (0.05 + 2×0.10 + 0.06) = 0.625 × 62 = 38.75
+            // 拡張: expansionFactor = 1.0 + 0.4×0.625 = 1.25 → corner 4 隅 100×0.25 = 25
+            // per-item expansion mul で perItemMul ∈ [-0.4, +1.0] → 拡張オフセット ∈ [-10, +25]
+            // 合計絶対値 ≤ 39 + 25 = 64
+            item.OffsetX.Should().BeInRange(-65.0, 65.0);
+            item.OffsetY.Should().BeInRange(-65.0, 65.0);
+        }
+    }
+
+    [Fact]
+    public void Compute_Chaos_Above_Nudge_Threshold_Increases_Max_Offset_Spread()
+    {
+        // chaos > 0.7 で overlap nudge が発火すると、いずれかの placement の片軸
+        // オフセットが ±60 (overlap nudge) ぶん拡張される。100 シードでの最大
+        // 絶対オフセットを見ると、chaos=0.7 (nudge 未発火) より chaos=1.0 で
+        // 明確に大きい値が観測されることを統計的に確認する。
+        const int trials = 100;
+        double maxOffsetWithoutNudge = 0;
+        double maxOffsetWithNudge = 0;
+        for (int seed = 1; seed <= trials; seed++)
+        {
+            // chaos=0.70 ちょうどなら overlap nudge は発火しない (条件は > 0.7)
+            var without = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 0.70, seed: seed);
+            foreach (var item in without)
+            {
+                maxOffsetWithoutNudge = Math.Max(maxOffsetWithoutNudge,
+                    Math.Max(Math.Abs(item.OffsetX), Math.Abs(item.OffsetY)));
+            }
+
+            var with_ = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 1.0, seed: seed);
+            foreach (var item in with_)
+            {
+                maxOffsetWithNudge = Math.Max(maxOffsetWithNudge,
+                    Math.Max(Math.Abs(item.OffsetX), Math.Abs(item.OffsetY)));
+            }
+        }
+        // chaos=0.70 の最大オフセット (nudge なし) は理論上 64px 程度。
+        // chaos=1.0 (nudge ±60 あり) は 100px を超えるはず。
+        maxOffsetWithoutNudge.Should().BeLessThan(80.0,
+            "chaos=0.7 では overlap nudge が発火しないので 80px を超えない");
+        maxOffsetWithNudge.Should().BeGreaterThan(100.0,
+            "chaos=1.0 では overlap nudge ±60 が加算されて 100px を超える placement が出現するはず");
     }
 
     [Fact]
