@@ -67,8 +67,10 @@ public sealed class PhotoBoardLayoutTests
         // 拡張 (4 隅 placement): |cellCenter - canvasCenter|=100, MaxExpansionFactor=0.40
         //   → 拡張オフセット = ±40
         // overlap nudge (確率発火): chaos=1 で 50% 確率、最大 ±40 (= 200×0.20)
-        // polish pass (高 chaos で破綻防止): 孤立 + 過密ガード で各 ±24 (= 200×0.12)
-        //   合計 OffsetX/Y 最悪ケース = ±62 + ±40 + ±40 + ±24 + ±24 = ±190
+        // polish pass (高 chaos で破綻防止):
+        //   孤立 + 過密 で各 ±24 (= 200×0.12)
+        //   pair separation: ±10 (= 200×0.05)
+        //   合計 OffsetX/Y 最悪ケース = ±62 + ±40 + ±40 + ±24 + ±24 + ±10 = ±200
         // 回転 ≤ ±8 度 (triangular) + 整列破壊 ±1.5 = ±9.5
         // フレーム = 12 / 36
         // シャドウ alpha = 64
@@ -76,8 +78,8 @@ public sealed class PhotoBoardLayoutTests
 
         foreach (var item in result)
         {
-            item.OffsetX.Should().BeInRange(-190.0, 190.0);
-            item.OffsetY.Should().BeInRange(-190.0, 190.0);
+            item.OffsetX.Should().BeInRange(-205.0, 205.0);
+            item.OffsetY.Should().BeInRange(-205.0, 205.0);
             item.RotationDeg.Should().BeInRange(-9.5, 9.5);
             item.RotationPivotOffsetX.Should().BeInRange(-36.0, 36.0);  // 200×0.18
             item.RotationPivotOffsetY.Should().BeInRange(-36.0, 36.0);
@@ -241,6 +243,43 @@ public sealed class PhotoBoardLayoutTests
         var input = SampleGrid2x2();
         var a = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 0.95, seed: 12345);
         var b = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 0.95, seed: 12345);
+
+        a.Should().BeEquivalentTo(b);
+    }
+
+    [Fact]
+    public void Compute_Anchor_Has_Smaller_Movement_Than_Other_Items()
+    {
+        // chaos=1 でも 1 件のアンカー placement は AnchorAttenuation (=0.30) で減衰され、
+        // 他の item より絶対オフセットが小さい (= 「動かない 1 枚」が存在する)。
+        // 100 シードで「最小オフセット item」と「最大オフセット item」の差を測り、
+        // アンカー機構の効果を統計的に確認する。
+        const int trials = 100;
+        int trialsAnchorWasSmallest = 0;
+        for (int seed = 1; seed <= trials; seed++)
+        {
+            var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 1.0, seed: seed);
+            var magnitudes = result.Select(item =>
+                Math.Sqrt(item.OffsetX * item.OffsetX + item.OffsetY * item.OffsetY)).ToList();
+            var minMag = magnitudes.Min();
+            var maxMag = magnitudes.Max();
+            // 4 件の placement が完全独立なら最小値の期待値はそれなりに大きい (~50)。
+            // アンカー機構があると 1 件は 0.30 倍されて顕著に小さくなる (~30 以下が期待)
+            if (minMag < maxMag * 0.5)  // 最小が最大の半分以下なら「動かない 1 枚」が存在
+                trialsAnchorWasSmallest++;
+        }
+        // アンカー機構の効果: 大半のシードで「動かない 1 枚」が観察される
+        trialsAnchorWasSmallest.Should().BeGreaterThan(70,
+            "chaos=1 ではアンカー減衰により 1 件が他より明確に小さい offset を持つはず");
+    }
+
+    [Fact]
+    public void Compute_Anchor_Mechanism_Preserves_Determinism()
+    {
+        // アンカー選択は rng で行われるため同シード → 同アンカー → 同結果
+        var input = SampleGrid2x2();
+        var a = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 1.0, seed: 9999);
+        var b = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 1.0, seed: 9999);
 
         a.Should().BeEquivalentTo(b);
     }

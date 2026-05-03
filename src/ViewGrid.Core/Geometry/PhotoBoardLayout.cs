@@ -127,6 +127,23 @@ public static class PhotoBoardLayout
     private const double OutwardSpreadHalf = Math.PI / 2.0;
 
     /// <summary>
+    /// アンカー (主役) placement の offset / rotation 減衰倍率。レンダリング毎に 1 件
+    /// だけ「起点」として固定寄りにする。0.30 で 30% の動きしか許容しない (= 70% 抑制)。
+    /// 他の placement が「アンカーから散らばった」配置に見え、群れ感ではなく
+    /// 「意図を持ったランダム」になる。Polish pass からも除外される。
+    /// </summary>
+    private const double AnchorAttenuation = 0.30;
+
+    /// <summary>ペア分解の発火距離閾値 (平均セル短辺の倍数)。これ以内 + 同方向 = ペア判定。</summary>
+    private const double PairSeparationDistanceFactor = 0.8;
+
+    /// <summary>ペア分解の発火角度閾値 (度)。回転がこれ以下の差なら「同方向」とみなす。</summary>
+    private const double PairSeparationRotationThresholdDeg = 2.0;
+
+    /// <summary>ペア分解 nudge 量 (平均セル短辺の倍数)。10px 程度。</summary>
+    private const double PairSeparationNudgeFraction = 0.05;
+
+    /// <summary>
     /// 各 placement の PhotoBoard 描画パラメータを計算する。
     /// </summary>
     /// <param name="baseRects">配置順 (PlacementOrder 昇順) で渡す入力。</param>
@@ -161,6 +178,10 @@ public static class PhotoBoardLayout
         var canvasCenterY = canvas.Height / 2.0;
 
         var rng = new Random(seed);
+
+        // アンカー (主役) 選び: 1 件だけ「起点」として offset / rotation を減衰させる。
+        // 群れ配置感を消し「意図を持ったランダム」に見せる仕掛け。
+        var anchorIndex = baseRects.Count > 0 ? rng.Next(baseRects.Count) : -1;
 
         // 全体ドリフト: レンダリング毎に 1 つの方向 (角度) と量を決める。
         // 全 placement に同じシフトが加わるので「手の癖」感が出る。
@@ -293,6 +314,17 @@ public static class PhotoBoardLayout
             var rotationPivotOffsetX = disorderRamp * minSide * MaxRotationPivotFraction * pivotJitterX;
             var rotationPivotOffsetY = disorderRamp * minSide * MaxRotationPivotFraction * pivotJitterY;
 
+            // アンカー (主役) は offset / rotation を AnchorAttenuation 倍に減衰
+            // (フレーム / シャドウは変えない: 写真ボード感は維持しつつ「動きが少ない 1 枚」を作る)
+            if (itemIdx == anchorIndex)
+            {
+                offsetX *= AnchorAttenuation;
+                offsetY *= AnchorAttenuation;
+                rotationDeg *= AnchorAttenuation;
+                rotationPivotOffsetX *= AnchorAttenuation;
+                rotationPivotOffsetY *= AnchorAttenuation;
+            }
+
             // 写真キャラクター (frame + shadow) は frameRamp でスケール。
             // chaos が 0 → FrameRampThreshold で 0 → 100% にランプ → 早めに飽和して
             // 「写真ボード風」のシルエットを認識可能にする。
@@ -319,11 +351,12 @@ public static class PhotoBoardLayout
         }
 
         // Polish pass: 高 chaos での「破綻防止」ガード群。目的は自然化 (アルゴリズムが
-        // 頑張りすぎて最適化臭が出る) ではなく、孤立 / 過密 / 偶然整列 のような
+        // 頑張りすぎて最適化臭が出る) ではなく、孤立 / 過密 / 偶然整列 / ペア化 のような
         // 構造的な配置の偶発的破綻を最小限の手数で回避すること。
+        // アンカー placement は polish pass からも除外され「動かない 1 枚」を維持する。
         if (disorderRamp > 0.5 && items.Count >= 2)
         {
-            ApplyPolishPass(items, rng);
+            ApplyPolishPass(items, rng, anchorIndex);
         }
 
         return items;
@@ -349,7 +382,7 @@ public static class PhotoBoardLayout
     /// <summary>整列破壊で適用する角度補正量 (度)。</summary>
     private const double AlignmentBreakRotationDeg = 1.5;
 
-    private static void ApplyPolishPass(List<PhotoBoardItem> items, Random rng)
+    private static void ApplyPolishPass(List<PhotoBoardItem> items, Random rng, int anchorIndex)
     {
         var avgMinSide = 0.0;
         for (int i = 0; i < items.Count; i++)
@@ -359,22 +392,26 @@ public static class PhotoBoardLayout
         var nudgeMag = avgMinSide * PolishNudgeFraction;
         var isolationThreshold = avgMinSide * IsolationDistanceFactor;
         var densityThreshold = avgMinSide * DensityDistanceFactor;
+        var pairDistance = avgMinSide * PairSeparationDistanceFactor;
+        var pairNudge = avgMinSide * PairSeparationNudgeFraction;
 
-        ApplyIsolationGuard(items, isolationThreshold, nudgeMag);
-        ApplyDensityGuard(items, densityThreshold, nudgeMag);
-        ApplyAlignmentBreak(items, rng);
+        ApplyIsolationGuard(items, isolationThreshold, nudgeMag, anchorIndex);
+        ApplyDensityGuard(items, densityThreshold, nudgeMag, anchorIndex);
+        ApplyAlignmentBreak(items, rng, anchorIndex);
+        ApplyPairSeparation(items, pairDistance, pairNudge, anchorIndex);
     }
 
     /// <summary>
     /// 孤立ガード: 最近傍距離が閾値を超える placement を最近傍方向に少しだけ寄せる。
     /// 完全孤立した「ぽつん」placement を見えなくする。
     /// </summary>
-    private static void ApplyIsolationGuard(List<PhotoBoardItem> items, double threshold, double nudgeMag)
+    private static void ApplyIsolationGuard(List<PhotoBoardItem> items, double threshold, double nudgeMag, int anchorIndex)
     {
         var positions = ComputeCenters(items);
         var candidates = new List<(int Index, int NearestIdx, double Distance)>();
         for (int i = 0; i < items.Count; i++)
         {
+            if (i == anchorIndex) continue;  // アンカーは動かさない
             var (nearest, dist) = NearestNeighbor(positions, i);
             if (nearest >= 0 && dist > threshold)
                 candidates.Add((i, nearest, dist));
@@ -401,12 +438,13 @@ public static class PhotoBoardLayout
     /// 過密ガード: 同じエリアに 3 件以上 (= 自分 + 近傍 2 件) が固まる場合、最も内側の
     /// 1 件をクラスタ重心の反対方向に少しだけ逃がす。中央吸着 / 局所集中の破綻を防ぐ。
     /// </summary>
-    private static void ApplyDensityGuard(List<PhotoBoardItem> items, double threshold, double nudgeMag)
+    private static void ApplyDensityGuard(List<PhotoBoardItem> items, double threshold, double nudgeMag, int anchorIndex)
     {
         var positions = ComputeCenters(items);
         var candidates = new List<(int Index, double CX, double CY, int Count)>();
         for (int i = 0; i < items.Count; i++)
         {
+            if (i == anchorIndex) continue;  // アンカーは動かさない
             int count = 0;
             double cx = 0, cy = 0;
             for (int j = 0; j < items.Count; j++)
@@ -450,7 +488,7 @@ public static class PhotoBoardLayout
     /// 整列破壊: 角度差 &lt; 1° の連続が 3 件以上ある場合、その中の 1 件だけ ±1.5° 回転を加える。
     /// 「偶然全員が水平に揃う」ケースを破壊して写真ボード感を保つ。
     /// </summary>
-    private static void ApplyAlignmentBreak(List<PhotoBoardItem> items, Random rng)
+    private static void ApplyAlignmentBreak(List<PhotoBoardItem> items, Random rng, int anchorIndex)
     {
         if (items.Count < 3) return;
 
@@ -466,8 +504,17 @@ public static class PhotoBoardLayout
             {
                 if (i - runStart + 1 >= 3)
                 {
-                    // 連の中央 1 件に ±1.5° の補正
-                    var midIdx = indices[(runStart + i) / 2];
+                    // 連の中央 1 件に ±1.5° の補正。アンカーなら 1 つ隣に切替。
+                    var midPos = (runStart + i) / 2;
+                    var midIdx = indices[midPos];
+                    if (midIdx == anchorIndex)
+                    {
+                        // アンカーの場合は連内の別の item を選択
+                        if (midPos + 1 <= i) midIdx = indices[midPos + 1];
+                        else if (midPos - 1 >= runStart) midIdx = indices[midPos - 1];
+                        else return; // 連が 1 件しかなくアンカーを含んでいたらスキップ
+                        if (midIdx == anchorIndex) return;
+                    }
                     var sign = rng.NextDouble() < 0.5 ? -1.0 : 1.0;
                     items[midIdx] = items[midIdx] with
                     {
@@ -479,6 +526,44 @@ public static class PhotoBoardLayout
             else
             {
                 runStart = i;
+            }
+        }
+    }
+
+    /// <summary>
+    /// ペア分解: 距離 &lt; 0.8 × 平均セル短辺 + 角度差 &lt; 2° のペアを 1 件だけ ±10px 離す。
+    /// 「同方向に並んだ 2 件 = ペア感」を緩和して「全部独立した写真」に見せる。
+    /// </summary>
+    private static void ApplyPairSeparation(List<PhotoBoardItem> items, double distThreshold, double nudgeMag, int anchorIndex)
+    {
+        if (items.Count < 2) return;
+        var positions = ComputeCenters(items);
+
+        // 1 ペアだけ処理 (制約厳守)
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (i == anchorIndex) continue;
+            for (int j = i + 1; j < items.Count; j++)
+            {
+                if (j == anchorIndex) continue;
+                var dx = positions[i].X - positions[j].X;
+                var dy = positions[i].Y - positions[j].Y;
+                var dist = Math.Sqrt(dx * dx + dy * dy);
+                if (dist >= distThreshold) continue;
+
+                var rotDiff = Math.Abs(items[i].RotationDeg - items[j].RotationDeg);
+                if (rotDiff > PairSeparationRotationThresholdDeg) continue;
+
+                // 同方向ペア発見: i を j から離す方向に nudge
+                if (dist < 1e-6) continue;
+                var ux = dx / dist;
+                var uy = dy / dist;
+                items[i] = items[i] with
+                {
+                    OffsetX = items[i].OffsetX + ux * nudgeMag,
+                    OffsetY = items[i].OffsetY + uy * nudgeMag,
+                };
+                return; // 1 ペアのみ処理
             }
         }
     }
