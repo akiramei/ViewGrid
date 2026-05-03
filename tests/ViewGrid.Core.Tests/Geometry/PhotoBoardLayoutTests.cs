@@ -82,7 +82,7 @@ public sealed class PhotoBoardLayoutTests
             item.FrameSidePx.Should().Be(12);
             item.FrameBottomPx.Should().Be(36);
             item.FrameAlpha.Should().Be(255);
-            item.ShadowAlpha.Should().Be(64);
+            item.ShadowAlpha.Should().BeInRange((byte)51, (byte)77);  // 64 ± 20%
             item.ShadowOffsetX.Should().BeInRange(0.0, 4.0);  // base 2 ± 1
             item.ShadowOffsetY.Should().BeInRange(2.0, 6.0);  // base 4 ± 1
             item.ShadowSigma.Should().BeInRange(0.0, 5.0);    // base 4 ± 0.5 (Max で clamp)
@@ -174,11 +174,11 @@ public sealed class PhotoBoardLayoutTests
             item.RotationDeg.Should().Be(0.0);
             item.RotationPivotOffsetX.Should().Be(0.0);
             item.RotationPivotOffsetY.Should().Be(0.0);
-            // フレーム / シャドウは飽和
+            // フレーム / シャドウは飽和 (alpha は ±20% per-item で揺らぐ)
             item.FrameSidePx.Should().Be(12);
             item.FrameBottomPx.Should().Be(36);
             item.FrameAlpha.Should().Be(255);
-            item.ShadowAlpha.Should().Be(64);
+            item.ShadowAlpha.Should().BeInRange((byte)51, (byte)77);
         }
     }
 

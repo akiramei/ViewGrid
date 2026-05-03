@@ -183,6 +183,8 @@ public static class PhotoBoardLayout
             var shadowOffsetXJitter = (rng.NextDouble() * 2.0 - 1.0);
             var shadowOffsetYJitter = (rng.NextDouble() * 2.0 - 1.0);
             var shadowSigmaJitter = (rng.NextDouble() * 2.0 - 1.0);
+            // シャドウ alpha も per-item で ±20% 揺らがせる (UI 感を消す)
+            var shadowAlphaJitter = (rng.NextDouble() * 2.0 - 1.0);
 
             // グリッド拡張オフセット: セル中心がキャンバス中心から expansionFactor 倍に広がる。
             // chaos=0 で 0、chaos=1 で約 30% 外側へ移動 (4 隅は最も大きく動く)。
@@ -225,7 +227,11 @@ public static class PhotoBoardLayout
             var shadowOffsetX = frameRamp * (BaseShadowOffsetX + ShadowOffsetJitterPx * shadowOffsetXJitter);
             var shadowOffsetY = frameRamp * (BaseShadowOffsetY + ShadowOffsetJitterPx * shadowOffsetYJitter);
             var shadowSigma = frameRamp * Math.Max(0.0, BaseShadowSigma + ShadowSigmaJitterPx * shadowSigmaJitter);
-            var shadowAlpha = (byte)Math.Round(ShadowMaxAlpha * frameRamp);
+            // alpha 揺らぎ: ±20% per-item で UI 感を消す。基準値 64 → [51, 77] くらい
+            var shadowAlphaScale = 1.0 + 0.20 * shadowAlphaJitter;
+            var shadowAlpha = (byte)Math.Clamp(
+                Math.Round(ShadowMaxAlpha * frameRamp * shadowAlphaScale),
+                0.0, 255.0);
 
             items.Add(new PhotoBoardItem(
                 rect,
