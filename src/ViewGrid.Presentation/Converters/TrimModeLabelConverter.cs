@@ -24,6 +24,7 @@ public sealed class TrimModeLabelConverter : IValueConverter
         TrimMode.None => "なし（キャンバス全面）",
         TrimMode.OccupiedCells => "占有セルで切り出し",
         TrimMode.DrawnPixels => "描画ピクセルで切り出し",
+        TrimMode.PhotoBoard => "写真ボード風",
         _ => mode.ToString(),
     };
 }

@@ -80,7 +80,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     public partial TrimMode SelectedTrimMode { get; set; } = TrimMode.None;
 
     public IReadOnlyList<TrimMode> TrimModeOptions { get; } =
-        [TrimMode.None, TrimMode.OccupiedCells, TrimMode.DrawnPixels];
+        [TrimMode.None, TrimMode.OccupiedCells, TrimMode.DrawnPixels, TrimMode.PhotoBoard];
 
     /// <summary>
     /// 「+ 新規バリアント」フライアウトを開いているか。<c>true</c> の間だけ View 側で名前入力 TextBox と
