@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -742,6 +743,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         var grid = CurrentGrid;
         if (grid is null || IsBusy) return null;
 
+        var sw = Stopwatch.StartNew();
         try
         {
             IsBusy = true;
@@ -749,12 +751,13 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 grid.GridId,
                 new RenderOptions(SelectedTrimMode, SelectedChaosLevel),
                 ct);
+            sw.Stop();
             if (result.IsError)
             {
                 StatusMessage = string.Join(", ", result.Errors);
                 return null;
             }
-            StatusMessage = $"プレビューを生成しました ({result.Value.Length:N0} bytes)";
+            StatusMessage = $"プレビュー生成 {sw.ElapsedMilliseconds:N0} ms ({result.Value.Length:N0} bytes)";
             return result.Value;
         }
         finally { IsBusy = false; }
@@ -773,6 +776,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         var path = await _filePicker.PickSavePngPathAsync(suggested, ct);
         if (string.IsNullOrEmpty(path)) return;
 
+        var sw = Stopwatch.StartNew();
         try
         {
             IsBusy = true;
@@ -781,9 +785,10 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 path,
                 new RenderOptions(SelectedTrimMode, SelectedChaosLevel),
                 ct);
+            sw.Stop();
             StatusMessage = result.IsError
                 ? string.Join(", ", result.Errors)
-                : $"出力しました: {Path.GetFileName(path)} ({result.Value.FileSizeBytes:N0} bytes)";
+                : $"出力 {sw.ElapsedMilliseconds:N0} ms: {Path.GetFileName(path)} ({result.Value.FileSizeBytes:N0} bytes)";
         }
         finally { IsBusy = false; }
     }
