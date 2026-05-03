@@ -102,14 +102,35 @@ public static class PhotoBoardLayout
     private const double OverlapChaosThreshold = 0.6;
 
     /// <summary>
-    /// 明示的重なり (overlap nudge) を解禁する chaos 閾値。これ以上では K = max(1, N/4) 個の
-    /// placement を選んで、4 方向 (上下左右) のどれかに <see cref="OverlapNudgeFraction"/>
-    /// 倍だけ強制シフトして「隣の placement に食い込む」明示的な重なりを作る。
-    /// per-item 拡張倍率による暗黙の overlap だけだと「軽い隙間ができる」程度で
-    /// 「明確に重なって見える」効果が出ないため、明示メカニズムを追加。
+    /// 明示的重なり (overlap nudge) のランプ開始 chaos。<c>chaos &lt;= 0.6</c> では発火しない。
+    /// 0.6 を超えると per-item 独立で重なり確率が線形に増え、<c>chaos = 1.0</c> で
+    /// <see cref="MaxOverlapProbability"/>。閾値で突然切り替わる「モード切替感」を避け、
+    /// スライダー操作中の連続変化として体感される。
     /// </summary>
-    private const double OverlapNudgeThreshold = 0.7;
-    private const double OverlapNudgeFraction = 0.30;  // セル短辺の 30% シフト
+    private const double OverlapNudgeRampStart = 0.6;
+
+    /// <summary>chaos=1 時の per-item 重なり確率 (0.5 = 50% 確率で各 item に nudge 適用)。</summary>
+    private const double MaxOverlapProbability = 0.5;
+
+    /// <summary>セル短辺に対する重なり nudge の最大シフト量。0.30 だと chaos=1 で
+    /// 「崩しすぎ」と感じるため 0.20 に抑制。8 方向のいずれかに nudge を加える。</summary>
+    private const double OverlapNudgeFraction = 0.20;
+
+    /// <summary>
+    /// 重なり方向の 8 候補 (4 軸 + 4 斜め)。斜めは単位ベクトルになるよう √2/2 で正規化。
+    /// シフト量を多様化することで 4 軸だけだと出る「直線的にズレた」機械感を解消する。
+    /// </summary>
+    private static readonly (double X, double Y)[] OverlapDirections =
+    {
+        (-1.0, 0.0),         // 左
+        (+1.0, 0.0),         // 右
+        ( 0.0, -1.0),        // 上
+        ( 0.0, +1.0),        // 下
+        (-0.7071, -0.7071),  // 左上
+        (+0.7071, -0.7071),  // 右上
+        (-0.7071, +0.7071),  // 左下
+        (+0.7071, +0.7071),  // 右下
+    };
 
     /// <summary>
     /// 各 placement の PhotoBoard 描画パラメータを計算する。
@@ -154,34 +175,27 @@ public static class PhotoBoardLayout
         var globalDriftXFactor = Math.Cos(globalDriftAngle) * globalDriftMag;
         var globalDriftYFactor = Math.Sin(globalDriftAngle) * globalDriftMag;
 
-        // 明示的重なり (overlap nudge): chaos > OverlapNudgeThreshold (=0.7) で
-        // K = max(1, N/4) 個の placement を選び、4 方向のどれかに 30% シフトして
-        // 隣 placement と確実に重なるようにする。Z 順は PlacementOrder のままなので、
-        // 後ろ placement が前の placement の下に潜り込む見え方になる。
+        // 明示的重なり (overlap nudge): chaos > OverlapNudgeRampStart から per-item 独立で
+        // 確率的に発火する。chaos=0.6 で 0%、chaos=1.0 で 50% 確率。閾値で突然切り替わる
+        // 「モード切替感」を避けて連続変化として体感されるようにする。Z 順は PlacementOrder
+        // のままなので、後ろ placement が前 placement の下に潜り込む見え方になる。
         var overlapNudges = new Dictionary<int, (double X, double Y)>();
-        if (clamped > OverlapNudgeThreshold && baseRects.Count > 1)
+        var overlapProbability = clamped > OverlapNudgeRampStart && baseRects.Count > 1
+            ? Math.Min(1.0, (clamped - OverlapNudgeRampStart) / (1.0 - OverlapNudgeRampStart))
+                * MaxOverlapProbability
+            : 0.0;
+        if (overlapProbability > 0.0)
         {
-            var nudgeCount = Math.Max(1, baseRects.Count / 4);
-            var pool = new List<int>(baseRects.Count);
-            for (int i = 0; i < baseRects.Count; i++) pool.Add(i);
-
-            for (int i = 0; i < nudgeCount && pool.Count > 0; i++)
+            for (int i = 0; i < baseRects.Count; i++)
             {
-                var poolIdx = rng.Next(pool.Count);
-                var chosen = pool[poolIdx];
-                pool.RemoveAt(poolIdx);
+                if (rng.NextDouble() >= overlapProbability)
+                    continue;
 
-                var rect = baseRects[chosen].Rect;
+                var rect = baseRects[i].Rect;
                 var nudgeMag = OverlapNudgeFraction * Math.Min(rect.Width, rect.Height);
-                var direction = rng.Next(4);
-                var nudge = direction switch
-                {
-                    0 => (-nudgeMag, 0.0),  // 左へ食い込む
-                    1 => (+nudgeMag, 0.0),  // 右へ食い込む
-                    2 => (0.0, -nudgeMag),  // 上へ食い込む
-                    _ => (0.0, +nudgeMag),  // 下へ食い込む
-                };
-                overlapNudges[chosen] = nudge;
+                // 8 方向 (4 軸 + 4 斜め) からランダムに選ぶ。斜めは単位ベクトル。
+                var (dx, dy) = OverlapDirections[rng.Next(OverlapDirections.Length)];
+                overlapNudges[i] = (dx * nudgeMag, dy * nudgeMag);
             }
         }
 
@@ -324,8 +338,8 @@ public static class PhotoBoardLayout
         var maxOffset = disorderRamp * maxMinSide
             * (MaxJitterFraction + 2.0 * MaxRowColBiasFraction + MaxGlobalDriftFraction);
 
-        // 明示的重なり nudge (chaos > OverlapNudgeThreshold で K 個に最大 OverlapNudgeFraction シフト)
-        var overlapNudge = clamped > OverlapNudgeThreshold
+        // 明示的重なり nudge (chaos > OverlapNudgeRampStart で確率的に発火、最大 OverlapNudgeFraction シフト)
+        var overlapNudge = clamped > OverlapNudgeRampStart
             ? OverlapNudgeFraction * maxMinSide
             : 0.0;
 
