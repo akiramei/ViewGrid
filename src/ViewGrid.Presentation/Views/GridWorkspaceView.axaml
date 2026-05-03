@@ -228,11 +228,16 @@
                     Padding="12,8"
                     IsVisible="{Binding HasGrid}">
                 <Grid ColumnDefinitions="*,Auto">
+                    <!-- DataContext と x:DataType を同要素に書くと Avalonia の compile-time
+                         binding が DataContext バインディングそのものを内側 DataType 上で
+                         解決しようとして CurrentGrid が見つからない警告が出る。子要素に
+                         x:DataType を移動して、外側は親の型 (GridWorkspaceViewModel) で
+                         CurrentGrid を解決させる。 -->
                     <StackPanel Grid.Column="0"
                                 VerticalAlignment="Center"
-                                DataContext="{Binding CurrentGrid}"
-                                x:DataType="vm:GridCanvasItemViewModel">
-                        <TextBlock FontWeight="SemiBold" FontSize="14">
+                                DataContext="{Binding CurrentGrid}">
+                        <TextBlock FontWeight="SemiBold" FontSize="14"
+                                   x:DataType="vm:GridCanvasItemViewModel">
                             <Run Text="{Binding Name}" />
                             <Run Text=" — " />
                             <Run Text="{Binding GridSizeLabel}" />
@@ -377,13 +382,15 @@
                     (GridWorkspaceViewModel) のフラグを明示的に指す。
                 -->
                 <Grid Grid.Row="1">
-                    <!-- 配置選択中: Inspector を表示（配置固有プロパティ + 共有特性編集 inline） -->
+                    <!-- 配置選択中: Inspector を表示（配置固有プロパティ + 共有特性編集 inline）。
+                         ElementName 経由 DataContext は型 object なので明示キャストして
+                         compile-time binding の警告を回避。 -->
                     <views:PlacementInspectorView DataContext="{Binding Inspector}"
-                                                  IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsPlacementSelected}" />
+                                                  IsVisible="{Binding #GridWorkspaceRoot.((vm:GridWorkspaceViewModel)DataContext).IsPlacementSelected}" />
 
                     <!-- グリッドのみ選択中（配置未選択）: グリッド情報を表示 -->
                     <views:GridPropertiesView DataContext="{Binding CurrentGrid}"
-                                              IsVisible="{Binding #GridWorkspaceRoot.DataContext.IsGridOnlySelected}" />
+                                              IsVisible="{Binding #GridWorkspaceRoot.((vm:GridWorkspaceViewModel)DataContext).IsGridOnlySelected}" />
 
                     <!-- グリッド未選択: 案内 -->
                     <Border IsVisible="{Binding IsNoSelection}"
