@@ -153,7 +153,10 @@ public static class PhotoBoardLayout
             var itemJitterY = (rng.NextDouble() * 2.0 - 1.0);
             var pivotJitterX = (rng.NextDouble() * 2.0 - 1.0);
             var pivotJitterY = (rng.NextDouble() * 2.0 - 1.0);
-            var rotationFactor = (rng.NextDouble() * 2.0 - 1.0);
+            // 回転は triangular distribution (NextDouble() - NextDouble()) で 0° 付近を厚く
+            // 取る。一様分布だと「全部斜め」に見える均質な人工感が出るのを抑え、
+            // 0° 付近 = 真っ直ぐ置かれた写真が混じる「自然な配置」感を作る。範囲は同じ [-1, 1]。
+            var rotationFactor = rng.NextDouble() - rng.NextDouble();
             var shadowOffsetXJitter = (rng.NextDouble() * 2.0 - 1.0);
             var shadowOffsetYJitter = (rng.NextDouble() * 2.0 - 1.0);
             var shadowSigmaJitter = (rng.NextDouble() * 2.0 - 1.0);
