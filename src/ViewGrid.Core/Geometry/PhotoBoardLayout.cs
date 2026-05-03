@@ -84,6 +84,14 @@ public static class PhotoBoardLayout
     private const double MaxExpansionFactor = 0.40;
 
     /// <summary>
+    /// 全体ドリフトの最大量 (セル短辺に対する比率)。レンダリング毎に 1 つの方向を
+    /// PRNG で決め、全 placement に同方向の微小シフトを加える。「机の上に置いた
+    /// ときの手の癖で全体的に右下に寄る」みたいな統一感を生み、各 placement が
+    /// バラバラに散る人工感を抑える。
+    /// </summary>
+    private const double MaxGlobalDriftFraction = 0.06;
+
+    /// <summary>
     /// 各 placement の PhotoBoard 描画パラメータを計算する。
     /// </summary>
     /// <param name="baseRects">配置順 (PlacementOrder 昇順) で渡す入力。</param>
@@ -118,6 +126,13 @@ public static class PhotoBoardLayout
         var canvasCenterY = canvas.Height / 2.0;
 
         var rng = new Random(seed);
+
+        // 全体ドリフト: レンダリング毎に 1 つの方向 (角度) と量を決める。
+        // 全 placement に同じシフトが加わるので「手の癖」感が出る。
+        var globalDriftAngle = rng.NextDouble() * 2.0 * Math.PI;
+        var globalDriftMag = rng.NextDouble() * MaxGlobalDriftFraction; // [0, max]
+        var globalDriftXFactor = Math.Cos(globalDriftAngle) * globalDriftMag;
+        var globalDriftYFactor = Math.Sin(globalDriftAngle) * globalDriftMag;
 
         // 列・行バイアスの事前計算: 同じ行 / 列の placement は同じ方向に揺らぐ
         var rowBiases = new Dictionary<int, (double X, double Y)>();
@@ -168,16 +183,19 @@ public static class PhotoBoardLayout
             var expansionOffsetX = (cellCenterX - canvasCenterX) * (expansionFactor - 1.0);
             var expansionOffsetY = (cellCenterY - canvasCenterY) * (expansionFactor - 1.0);
 
-            // 散らかし (jitter / rotation / pivot + 拡張) は disorderRamp でスケール。
+            // 散らかし (jitter / rotation / pivot + 拡張 + 全体ドリフト) は disorderRamp でスケール。
             // chaos <= FrameRampThreshold (既定 0.20) では 0 → 写真は整列して並ぶ。
+            // 全体ドリフトは全 placement に同方向の微小シフトを加える「手の癖」効果。
             var offsetX = expansionOffsetX + disorderRamp * minSide * (
                 MaxJitterFraction * itemJitterX
                 + MaxRowColBiasFraction * rowBiasX
-                + MaxRowColBiasFraction * colBiasX);
+                + MaxRowColBiasFraction * colBiasX
+                + globalDriftXFactor);
             var offsetY = expansionOffsetY + disorderRamp * minSide * (
                 MaxJitterFraction * itemJitterY
                 + MaxRowColBiasFraction * rowBiasY
-                + MaxRowColBiasFraction * colBiasY);
+                + MaxRowColBiasFraction * colBiasY
+                + globalDriftYFactor);
 
             var rotationDeg = disorderRamp * MaxRotationDeg * rotationFactor;
             var rotationPivotOffsetX = disorderRamp * minSide * MaxRotationPivotFraction * pivotJitterX;
@@ -234,9 +252,9 @@ public static class PhotoBoardLayout
         var maxMinSide = baseRects.Max(r => Math.Min(r.Rect.Width, r.Rect.Height));
         var maxLongSide = baseRects.Max(r => Math.Max(r.Rect.Width, r.Rect.Height));
 
-        // 位置 (jitter + row/col bias の最悪ケース合算)
+        // 位置 (jitter + row/col bias + 全体ドリフトの最悪ケース合算)
         var maxOffset = disorderRamp * maxMinSide
-            * (MaxJitterFraction + 2.0 * MaxRowColBiasFraction);
+            * (MaxJitterFraction + 2.0 * MaxRowColBiasFraction + MaxGlobalDriftFraction);
 
         // グリッド拡張: 4 隅の placement は最大 (canvas/2) * (expansionFactor - 1) 外側へ動く
         var expansionGrowth = Math.Max(canvas.Width, canvas.Height) / 2.0

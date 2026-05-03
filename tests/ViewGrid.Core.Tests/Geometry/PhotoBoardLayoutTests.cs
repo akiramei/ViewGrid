@@ -62,19 +62,20 @@ public sealed class PhotoBoardLayoutTests
         //   jitter ≤ 200×0.05 = 10
         //   rowBias ≤ 200×0.10 = 20
         //   colBias ≤ 200×0.10 = 20
-        //   位置オフセット小計 = ±50
+        //   globalDrift ≤ 200×0.06 = 12 (全体ドリフト)
+        //   位置オフセット小計 = ±62
         // 拡張 (4 隅 placement): |cellCenter - canvasCenter|=100, MaxExpansionFactor=0.40
         //   → 拡張オフセット = ±40
-        // 合計 OffsetX/Y = ±90
-        // 回転 ≤ ±8 度
+        // 合計 OffsetX/Y = ±102
+        // 回転 ≤ ±8 度 (triangular distribution、依然として絶対値は max を超えない)
         // フレーム = 12 / 36
         // シャドウ alpha = 64
         var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 1.0, seed: 42);
 
         foreach (var item in result)
         {
-            item.OffsetX.Should().BeInRange(-90.0, 90.0);
-            item.OffsetY.Should().BeInRange(-90.0, 90.0);
+            item.OffsetX.Should().BeInRange(-102.0, 102.0);
+            item.OffsetY.Should().BeInRange(-102.0, 102.0);
             item.RotationDeg.Should().BeInRange(-8.0, 8.0);
             item.RotationPivotOffsetX.Should().BeInRange(-20.0, 20.0);
             item.RotationPivotOffsetY.Should().BeInRange(-20.0, 20.0);
