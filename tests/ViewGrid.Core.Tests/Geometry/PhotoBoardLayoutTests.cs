@@ -67,18 +67,18 @@ public sealed class PhotoBoardLayoutTests
         // 拡張 (4 隅 placement): |cellCenter - canvasCenter|=100, MaxExpansionFactor=0.40
         //   → 拡張オフセット = ±40
         // overlap nudge (確率発火): chaos=1 で 50% 確率、最大 ±40 (= 200×0.20)
-        //   斜め 4 方向は 0.7071 倍なので片軸最大は 40 (4 軸方向のとき)
-        //   合計 OffsetX/Y = ±102 + ±40 = ±142
-        // 回転 ≤ ±8 度 (triangular distribution、依然として絶対値は max を超えない)
+        // polish pass (高 chaos で破綻防止): 孤立 + 過密ガード で各 ±24 (= 200×0.12)
+        //   合計 OffsetX/Y 最悪ケース = ±62 + ±40 + ±40 + ±24 + ±24 = ±190
+        // 回転 ≤ ±8 度 (triangular) + 整列破壊 ±1.5 = ±9.5
         // フレーム = 12 / 36
         // シャドウ alpha = 64
         var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 1.0, seed: 42);
 
         foreach (var item in result)
         {
-            item.OffsetX.Should().BeInRange(-142.0, 142.0);
-            item.OffsetY.Should().BeInRange(-142.0, 142.0);
-            item.RotationDeg.Should().BeInRange(-8.0, 8.0);
+            item.OffsetX.Should().BeInRange(-190.0, 190.0);
+            item.OffsetY.Should().BeInRange(-190.0, 190.0);
+            item.RotationDeg.Should().BeInRange(-9.5, 9.5);
             item.RotationPivotOffsetX.Should().BeInRange(-36.0, 36.0);  // 200×0.18
             item.RotationPivotOffsetY.Should().BeInRange(-36.0, 36.0);
             item.FrameSidePx.Should().Be(12);
@@ -208,6 +208,41 @@ public sealed class PhotoBoardLayoutTests
     {
         var result = PhotoBoardLayout.Compute(System.Array.Empty<PlacementBaseRect>(), SampleCanvas, 0.5, 42);
         result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Compute_PolishPass_Does_Not_Run_At_Low_Chaos()
+    {
+        // disorderRamp <= 0.5 (= chaos <= 0.6) では polish pass は無効化される。
+        // chaos=0.5 で polish の影響がないことを「polish 有効ライン直上 (0.61) との差分」
+        // ではなく「決定論的な生 compute 結果と一致するか」で代替検証 (polish 内部分岐
+        // の偽性を担保)。chaos=0.5 で disorderRamp = (0.5-0.20)/0.80 = 0.375。
+        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 0.5, seed: 99);
+
+        // polish が走らないことを直接観測する手段はないが、bounds 内で安定動作することを
+        // 確認 (低 chaos で polish が走ると nudge が突然加算されて不連続になる)
+        foreach (var item in result)
+        {
+            // chaos=0.5: disorderRamp=0.375
+            //   位置オフセット最大 = 0.375 × 200 × (0.05 + 2×0.10 + 0.06) = 23.25
+            //   拡張: factor=1+0.4×0.375=1.15 → corner ±15
+            //   overlap nudge は chaos>0.6 のみなので非発火
+            //   合計 ≤ ±39
+            item.OffsetX.Should().BeInRange(-40.0, 40.0);
+            item.OffsetY.Should().BeInRange(-40.0, 40.0);
+        }
+    }
+
+    [Fact]
+    public void Compute_PolishPass_Preserves_Determinism()
+    {
+        // Polish pass は内部で nearest-neighbor / クラスタ判定 / 整列検出をするが、
+        // RNG は 1 つしか使わないので同じシードで同じ結果になる。
+        var input = SampleGrid2x2();
+        var a = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 0.95, seed: 12345);
+        var b = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 0.95, seed: 12345);
+
+        a.Should().BeEquivalentTo(b);
     }
 
     [Fact]

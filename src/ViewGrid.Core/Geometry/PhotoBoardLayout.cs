@@ -318,7 +318,196 @@ public static class PhotoBoardLayout
                 shadowOffsetX, shadowOffsetY, shadowSigma, shadowAlpha));
         }
 
+        // Polish pass: 高 chaos での「破綻防止」ガード群。目的は自然化 (アルゴリズムが
+        // 頑張りすぎて最適化臭が出る) ではなく、孤立 / 過密 / 偶然整列 のような
+        // 構造的な配置の偶発的破綻を最小限の手数で回避すること。
+        if (disorderRamp > 0.5 && items.Count >= 2)
+        {
+            ApplyPolishPass(items, rng);
+        }
+
         return items;
+    }
+
+    // ─── Polish pass: 破綻防止ガード (制約厳守: 移動量小、対象 1-2 件) ─────────
+
+    /// <summary>孤立判定の閾値 (平均セル短辺の倍数)。</summary>
+    private const double IsolationDistanceFactor = 1.4;
+
+    /// <summary>過密判定の閾値 (平均セル短辺の倍数)。これ以内に同居していると過密。</summary>
+    private const double DensityDistanceFactor = 0.7;
+
+    /// <summary>孤立 / 過密ガードの nudge 量 (平均セル短辺の倍数)。</summary>
+    private const double PolishNudgeFraction = 0.12;
+
+    /// <summary>孤立 / 過密ガードでそれぞれ最大何件まで補正するか。</summary>
+    private const int MaxPolishItemsPerGuard = 2;
+
+    /// <summary>整列破壊で「揃いすぎ」とみなす隣接アイテム間の角度差 (度)。</summary>
+    private const double AlignmentRotationThresholdDeg = 1.0;
+
+    /// <summary>整列破壊で適用する角度補正量 (度)。</summary>
+    private const double AlignmentBreakRotationDeg = 1.5;
+
+    private static void ApplyPolishPass(List<PhotoBoardItem> items, Random rng)
+    {
+        var avgMinSide = 0.0;
+        for (int i = 0; i < items.Count; i++)
+            avgMinSide += Math.Min(items[i].BaseRect.Width, items[i].BaseRect.Height);
+        avgMinSide /= items.Count;
+
+        var nudgeMag = avgMinSide * PolishNudgeFraction;
+        var isolationThreshold = avgMinSide * IsolationDistanceFactor;
+        var densityThreshold = avgMinSide * DensityDistanceFactor;
+
+        ApplyIsolationGuard(items, isolationThreshold, nudgeMag);
+        ApplyDensityGuard(items, densityThreshold, nudgeMag);
+        ApplyAlignmentBreak(items, rng);
+    }
+
+    /// <summary>
+    /// 孤立ガード: 最近傍距離が閾値を超える placement を最近傍方向に少しだけ寄せる。
+    /// 完全孤立した「ぽつん」placement を見えなくする。
+    /// </summary>
+    private static void ApplyIsolationGuard(List<PhotoBoardItem> items, double threshold, double nudgeMag)
+    {
+        var positions = ComputeCenters(items);
+        var candidates = new List<(int Index, int NearestIdx, double Distance)>();
+        for (int i = 0; i < items.Count; i++)
+        {
+            var (nearest, dist) = NearestNeighbor(positions, i);
+            if (nearest >= 0 && dist > threshold)
+                candidates.Add((i, nearest, dist));
+        }
+        // 距離が大きい順に最大 MaxPolishItemsPerGuard 件
+        candidates.Sort((a, b) => b.Distance.CompareTo(a.Distance));
+        var take = Math.Min(MaxPolishItemsPerGuard, candidates.Count);
+        for (int k = 0; k < take; k++)
+        {
+            var (i, nearest, _) = candidates[k];
+            var dx = positions[nearest].X - positions[i].X;
+            var dy = positions[nearest].Y - positions[i].Y;
+            var mag = Math.Sqrt(dx * dx + dy * dy);
+            if (mag < 1e-6) continue;
+            items[i] = items[i] with
+            {
+                OffsetX = items[i].OffsetX + (dx / mag) * nudgeMag,
+                OffsetY = items[i].OffsetY + (dy / mag) * nudgeMag,
+            };
+        }
+    }
+
+    /// <summary>
+    /// 過密ガード: 同じエリアに 3 件以上 (= 自分 + 近傍 2 件) が固まる場合、最も内側の
+    /// 1 件をクラスタ重心の反対方向に少しだけ逃がす。中央吸着 / 局所集中の破綻を防ぐ。
+    /// </summary>
+    private static void ApplyDensityGuard(List<PhotoBoardItem> items, double threshold, double nudgeMag)
+    {
+        var positions = ComputeCenters(items);
+        var candidates = new List<(int Index, double CX, double CY, int Count)>();
+        for (int i = 0; i < items.Count; i++)
+        {
+            int count = 0;
+            double cx = 0, cy = 0;
+            for (int j = 0; j < items.Count; j++)
+            {
+                if (i == j) continue;
+                var dx = positions[j].X - positions[i].X;
+                var dy = positions[j].Y - positions[i].Y;
+                if (Math.Sqrt(dx * dx + dy * dy) < threshold)
+                {
+                    count++;
+                    cx += positions[j].X;
+                    cy += positions[j].Y;
+                }
+            }
+            if (count >= 2) // 自分 + 近傍 2 件 = 3 件以上のクラスタ
+            {
+                cx /= count;
+                cy /= count;
+                candidates.Add((i, cx, cy, count));
+            }
+        }
+        // 過密度が高い順
+        candidates.Sort((a, b) => b.Count.CompareTo(a.Count));
+        var take = Math.Min(MaxPolishItemsPerGuard, candidates.Count);
+        for (int k = 0; k < take; k++)
+        {
+            var (i, cx, cy, _) = candidates[k];
+            var awayX = positions[i].X - cx;
+            var awayY = positions[i].Y - cy;
+            var mag = Math.Sqrt(awayX * awayX + awayY * awayY);
+            if (mag < 1e-6) continue;
+            items[i] = items[i] with
+            {
+                OffsetX = items[i].OffsetX + (awayX / mag) * nudgeMag,
+                OffsetY = items[i].OffsetY + (awayY / mag) * nudgeMag,
+            };
+        }
+    }
+
+    /// <summary>
+    /// 整列破壊: 角度差 &lt; 1° の連続が 3 件以上ある場合、その中の 1 件だけ ±1.5° 回転を加える。
+    /// 「偶然全員が水平に揃う」ケースを破壊して写真ボード感を保つ。
+    /// </summary>
+    private static void ApplyAlignmentBreak(List<PhotoBoardItem> items, Random rng)
+    {
+        if (items.Count < 3) return;
+
+        // 角度でソートし、連続する隣接間で角度差が閾値以下の連が 3 件以上ある最初を探す
+        var indices = Enumerable.Range(0, items.Count).ToList();
+        indices.Sort((a, b) => items[a].RotationDeg.CompareTo(items[b].RotationDeg));
+
+        int runStart = 0;
+        for (int i = 1; i < indices.Count; i++)
+        {
+            if (Math.Abs(items[indices[i]].RotationDeg - items[indices[i - 1]].RotationDeg)
+                <= AlignmentRotationThresholdDeg)
+            {
+                if (i - runStart + 1 >= 3)
+                {
+                    // 連の中央 1 件に ±1.5° の補正
+                    var midIdx = indices[(runStart + i) / 2];
+                    var sign = rng.NextDouble() < 0.5 ? -1.0 : 1.0;
+                    items[midIdx] = items[midIdx] with
+                    {
+                        RotationDeg = items[midIdx].RotationDeg + sign * AlignmentBreakRotationDeg,
+                    };
+                    return; // 破壊は最大 1 件
+                }
+            }
+            else
+            {
+                runStart = i;
+            }
+        }
+    }
+
+    private static (double X, double Y)[] ComputeCenters(List<PhotoBoardItem> items)
+    {
+        var positions = new (double X, double Y)[items.Count];
+        for (int i = 0; i < items.Count; i++)
+        {
+            positions[i] = (
+                items[i].BaseRect.X + items[i].BaseRect.Width / 2.0 + items[i].OffsetX,
+                items[i].BaseRect.Y + items[i].BaseRect.Height / 2.0 + items[i].OffsetY);
+        }
+        return positions;
+    }
+
+    private static (int Index, double Distance) NearestNeighbor((double X, double Y)[] positions, int self)
+    {
+        double minDist = double.MaxValue;
+        int minIdx = -1;
+        for (int j = 0; j < positions.Length; j++)
+        {
+            if (j == self) continue;
+            var dx = positions[j].X - positions[self].X;
+            var dy = positions[j].Y - positions[self].Y;
+            var d = Math.Sqrt(dx * dx + dy * dy);
+            if (d < minDist) { minDist = d; minIdx = j; }
+        }
+        return (minIdx, minDist);
     }
 
     /// <summary>
