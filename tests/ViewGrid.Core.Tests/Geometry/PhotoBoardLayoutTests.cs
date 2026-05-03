@@ -140,6 +140,49 @@ public sealed class PhotoBoardLayoutTests
     }
 
     [Fact]
+    public void Compute_TwoStage_Curve_Frame_Saturates_Before_Disorder_Starts()
+    {
+        // 二段階カーブの境界 (FrameRampThreshold=0.20) で
+        //   - フレーム / シャドウ: 100% (frameRamp = 1)
+        //   - 回転 / ジッター: 0% (disorderRamp = 0)
+        // となることを確認。chaos の中間値に「明確な写真風」を出現させる UX 契約。
+        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), chaos: 0.20, seed: 42);
+
+        foreach (var item in result)
+        {
+            // 散らかしは 0
+            item.OffsetX.Should().Be(0.0);
+            item.OffsetY.Should().Be(0.0);
+            item.RotationDeg.Should().Be(0.0);
+            item.RotationPivotOffsetX.Should().Be(0.0);
+            item.RotationPivotOffsetY.Should().Be(0.0);
+            // フレーム / シャドウは飽和
+            item.FrameSidePx.Should().Be(12);
+            item.FrameBottomPx.Should().Be(36);
+            item.FrameAlpha.Should().Be(255);
+            item.ShadowAlpha.Should().Be(64);
+        }
+    }
+
+    [Fact]
+    public void Compute_Below_FrameRampThreshold_Has_Partial_Frame_No_Disorder()
+    {
+        // chaos=0.10 (FrameRampThreshold=0.20 の半分) では:
+        //   - frameRamp = 0.5 → フレーム厚 / アルファ 50%
+        //   - disorderRamp = 0 → 回転 / ジッター 0
+        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), chaos: 0.10, seed: 42);
+
+        foreach (var item in result)
+        {
+            item.OffsetX.Should().Be(0.0);
+            item.RotationDeg.Should().Be(0.0);
+            item.FrameSidePx.Should().Be(6);   // 12 * 0.5
+            item.FrameBottomPx.Should().Be(18); // 36 * 0.5
+            item.FrameAlpha.Should().Be(128);   // 255 * 0.5 ≈ 128
+        }
+    }
+
+    [Fact]
     public void Compute_Single_Item_Still_Deterministic()
     {
         var input = new[] { new PlacementBaseRect(0, 0, new PixelRect(0, 0, 100, 100)) };

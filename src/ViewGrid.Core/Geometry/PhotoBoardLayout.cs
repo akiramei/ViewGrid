@@ -67,6 +67,14 @@ public static class PhotoBoardLayout
     private const double MaxRotationPivotFraction = 0.10;
 
     /// <summary>
+    /// chaos の二段階カーブの境界。<c>[0, FrameRampThreshold]</c> でフレーム / シャドウが
+    /// 0→100% にランプし、<c>[FrameRampThreshold, 1.0]</c> で散らかし (回転 / ジッター /
+    /// ピボット) が 0→100% にランプする。これで chaos の中間値にも「写真ボードらしさ」が
+    /// 段階的に出現し、線形スケールだと「全部薄い」状態になるのを避ける。
+    /// </summary>
+    private const double FrameRampThreshold = 0.20;
+
+    /// <summary>
     /// 各 placement の PhotoBoard 描画パラメータを計算する。
     /// </summary>
     /// <param name="baseRects">配置順 (PlacementOrder 昇順) で渡す入力。</param>
@@ -82,6 +90,14 @@ public static class PhotoBoardLayout
             return Array.Empty<PhotoBoardItem>();
 
         var clamped = Math.Clamp(chaos, 0.0, 1.0);
+        // 二段階カーブ: 写真キャラクター (frame + shadow) は早めに飽和、散らかし
+        // (jitter + rotation + pivot) はその後にランプ。chaos の中間値で「写真風」が
+        // 明確に認識できる状態を作る。
+        var frameRamp = Math.Min(1.0, clamped / FrameRampThreshold);
+        var disorderRamp = clamped <= FrameRampThreshold
+            ? 0.0
+            : (clamped - FrameRampThreshold) / (1.0 - FrameRampThreshold);
+
         var rng = new Random(seed);
 
         // 列・行バイアスの事前計算: 同じ行 / 列の placement は同じ方向に揺らぐ
@@ -123,28 +139,32 @@ public static class PhotoBoardLayout
             var shadowOffsetYJitter = (rng.NextDouble() * 2.0 - 1.0);
             var shadowSigmaJitter = (rng.NextDouble() * 2.0 - 1.0);
 
-            // 線形に chaos でスケール (chaos=0 → 全項目 0)
-            var offsetX = clamped * minSide * (
+            // 散らかし (jitter / rotation / pivot) は disorderRamp でスケール。
+            // chaos <= FrameRampThreshold (既定 0.20) では 0 → 写真は整列して並ぶ。
+            var offsetX = disorderRamp * minSide * (
                 MaxJitterFraction * itemJitterX
                 + MaxRowColBiasFraction * rowBiasX
                 + MaxRowColBiasFraction * colBiasX);
-            var offsetY = clamped * minSide * (
+            var offsetY = disorderRamp * minSide * (
                 MaxJitterFraction * itemJitterY
                 + MaxRowColBiasFraction * rowBiasY
                 + MaxRowColBiasFraction * colBiasY);
 
-            var rotationDeg = clamped * MaxRotationDeg * rotationFactor;
-            var rotationPivotOffsetX = clamped * minSide * MaxRotationPivotFraction * pivotJitterX;
-            var rotationPivotOffsetY = clamped * minSide * MaxRotationPivotFraction * pivotJitterY;
+            var rotationDeg = disorderRamp * MaxRotationDeg * rotationFactor;
+            var rotationPivotOffsetX = disorderRamp * minSide * MaxRotationPivotFraction * pivotJitterX;
+            var rotationPivotOffsetY = disorderRamp * minSide * MaxRotationPivotFraction * pivotJitterY;
 
-            var frameSidePx = (int)Math.Round(MaxFrameSidePx * clamped);
-            var frameBottomPx = (int)Math.Round(MaxFrameBottomPx * clamped);
-            var frameAlpha = (byte)Math.Round(255.0 * clamped);
+            // 写真キャラクター (frame + shadow) は frameRamp でスケール。
+            // chaos が 0 → FrameRampThreshold で 0 → 100% にランプ → 早めに飽和して
+            // 「写真ボード風」のシルエットを認識可能にする。
+            var frameSidePx = (int)Math.Round(MaxFrameSidePx * frameRamp);
+            var frameBottomPx = (int)Math.Round(MaxFrameBottomPx * frameRamp);
+            var frameAlpha = (byte)Math.Round(255.0 * frameRamp);
 
-            var shadowOffsetX = clamped * (BaseShadowOffsetX + ShadowOffsetJitterPx * shadowOffsetXJitter);
-            var shadowOffsetY = clamped * (BaseShadowOffsetY + ShadowOffsetJitterPx * shadowOffsetYJitter);
-            var shadowSigma = clamped * Math.Max(0.0, BaseShadowSigma + ShadowSigmaJitterPx * shadowSigmaJitter);
-            var shadowAlpha = (byte)Math.Round(ShadowMaxAlpha * clamped);
+            var shadowOffsetX = frameRamp * (BaseShadowOffsetX + ShadowOffsetJitterPx * shadowOffsetXJitter);
+            var shadowOffsetY = frameRamp * (BaseShadowOffsetY + ShadowOffsetJitterPx * shadowOffsetYJitter);
+            var shadowSigma = frameRamp * Math.Max(0.0, BaseShadowSigma + ShadowSigmaJitterPx * shadowSigmaJitter);
+            var shadowAlpha = (byte)Math.Round(ShadowMaxAlpha * frameRamp);
 
             items.Add(new PhotoBoardItem(
                 rect,
@@ -174,22 +194,29 @@ public static class PhotoBoardLayout
         if (clamped <= 0.0)
             return 0;
 
+        // Compute と同じ二段階カーブを使う。frame/shadow は frameRamp、
+        // 位置オフセット / 回転は disorderRamp に従う。
+        var frameRamp = Math.Min(1.0, clamped / FrameRampThreshold);
+        var disorderRamp = clamped <= FrameRampThreshold
+            ? 0.0
+            : (clamped - FrameRampThreshold) / (1.0 - FrameRampThreshold);
+
         var maxMinSide = baseRects.Max(r => Math.Min(r.Rect.Width, r.Rect.Height));
         var maxLongSide = baseRects.Max(r => Math.Max(r.Rect.Width, r.Rect.Height));
 
         // 位置 (jitter + row/col bias の最悪ケース合算)
-        var maxOffset = clamped * maxMinSide
+        var maxOffset = disorderRamp * maxMinSide
             * (MaxJitterFraction + 2.0 * MaxRowColBiasFraction);
 
         // 回転による対角伸長分: 回転後 bbox の最大増分は (W+H)/2 * sin(θ) 程度
-        var maxRotRad = clamped * MaxRotationDeg * Math.PI / 180.0;
+        var maxRotRad = disorderRamp * MaxRotationDeg * Math.PI / 180.0;
         var rotationGrowth = (maxLongSide / 2.0) * Math.Abs(Math.Sin(maxRotRad))
                            + (maxMinSide / 2.0) * Math.Abs(Math.Sin(maxRotRad));
 
         // フレーム + シャドウ
-        var frame = MaxFrameBottomPx * clamped;
+        var frame = MaxFrameBottomPx * frameRamp;
         var shadow = (BaseShadowOffsetY + ShadowOffsetJitterPx
-                    + 3.0 * (BaseShadowSigma + ShadowSigmaJitterPx)) * clamped;
+                    + 3.0 * (BaseShadowSigma + ShadowSigmaJitterPx)) * frameRamp;
 
         return (int)Math.Ceiling(maxOffset + rotationGrowth + frame + shadow + 4.0);
     }

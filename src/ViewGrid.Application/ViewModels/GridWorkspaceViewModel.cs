@@ -86,10 +86,14 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// <summary>
     /// PhotoBoard モードの「整列 ↔ 散らかし」軸の値。<c>0.0</c> で整然と並んだグリッド
     /// (フレーム / シャドウ / ジッター / 回転すべて無効) → <c>1.0</c> で最大効果。
+    /// 二段階カーブ: <c>[0, 0.20]</c> でフレーム / シャドウが 0→100%、
+    /// <c>[0.20, 1.00]</c> で散らかし (回転 / ジッター) が 0→100% にランプする。
+    /// 既定 <c>0.5</c> は「フレーム + シャドウ完全 + 散らかし 37.5%」で「明確に写真風」と
+    /// ユーザーが認識できる程度の中庸値。
     /// View 側は <see cref="IsPhotoBoardMode"/> でスライダーの表示制御を行う。
     /// </summary>
     [ObservableProperty]
-    public partial double SelectedChaosLevel { get; set; } = 0.3;
+    public partial double SelectedChaosLevel { get; set; } = 0.5;
 
     /// <summary>
     /// <see cref="SelectedTrimMode"/> が <see cref="TrimMode.PhotoBoard"/> のときに <c>true</c>。
