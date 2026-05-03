@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ViewGrid.Core.Entities;
 using ViewGrid.Core.UseCases;
 
 namespace ViewGrid.Core.Geometry;
@@ -75,13 +76,24 @@ public static class PhotoBoardLayout
     private const double FrameRampThreshold = 0.20;
 
     /// <summary>
+    /// chaos=1 時の最大グリッド拡張倍率。各 placement の中心位置をキャンバス中心から
+    /// 外側に <c>1.0 + MaxExpansionFactor * disorderRamp</c> 倍に広げることで、
+    /// 画像がセルを覆い尽くしている密集グリッドでも散らかし感を出す。
+    /// disorderRamp と連動するので chaos &lt;= 0.20 では拡張なし (整列状態を維持)。
+    /// </summary>
+    private const double MaxExpansionFactor = 0.40;
+
+    /// <summary>
     /// 各 placement の PhotoBoard 描画パラメータを計算する。
     /// </summary>
     /// <param name="baseRects">配置順 (PlacementOrder 昇順) で渡す入力。</param>
-    /// <param name="chaos">[0, 1] の連続値。0 でフレーム / シャドウ / ジッター / 回転すべて 0。</param>
+    /// <param name="canvas">グリッドの論理キャンバスサイズ。グリッド拡張 (散らかし時の
+    /// 中心からの放射状シフト) の基準点として使う。</param>
+    /// <param name="chaos">[0, 1] の連続値。0 でフレーム / シャドウ / ジッター / 回転 / 拡張すべて 0。</param>
     /// <param name="seed">決定論的 PRNG シード。</param>
     public static IReadOnlyList<PhotoBoardItem> Compute(
         IReadOnlyList<PlacementBaseRect> baseRects,
+        PixelSize canvas,
         double chaos,
         int seed)
     {
@@ -91,12 +103,19 @@ public static class PhotoBoardLayout
 
         var clamped = Math.Clamp(chaos, 0.0, 1.0);
         // 二段階カーブ: 写真キャラクター (frame + shadow) は早めに飽和、散らかし
-        // (jitter + rotation + pivot) はその後にランプ。chaos の中間値で「写真風」が
+        // (jitter + rotation + pivot + 拡張) はその後にランプ。chaos の中間値で「写真風」が
         // 明確に認識できる状態を作る。
         var frameRamp = Math.Min(1.0, clamped / FrameRampThreshold);
         var disorderRamp = clamped <= FrameRampThreshold
             ? 0.0
             : (clamped - FrameRampThreshold) / (1.0 - FrameRampThreshold);
+
+        // グリッド拡張倍率: chaos=0 → 1.0 (キャンバスそのまま)、chaos=1 → 1.0 + MaxExpansionFactor。
+        // 各 placement の中心がキャンバス中心から放射状に広がる (画像がセルを覆っていても
+        // 隙間ができ「散らかし感」を生む)。
+        var expansionFactor = 1.0 + MaxExpansionFactor * disorderRamp;
+        var canvasCenterX = canvas.Width / 2.0;
+        var canvasCenterY = canvas.Height / 2.0;
 
         var rng = new Random(seed);
 
@@ -139,13 +158,20 @@ public static class PhotoBoardLayout
             var shadowOffsetYJitter = (rng.NextDouble() * 2.0 - 1.0);
             var shadowSigmaJitter = (rng.NextDouble() * 2.0 - 1.0);
 
-            // 散らかし (jitter / rotation / pivot) は disorderRamp でスケール。
+            // グリッド拡張オフセット: セル中心がキャンバス中心から expansionFactor 倍に広がる。
+            // chaos=0 で 0、chaos=1 で約 30% 外側へ移動 (4 隅は最も大きく動く)。
+            var cellCenterX = rect.X + rect.Width / 2.0;
+            var cellCenterY = rect.Y + rect.Height / 2.0;
+            var expansionOffsetX = (cellCenterX - canvasCenterX) * (expansionFactor - 1.0);
+            var expansionOffsetY = (cellCenterY - canvasCenterY) * (expansionFactor - 1.0);
+
+            // 散らかし (jitter / rotation / pivot + 拡張) は disorderRamp でスケール。
             // chaos <= FrameRampThreshold (既定 0.20) では 0 → 写真は整列して並ぶ。
-            var offsetX = disorderRamp * minSide * (
+            var offsetX = expansionOffsetX + disorderRamp * minSide * (
                 MaxJitterFraction * itemJitterX
                 + MaxRowColBiasFraction * rowBiasX
                 + MaxRowColBiasFraction * colBiasX);
-            var offsetY = disorderRamp * minSide * (
+            var offsetY = expansionOffsetY + disorderRamp * minSide * (
                 MaxJitterFraction * itemJitterY
                 + MaxRowColBiasFraction * rowBiasY
                 + MaxRowColBiasFraction * colBiasY);
@@ -184,6 +210,7 @@ public static class PhotoBoardLayout
     /// </summary>
     public static int RequiredCanvasMargin(
         IReadOnlyList<PlacementBaseRect> baseRects,
+        PixelSize canvas,
         double chaos)
     {
         ArgumentNullException.ThrowIfNull(baseRects);
@@ -195,7 +222,7 @@ public static class PhotoBoardLayout
             return 0;
 
         // Compute と同じ二段階カーブを使う。frame/shadow は frameRamp、
-        // 位置オフセット / 回転は disorderRamp に従う。
+        // 位置オフセット / 回転 / 拡張は disorderRamp に従う。
         var frameRamp = Math.Min(1.0, clamped / FrameRampThreshold);
         var disorderRamp = clamped <= FrameRampThreshold
             ? 0.0
@@ -208,6 +235,10 @@ public static class PhotoBoardLayout
         var maxOffset = disorderRamp * maxMinSide
             * (MaxJitterFraction + 2.0 * MaxRowColBiasFraction);
 
+        // グリッド拡張: 4 隅の placement は最大 (canvas/2) * (expansionFactor - 1) 外側へ動く
+        var expansionGrowth = Math.Max(canvas.Width, canvas.Height) / 2.0
+            * MaxExpansionFactor * disorderRamp;
+
         // 回転による対角伸長分: 回転後 bbox の最大増分は (W+H)/2 * sin(θ) 程度
         var maxRotRad = disorderRamp * MaxRotationDeg * Math.PI / 180.0;
         var rotationGrowth = (maxLongSide / 2.0) * Math.Abs(Math.Sin(maxRotRad))
@@ -218,6 +249,6 @@ public static class PhotoBoardLayout
         var shadow = (BaseShadowOffsetY + ShadowOffsetJitterPx
                     + 3.0 * (BaseShadowSigma + ShadowSigmaJitterPx)) * frameRamp;
 
-        return (int)Math.Ceiling(maxOffset + rotationGrowth + frame + shadow + 4.0);
+        return (int)Math.Ceiling(maxOffset + expansionGrowth + rotationGrowth + frame + shadow + 4.0);
     }
 }

@@ -291,6 +291,15 @@
                                        FontSize="11"
                                        Opacity="0.7"
                                        VerticalAlignment="Center" />
+                            <!-- 現在値の数値表示 (例: 0.50)。スライダーだけだと
+                                 「特定の値で試す」(0.5/0.7 等) ができないので
+                                 数値も並べて見せる。 -->
+                            <TextBlock Text="{Binding SelectedChaosLevel, StringFormat='{}{0:0.00}'}"
+                                       FontSize="11"
+                                       FontFamily="Consolas,monospace"
+                                       MinWidth="32"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Right" />
                         </StackPanel>
                     </StackPanel>
                 </Grid>

@@ -749,10 +749,10 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             var seed = options.PhotoBoardSeedOverride is { } overrideSeed
                 ? unchecked((int)overrideSeed)
                 : DeriveSeedFromGridId(grid.Id);
-            var layoutItems = PhotoBoardLayout.Compute(baseRects, options.PhotoBoardChaos, seed);
+            var layoutItems = PhotoBoardLayout.Compute(baseRects, grid.CanvasSize, options.PhotoBoardChaos, seed);
 
             // 3. 最終キャンバスサイズ (マージンを 4 辺に追加)
-            var margin = PhotoBoardLayout.RequiredCanvasMargin(baseRects, options.PhotoBoardChaos);
+            var margin = PhotoBoardLayout.RequiredCanvasMargin(baseRects, grid.CanvasSize, options.PhotoBoardChaos);
             var finalWidth = grid.CanvasSize.Width + 2 * margin;
             var finalHeight = grid.CanvasSize.Height + 2 * margin;
             var finalInfo = new SKImageInfo(
