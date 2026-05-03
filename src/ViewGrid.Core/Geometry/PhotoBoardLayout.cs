@@ -117,20 +117,14 @@ public static class PhotoBoardLayout
     private const double OverlapNudgeFraction = 0.20;
 
     /// <summary>
-    /// 重なり方向の 8 候補 (4 軸 + 4 斜め)。斜めは単位ベクトルになるよう √2/2 で正規化。
-    /// シフト量を多様化することで 4 軸だけだと出る「直線的にズレた」機械感を解消する。
+    /// 重なり nudge で「外向き bias」を効かせる確率。これ以下のときは純粋な 360° ランダム、
+    /// これ以上のときはキャンバス中心から外向き方向を中心に ±<see cref="OutwardSpreadHalf"/>
+    /// の角度範囲でランダム化する。中央セルが内向きにのみ寄って起きる「中央集中」を抑える。
     /// </summary>
-    private static readonly (double X, double Y)[] OverlapDirections =
-    {
-        (-1.0, 0.0),         // 左
-        (+1.0, 0.0),         // 右
-        ( 0.0, -1.0),        // 上
-        ( 0.0, +1.0),        // 下
-        (-0.7071, -0.7071),  // 左上
-        (+0.7071, -0.7071),  // 右上
-        (-0.7071, +0.7071),  // 左下
-        (+0.7071, +0.7071),  // 右下
-    };
+    private const double OutwardBiasProbability = 0.6;
+
+    /// <summary>外向き bias 時のスプレッド半幅 (ラジアン)。π/2 = ±90 度。</summary>
+    private const double OutwardSpreadHalf = Math.PI / 2.0;
 
     /// <summary>
     /// 各 placement の PhotoBoard 描画パラメータを計算する。
@@ -193,9 +187,29 @@ public static class PhotoBoardLayout
 
                 var rect = baseRects[i].Rect;
                 var nudgeMag = OverlapNudgeFraction * Math.Min(rect.Width, rect.Height);
-                // 8 方向 (4 軸 + 4 斜め) からランダムに選ぶ。斜めは単位ベクトル。
-                var (dx, dy) = OverlapDirections[rng.Next(OverlapDirections.Length)];
-                overlapNudges[i] = (dx * nudgeMag, dy * nudgeMag);
+
+                // 方向決定: 360° 連続でランダム化。8 方向だけだと「縦か横にズレた」
+                // 機械感が残るため任意角を許可。
+                // さらに OutwardBiasProbability の確率で「外向き」ベース角に bias して
+                // 中央セルが内向きにのみ寄って起きる「中央集中」を抑える。
+                var cellCenterXLocal = rect.X + rect.Width / 2.0;
+                var cellCenterYLocal = rect.Y + rect.Height / 2.0;
+                var dirX = cellCenterXLocal - canvasCenterX;
+                var dirY = cellCenterYLocal - canvasCenterY;
+                var dirMag = Math.Sqrt(dirX * dirX + dirY * dirY);
+
+                double angle;
+                if (dirMag > 1e-6 && rng.NextDouble() < OutwardBiasProbability)
+                {
+                    var outwardAngle = Math.Atan2(dirY, dirX);
+                    angle = outwardAngle + (rng.NextDouble() - 0.5) * 2.0 * OutwardSpreadHalf;
+                }
+                else
+                {
+                    angle = rng.NextDouble() * 2.0 * Math.PI;
+                }
+
+                overlapNudges[i] = (Math.Cos(angle) * nudgeMag, Math.Sin(angle) * nudgeMag);
             }
         }
 
