@@ -9,44 +9,74 @@
         MinWidth="480" MinHeight="360"
         WindowStartupLocation="CenterOwner">
 
-    <Grid RowDefinitions="*,Auto">
-        <Border Grid.Row="0"
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!--
+            上部ズームツールバー: ManualCropEditorWindow と統一した操作体系
+            (− / フィット / 100% / ＋ + 現在倍率)。 「実寸表示」という独自呼称は
+            ユーザー視点で印刷サイズと混同しやすいので「100%」に統一。
+            初期表示は常にフィット (出力プレビューを開いた瞬間にまず全体構図を確認、
+            細部は 100% に切替 の流れ)。 フィット / 100% は ToggleButton で現在モードを
+            ハイライト表示し、 ZoomLabel と合わせて状態が読み取りやすくする。
+        -->
+        <Grid Grid.Row="0" Margin="12,12,12,6" ColumnDefinitions="Auto,*">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <TextBlock Text="ズーム:" VerticalAlignment="Center" />
+                <Button x:Name="ZoomOutButton" Content="−" MinWidth="32"
+                        Click="OnZoomOutClicked" ToolTip.Tip="縮小 (Ctrl + ホイール下)" />
+                <ToggleButton x:Name="ZoomFitButton" Content="フィット"
+                              Click="OnZoomFitClicked" ToolTip.Tip="ウィンドウに収める" />
+                <ToggleButton x:Name="Zoom100Button" Content="100%"
+                              Click="OnZoom100Clicked" ToolTip.Tip="物理ピクセル等倍 (出力ファイルと同じサイズ)" />
+                <Button x:Name="ZoomInButton" Content="＋" MinWidth="32"
+                        Click="OnZoomInClicked" ToolTip.Tip="拡大 (Ctrl + ホイール上)" />
+                <TextBlock x:Name="ZoomLabel" Text="100%"
+                           VerticalAlignment="Center" MinWidth="56" Margin="8,0,0,0"
+                           FontFamily="Consolas,monospace" />
+            </StackPanel>
+            <TextBlock x:Name="InfoText"
+                       Grid.Column="1"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Right"
+                       Opacity="0.7"
+                       FontSize="11" />
+        </Grid>
+
+        <!--
+            メイン: ScrollViewer + Container Grid + Image。
+            Image は Stretch=Fill で常に明示 Width/Height (= pixelSize × zoom / RenderScaling)
+            に従って描画され、 ズーム値を一意に表現する。 Image を直接 ScrollViewer の
+            Content にせず Container Grid を挟むのは、 拡大時 (Image > ScrollViewer 領域) は
+            Container も同サイズで Extent を ScrollViewer に伝えてスクロールバーを発生させ、
+            縮小時 (Image < ScrollViewer 領域) は Container の HorizontalAlignment=Center /
+            VerticalAlignment=Center で画像を中央寄せにするため。
+        -->
+        <Border Grid.Row="1"
                 Background="{DynamicResource SystemChromeMediumLowColor}"
-                Margin="12,12,12,6">
+                Margin="12,6,12,6">
             <ScrollViewer x:Name="PreviewScrollViewer"
                           HorizontalScrollBarVisibility="Auto"
                           VerticalScrollBarVisibility="Auto"
                           Cursor="Hand">
-                <Image x:Name="PreviewImage"
-                       Stretch="Uniform"
-                       StretchDirection="DownOnly"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"
-                       Margin="8" />
+                <Grid x:Name="PreviewContainer"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Margin="8">
+                    <Image x:Name="PreviewImage" Stretch="Fill" />
+                </Grid>
             </ScrollViewer>
         </Border>
 
-        <Grid Grid.Row="1"
+        <Grid Grid.Row="2"
               Margin="12,6,12,12"
-              ColumnDefinitions="*,Auto,Auto,Auto">
-            <TextBlock x:Name="InfoText"
-                       Grid.Column="0"
-                       VerticalAlignment="Center"
-                       Opacity="0.7"
-                       FontSize="11" />
-            <ToggleButton x:Name="ActualSizeToggle"
-                          Grid.Column="1"
-                          Content="実寸表示"
-                          Margin="0,0,8,0"
-                          ToolTip.Tip="出力ピクセルと等倍で表示（ドラッグでパン）"
-                          IsCheckedChanged="OnActualSizeToggled" />
+              ColumnDefinitions="*,Auto,Auto">
+            <!-- 左側はスペーサー (情報は上部に移動済み) -->
             <Button x:Name="SaveButton"
-                    Grid.Column="2"
+                    Grid.Column="1"
                     Content="PNG として保存"
                     Classes="accent"
                     Margin="0,0,8,0"
                     Click="OnSaveClicked" />
-            <Button Grid.Column="3"
+            <Button Grid.Column="2"
                     Content="閉じる"
                     Click="OnCloseClicked" />
         </Grid>
