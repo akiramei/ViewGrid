@@ -628,9 +628,13 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         if (_suppressDirty)
             return;
 
-        // メタ状態の変化はダーティ化しない（編集バッファ以外の表示用プロパティ）
+        // メタ状態の変化はダーティ化しない（編集バッファ以外の表示用プロパティ）。
+        // AutoCropPreview* は Attach 直後の TriggerAutoCropPreviewUpdate (非同期) で更新されるため、
+        // ここを除外しないと「セル選択しただけで未保存」になる回帰が出る。
         if (e.PropertyName is nameof(IsDirty) or nameof(HasCopy)
-            or nameof(StatusMessage) or nameof(MultiSelectMessage))
+            or nameof(StatusMessage) or nameof(MultiSelectMessage)
+            or nameof(AutoCropPreviewFraction) or nameof(AutoCropPreviewMessage)
+            or nameof(HasAutoCropPreview))
             return;
 
         if (!IsDirty)

@@ -185,6 +185,25 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         _vm.AutoCropPreviewMessage.Should().BeNull();
     }
 
+    /// <summary>
+    /// プレビュー計算結果のプロパティ更新は IsDirty を立てない（編集バッファではなく表示用なので）。
+    /// 回帰防止: 「AutoCrop 自動で Attach するだけで未保存になる」バグ。
+    /// </summary>
+    [Fact]
+    public async Task Setting_AutoCropPreview_Properties_Does_Not_Mark_Dirty()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.IsDirty.Should().BeFalse();
+
+        // 内部の RecalculateAutoCropPreviewAsync が呼ぶのと同じ Setter 呼び出し。
+        _vm.AutoCropPreviewFraction = new AutoCropFraction(0.1, 0.1, 0.8, 0.8);
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.AutoCropPreviewMessage = "プレビュー計算中...";
+        _vm.IsDirty.Should().BeFalse();
+    }
+
     [Fact]
     public async Task Disabling_AutoCrop_After_Enable_Clears_Preview()
     {
