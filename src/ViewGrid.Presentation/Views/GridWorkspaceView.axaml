@@ -16,6 +16,103 @@
         <conv:TrimModeLabelConverter x:Key="TrimModeLabel" />
     </UserControl.Resources>
 
+    <UserControl.Styles>
+        <!--
+            スタイルカード: 未選択は透明背景 + 細い灰色枠、 hover で薄く色がつき、
+            選択中だけアクセント色の太枠で目立たせる。 全カードを濃いグレーにしないことで
+            視線がアクセントカードに自然に向かう。
+        -->
+        <Style Selector="ToggleButton.StyleCard">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemBaseLowColor}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="8" />
+        </Style>
+        <Style Selector="ToggleButton.StyleCard /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemBaseLowColor}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="ToggleButton.StyleCard:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemBaseLowColor}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemBaseMediumLowColor}" />
+        </Style>
+        <Style Selector="ToggleButton.StyleCard:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <!-- FluentTheme の :checked 既定は Foreground=White (= 文字色をアクセント面の上で
+                 反転させる) だが、 StyleCard では背景透過のままなので白文字 = 白背景に消える。
+                 通常文字色に戻し、 選択状態は枠とサムネだけで表現する。 -->
+            <Setter Property="Foreground" Value="{DynamicResource SystemBaseHighColor}" />
+        </Style>
+        <Style Selector="ToggleButton.StyleCard:checked:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemBaseLowColor}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemBaseHighColor}" />
+        </Style>
+        <!-- 念のため :pressed 状態の Foreground も同じに揃える (押下中の白文字フラッシュ回避) -->
+        <Style Selector="ToggleButton.StyleCard:pressed /template/ ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource SystemBaseHighColor}" />
+        </Style>
+        <Style Selector="ToggleButton.StyleCard:checked:pressed /template/ ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource SystemBaseHighColor}" />
+        </Style>
+
+        <!--
+            出力モードのセグメント (隣接 2 ボタンを横幅いっぱいに連結、 segmented control 風)。
+            未選択は白地 + 細枠で「裏側のオプション」感を出し、 選択中だけアクセント色面で
+            「現在のモード」を強調する。 これでカード全体の重さを抑えつつ二択を表現。
+        -->
+        <Style Selector="ToggleButton.Segment">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="8,6" />
+        </Style>
+        <Style Selector="ToggleButton.Segment /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemBaseLowColor}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="ToggleButton.Segment:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemBaseLowColor}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemBaseMediumLowColor}" />
+        </Style>
+        <Style Selector="ToggleButton.Segment:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColor}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}" />
+        </Style>
+        <Style Selector="ToggleButton.Segment:checked:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColor}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}" />
+        </Style>
+
+        <!--
+            「既定に戻す」専用ボタン。 toolbar クラスの :disabled が Opacity=0.4 で
+            少し薄すぎ「ここにリセットがある」のが見えにくいフィードバックがあったため、
+            disabled でも 0.55 で文字が読める程度に残す。 hover / 押下挙動は toolbar と同じ。
+        -->
+        <Style Selector="Button.resetIntensity">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.resetIntensity:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemBaseLowColor}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemBaseMediumLowColor}" />
+        </Style>
+        <Style Selector="Button.resetIntensity:disabled">
+            <Setter Property="Opacity" Value="0.55" />
+        </Style>
+    </UserControl.Styles>
+
     <!--
         配置タブの本体を 3 ペイン構造に再編:
         ・Column 0 (320px): 配置元（バリアント）リストを大きく表示。「配置」「プレビュー」「PNG 出力」
@@ -245,67 +342,24 @@
                             <Run Text="{Binding CanvasSizeLabel}" />
                         </TextBlock>
                     </StackPanel>
+                    <!--
+                        中央ヘッダはグリッド名 + 出力アクション (プレビュー / PNG 出力) のみに縮約。
+                        出力モード / スタイル / 強度 / 切り出しの設定はすべて右ペイン上部の
+                        「出力設定」パネルに集約済み。 PNG 出力は主要アクションなので accent。
+                    -->
                     <StackPanel Grid.Column="1"
-                                Orientation="Vertical"
-                                Spacing="4"
+                                Orientation="Horizontal"
+                                Spacing="8"
                                 VerticalAlignment="Center"
                                 HorizontalAlignment="Right">
-                        <!-- 1 行目: ボタン + トリミング ComboBox。高さ揃えのため
-                             すべて Stretch ではなく Center で縦中央寄せ。 -->
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="8"
-                                    VerticalAlignment="Center"
-                                    HorizontalAlignment="Right">
-                            <Button x:Name="PreviewButton"
-                                    Content="プレビュー"
-                                    Click="OnPreviewClicked"
-                                    IsEnabled="{Binding HasGrid}" />
-                            <Button Content="PNG 出力"
-                                    Command="{Binding ExportToPngCommand}"
-                                    IsEnabled="{Binding HasGrid}" />
-                            <ComboBox MinWidth="180"
-                                      ItemsSource="{Binding TrimModeOptions}"
-                                      SelectedItem="{Binding SelectedTrimMode}"
-                                      ToolTip.Tip="トリム（プレビュー / PNG 出力共通）">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding Converter={StaticResource TrimModeLabel}}" />
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
-                        </StackPanel>
-                        <!-- 2 行目: 写真ボード風モード時のみ「整列 ↔ 散らかし」スライダーを表示。
-                             0 で整然と並んだグリッド (フレーム / 影 / 回転 / ジッター無効、
-                             TrimMode.None と同一バイト出力)、1 で最大効果。
-                             スライダー高さが ComboBox / ボタンと不揃いなので独立行に分離。 -->
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="6"
-                                    VerticalAlignment="Center"
-                                    HorizontalAlignment="Right"
-                                    IsVisible="{Binding IsPhotoBoardMode}">
-                            <TextBlock Text="整列"
-                                       FontSize="11"
-                                       Opacity="0.7"
-                                       VerticalAlignment="Center" />
-                            <Slider Width="160"
-                                    Minimum="0" Maximum="1"
-                                    TickFrequency="0.1"
-                                    Value="{Binding SelectedChaosLevel}"
-                                    ToolTip.Tip="整列 ↔ 散らかし（写真ボード風の効果量）" />
-                            <TextBlock Text="散らかし"
-                                       FontSize="11"
-                                       Opacity="0.7"
-                                       VerticalAlignment="Center" />
-                            <!-- 現在値の数値表示 (例: 0.50)。スライダーだけだと
-                                 「特定の値で試す」(0.5/0.7 等) ができないので
-                                 数値も並べて見せる。 -->
-                            <TextBlock Text="{Binding SelectedChaosLevel, StringFormat='{}{0:0.00}'}"
-                                       FontSize="11"
-                                       FontFamily="Consolas,monospace"
-                                       MinWidth="32"
-                                       VerticalAlignment="Center"
-                                       HorizontalAlignment="Right" />
-                        </StackPanel>
+                        <Button x:Name="PreviewButton"
+                                Content="プレビュー"
+                                Click="OnPreviewClicked"
+                                IsEnabled="{Binding HasGrid}" />
+                        <Button Content="PNG 出力"
+                                Classes="accent"
+                                Command="{Binding ExportToPngCommand}"
+                                IsEnabled="{Binding HasGrid}" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -365,7 +419,7 @@
                 Grid RowDefinitions=Auto,*,Auto に変更し、中央行 (*) に Grid を重ねて 3 状態の
                 View を同じセルに置くことで、IsVisible=true の View が必ず幅一杯まで伸縮する。
             -->
-            <Grid RowDefinitions="Auto,*,Auto">
+            <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
                 <TextBlock Grid.Row="0"
                            FontSize="11"
                            Opacity="0.75"
@@ -377,11 +431,256 @@
                 </TextBlock>
 
                 <!--
+                    出力設定パネル: HasGrid のときのみ表示。 4 セクション
+                    (出力モード / スタイル / 調整 / 切り出し) で情報の階層を明確化。
+                    旧実装は中央ヘッダ右側に詰め込んでいたが、 最小ウィンドウ幅で破綻しやすく、
+                    かつ chaos スライダーの数値が露出していてユーザーに意味が伝わらない問題があった。
+                    効果ベースのラベル + 視覚サンプル + リセット手段で再構成。
+                -->
+                <Border Grid.Row="1"
+                        IsVisible="{Binding HasGrid}"
+                        Padding="8"
+                        Margin="0,0,0,8"
+                        BorderBrush="{DynamicResource SystemBaseLowColor}"
+                        BorderThickness="1"
+                        CornerRadius="4">
+                    <StackPanel Spacing="14">
+                        <!-- ─── 出力モード: 横幅いっぱいの segmented control ─── -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="出力モード" Classes="SectionHeader" />
+                            <Grid ColumnDefinitions="*,*">
+                                <ToggleButton Grid.Column="0"
+                                              Classes="Segment"
+                                              Content="通常"
+                                              IsChecked="{Binding IsNormalMode, Mode=OneWay}"
+                                              Command="{Binding SelectOutputModeNormalCommand}"
+                                              ToolTip.Tip="グリッドのセル配置をそのままレンダリングします" />
+                                <ToggleButton Grid.Column="1"
+                                              Classes="Segment"
+                                              Content="写真ボード"
+                                              IsChecked="{Binding IsPhotoBoardMode, Mode=OneWay}"
+                                              Command="{Binding SelectOutputModePhotoBoardCommand}"
+                                              ToolTip.Tip="フレーム + 影 + ジッターで写真ボード風に再合成します" />
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- ─── スタイル (PhotoBoard 時のみ) ─── -->
+                        <StackPanel Spacing="6" IsVisible="{Binding IsPhotoBoardMode}">
+                            <TextBlock Text="スタイル" Classes="SectionHeader" />
+                            <StackPanel Spacing="4">
+                                <!-- ナチュラル -->
+                                <ToggleButton Classes="StyleCard"
+                                              IsChecked="{Binding IsStyleNatural, Mode=OneWay}"
+                                              Command="{Binding ApplyPhotoBoardStyleNaturalCommand}"
+                                              ToolTip.Tip="軽い揺らぎ・整然とした配置 (写真アルバム風)">
+                                    <Grid ColumnDefinitions="64,*" ColumnSpacing="10">
+                                        <!-- フォントの SemiBold 文字は視覚重心が下寄りになるため、
+                                             サンプル Canvas を 1px だけ下げて視覚中心を文字側と揃える。 -->
+                                        <Canvas Grid.Column="0" Width="64" Height="40"
+                                                VerticalAlignment="Center"
+                                                Margin="0,1,0,0">
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="6" Canvas.Top="5"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="-2" /></Border.RenderTransform>
+                                            </Border>
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="36" Canvas.Top="3"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="1" /></Border.RenderTransform>
+                                            </Border>
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="8" Canvas.Top="22"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="3" /></Border.RenderTransform>
+                                            </Border>
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="38" Canvas.Top="23"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="-1" /></Border.RenderTransform>
+                                            </Border>
+                                        </Canvas>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="ナチュラル" FontWeight="SemiBold" FontSize="12"
+                                                       Foreground="{DynamicResource SystemBaseHighColor}" />
+                                            <TextBlock Text="軽い揺らぎ・整然" Classes="HintText" FontSize="10"
+                                                       Foreground="{DynamicResource SystemBaseHighColor}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </ToggleButton>
+
+                                <!-- ラフ -->
+                                <ToggleButton Classes="StyleCard"
+                                              IsChecked="{Binding IsStyleRough, Mode=OneWay}"
+                                              Command="{Binding ApplyPhotoBoardStyleRoughCommand}"
+                                              ToolTip.Tip="中程度の回転・たまの重なり (ノートに貼った写真風)">
+                                    <Grid ColumnDefinitions="64,*" ColumnSpacing="10">
+                                        <!-- フォントの SemiBold 文字は視覚重心が下寄りになるため、
+                                             サンプル Canvas を 1px だけ下げて視覚中心を文字側と揃える。 -->
+                                        <Canvas Grid.Column="0" Width="64" Height="40"
+                                                VerticalAlignment="Center"
+                                                Margin="0,1,0,0">
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="4" Canvas.Top="6"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="-8" /></Border.RenderTransform>
+                                            </Border>
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="32" Canvas.Top="3"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="5" /></Border.RenderTransform>
+                                            </Border>
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="10" Canvas.Top="22"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="7" /></Border.RenderTransform>
+                                            </Border>
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="38" Canvas.Top="24"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="-5" /></Border.RenderTransform>
+                                            </Border>
+                                        </Canvas>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="ラフ" FontWeight="SemiBold" FontSize="12"
+                                                       Foreground="{DynamicResource SystemBaseHighColor}" />
+                                            <TextBlock Text="中程度の傾き・少しの重なり" Classes="HintText" FontSize="10"
+                                                       Foreground="{DynamicResource SystemBaseHighColor}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </ToggleButton>
+
+                                <!-- バラ撒き -->
+                                <ToggleButton Classes="StyleCard"
+                                              IsChecked="{Binding IsStyleScattered, Mode=OneWay}"
+                                              Command="{Binding ApplyPhotoBoardStyleScatteredCommand}"
+                                              ToolTip.Tip="大胆な回転・頻繁な重なり (机にぶちまけた写真風)">
+                                    <Grid ColumnDefinitions="64,*" ColumnSpacing="10">
+                                        <!-- フォントの SemiBold 文字は視覚重心が下寄りになるため、
+                                             サンプル Canvas を 1px だけ下げて視覚中心を文字側と揃える。 -->
+                                        <Canvas Grid.Column="0" Width="64" Height="40"
+                                                VerticalAlignment="Center"
+                                                Margin="0,1,0,0">
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="2" Canvas.Top="8"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="-14" /></Border.RenderTransform>
+                                            </Border>
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="22" Canvas.Top="2"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="10" /></Border.RenderTransform>
+                                            </Border>
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="42" Canvas.Top="12"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="-8" /></Border.RenderTransform>
+                                            </Border>
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="6" Canvas.Top="24"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="12" /></Border.RenderTransform>
+                                            </Border>
+                                            <Border Width="20" Height="14" Background="White"
+                                                    BorderBrush="#888" BorderThickness="1"
+                                                    Canvas.Left="30" Canvas.Top="22"
+                                                    RenderTransformOrigin="0.5,0.5">
+                                                <Border.RenderTransform><RotateTransform Angle="-10" /></Border.RenderTransform>
+                                            </Border>
+                                        </Canvas>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="バラ撒き" FontWeight="SemiBold" FontSize="12"
+                                                       Foreground="{DynamicResource SystemBaseHighColor}" />
+                                            <TextBlock Text="大胆な傾き・複数の重なり" Classes="HintText" FontSize="10"
+                                                       Foreground="{DynamicResource SystemBaseHighColor}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </ToggleButton>
+                            </StackPanel>
+
+                        </StackPanel>
+
+                        <!-- ─── 調整: 配置の乱れスライダー (PhotoBoard 時のみ) ─── -->
+                        <StackPanel Spacing="4" IsVisible="{Binding IsPhotoBoardMode}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="調整" Classes="SectionHeader" />
+                                <!-- スライダーは正確に中央 (既定値) へ戻すのが難しいので
+                                     明示的なリセット手段。 ↺ アイコンで「ボタンである」操作可能性を
+                                     強調し、 既定位置 (intensity=0.5) のときは CanExecute=false で
+                                     自動的に dim される (resetIntensity スタイルの :disabled で
+                                     Opacity=0.55、 toolbar の 0.4 より少し濃く読みやすく)。 -->
+                                <Button Grid.Column="1"
+                                        Classes="resetIntensity"
+                                        Command="{Binding ResetPhotoBoardIntensityCommand}"
+                                        ToolTip.Tip="配置の乱れを既定値 (中央) に戻します">
+                                    <!-- アイコン + 文字を同じ行内ベースラインで揃えると ↺ Unicode は
+                                         日本語より高く見えがち。 PathIcon (RefreshGeometry) で
+                                         pixel-perfect な高さ + VerticalAlignment=Center で揃える。 -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4"
+                                                VerticalAlignment="Center">
+                                        <PathIcon Data="{StaticResource RefreshGeometry}"
+                                                  Width="11" Height="11"
+                                                  VerticalAlignment="Center" />
+                                        <TextBlock Text="既定に戻す"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                                <TextBlock Grid.Column="0" Text="控えめ" Classes="HintText"
+                                           FontSize="11" VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="1"
+                                        TickFrequency="0.1"
+                                        Value="{Binding SelectedPhotoBoardIntensity}"
+                                        ToolTip.Tip="選んだスタイルの強度を控えめ ↔ 大胆 で調整します" />
+                                <TextBlock Grid.Column="2" Text="大胆" Classes="HintText"
+                                           FontSize="11" VerticalAlignment="Center" />
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- ─── 切り出し: 通常モードでも PhotoBoard モードでも常に表示 ─── -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="切り出し" Classes="SectionHeader" />
+                            <ComboBox ItemsSource="{Binding TrimModeOptions}"
+                                      SelectedItem="{Binding SelectedTrimMode}"
+                                      HorizontalAlignment="Stretch"
+                                      ToolTip.Tip="出力 PNG の切り出し範囲。 PhotoBoard 時も合成後の画像に同じセマンティクスで適用されます。">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource TrimModeLabel}}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 既存パネルは Row=2 (Auto separator) と Row=3 (* contextual) と Row=4 (Auto actions) に下げる。
+                     ここでは Row 2 (区切り) は付けず、Border 自身の枠で十分視覚分離している。 -->
+                <Border Grid.Row="2"
+                        Height="1"
+                        Background="{DynamicResource SystemBaseLowColor}"
+                        Margin="0,0,0,8"
+                        IsVisible="{Binding HasGrid}" />
+
+                <!--
                     子 View の DataContext を切り替えると IsVisible バインドも子側で解決されてしまうため、
                     IsVisible の参照は ElementName=GridWorkspaceRoot 経由で親 VM
                     (GridWorkspaceViewModel) のフラグを明示的に指す。
                 -->
-                <Grid Grid.Row="1">
+                <Grid Grid.Row="3">
                     <!-- 配置選択中: Inspector を表示（配置固有プロパティ + 共有特性編集 inline）。
                          ElementName 経由 DataContext は型 object なので明示キャストして
                          compile-time binding の警告を回避。 -->
@@ -410,7 +709,7 @@
                     </Border>
                 </Grid>
 
-                <StackPanel Grid.Row="2" Spacing="4" Margin="0,8,0,0">
+                <StackPanel Grid.Row="4" Spacing="4" Margin="0,8,0,0">
                     <Button Content="配置を削除"
                             HorizontalAlignment="Stretch"
                             Command="{Binding RemoveSelectedPlacementCommand}"

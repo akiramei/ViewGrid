@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -10,8 +11,8 @@ namespace ViewGrid.Core.Tests.Geometry;
 
 /// <summary>
 /// <see cref="PhotoBoardLayout"/> の境界値テスト。
-/// 主に「chaos=0 で全効果ゼロ」「同シードで決定論的」「列・行バイアスが共有される」
-/// の 3 つの不変条件を担保する。
+/// 9 係数 (<see cref="PhotoBoardStyleCoefficients"/>) を独立に切り替えて、それぞれが
+/// 期待される効果を持つことを確認する。
 /// </summary>
 public sealed class PhotoBoardLayoutTests
 {
@@ -25,10 +26,31 @@ public sealed class PhotoBoardLayoutTests
         new PlacementBaseRect(1, 1, new PixelRect(200, 200, 200, 200)),
     };
 
+    /// <summary>係数を 1 つだけ書き換えたコピーを作るヘルパ。</summary>
+    private static PhotoBoardStyleCoefficients With(
+        PhotoBoardStyleCoefficients src,
+        double? frame = null, double? shadow = null,
+        double? rotation = null, double? jitter = null,
+        double? overlap = null, double? expansion = null,
+        double? drift = null, double? anchorDecay = null,
+        bool? polish = null) =>
+        new(
+            FrameStrength: frame ?? src.FrameStrength,
+            ShadowStrength: shadow ?? src.ShadowStrength,
+            RotationStrength: rotation ?? src.RotationStrength,
+            JitterStrength: jitter ?? src.JitterStrength,
+            OverlapProbability: overlap ?? src.OverlapProbability,
+            Expansion: expansion ?? src.Expansion,
+            DriftStrength: drift ?? src.DriftStrength,
+            AnchorDecay: anchorDecay ?? src.AnchorDecay,
+            PolishEnabled: polish ?? src.PolishEnabled);
+
     [Fact]
-    public void Compute_Chaos_Zero_Yields_All_Zero_Effects()
+    public void Compute_Off_Coefficients_Yields_All_Zero_Effects()
     {
-        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 0.0, seed: 42);
+        // フレーム / シャドウすら無効な「素のグリッド」状態。
+        var result = PhotoBoardLayout.Compute(
+            SampleGrid2x2(), SampleCanvas, PhotoBoardStyleCoefficients.Off, seed: 42);
 
         result.Should().HaveCount(4);
         foreach (var item in result)
@@ -49,137 +71,132 @@ public sealed class PhotoBoardLayoutTests
     }
 
     [Fact]
-    public void RequiredCanvasMargin_Chaos_Zero_Returns_Zero()
+    public void RequiredCanvasMargin_Off_Coefficients_Returns_Zero()
     {
-        PhotoBoardLayout.RequiredCanvasMargin(SampleGrid2x2(), SampleCanvas, chaos: 0.0)
+        PhotoBoardLayout.RequiredCanvasMargin(
+            SampleGrid2x2(), SampleCanvas, PhotoBoardStyleCoefficients.Off)
             .Should().Be(0);
     }
 
     [Fact]
-    public void Compute_Chaos_One_Stays_Within_Bounds()
+    public void Compute_Scattered_Max_Intensity_Stays_Within_Bounds()
     {
-        // 200×200 セル (canvas 400×400), chaos=1:
-        //   jitter ≤ 200×0.05 = 10
-        //   rowBias ≤ 200×0.10 = 20
-        //   colBias ≤ 200×0.10 = 20
-        //   globalDrift ≤ 200×0.06 = 12 (全体ドリフト)
-        //   位置オフセット小計 = ±62
-        // 拡張 (4 隅 placement): |cellCenter - canvasCenter|=100, MaxExpansionFactor=0.40
-        //   → 拡張オフセット = ±40
-        // overlap nudge (確率発火): chaos=1 で 50% 確率、最大 ±40 (= 200×0.20)
-        // polish pass (高 chaos で破綻防止):
-        //   孤立 + 過密 で各 ±24 (= 200×0.12)
-        //   pair separation: ±10 (= 200×0.05)
-        //   合計 OffsetX/Y 最悪ケース = ±62 + ±40 + ±40 + ±24 + ±24 + ±10 = ±200
-        // 回転 ≤ ±8 度 (triangular) + 整列破壊 ±1.5 = ±9.5
-        // フレーム = 12 / 36
-        // シャドウ alpha = 64
-        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 1.0, seed: 42);
+        // 200×200 セル (canvas 400×400)、 Scattered + intensity=1.0:
+        //   factor = 2.0、 baseline (Scattered): rotation/jitter=0.9 → 1.0 (clamp)、 expansion=1.35 → 1.70 (clamp なし)、 overlap=0.40 → 0.80 (clamp)
+        //   位置オフセット最大 ≒ 200×(0.05 + 2×0.10 + 0.06) = 62
+        //   拡張 (4 隅 placement): |center|=100, expansion 倍率 1.70 → ±70
+        //   overlap nudge (per-item 0.80 確率): 最大 ±40 (= 200×0.20)
+        //   polish pass: 各 ±24 (孤立/過密) + ±10 (ペア分解)
+        //   合計 OffsetX/Y 最悪ケース ≒ ±62 + ±70 + ±40 + ±24 + ±24 + ±10 = ±230
+        var coefs = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Scattered, 1.0);
+        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, coefs, seed: 42);
 
         foreach (var item in result)
         {
-            item.OffsetX.Should().BeInRange(-205.0, 205.0);
-            item.OffsetY.Should().BeInRange(-205.0, 205.0);
-            item.RotationDeg.Should().BeInRange(-9.5, 9.5);
+            item.OffsetX.Should().BeInRange(-235.0, 235.0);
+            item.OffsetY.Should().BeInRange(-235.0, 235.0);
+            item.RotationDeg.Should().BeInRange(-9.5, 9.5);  // ±8 + ±1.5 (alignment break)
             item.RotationPivotOffsetX.Should().BeInRange(-36.0, 36.0);  // 200×0.18
             item.RotationPivotOffsetY.Should().BeInRange(-36.0, 36.0);
             item.FrameSidePx.Should().Be(12);
             item.FrameBottomPx.Should().Be(36);
             item.FrameAlpha.Should().Be(255);
             item.ShadowAlpha.Should().BeInRange((byte)51, (byte)77);  // 64 ± 20%
-            item.ShadowOffsetX.Should().BeInRange(0.0, 4.0);  // base 2 ± 1
-            item.ShadowOffsetY.Should().BeInRange(2.0, 6.0);  // base 4 ± 1
-            item.ShadowSigma.Should().BeInRange(0.0, 6.0);    // base 4 ± 1 + clamp 余裕
+            item.ShadowOffsetX.Should().BeInRange(0.0, 4.0);
+            item.ShadowOffsetY.Should().BeInRange(2.0, 6.0);
+            item.ShadowSigma.Should().BeInRange(0.0, 6.0);
         }
     }
 
     [Fact]
-    public void Compute_Chaos_At_OverlapRampStart_Has_No_Nudge()
+    public void Compute_OverlapProbability_Zero_Has_No_Nudge()
     {
-        // chaos=0.6 ちょうどでは overlap nudge は発火しない (> 0.6 が条件)。
-        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 0.6, seed: 42);
+        // OverlapProbability=0 では nudge も per-item expansion variation も発火しない。
+        // ナチュラルスタイル baseline (overlap=0) でこの不変条件を確認。
+        var coefs = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Natural, 0.5);
+        coefs.OverlapProbability.Should().Be(0.0);
 
-        foreach (var item in result)
-        {
-            // disorderRamp(0.6) = (0.6-0.20)/0.80 = 0.5
-            // 位置オフセット最大 = 0.5 × 200 × (0.05 + 2×0.10 + 0.06) = 31
-            // 拡張: expansionFactor = 1.0 + 0.4×0.5 = 1.20 → corner 100×0.20 = 20
-            // per-item expansion mul は chaos > OverlapChaosThreshold(0.6) で発火、ここでは 0.6 ジャストなので
-            // 一律 1.0 (発火しない条件 clamped > 0.6)
-            // 合計絶対値 ≤ 31 + 20 = 51
-            item.OffsetX.Should().BeInRange(-55.0, 55.0);
-            item.OffsetY.Should().BeInRange(-55.0, 55.0);
-        }
-    }
-
-    [Fact]
-    public void Compute_Overlap_Probability_Ramps_Smoothly_With_Chaos()
-    {
-        // 重なり発火率を chaos に対して連続的に増やす UX 契約を担保。
-        // 100 シードで「nudge と思われる極端オフセット (片軸 > 60px)」の発生数を
-        // 各 chaos 値で測定し、chaos が大きいほど発生数が単調に増えることを確認。
-        // (閾値 binary 切替だと chaos=0.69→0.71 で急増する。連続化により滑らかなランプになる)
+        // 100 シードでも nudge による「片軸 > 60px」のオフセットが発生しないことを確認
         const int trials = 100;
-        int CountLargeOffset(double chaos)
+        int largeOffsetCount = 0;
+        for (int seed = 1; seed <= trials; seed++)
         {
+            var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, coefs, seed);
+            foreach (var item in result)
+            {
+                if (Math.Abs(item.OffsetX) > 60 || Math.Abs(item.OffsetY) > 60) largeOffsetCount++;
+            }
+        }
+        largeOffsetCount.Should().Be(0,
+            "OverlapProbability=0 のスタイルでは nudge は決して発火しない");
+    }
+
+    [Fact]
+    public void Compute_OverlapProbability_Increases_With_Coefficient()
+    {
+        // OverlapProbability の効果を分離するため、他の散らかし係数を全部 0 にした
+        // baseline で測定。 OverlapProbability が大きくなるほど nudge 発火数が単調に増える。
+        var minimal = new PhotoBoardStyleCoefficients(
+            FrameStrength: 1.0, ShadowStrength: 1.0,
+            RotationStrength: 0, JitterStrength: 0,
+            OverlapProbability: 0, Expansion: 1.0,
+            DriftStrength: 0, AnchorDecay: 0.30, PolishEnabled: false);
+        const int trials = 100;
+        int CountNudgedItems(double overlapProb)
+        {
+            var coefs = With(minimal, overlap: overlapProb);
             int count = 0;
             for (int seed = 1; seed <= trials; seed++)
             {
-                var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: chaos, seed: seed);
+                var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, coefs, seed);
                 foreach (var item in result)
                 {
-                    if (Math.Abs(item.OffsetX) > 60 || Math.Abs(item.OffsetY) > 60) count++;
+                    // 他の貢献はすべて 0 なので、 offset > 1 は確実に nudge 由来
+                    if (Math.Abs(item.OffsetX) > 1.0 || Math.Abs(item.OffsetY) > 1.0) count++;
                 }
             }
             return count;
         }
-        var c060 = CountLargeOffset(0.60);  // 0% 確率: 偶然のみ
-        var c075 = CountLargeOffset(0.75);  // 18.75% 確率
-        var c090 = CountLargeOffset(0.90);  // 37.5% 確率
-        var c100 = CountLargeOffset(1.00);  // 50% 確率
+        var c000 = CountNudgedItems(0.00);
+        var c020 = CountNudgedItems(0.20);
+        var c050 = CountNudgedItems(0.50);
+        var c100 = CountNudgedItems(1.00);
 
-        c060.Should().BeLessThan(c075,
-            "chaos=0.60 (nudge 0%) より chaos=0.75 (nudge 18.75%) で大きいオフセット件数が増える");
-        c075.Should().BeLessThan(c100,
-            "chaos=0.75 より chaos=1.00 でさらに増える (連続変化)");
+        c000.Should().Be(0, "overlap=0 では決して nudge は発火しない");
+        c020.Should().BeGreaterThan(c000, "overlap=0.2 で nudge が発火し始める");
+        c050.Should().BeGreaterThan(c020, "overlap=0.5 で発火数がさらに増える");
+        c100.Should().BeGreaterThan(c050, "overlap=1.0 で発火数が最大");
     }
 
     [Fact]
-    public void Compute_Chaos_One_Pushes_Corner_Placements_Outward()
+    public void Compute_High_Expansion_Pushes_Corner_Placements_Outward()
     {
-        // chaos=1 時、4 隅の placement は内部的にキャンバス中心から外側 (拡張) に動く。
-        // ジッターを含んだ最終オフセットでも、平均としては拡張方向に偏る。
-        // SampleGrid2x2 (canvas 400×400, 各 placement 200×200) では:
-        //   placement (0,0) center=(100,100): canvas center (200,200) から左上方向 (-X, -Y)
-        //   placement (0,1) center=(300,100): 右上 (+X, -Y)
-        //   placement (1,0) center=(100,300): 左下 (-X, +Y)
-        //   placement (1,1) center=(300,300): 右下 (+X, +Y)
-        // 100 シードを平均すると jitter/bias は 0 に収束、拡張オフセット ±40 が残る。
-        var input = SampleGrid2x2();
+        // expansion=1.35 (Scattered baseline) で 4 隅の placement は内部的にキャンバス
+        // 中心から外側に移動する。 jitter/overlap の影響を平均で消すため 100 シードで集計。
+        var coefs = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Scattered, 1.0);
 
         double sumOffsetX0 = 0, sumOffsetX1 = 0, sumOffsetY0 = 0, sumOffsetY3 = 0;
         const int trials = 100;
         for (int seed = 1; seed <= trials; seed++)
         {
-            var result = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 1.0, seed: seed);
-            sumOffsetX0 += result[0].OffsetX;  // 左側 → 平均 -40 期待
-            sumOffsetX1 += result[1].OffsetX;  // 右側 → 平均 +40 期待
-            sumOffsetY0 += result[0].OffsetY;  // 上側 → 平均 -40 期待
-            sumOffsetY3 += result[3].OffsetY;  // 下側 → 平均 +40 期待
+            var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, coefs, seed);
+            sumOffsetX0 += result[0].OffsetX;  // 左上 → -X 期待
+            sumOffsetX1 += result[1].OffsetX;  // 右上 → +X 期待
+            sumOffsetY0 += result[0].OffsetY;  // 左上 → -Y 期待
+            sumOffsetY3 += result[3].OffsetY;  // 右下 → +Y 期待
         }
 
-        // 平均が拡張方向 (left/up=負、right/down=正) に偏る。
-        // 注意: chaos > OverlapChaosThreshold (=0.6) では per-item で拡張倍率が
-        // [-0.4, +1.0] の範囲でばらつく (重なり生成のため)。期待平均拡張倍率は
-        // 0.3 倍 → 平均拡張オフセットは -12 程度。閾値は -8 に設定 (符号が拡張方向
-        // である事を担保しつつ、ばらつきの影響でブレるので余裕を持たせる)。
-        (sumOffsetX0 / trials).Should().BeLessThan(-8.0,
+        // overlap > 0 の場合 per-item で expansion 倍率がばらつき (-0.4 ～ +1.0)、
+        // さらに jitter / drift / polish のノイズが乗るため、平均オフセットは小さめに収束する。
+        // 安全側で ±3 を閾値とする (符号方向だけ確認、 Scattered max+intensity=1 では
+        // 100 trials の平均で必ず期待方向に偏ることを担保)。
+        (sumOffsetX0 / trials).Should().BeLessThan(-3.0,
             "左側 placement は拡張で左方向 (-X) に平均的にシフトするはず");
-        (sumOffsetX1 / trials).Should().BeGreaterThan(8.0,
+        (sumOffsetX1 / trials).Should().BeGreaterThan(3.0,
             "右側 placement は拡張で右方向 (+X) に平均的にシフトするはず");
-        (sumOffsetY0 / trials).Should().BeLessThan(-8.0,
+        (sumOffsetY0 / trials).Should().BeLessThan(-3.0,
             "上側 placement は拡張で上方向 (-Y) に平均的にシフトするはず");
-        (sumOffsetY3 / trials).Should().BeGreaterThan(8.0,
+        (sumOffsetY3 / trials).Should().BeGreaterThan(3.0,
             "下側 placement は拡張で下方向 (+Y) に平均的にシフトするはず");
     }
 
@@ -187,8 +204,9 @@ public sealed class PhotoBoardLayoutTests
     public void Compute_Same_Seed_Yields_Same_Sequence()
     {
         var input = SampleGrid2x2();
-        var a = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 0.5, seed: 12345);
-        var b = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 0.5, seed: 12345);
+        var coefs = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Rough, 0.5);
+        var a = PhotoBoardLayout.Compute(input, SampleCanvas, coefs, seed: 12345);
+        var b = PhotoBoardLayout.Compute(input, SampleCanvas, coefs, seed: 12345);
 
         a.Should().BeEquivalentTo(b);
     }
@@ -197,10 +215,10 @@ public sealed class PhotoBoardLayoutTests
     public void Compute_Different_Seed_Yields_Different_Sequence()
     {
         var input = SampleGrid2x2();
-        var a = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 0.5, seed: 1);
-        var b = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 0.5, seed: 2);
+        var coefs = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Rough, 0.5);
+        var a = PhotoBoardLayout.Compute(input, SampleCanvas, coefs, seed: 1);
+        var b = PhotoBoardLayout.Compute(input, SampleCanvas, coefs, seed: 2);
 
-        // 少なくとも 1 つの item で OffsetX が異なる
         bool anyDifferent = a.Zip(b, (x, y) => x.OffsetX != y.OffsetX).Any(diff => diff);
         anyDifferent.Should().BeTrue();
     }
@@ -208,41 +226,48 @@ public sealed class PhotoBoardLayoutTests
     [Fact]
     public void Compute_Empty_Input_Returns_Empty()
     {
-        var result = PhotoBoardLayout.Compute(System.Array.Empty<PlacementBaseRect>(), SampleCanvas, 0.5, 42);
+        var coefs = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Natural, 0.5);
+        var result = PhotoBoardLayout.Compute(
+            Array.Empty<PlacementBaseRect>(), SampleCanvas, coefs, 42);
         result.Should().BeEmpty();
     }
 
     [Fact]
-    public void Compute_PolishPass_Does_Not_Run_At_Low_Chaos()
+    public void Compute_PolishEnabled_False_Skips_Pass()
     {
-        // disorderRamp <= 0.5 (= chaos <= 0.6) では polish pass は無効化される。
-        // chaos=0.5 で polish の影響がないことを「polish 有効ライン直上 (0.61) との差分」
-        // ではなく「決定論的な生 compute 結果と一致するか」で代替検証 (polish 内部分岐
-        // の偽性を担保)。chaos=0.5 で disorderRamp = (0.5-0.20)/0.80 = 0.375。
-        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 0.5, seed: 99);
+        // PolishEnabled=false で polish pass が走らないことを確認。 同じ係数で
+        // PolishEnabled だけ true/false 切替し、結果が変わることで polish の発火を担保。
+        var baseline = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Scattered, 1.0);
+        var withPolish = With(baseline, polish: true);
+        var withoutPolish = With(baseline, polish: false);
 
-        // polish が走らないことを直接観測する手段はないが、bounds 内で安定動作することを
-        // 確認 (低 chaos で polish が走ると nudge が突然加算されて不連続になる)
-        foreach (var item in result)
+        // 100 シードで「結果が異なる」ケースを 1 件以上確認 (polish が変えうる範囲)
+        bool anyDiff = false;
+        for (int seed = 1; seed <= 100; seed++)
         {
-            // chaos=0.5: disorderRamp=0.375
-            //   位置オフセット最大 = 0.375 × 200 × (0.05 + 2×0.10 + 0.06) = 23.25
-            //   拡張: factor=1+0.4×0.375=1.15 → corner ±15
-            //   overlap nudge は chaos>0.6 のみなので非発火
-            //   合計 ≤ ±39
-            item.OffsetX.Should().BeInRange(-40.0, 40.0);
-            item.OffsetY.Should().BeInRange(-40.0, 40.0);
+            var a = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, withPolish, seed);
+            var b = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, withoutPolish, seed);
+            for (int i = 0; i < a.Count; i++)
+            {
+                if (a[i].OffsetX != b[i].OffsetX || a[i].OffsetY != b[i].OffsetY ||
+                    a[i].RotationDeg != b[i].RotationDeg)
+                {
+                    anyDiff = true;
+                    break;
+                }
+            }
+            if (anyDiff) break;
         }
+        anyDiff.Should().BeTrue("polish 有効/無効で結果に差が出るシードが少なくとも 1 つ存在する");
     }
 
     [Fact]
     public void Compute_PolishPass_Preserves_Determinism()
     {
-        // Polish pass は内部で nearest-neighbor / クラスタ判定 / 整列検出をするが、
-        // RNG は 1 つしか使わないので同じシードで同じ結果になる。
         var input = SampleGrid2x2();
-        var a = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 0.95, seed: 12345);
-        var b = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 0.95, seed: 12345);
+        var coefs = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Scattered, 1.0);
+        var a = PhotoBoardLayout.Compute(input, SampleCanvas, coefs, seed: 12345);
+        var b = PhotoBoardLayout.Compute(input, SampleCanvas, coefs, seed: 12345);
 
         a.Should().BeEquivalentTo(b);
     }
@@ -250,78 +275,47 @@ public sealed class PhotoBoardLayoutTests
     [Fact]
     public void Compute_Anchor_Has_Smaller_Movement_Than_Other_Items()
     {
-        // chaos=1 でも 1 件のアンカー placement は AnchorAttenuation (=0.30) で減衰され、
-        // 他の item より絶対オフセットが小さい (= 「動かない 1 枚」が存在する)。
-        // 100 シードで「最小オフセット item」と「最大オフセット item」の差を測り、
-        // アンカー機構の効果を統計的に確認する。
+        // 大きい disorder + 小さい AnchorDecay で 1 件のアンカーが他より明確に動かない。
+        var coefs = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Scattered, 1.0);
         const int trials = 100;
         int trialsAnchorWasSmallest = 0;
         for (int seed = 1; seed <= trials; seed++)
         {
-            var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 1.0, seed: seed);
+            var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, coefs, seed);
             var magnitudes = result.Select(item =>
                 Math.Sqrt(item.OffsetX * item.OffsetX + item.OffsetY * item.OffsetY)).ToList();
             var minMag = magnitudes.Min();
             var maxMag = magnitudes.Max();
-            // 4 件の placement が完全独立なら最小値の期待値はそれなりに大きい (~50)。
-            // アンカー機構があると 1 件は 0.30 倍されて顕著に小さくなる (~30 以下が期待)
-            if (minMag < maxMag * 0.5)  // 最小が最大の半分以下なら「動かない 1 枚」が存在
+            if (minMag < maxMag * 0.5)
                 trialsAnchorWasSmallest++;
         }
-        // アンカー機構の効果: 大半のシードで「動かない 1 枚」が観察される
         trialsAnchorWasSmallest.Should().BeGreaterThan(70,
-            "chaos=1 ではアンカー減衰により 1 件が他より明確に小さい offset を持つはず");
+            "Scattered max でもアンカー減衰により 1 件が他より明確に小さい offset を持つはず");
     }
 
     [Fact]
     public void Compute_Anchor_Mechanism_Preserves_Determinism()
     {
-        // アンカー選択は rng で行われるため同シード → 同アンカー → 同結果
         var input = SampleGrid2x2();
-        var a = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 1.0, seed: 9999);
-        var b = PhotoBoardLayout.Compute(input, SampleCanvas, chaos: 1.0, seed: 9999);
+        var coefs = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Scattered, 1.0);
+        var a = PhotoBoardLayout.Compute(input, SampleCanvas, coefs, seed: 9999);
+        var b = PhotoBoardLayout.Compute(input, SampleCanvas, coefs, seed: 9999);
 
         a.Should().BeEquivalentTo(b);
     }
 
     [Fact]
-    public void Compute_TwoStage_Curve_Frame_Saturates_Before_Disorder_Starts()
+    public void Compute_FrameStrength_Scales_Frame_Size_Linearly()
     {
-        // 二段階カーブの境界 (FrameRampThreshold=0.20) で
-        //   - フレーム / シャドウ: 100% (frameRamp = 1)
-        //   - 回転 / ジッター: 0% (disorderRamp = 0)
-        // となることを確認。chaos の中間値に「明確な写真風」を出現させる UX 契約。
-        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 0.20, seed: 42);
+        // FrameStrength を 0.5 にすると frame サイズも 50% になる。
+        // 旧二段階カーブは frameRamp = chaos/0.20 だったが、今は係数直接参照。
+        var baseline = PhotoBoardStyleCoefficients.Aligned;
+        var halfFrame = With(baseline, frame: 0.5);
+        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, halfFrame, seed: 42);
 
         foreach (var item in result)
         {
-            // 散らかしは 0
-            item.OffsetX.Should().Be(0.0);
-            item.OffsetY.Should().Be(0.0);
-            item.RotationDeg.Should().Be(0.0);
-            item.RotationPivotOffsetX.Should().Be(0.0);
-            item.RotationPivotOffsetY.Should().Be(0.0);
-            // フレーム / シャドウは飽和 (alpha は ±20% per-item で揺らぐ)
-            item.FrameSidePx.Should().Be(12);
-            item.FrameBottomPx.Should().Be(36);
-            item.FrameAlpha.Should().Be(255);
-            item.ShadowAlpha.Should().BeInRange((byte)51, (byte)77);
-        }
-    }
-
-    [Fact]
-    public void Compute_Below_FrameRampThreshold_Has_Partial_Frame_No_Disorder()
-    {
-        // chaos=0.10 (FrameRampThreshold=0.20 の半分) では:
-        //   - frameRamp = 0.5 → フレーム厚 / アルファ 50%
-        //   - disorderRamp = 0 → 回転 / ジッター 0
-        var result = PhotoBoardLayout.Compute(SampleGrid2x2(), SampleCanvas, chaos: 0.10, seed: 42);
-
-        foreach (var item in result)
-        {
-            item.OffsetX.Should().Be(0.0);
-            item.RotationDeg.Should().Be(0.0);
-            item.FrameSidePx.Should().Be(6);   // 12 * 0.5
+            item.FrameSidePx.Should().Be(6);    // 12 * 0.5
             item.FrameBottomPx.Should().Be(18); // 36 * 0.5
             item.FrameAlpha.Should().Be(128);   // 255 * 0.5 ≈ 128
         }
@@ -332,11 +326,30 @@ public sealed class PhotoBoardLayoutTests
     {
         var input = new[] { new PlacementBaseRect(0, 0, new PixelRect(0, 0, 100, 100)) };
         var canvas = new PixelSize(100, 100);
+        var coefs = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Scattered, 1.0);
 
-        var a = PhotoBoardLayout.Compute(input, canvas, chaos: 1.0, seed: 7);
-        var b = PhotoBoardLayout.Compute(input, canvas, chaos: 1.0, seed: 7);
+        var a = PhotoBoardLayout.Compute(input, canvas, coefs, seed: 7);
+        var b = PhotoBoardLayout.Compute(input, canvas, coefs, seed: 7);
 
         a.Should().HaveCount(1);
         a.Should().BeEquivalentTo(b);
+    }
+
+    [Fact]
+    public void Compute_Different_Styles_Produce_Different_Output()
+    {
+        // ナチュラルとバラ撒きで visibly 異なる結果になることを担保。
+        // 同じシード + 同じ入力で結果の差異を検出 (各スタイルの個性を担保)。
+        var input = SampleGrid2x2();
+        var natural = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Natural, 0.5);
+        var scattered = PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Scattered, 0.5);
+        var a = PhotoBoardLayout.Compute(input, SampleCanvas, natural, seed: 42);
+        var b = PhotoBoardLayout.Compute(input, SampleCanvas, scattered, seed: 42);
+
+        // ナチュラル < バラ撒き の rotation magnitude が期待される (どこかの item で必ず差が出る)
+        var maxNaturalRot = a.Max(i => Math.Abs(i.RotationDeg));
+        var maxScatteredRot = b.Max(i => Math.Abs(i.RotationDeg));
+        maxScatteredRot.Should().BeGreaterThan(maxNaturalRot,
+            "バラ撒きスタイルの方がナチュラルスタイルより回転量が大きい");
     }
 }

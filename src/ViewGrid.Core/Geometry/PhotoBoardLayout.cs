@@ -8,10 +8,11 @@ namespace ViewGrid.Core.Geometry;
 
 /// <summary>
 /// PhotoBoard モードの描画変換 1 件分。元のセル矩形 (<see cref="BaseRect"/>) に対して
-/// 「整列 ↔ 散らかし」軸 (chaos) に応じたジッター位置 / 回転 / フレーム / シャドウ情報を
-/// 保持する。renderer はこのレコードを読むだけで「どこに何を描けばよいか」を判断できる。
-/// すべてのフィールドは chaos に線形比例し、chaos=0 で全て 0 / 透明 → renderer 側の分岐で
-/// <see cref="Entities.TrimMode.None"/> と同一出力になる。
+/// <see cref="PhotoBoardStyleCoefficients"/> から導出されたジッター位置 / 回転 / フレーム /
+/// シャドウ情報を保持する。renderer はこのレコードを読むだけで「どこに何を描けばよいか」
+/// を判断できる。係数すべてが 0 (= <see cref="PhotoBoardStyleCoefficients.Off"/>) のとき
+/// 全フィールド 0 / 透明となり、 renderer 側で <see cref="Entities.OutputMode.Normal"/> +
+/// <see cref="Entities.TrimMode.None"/> と同一出力に分岐できる。
 /// </summary>
 public sealed record PhotoBoardItem(
     PixelRect BaseRect,
@@ -50,7 +51,7 @@ public sealed record PlacementBaseRect(int RowIndex, int ColIndex, PixelRect Rec
 /// </summary>
 public static class PhotoBoardLayout
 {
-    // ─── 内部定数 (chaos=1 時の最大値) ───
+    // ─── 内部定数 (各係数 = 1.0 時の最大値) ───
     private const int MaxFrameSidePx = 12;       // ポラロイド風: 上下左
     private const int MaxFrameBottomPx = 36;     // ポラロイド風: 下のみ太い
     private const double BaseShadowOffsetX = 2.0;
@@ -70,22 +71,6 @@ public static class PhotoBoardLayout
     private const double MaxRotationPivotFraction = 0.18;
 
     /// <summary>
-    /// chaos の二段階カーブの境界。<c>[0, FrameRampThreshold]</c> でフレーム / シャドウが
-    /// 0→100% にランプし、<c>[FrameRampThreshold, 1.0]</c> で散らかし (回転 / ジッター /
-    /// ピボット) が 0→100% にランプする。これで chaos の中間値にも「写真ボードらしさ」が
-    /// 段階的に出現し、線形スケールだと「全部薄い」状態になるのを避ける。
-    /// </summary>
-    private const double FrameRampThreshold = 0.20;
-
-    /// <summary>
-    /// chaos=1 時の最大グリッド拡張倍率。各 placement の中心位置をキャンバス中心から
-    /// 外側に <c>1.0 + MaxExpansionFactor * disorderRamp</c> 倍に広げることで、
-    /// 画像がセルを覆い尽くしている密集グリッドでも散らかし感を出す。
-    /// disorderRamp と連動するので chaos &lt;= 0.20 では拡張なし (整列状態を維持)。
-    /// </summary>
-    private const double MaxExpansionFactor = 0.40;
-
-    /// <summary>
     /// 全体ドリフトの最大量 (セル短辺に対する比率)。レンダリング毎に 1 つの方向を
     /// PRNG で決め、全 placement に同方向の微小シフトを加える。「机の上に置いた
     /// ときの手の癖で全体的に右下に寄る」みたいな統一感を生み、各 placement が
@@ -93,27 +78,8 @@ public static class PhotoBoardLayout
     /// </summary>
     private const double MaxGlobalDriftFraction = 0.06;
 
-    /// <summary>
-    /// 重なり (overlap) を解禁する chaos 閾値。これ未満では各 placement の拡張倍率は
-    /// 一律 (= グリッド全体が同じ比率で広がる)。これ以上では per-item で拡張倍率を
-    /// ばらつかせ、一部の placement が内側に寄って隣の placement と重なる「写真を
-    /// 軽く重ねて並べた」感を出す。
-    /// </summary>
-    private const double OverlapChaosThreshold = 0.6;
-
-    /// <summary>
-    /// 明示的重なり (overlap nudge) のランプ開始 chaos。<c>chaos &lt;= 0.6</c> では発火しない。
-    /// 0.6 を超えると per-item 独立で重なり確率が線形に増え、<c>chaos = 1.0</c> で
-    /// <see cref="MaxOverlapProbability"/>。閾値で突然切り替わる「モード切替感」を避け、
-    /// スライダー操作中の連続変化として体感される。
-    /// </summary>
-    private const double OverlapNudgeRampStart = 0.6;
-
-    /// <summary>chaos=1 時の per-item 重なり確率 (0.5 = 50% 確率で各 item に nudge 適用)。</summary>
-    private const double MaxOverlapProbability = 0.5;
-
-    /// <summary>セル短辺に対する重なり nudge の最大シフト量。0.30 だと chaos=1 で
-    /// 「崩しすぎ」と感じるため 0.20 に抑制。8 方向のいずれかに nudge を加える。</summary>
+    /// <summary>セル短辺に対する重なり nudge の最大シフト量。0.30 だと
+    /// 「崩しすぎ」と感じるため 0.20 に抑制。任意角のいずれかに nudge を加える。</summary>
     private const double OverlapNudgeFraction = 0.20;
 
     /// <summary>
@@ -125,14 +91,6 @@ public static class PhotoBoardLayout
 
     /// <summary>外向き bias 時のスプレッド半幅 (ラジアン)。π/2 = ±90 度。</summary>
     private const double OutwardSpreadHalf = Math.PI / 2.0;
-
-    /// <summary>
-    /// アンカー (主役) placement の offset / rotation 減衰倍率。レンダリング毎に 1 件
-    /// だけ「起点」として固定寄りにする。0.30 で 30% の動きしか許容しない (= 70% 抑制)。
-    /// 他の placement が「アンカーから散らばった」配置に見え、群れ感ではなく
-    /// 「意図を持ったランダム」になる。Polish pass からも除外される。
-    /// </summary>
-    private const double AnchorAttenuation = 0.30;
 
     /// <summary>ペア分解の発火距離閾値 (平均セル短辺の倍数)。これ以内 + 同方向 = ペア判定。</summary>
     private const double PairSeparationDistanceFactor = 0.8;
@@ -149,31 +107,28 @@ public static class PhotoBoardLayout
     /// <param name="baseRects">配置順 (PlacementOrder 昇順) で渡す入力。</param>
     /// <param name="canvas">グリッドの論理キャンバスサイズ。グリッド拡張 (散らかし時の
     /// 中心からの放射状シフト) の基準点として使う。</param>
-    /// <param name="chaos">[0, 1] の連続値。0 でフレーム / シャドウ / ジッター / 回転 / 拡張すべて 0。</param>
+    /// <param name="coefs">レンダリング駆動 9 係数。スタイル + 強度から導出される。</param>
     /// <param name="seed">決定論的 PRNG シード。</param>
     public static IReadOnlyList<PhotoBoardItem> Compute(
         IReadOnlyList<PlacementBaseRect> baseRects,
         PixelSize canvas,
-        double chaos,
+        PhotoBoardStyleCoefficients coefs,
         int seed)
     {
         ArgumentNullException.ThrowIfNull(baseRects);
+        ArgumentNullException.ThrowIfNull(coefs);
         if (baseRects.Count == 0)
             return Array.Empty<PhotoBoardItem>();
 
-        var clamped = Math.Clamp(chaos, 0.0, 1.0);
-        // 二段階カーブ: 写真キャラクター (frame + shadow) は早めに飽和、散らかし
-        // (jitter + rotation + pivot + 拡張) はその後にランプ。chaos の中間値で「写真風」が
-        // 明確に認識できる状態を作る。
-        var frameRamp = Math.Min(1.0, clamped / FrameRampThreshold);
-        var disorderRamp = clamped <= FrameRampThreshold
-            ? 0.0
-            : (clamped - FrameRampThreshold) / (1.0 - FrameRampThreshold);
-
-        // グリッド拡張倍率: chaos=0 → 1.0 (キャンバスそのまま)、chaos=1 → 1.0 + MaxExpansionFactor。
-        // 各 placement の中心がキャンバス中心から放射状に広がる (画像がセルを覆っていても
-        // 隙間ができ「散らかし感」を生む)。
-        var expansionFactor = 1.0 + MaxExpansionFactor * disorderRamp;
+        // 各係数を読みやすい局所名に展開。係数はファクトリ側で [0, 1] / [1.0, +∞) に
+        // クランプ済みなので、ここでの再クランプは不要。
+        var frameStrength = coefs.FrameStrength;
+        var shadowStrength = coefs.ShadowStrength;
+        var rotationStrength = coefs.RotationStrength;
+        var jitterStrength = coefs.JitterStrength;
+        var driftStrength = coefs.DriftStrength;
+        var anchorDecay = coefs.AnchorDecay;
+        var expansionFactor = coefs.Expansion;
         var canvasCenterX = canvas.Width / 2.0;
         var canvasCenterY = canvas.Height / 2.0;
 
@@ -185,20 +140,17 @@ public static class PhotoBoardLayout
 
         // 全体ドリフト: レンダリング毎に 1 つの方向 (角度) と量を決める。
         // 全 placement に同じシフトが加わるので「手の癖」感が出る。
+        // 量は driftStrength でスケール (0 でドリフト完全停止)。
         var globalDriftAngle = rng.NextDouble() * 2.0 * Math.PI;
-        var globalDriftMag = rng.NextDouble() * MaxGlobalDriftFraction; // [0, max]
+        var globalDriftMag = rng.NextDouble() * MaxGlobalDriftFraction * driftStrength; // [0, max]
         var globalDriftXFactor = Math.Cos(globalDriftAngle) * globalDriftMag;
         var globalDriftYFactor = Math.Sin(globalDriftAngle) * globalDriftMag;
 
-        // 明示的重なり (overlap nudge): chaos > OverlapNudgeRampStart から per-item 独立で
-        // 確率的に発火する。chaos=0.6 で 0%、chaos=1.0 で 50% 確率。閾値で突然切り替わる
-        // 「モード切替感」を避けて連続変化として体感されるようにする。Z 順は PlacementOrder
-        // のままなので、後ろ placement が前 placement の下に潜り込む見え方になる。
+        // 明示的重なり (overlap nudge): per-item 独立で OverlapProbability の確率で発火。
+        // 0 で完全停止、1 で全件 nudge。Z 順は PlacementOrder のままなので、後ろ placement
+        // が前 placement の下に潜り込む見え方になる。
         var overlapNudges = new Dictionary<int, (double X, double Y)>();
-        var overlapProbability = clamped > OverlapNudgeRampStart && baseRects.Count > 1
-            ? Math.Min(1.0, (clamped - OverlapNudgeRampStart) / (1.0 - OverlapNudgeRampStart))
-                * MaxOverlapProbability
-            : 0.0;
+        var overlapProbability = baseRects.Count > 1 ? coefs.OverlapProbability : 0.0;
         if (overlapProbability > 0.0)
         {
             for (int i = 0; i < baseRects.Count; i++)
@@ -283,62 +235,62 @@ public static class PhotoBoardLayout
             var shadowAlphaJitter = (rng.NextDouble() * 2.0 - 1.0);
 
             // グリッド拡張オフセット: セル中心がキャンバス中心から expansionFactor 倍に広がる。
-            // chaos=0 で 0、chaos=1 で約 30% 外側へ移動 (4 隅は最も大きく動く)。
-            // chaos > OverlapChaosThreshold (=0.6) では per-item で拡張倍率を [-0.4, +1.0] の
-            // 範囲でばらつかせ、一部 placement が内側に寄って重なりを作る。
+            // expansion=1.0 で 0、 expansion=1.40 で約 40% 外側へ移動 (4 隅は最も大きく動く)。
+            // OverlapProbability > 0 のスタイル (= 重なりを作る系) では per-item で拡張倍率を
+            // [-0.4, +1.0] の範囲でばらつかせ、一部 placement が内側に寄って重なりを作る。
             var cellCenterX = rect.X + rect.Width / 2.0;
             var cellCenterY = rect.Y + rect.Height / 2.0;
-            var perItemExpansionMul = clamped > OverlapChaosThreshold
+            var perItemExpansionMul = coefs.OverlapProbability > 0.0
                 ? (rng.NextDouble() * 1.4 - 0.4)  // [-0.4, +1.0]
                 : 1.0;
             var perItemExpansionFactor = 1.0 + (expansionFactor - 1.0) * perItemExpansionMul;
             var expansionOffsetX = (cellCenterX - canvasCenterX) * (perItemExpansionFactor - 1.0);
             var expansionOffsetY = (cellCenterY - canvasCenterY) * (perItemExpansionFactor - 1.0);
 
-            // 散らかし (jitter / rotation / pivot + 拡張 + 全体ドリフト) は disorderRamp でスケール。
-            // chaos <= FrameRampThreshold (既定 0.20) では 0 → 写真は整列して並ぶ。
-            // 全体ドリフトは全 placement に同方向の微小シフトを加える「手の癖」効果。
+            // 散らかし (jitter + 行/列 bias) は jitterStrength でスケール、
+            // 全体ドリフトは driftStrength で別途スケール (globalDrift*Factor 構築時に乗算済み)。
             // overlapNudge は明示的重なりのシフト (選ばれた K 件のみ非 0)。
-            var offsetX = expansionOffsetX + overlapNudgeX + disorderRamp * minSide * (
-                MaxJitterFraction * itemJitterX
-                + MaxRowColBiasFraction * rowBiasX
-                + MaxRowColBiasFraction * colBiasX
+            // expansionOffset は coefs.Expansion で決まり intensity の影響をすでに織り込み済み。
+            var offsetX = expansionOffsetX + overlapNudgeX + minSide * (
+                MaxJitterFraction * jitterStrength * itemJitterX
+                + MaxRowColBiasFraction * jitterStrength * rowBiasX
+                + MaxRowColBiasFraction * jitterStrength * colBiasX
                 + globalDriftXFactor);
-            var offsetY = expansionOffsetY + overlapNudgeY + disorderRamp * minSide * (
-                MaxJitterFraction * itemJitterY
-                + MaxRowColBiasFraction * rowBiasY
-                + MaxRowColBiasFraction * colBiasY
+            var offsetY = expansionOffsetY + overlapNudgeY + minSide * (
+                MaxJitterFraction * jitterStrength * itemJitterY
+                + MaxRowColBiasFraction * jitterStrength * rowBiasY
+                + MaxRowColBiasFraction * jitterStrength * colBiasY
                 + globalDriftYFactor);
 
-            var rotationDeg = disorderRamp * MaxRotationDeg * rotationFactor;
-            var rotationPivotOffsetX = disorderRamp * minSide * MaxRotationPivotFraction * pivotJitterX;
-            var rotationPivotOffsetY = disorderRamp * minSide * MaxRotationPivotFraction * pivotJitterY;
+            var rotationDeg = rotationStrength * MaxRotationDeg * rotationFactor;
+            var rotationPivotOffsetX = rotationStrength * minSide * MaxRotationPivotFraction * pivotJitterX;
+            var rotationPivotOffsetY = rotationStrength * minSide * MaxRotationPivotFraction * pivotJitterY;
 
-            // アンカー (主役) は offset / rotation を AnchorAttenuation 倍に減衰
+            // アンカー (主役) は offset / rotation を anchorDecay 倍に減衰
             // (フレーム / シャドウは変えない: 写真ボード感は維持しつつ「動きが少ない 1 枚」を作る)
             if (itemIdx == anchorIndex)
             {
-                offsetX *= AnchorAttenuation;
-                offsetY *= AnchorAttenuation;
-                rotationDeg *= AnchorAttenuation;
-                rotationPivotOffsetX *= AnchorAttenuation;
-                rotationPivotOffsetY *= AnchorAttenuation;
+                offsetX *= anchorDecay;
+                offsetY *= anchorDecay;
+                rotationDeg *= anchorDecay;
+                rotationPivotOffsetX *= anchorDecay;
+                rotationPivotOffsetY *= anchorDecay;
             }
 
-            // 写真キャラクター (frame + shadow) は frameRamp でスケール。
-            // chaos が 0 → FrameRampThreshold で 0 → 100% にランプ → 早めに飽和して
-            // 「写真ボード風」のシルエットを認識可能にする。
-            var frameSidePx = (int)Math.Round(MaxFrameSidePx * frameRamp);
-            var frameBottomPx = (int)Math.Round(MaxFrameBottomPx * frameRamp);
-            var frameAlpha = (byte)Math.Round(255.0 * frameRamp);
+            // 写真キャラクター (frame + shadow) は frameStrength / shadowStrength で
+            // 独立にスケール。両方 1.0 のスタイルが大半だが、将来「シャドウ薄め」スタイル
+            // などを足すときに分離されている方が拡張性が高い。
+            var frameSidePx = (int)Math.Round(MaxFrameSidePx * frameStrength);
+            var frameBottomPx = (int)Math.Round(MaxFrameBottomPx * frameStrength);
+            var frameAlpha = (byte)Math.Round(255.0 * frameStrength);
 
-            var shadowOffsetX = frameRamp * (BaseShadowOffsetX + ShadowOffsetJitterPx * shadowOffsetXJitter);
-            var shadowOffsetY = frameRamp * (BaseShadowOffsetY + ShadowOffsetJitterPx * shadowOffsetYJitter);
-            var shadowSigma = frameRamp * Math.Max(0.0, BaseShadowSigma + ShadowSigmaJitterPx * shadowSigmaJitter);
+            var shadowOffsetX = shadowStrength * (BaseShadowOffsetX + ShadowOffsetJitterPx * shadowOffsetXJitter);
+            var shadowOffsetY = shadowStrength * (BaseShadowOffsetY + ShadowOffsetJitterPx * shadowOffsetYJitter);
+            var shadowSigma = shadowStrength * Math.Max(0.0, BaseShadowSigma + ShadowSigmaJitterPx * shadowSigmaJitter);
             // alpha 揺らぎ: ±20% per-item で UI 感を消す。基準値 64 → [51, 77] くらい
             var shadowAlphaScale = 1.0 + 0.20 * shadowAlphaJitter;
             var shadowAlpha = (byte)Math.Clamp(
-                Math.Round(ShadowMaxAlpha * frameRamp * shadowAlphaScale),
+                Math.Round(ShadowMaxAlpha * shadowStrength * shadowAlphaScale),
                 0.0, 255.0);
 
             items.Add(new PhotoBoardItem(
@@ -350,11 +302,12 @@ public static class PhotoBoardLayout
                 shadowOffsetX, shadowOffsetY, shadowSigma, shadowAlpha));
         }
 
-        // Polish pass: 高 chaos での「破綻防止」ガード群。目的は自然化 (アルゴリズムが
-        // 頑張りすぎて最適化臭が出る) ではなく、孤立 / 過密 / 偶然整列 / ペア化 のような
-        // 構造的な配置の偶発的破綻を最小限の手数で回避すること。
-        // アンカー placement は polish pass からも除外され「動かない 1 枚」を維持する。
-        if (disorderRamp > 0.5 && items.Count >= 2)
+        // Polish pass: スタイル係数で許可されている場合のみ走る「破綻防止」ガード群。
+        // 目的は自然化 (アルゴリズムが頑張りすぎて最適化臭が出る) ではなく、 孤立 /
+        // 過密 / 偶然整列 / ペア化 のような構造的な配置の偶発的破綻を最小限の手数で
+        // 回避すること。 アンカー placement は polish pass からも除外され「動かない 1 枚」
+        // を維持する。
+        if (coefs.PolishEnabled && items.Count >= 2)
         {
             ApplyPolishPass(items, rng, anchorIndex);
         }
@@ -602,49 +555,45 @@ public static class PhotoBoardLayout
     public static int RequiredCanvasMargin(
         IReadOnlyList<PlacementBaseRect> baseRects,
         PixelSize canvas,
-        double chaos)
+        PhotoBoardStyleCoefficients coefs)
     {
         ArgumentNullException.ThrowIfNull(baseRects);
+        ArgumentNullException.ThrowIfNull(coefs);
         if (baseRects.Count == 0)
             return 0;
-
-        var clamped = Math.Clamp(chaos, 0.0, 1.0);
-        if (clamped <= 0.0)
-            return 0;
-
-        // Compute と同じ二段階カーブを使う。frame/shadow は frameRamp、
-        // 位置オフセット / 回転 / 拡張は disorderRamp に従う。
-        var frameRamp = Math.Min(1.0, clamped / FrameRampThreshold);
-        var disorderRamp = clamped <= FrameRampThreshold
-            ? 0.0
-            : (clamped - FrameRampThreshold) / (1.0 - FrameRampThreshold);
 
         var maxMinSide = baseRects.Max(r => Math.Min(r.Rect.Width, r.Rect.Height));
         var maxLongSide = baseRects.Max(r => Math.Max(r.Rect.Width, r.Rect.Height));
 
-        // 位置 (jitter + row/col bias + 全体ドリフトの最悪ケース合算)
-        var maxOffset = disorderRamp * maxMinSide
-            * (MaxJitterFraction + 2.0 * MaxRowColBiasFraction + MaxGlobalDriftFraction);
+        // 位置 (jitter + row/col bias の最悪ケース合算 × jitterStrength + 全体ドリフトの最悪ケース × driftStrength)
+        var maxOffset = maxMinSide * (
+            (MaxJitterFraction + 2.0 * MaxRowColBiasFraction) * coefs.JitterStrength
+            + MaxGlobalDriftFraction * coefs.DriftStrength);
 
-        // 明示的重なり nudge (chaos > OverlapNudgeRampStart で確率的に発火、最大 OverlapNudgeFraction シフト)
-        var overlapNudge = clamped > OverlapNudgeRampStart
+        // 明示的重なり nudge (OverlapProbability > 0 で発火可能性、最大 OverlapNudgeFraction シフト)
+        var overlapNudge = coefs.OverlapProbability > 0.0
             ? OverlapNudgeFraction * maxMinSide
             : 0.0;
 
-        // グリッド拡張: 4 隅の placement は最大 (canvas/2) * (expansionFactor - 1) 外側へ動く
+        // グリッド拡張: 4 隅の placement は最大 (canvas/2) * (expansion - 1) 外側へ動く
         var expansionGrowth = Math.Max(canvas.Width, canvas.Height) / 2.0
-            * MaxExpansionFactor * disorderRamp;
+            * Math.Max(0.0, coefs.Expansion - 1.0);
 
         // 回転による対角伸長分: 回転後 bbox の最大増分は (W+H)/2 * sin(θ) 程度
-        var maxRotRad = disorderRamp * MaxRotationDeg * Math.PI / 180.0;
+        var maxRotRad = coefs.RotationStrength * MaxRotationDeg * Math.PI / 180.0;
         var rotationGrowth = (maxLongSide / 2.0) * Math.Abs(Math.Sin(maxRotRad))
                            + (maxMinSide / 2.0) * Math.Abs(Math.Sin(maxRotRad));
 
         // フレーム + シャドウ
-        var frame = MaxFrameBottomPx * frameRamp;
+        var frame = MaxFrameBottomPx * coefs.FrameStrength;
         var shadow = (BaseShadowOffsetY + ShadowOffsetJitterPx
-                    + 3.0 * (BaseShadowSigma + ShadowSigmaJitterPx)) * frameRamp;
+                    + 3.0 * (BaseShadowSigma + ShadowSigmaJitterPx)) * coefs.ShadowStrength;
 
-        return (int)Math.Ceiling(maxOffset + overlapNudge + expansionGrowth + rotationGrowth + frame + shadow + 4.0);
+        var growth = maxOffset + overlapNudge + expansionGrowth + rotationGrowth + frame + shadow;
+        // すべての貢献が 0 のとき (= Off 係数) はマージン不要。 Normal モードと
+        // 同じキャンバスサイズで出力できる。
+        if (growth <= 0.0)
+            return 0;
+        return (int)Math.Ceiling(growth + 4.0);
     }
 }

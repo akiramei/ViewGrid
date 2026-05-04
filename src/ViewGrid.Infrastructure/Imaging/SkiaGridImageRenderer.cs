@@ -45,10 +45,17 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         RenderOptions options,
         CancellationToken ct)
     {
-        // PhotoBoard モードかつ chaos>0 のときだけ再合成パイプラインへ。chaos=0 は
-        // 効果ゼロのため Flat パイプラインで直接描画 (TrimMode.None と同一バイト出力)。
-        if (options.TrimMode == TrimMode.PhotoBoard && options.PhotoBoardChaos > 0.0)
+        // OutputMode 分岐: PhotoBoard なら再合成パイプライン、Normal なら Flat。
+        // PhotoBoard 時は係数必須 (UI 経路は VM が必ず渡す、テスト等で null だと
+        // 早期 Validation エラーで気付ける)。
+        if (options.OutputMode == OutputMode.PhotoBoard)
+        {
+            if (options.PhotoBoardCoefficients is null)
+                return Error.Validation(
+                    "Render.MissingCoefficients",
+                    "OutputMode=PhotoBoard 時は PhotoBoardCoefficients が必須です。");
             return RenderPhotoBoard(grid, items, options, ct);
+        }
 
         return RenderFlat(grid, items, options, ct);
     }
@@ -82,10 +89,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         }
 
         using var image = surface.Snapshot();
-        // PhotoBoard モードかつ chaos=0 で来るケースは TrimMode.None と同一出力すべきなので
-        // EncodeWithTrim には None を渡す (PhotoBoard には外周クロップ系の意味がない)。
-        var encodeMode = options.TrimMode == TrimMode.PhotoBoard ? TrimMode.None : options.TrimMode;
-        return EncodeWithTrim(image, grid, items, encodeMode);
+        return EncodeWithTrim(image, grid, items, options.TrimMode);
     }
 
     /// <summary>
@@ -664,7 +668,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         Math.Abs(value - Math.Round(value)) < 0.000001;
 
     // ─────────────────────────────────────────────────────────
-    // PhotoBoard モード (TrimMode.PhotoBoard + chaos > 0)
+    // PhotoBoard モード (OutputMode.PhotoBoard + coefs != null)
     // ─────────────────────────────────────────────────────────
 
     /// <summary>ポラロイド風フレームの色 (純白からわずかに黄味がかった #FAFAF8)。</summary>
@@ -687,10 +691,11 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         RenderOptions options,
         CancellationToken ct)
     {
+        var coefs = options.PhotoBoardCoefficients!; // 呼び出し元で null チェック済み
         var sortedItems = items.OrderBy(i => i.Placement.PlacementOrder).ToList();
         if (sortedItems.Count == 0)
         {
-            // 空 → グリッド全面の透過 PNG (Flat と同等)
+            // 空 → グリッド全面の透過 PNG (Flat と同等、 TrimMode はそのまま伝搬)
             return RenderFlat(grid, items, options, ct);
         }
 
@@ -749,10 +754,10 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             var seed = options.PhotoBoardSeedOverride is { } overrideSeed
                 ? unchecked((int)overrideSeed)
                 : DeriveSeedFromGridId(grid.Id);
-            var layoutItems = PhotoBoardLayout.Compute(baseRects, grid.CanvasSize, options.PhotoBoardChaos, seed);
+            var layoutItems = PhotoBoardLayout.Compute(baseRects, grid.CanvasSize, coefs, seed);
 
             // 3. 最終キャンバスサイズ (マージンを 4 辺に追加)
-            var margin = PhotoBoardLayout.RequiredCanvasMargin(baseRects, grid.CanvasSize, options.PhotoBoardChaos);
+            var margin = PhotoBoardLayout.RequiredCanvasMargin(baseRects, grid.CanvasSize, coefs);
             var finalWidth = grid.CanvasSize.Width + 2 * margin;
             var finalHeight = grid.CanvasSize.Height + 2 * margin;
             var finalInfo = new SKImageInfo(
@@ -808,8 +813,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             }
 
             using var finalImage = finalSurface.Snapshot();
-            using var data = finalImage.Encode(SKEncodedImageFormat.Png, 100);
-            return data.ToArray();
+            return EncodePhotoBoardWithTrim(finalImage, grid, items, options.TrimMode, margin);
         }
         finally
         {
@@ -820,9 +824,63 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     }
 
     /// <summary>
+    /// PhotoBoard 合成後の最終画像に <see cref="TrimMode"/> を適用して PNG エンコードする。
+    /// <list type="bullet">
+    /// <item><see cref="TrimMode.None"/>: 拡張済みキャンバス全面 (マージン込み)。</item>
+    /// <item><see cref="TrimMode.OccupiedCells"/>: 元グリッドの占有セル bbox を margin 分シフト
+    ///   した領域。 PhotoBoard で写真は外側に散らばっているため「散らかし要素を含めない元構造の
+    ///   占有領域」が出力される。 ToolTip で意味を補足。</item>
+    /// <item><see cref="TrimMode.DrawnPixels"/>: 全画像のピクセル走査で α &gt;= 閾値の bbox。
+    ///   写真ボード合成後の実際の描画領域を最小矩形で切り出す。</item>
+    /// </list>
+    /// </summary>
+    private static ErrorOr<byte[]> EncodePhotoBoardWithTrim(
+        SKImage finalImage,
+        GridCanvas grid,
+        IReadOnlyList<PlacementRenderItem> items,
+        TrimMode trimMode,
+        int margin)
+    {
+        SKRectI? cropRect = trimMode switch
+        {
+            TrimMode.OccupiedCells => ShiftRect(ComputeOccupiedCellsRect(grid, items), margin, finalImage.Width, finalImage.Height),
+            // PhotoBoard では写真が元セル外に大きく散らばるため、走査範囲を絞らず全画像を走査する。
+            TrimMode.DrawnPixels => ComputeDrawnPixelsRect(finalImage),
+            _ => null,
+        };
+
+        if (cropRect is null)
+            return EncodePng(finalImage);
+
+        if (cropRect.Value.Width <= 0 || cropRect.Value.Height <= 0)
+        {
+            using var emptyBitmap = new SKBitmap(1, 1);
+            emptyBitmap.Erase(SKColors.Transparent);
+            using var emptyImage = SKImage.FromBitmap(emptyBitmap);
+            return EncodePng(emptyImage);
+        }
+
+        using var subset = finalImage.Subset(cropRect.Value);
+        if (subset is null)
+            return Error.Failure("Render.SubsetFailed", "PhotoBoard トリミング切り出しに失敗しました。");
+        return EncodePng(subset);
+    }
+
+    /// <summary>元グリッド座標系の矩形を margin 分シフトして拡張キャンバス内にクリップ。</summary>
+    private static SKRectI ShiftRect(SKRectI rect, int margin, int finalWidth, int finalHeight)
+    {
+        if (rect.Width <= 0 || rect.Height <= 0)
+            return SKRectI.Empty;
+        var shifted = new SKRectI(
+            rect.Left + margin, rect.Top + margin,
+            rect.Right + margin, rect.Bottom + margin);
+        return SKRectI.Intersect(shifted, new SKRectI(0, 0, finalWidth, finalHeight));
+    }
+
+    /// <summary>
     /// placement 画像にポラロイド風フレームを巻いた合成 SKImage を返す。
     /// <paramref name="layout"/> の <c>FrameAlpha == 0</c> なら入力をそのまま返す
-    /// (chaos=0 ショートカット)。返値が入力と同じインスタンスかどうかは
+    /// (FrameStrength=0 ショートカット)。返値が入力と同じインスタンスかどうかは
     /// <c>ReferenceEquals</c> で判定可能。中間サーフェス確保失敗時は
     /// <see cref="Error.Failure"/> を返し、呼び出し元が描画を中断できるようにする。
     /// </summary>

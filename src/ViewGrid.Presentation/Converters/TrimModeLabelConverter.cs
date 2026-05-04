@@ -21,10 +21,9 @@ public sealed class TrimModeLabelConverter : IValueConverter
 
     public static string Label(TrimMode mode) => mode switch
     {
-        TrimMode.None => "なし（キャンバス全面）",
-        TrimMode.OccupiedCells => "占有セルで切り出し",
-        TrimMode.DrawnPixels => "描画ピクセルで切り出し",
-        TrimMode.PhotoBoard => "写真ボード風",
+        TrimMode.None => "全面",
+        TrimMode.OccupiedCells => "占有セル",
+        TrimMode.DrawnPixels => "描画ピクセル",
         _ => mode.ToString(),
     };
 }

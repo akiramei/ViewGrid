@@ -71,36 +71,125 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     public partial string? StatusMessage { get; set; }
 
     /// <summary>
-    /// プレビュー / PNG 出力で適用するトリミング設定。配置タブの右ペイン上部の
-    /// ComboBox から選択する。<see cref="TrimMode.None"/> はキャンバス全面、
-    /// <see cref="TrimMode.OccupiedCells"/> は占有セルの bbox で切り出し、
-    /// <see cref="TrimMode.DrawnPixels"/> は α&gt;0 のピクセル走査で求めた bbox で切り出し。
-    /// 永続化はせず、セッション内のオプション扱い（既定 None）。
+    /// プレビュー / PNG 出力の最上位モード。通常 / 写真ボードを切り替える。
+    /// 切り出し (<see cref="SelectedTrimMode"/>) とは直交軸で、両方を組み合わせて使う。
+    /// 永続化はせず、セッション内のオプション扱い（既定 Normal）。
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsPhotoBoardMode))]
+    [NotifyPropertyChangedFor(nameof(IsNormalMode))]
+    public partial OutputMode SelectedOutputMode { get; set; } = OutputMode.Normal;
+
+    /// <summary>
+    /// プレビュー / PNG 出力の切り出し設定。<see cref="TrimMode.None"/> はキャンバス全面、
+    /// <see cref="TrimMode.OccupiedCells"/> は占有セルの bbox で切り出し、
+    /// <see cref="TrimMode.DrawnPixels"/> は α&gt;0 のピクセル走査で求めた bbox で切り出し。
+    /// PhotoBoard モードでは「合成後の画像」に対して同じセマンティクスで適用される。
+    /// 永続化はせず、セッション内のオプション扱い（既定 None）。
+    /// </summary>
+    [ObservableProperty]
     public partial TrimMode SelectedTrimMode { get; set; } = TrimMode.None;
 
     public IReadOnlyList<TrimMode> TrimModeOptions { get; } =
-        [TrimMode.None, TrimMode.OccupiedCells, TrimMode.DrawnPixels, TrimMode.PhotoBoard];
+        [TrimMode.None, TrimMode.OccupiedCells, TrimMode.DrawnPixels];
+
+    public IReadOnlyList<OutputMode> OutputModeOptions { get; } =
+        [OutputMode.Normal, OutputMode.PhotoBoard];
+
+    public IReadOnlyList<PhotoBoardStyle> PhotoBoardStyleOptions { get; } =
+        [PhotoBoardStyle.Natural, PhotoBoardStyle.Rough, PhotoBoardStyle.Scattered];
 
     /// <summary>
-    /// PhotoBoard モードの「整列 ↔ 散らかし」軸の値。<c>0.0</c> で整然と並んだグリッド
-    /// (フレーム / シャドウ / ジッター / 回転すべて無効) → <c>1.0</c> で最大効果。
-    /// 二段階カーブ: <c>[0, 0.20]</c> でフレーム / シャドウが 0→100%、
-    /// <c>[0.20, 1.00]</c> で散らかし (回転 / ジッター) が 0→100% にランプする。
-    /// 既定 <c>0.5</c> は「フレーム + シャドウ完全 + 散らかし 37.5%」で「明確に写真風」と
-    /// ユーザーが認識できる程度の中庸値。
-    /// View 側は <see cref="IsPhotoBoardMode"/> でスライダーの表示制御を行う。
+    /// PhotoBoard モードのスタイルプリセット。各値は係数セット
+    /// (<see cref="PhotoBoardStyleCoefficients"/>) を引くキー。<see cref="OutputMode.Normal"/>
+    /// 時は無視される。永続化はせずセッション内のオプション扱い (既定 Natural)。
     /// </summary>
     [ObservableProperty]
-    public partial double SelectedChaosLevel { get; set; } = 0.5;
+    [NotifyPropertyChangedFor(nameof(IsStyleNatural))]
+    [NotifyPropertyChangedFor(nameof(IsStyleRough))]
+    [NotifyPropertyChangedFor(nameof(IsStyleScattered))]
+    public partial PhotoBoardStyle SelectedPhotoBoardStyle { get; set; } = PhotoBoardStyle.Natural;
+
+    /// <summary>選択中スタイルがナチュラルかどうか (View 側のスタイルボタン IsChecked 表示)。</summary>
+    public bool IsStyleNatural => SelectedPhotoBoardStyle == PhotoBoardStyle.Natural;
+
+    /// <summary>選択中スタイルがラフかどうか。</summary>
+    public bool IsStyleRough => SelectedPhotoBoardStyle == PhotoBoardStyle.Rough;
+
+    /// <summary>選択中スタイルがバラ撒きかどうか。</summary>
+    public bool IsStyleScattered => SelectedPhotoBoardStyle == PhotoBoardStyle.Scattered;
 
     /// <summary>
-    /// <see cref="SelectedTrimMode"/> が <see cref="TrimMode.PhotoBoard"/> のときに <c>true</c>。
-    /// View 側で「整列 ↔ 散らかし」スライダーの表示切替に使う。
+    /// PhotoBoard モードの強度。<c>0.0</c> で「ほぼ整列」(係数すべて 0 倍)、
+    /// <c>0.5</c> でスタイル基準値そのまま、<c>1.0</c> で「最大効果」(係数 2 倍)。
+    /// UI 上では数値非表示で「控えめ ↔ 大胆」の感覚スライダーとして見せる。
+    /// 永続化はせずセッション内のオプション扱い (既定 0.5)。
     /// </summary>
-    public bool IsPhotoBoardMode => SelectedTrimMode == TrimMode.PhotoBoard;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ResetPhotoBoardIntensityCommand))]
+    public partial double SelectedPhotoBoardIntensity { get; set; } = 0.5;
+
+    /// <summary>「既定に戻す」ボタンの活性条件。スライダーが既定値 (0.5) から
+    /// 動いていれば <c>true</c>。 既定位置のときは <c>false</c> でボタンが無効表示になる。</summary>
+    private bool CanResetPhotoBoardIntensity() =>
+        Math.Abs(SelectedPhotoBoardIntensity - 0.5) > 0.001;
+
+    /// <summary>
+    /// スタイル切替時は強度を既定値 (0.5 = そのスタイルのベースライン) に戻す。
+    /// 各スタイルは <see cref="PhotoBoardStyleCoefficients"/> ベースラインが大きく異なるため、
+    /// 同じ intensity でも見え方が大きく変わる。 「スタイルを選んだ直後はそのスタイルの基準値で
+    /// 見える」状態に揃えることで、 比較の起点が明確になる UX 契約。
+    /// </summary>
+    partial void OnSelectedPhotoBoardStyleChanged(PhotoBoardStyle value) =>
+        SelectedPhotoBoardIntensity = 0.5;
+
+    [RelayCommand]
+    private void SelectOutputModeNormal() => SelectedOutputMode = OutputMode.Normal;
+
+    [RelayCommand]
+    private void SelectOutputModePhotoBoard() => SelectedOutputMode = OutputMode.PhotoBoard;
+
+    [RelayCommand]
+    private void ApplyPhotoBoardStyleNatural() => SelectedPhotoBoardStyle = PhotoBoardStyle.Natural;
+
+    [RelayCommand]
+    private void ApplyPhotoBoardStyleRough() => SelectedPhotoBoardStyle = PhotoBoardStyle.Rough;
+
+    [RelayCommand]
+    private void ApplyPhotoBoardStyleScattered() => SelectedPhotoBoardStyle = PhotoBoardStyle.Scattered;
+
+    /// <summary>「配置の乱れ」スライダーを既定値 (0.5) に戻す。スライダーは正確に
+    /// 中央へ戻すのが難しい UI のため、明示的なリセット手段を提供する。
+    /// 既定位置にあるときは <see cref="CanResetPhotoBoardIntensity"/> で無効化される。</summary>
+    [RelayCommand(CanExecute = nameof(CanResetPhotoBoardIntensity))]
+    private void ResetPhotoBoardIntensity() => SelectedPhotoBoardIntensity = 0.5;
+
+    /// <summary>
+    /// <see cref="SelectedOutputMode"/> が <see cref="OutputMode.PhotoBoard"/> のときに <c>true</c>。
+    /// View 側でスタイル / 強度パネルの表示切替に使う。
+    /// </summary>
+    public bool IsPhotoBoardMode => SelectedOutputMode == OutputMode.PhotoBoard;
+
+    /// <summary>
+    /// <see cref="SelectedOutputMode"/> が <see cref="OutputMode.Normal"/> のときに <c>true</c>。
+    /// 出力モードの ToggleButton ペアの IsChecked 表示に使う (PhotoBoard モードと排他)。
+    /// </summary>
+    public bool IsNormalMode => SelectedOutputMode == OutputMode.Normal;
+
+    /// <summary>
+    /// 現在の VM 設定からレンダリングオプションを構築する。 PhotoBoard モード時は係数を
+    /// スタイル + 強度から派生させる。 Normal 時は coefs=null。
+    /// </summary>
+    private RenderOptions BuildRenderOptions()
+    {
+        var coefs = SelectedOutputMode == OutputMode.PhotoBoard
+            ? PhotoBoardStyleCoefficients.For(SelectedPhotoBoardStyle, SelectedPhotoBoardIntensity)
+            : null;
+        return new RenderOptions(
+            TrimMode: SelectedTrimMode,
+            OutputMode: SelectedOutputMode,
+            PhotoBoardCoefficients: coefs);
+    }
 
     /// <summary>
     /// 「+ 新規バリアント」フライアウトを開いているか。<c>true</c> の間だけ View 側で名前入力 TextBox と
@@ -747,10 +836,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try
         {
             IsBusy = true;
-            var result = await _renderUseCase.ExecuteAsync(
-                grid.GridId,
-                new RenderOptions(SelectedTrimMode, SelectedChaosLevel),
-                ct);
+            var options = BuildRenderOptions();
+            var result = await _renderUseCase.ExecuteAsync(grid.GridId, options, ct);
             sw.Stop();
             if (result.IsError)
             {
@@ -758,7 +845,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 return null;
             }
             StatusMessage = $"プレビュー生成 {sw.ElapsedMilliseconds:N0} ms ({result.Value.Length:N0} bytes)";
-            LogPreviewRendered(_logger, SelectedTrimMode, SelectedChaosLevel, sw.ElapsedMilliseconds, result.Value.Length);
+            LogPreviewRendered(_logger, options.TrimMode, options.OutputMode, sw.ElapsedMilliseconds, result.Value.Length);
             return result.Value;
         }
         finally { IsBusy = false; }
@@ -781,17 +868,14 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try
         {
             IsBusy = true;
-            var result = await _exportUseCase.ExecuteAsync(
-                grid.GridId,
-                path,
-                new RenderOptions(SelectedTrimMode, SelectedChaosLevel),
-                ct);
+            var options = BuildRenderOptions();
+            var result = await _exportUseCase.ExecuteAsync(grid.GridId, path, options, ct);
             sw.Stop();
             StatusMessage = result.IsError
                 ? string.Join(", ", result.Errors)
                 : $"出力 {sw.ElapsedMilliseconds:N0} ms: {Path.GetFileName(path)} ({result.Value.FileSizeBytes:N0} bytes)";
             if (!result.IsError)
-                LogPngExported(_logger, SelectedTrimMode, SelectedChaosLevel, sw.ElapsedMilliseconds, result.Value.FileSizeBytes);
+                LogPngExported(_logger, options.TrimMode, options.OutputMode, sw.ElapsedMilliseconds, result.Value.FileSizeBytes);
         }
         finally { IsBusy = false; }
     }
@@ -1290,9 +1374,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     [LoggerMessage(EventId = 5007, Level = LogLevel.Debug, Message = "配置タブからバリアントのリネームをキャンセル: copy={CopyId}")]
     private static partial void LogVariantRenameCanceled(ILogger logger, Guid copyId);
 
-    [LoggerMessage(EventId = 5008, Level = LogLevel.Information, Message = "プレビュー生成: trim={TrimMode} chaos={Chaos:F2} elapsed={ElapsedMs}ms bytes={Bytes}")]
-    private static partial void LogPreviewRendered(ILogger logger, TrimMode trimMode, double chaos, long elapsedMs, int bytes);
+    [LoggerMessage(EventId = 5008, Level = LogLevel.Information, Message = "プレビュー生成: trim={TrimMode} output={OutputMode} elapsed={ElapsedMs}ms bytes={Bytes}")]
+    private static partial void LogPreviewRendered(ILogger logger, TrimMode trimMode, OutputMode outputMode, long elapsedMs, int bytes);
 
-    [LoggerMessage(EventId = 5009, Level = LogLevel.Information, Message = "PNG 出力: trim={TrimMode} chaos={Chaos:F2} elapsed={ElapsedMs}ms bytes={Bytes}")]
-    private static partial void LogPngExported(ILogger logger, TrimMode trimMode, double chaos, long elapsedMs, long bytes);
+    [LoggerMessage(EventId = 5009, Level = LogLevel.Information, Message = "PNG 出力: trim={TrimMode} output={OutputMode} elapsed={ElapsedMs}ms bytes={Bytes}")]
+    private static partial void LogPngExported(ILogger logger, TrimMode trimMode, OutputMode outputMode, long elapsedMs, long bytes);
 }
