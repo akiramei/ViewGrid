@@ -2,8 +2,6 @@ using FluentAssertions;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
-using ViewGrid.Core.UseCases;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.UseCases;
 

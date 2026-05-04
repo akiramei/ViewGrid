@@ -1,7 +1,6 @@
 using ErrorOr;
 using FluentAssertions;
 using ViewGrid.Application.History;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.History;
 

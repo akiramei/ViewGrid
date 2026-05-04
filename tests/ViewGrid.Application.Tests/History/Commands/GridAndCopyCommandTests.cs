@@ -5,7 +5,6 @@ using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.History.Commands;
 

@@ -1,13 +1,8 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
 using NSubstitute;
 using ViewGrid.Application.Services;
 using ViewGrid.Core.Entities;
-using ViewGrid.Core.Interfaces;
 using ViewGrid.Core.Services;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.Services;
 

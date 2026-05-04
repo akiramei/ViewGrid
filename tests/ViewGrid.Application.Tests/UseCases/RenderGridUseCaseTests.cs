@@ -1,12 +1,9 @@
-using System;
-using System.Threading.Tasks;
 using FluentAssertions;
 using SkiaSharp;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
 using ViewGrid.Infrastructure.Imaging;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.UseCases;
 

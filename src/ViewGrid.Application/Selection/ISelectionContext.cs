@@ -1,5 +1,3 @@
-using System;
-
 namespace ViewGrid.Application.Selection;
 
 /// <summary>

@@ -4,7 +4,6 @@ using ViewGrid.Application.History;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.ViewModels;
 

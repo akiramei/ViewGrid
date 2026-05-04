@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace ViewGrid.Core.Entities;
 
 /// <summary>

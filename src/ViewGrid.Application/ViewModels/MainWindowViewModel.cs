@@ -1,14 +1,8 @@
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using ViewGrid.Application.History;
-using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 
 namespace ViewGrid.Application.ViewModels;

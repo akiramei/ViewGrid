@@ -7,7 +7,6 @@ using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
 using ViewGrid.Core.Entities;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.ViewModels;
 

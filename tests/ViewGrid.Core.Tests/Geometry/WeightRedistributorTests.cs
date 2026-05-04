@@ -1,7 +1,5 @@
-using System;
 using FluentAssertions;
 using ViewGrid.Core.Geometry;
-using Xunit;
 
 namespace ViewGrid.Core.Tests.Geometry;
 

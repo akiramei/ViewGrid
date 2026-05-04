@@ -1,11 +1,7 @@
-using System;
 using System.Globalization;
-using System.IO;
 using System.Text;
 using Avalonia;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Serilog;
 using ViewGrid.Application;
 using ViewGrid.Infrastructure;

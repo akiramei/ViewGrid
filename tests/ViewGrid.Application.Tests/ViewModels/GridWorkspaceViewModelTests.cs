@@ -1,5 +1,3 @@
-using System;
-using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -12,7 +10,6 @@ using ViewGrid.Application.ViewModels;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.Services;
 using ViewGrid.Infrastructure.Imaging;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.ViewModels;
 

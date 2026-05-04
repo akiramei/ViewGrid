@@ -1,7 +1,4 @@
-using System.Threading;
-using System.Threading.Tasks;
 using ViewGrid.Core.Entities;
-using ViewGrid.Core.Interfaces;
 using ViewGrid.Core.Services;
 
 namespace ViewGrid.Application.Services;

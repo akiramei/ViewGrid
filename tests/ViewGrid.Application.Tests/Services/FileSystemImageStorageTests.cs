@@ -1,8 +1,6 @@
-using System.IO;
 using FluentAssertions;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Infrastructure.Services;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.Services;
 

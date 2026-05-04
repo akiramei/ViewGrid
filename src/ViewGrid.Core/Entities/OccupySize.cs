@@ -1,5 +1,3 @@
-using System;
-
 namespace ViewGrid.Core.Entities;
 
 /// <summary>

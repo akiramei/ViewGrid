@@ -1,12 +1,9 @@
-using System;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ViewGrid.Core.Entities;
 using ViewGrid.Infrastructure.Persistence;
 using ViewGrid.Infrastructure.Repositories;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.Persistence;
 

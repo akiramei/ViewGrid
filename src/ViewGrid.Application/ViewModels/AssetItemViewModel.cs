@@ -1,4 +1,3 @@
-using System;
 using ViewGrid.Core.Entities;
 
 namespace ViewGrid.Application.ViewModels;

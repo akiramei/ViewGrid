@@ -1,17 +1,13 @@
-using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using ViewGrid.Application.Messages;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
-using ViewGrid.Core.Entities;
 using ViewGrid.Core.Services;
 using ViewGrid.Infrastructure.Imaging;
 using ViewGrid.Infrastructure.Services;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.ViewModels;
 

@@ -1,8 +1,6 @@
-using System;
 using FluentAssertions;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.UseCases;
-using Xunit;
 
 namespace ViewGrid.Core.Tests.UseCases;
 

@@ -1,4 +1,3 @@
-using System.IO;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +8,6 @@ using ViewGrid.Core.Entities;
 using ViewGrid.Infrastructure.Persistence;
 using ViewGrid.Infrastructure.Repositories;
 using ViewGrid.Infrastructure.Services;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.UseCases;
 

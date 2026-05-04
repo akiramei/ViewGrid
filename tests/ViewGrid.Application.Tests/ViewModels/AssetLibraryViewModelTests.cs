@@ -1,4 +1,3 @@
-using System.IO;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -9,7 +8,6 @@ using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
 using ViewGrid.Core.Services;
 using ViewGrid.Infrastructure.Services;
-using Xunit;
 
 namespace ViewGrid.Application.Tests.ViewModels;
 

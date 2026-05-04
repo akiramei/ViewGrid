@@ -1,11 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using FluentAssertions;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.Geometry;
 using ViewGrid.Core.UseCases;
-using Xunit;
 
 namespace ViewGrid.Core.Tests.Geometry;
 
