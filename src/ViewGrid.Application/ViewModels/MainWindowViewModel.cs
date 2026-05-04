@@ -275,7 +275,7 @@ public sealed partial class MainWindowViewModel
 
     private void UpdateHoveredJumpRange()
     {
-        if (HoveredHistoryIndex is not int hover)
+        if (HoveredHistoryIndex is not { } hover)
         {
             HoveredJumpRangeLo = -1;
             HoveredJumpRangeHi = -1;

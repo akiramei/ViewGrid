@@ -574,7 +574,7 @@ public partial class GridCanvasView : UserControl
     /// </summary>
     private async void TryFitGridWeight(string axis, int idx)
     {
-        if (_vm?.SelectedPlacement is not PlacementItemViewModel placement) return;
+        if (_vm?.SelectedPlacement is not { } placement) return;
 
         var isCol = axis == "col";
         if (isCol)
@@ -1616,7 +1616,7 @@ public partial class GridCanvasView : UserControl
     /// </summary>
     private void OnUserControlKeyDown(object? sender, KeyEventArgs e)
     {
-        if (_vm?.SelectedPlacement is not PlacementItemViewModel placement)
+        if (_vm?.SelectedPlacement is not { } placement)
             return;
         if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
             return;

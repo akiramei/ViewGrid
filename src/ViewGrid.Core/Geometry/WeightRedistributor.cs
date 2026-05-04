@@ -178,9 +178,9 @@ public static class WeightRedistributor
         for (var i = occupantStart; i < occupantStart + occupantSpan; i++)
             weights[i] = (long)Math.Round((double)weights[i] * newOccupantTotal / occupantWeightTotal);
 
-        if (leftNeighbor is int li)
+        if (leftNeighbor is { } li)
             weights[li] += leftPadWeight;
-        if (rightNeighbor is int ri)
+        if (rightNeighbor is { } ri)
             weights[ri] += rightPadWeight;
 
         for (var i = 0; i < weights.Length; i++)

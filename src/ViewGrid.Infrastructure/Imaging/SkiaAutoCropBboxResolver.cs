@@ -61,16 +61,22 @@ internal sealed class SkiaAutoCropBboxResolver : IAutoCropBboxResolver
                 if (pixels is null || pixels.Length == 0)
                     return null;
 
+                // bitmap は finally で Dispose されるため、クロージャに渡す値はすべてローカル変数に取り出す
+                // (Qodana: AccessToDisposedClosure 回避)。GetOrCompute は同期実行なので実害はないが静的契約を整える。
+                var width = bitmap.Width;
+                var height = bitmap.Height;
+                var rowBytes = bitmap.RowBytes;
+
                 var fraction = _cache.GetOrCompute(assetId, settings, () =>
                 {
-                    var bbox = AutoCropCalculator.Compute(pixels, bitmap.Width, bitmap.Height, bitmap.RowBytes, settings);
-                    if (bbox.Width <= 0 || bbox.Height <= 0 || bitmap.Width <= 0 || bitmap.Height <= 0)
+                    var bbox = AutoCropCalculator.Compute(pixels, width, height, rowBytes, settings);
+                    if (bbox.Width <= 0 || bbox.Height <= 0 || width <= 0 || height <= 0)
                         return AutoCropFraction.Full;
                     return new AutoCropFraction(
-                        (double)bbox.X / bitmap.Width,
-                        (double)bbox.Y / bitmap.Height,
-                        (double)bbox.Width / bitmap.Width,
-                        (double)bbox.Height / bitmap.Height);
+                        (double)bbox.X / width,
+                        (double)bbox.Y / height,
+                        (double)bbox.Width / width,
+                        (double)bbox.Height / height);
                 });
 
                 return fraction.IsFull() ? null : fraction;

@@ -24,10 +24,13 @@ public interface IGridImageRenderer
     /// 配置済み画像をピクセル精度で合成して PNG バイト列を返す。
     /// 描画順は <see cref="GridPlacement.PlacementOrder"/> の昇順（小さいものほど下）。
     /// </summary>
+    /// <param name="grid">出力対象のグリッド。</param>
+    /// <param name="items">配置と元画像のペア列。</param>
     /// <param name="options">
     /// 出力モード + PhotoBoard 固有パラメータ。<see cref="RenderOptions.Default"/>
     /// は <see cref="TrimMode.None"/> 相当。
     /// </param>
+    /// <param name="ct">キャンセルトークン。</param>
     Task<ErrorOr<byte[]>> RenderPngAsync(
         GridCanvas grid,
         IReadOnlyList<PlacementRenderItem> items,

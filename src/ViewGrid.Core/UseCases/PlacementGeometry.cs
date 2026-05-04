@@ -73,14 +73,15 @@ public static class PlacementGeometry
     }
 
     /// <summary>
-    /// 与えられた重み配列の累積和（要素数 = <paramref name="count"/> + 1）を返す。
-    /// 各重みが正でない場合は 1 として扱う（実用上の安全策）。
-    /// </summary>
-    /// <summary>
     /// 占有セル群のバウンディングボックスを計算する。<see cref="TrimMode.OccupiedCells"/>
     /// での出力切り出しに使う純粋関数。各 placement の <see cref="ComputeDestRect"/>
     /// （PixelOffset=0）の和集合を取り、結果をキャンバス境界にクランプして返す。
     /// </summary>
+    /// <param name="canvas">グリッド全体のキャンバスサイズ。</param>
+    /// <param name="gridCols">列数。</param>
+    /// <param name="gridRows">行数。</param>
+    /// <param name="colWeights">列の重み配列。null は均等。</param>
+    /// <param name="rowWeights">行の重み配列。null は均等。</param>
     /// <param name="placements">配置の (位置, 占有サイズ) 列。空なら 0 矩形。</param>
     /// <returns>占有矩形。配置がない場合は <c>(0,0,0,0)</c>。</returns>
     public static PixelRect ComputeOccupiedBoundingBox(

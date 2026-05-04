@@ -34,7 +34,6 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly IImageAssetRepository _assetRepository;
     private readonly IGridPlacementRepository _placementRepository;
     private readonly IThumbnailService _thumbnailService;
-    private readonly IImageStorage _imageStorage;
     private readonly IImageCropResolver _cropResolver;
     private readonly PlaceImageCopyUseCase _placeUseCase;
     private readonly RemovePlacementUseCase _removeUseCase;
@@ -247,7 +246,6 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         IImageAssetRepository assetRepository,
         IGridPlacementRepository placementRepository,
         IThumbnailService thumbnailService,
-        IImageStorage imageStorage,
         IImageCropResolver cropResolver,
         PlaceImageCopyUseCase placeUseCase,
         RemovePlacementUseCase removeUseCase,
@@ -272,7 +270,6 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _assetRepository = assetRepository;
         _placementRepository = placementRepository;
         _thumbnailService = thumbnailService;
-        _imageStorage = imageStorage;
         _cropResolver = cropResolver;
         _placeUseCase = placeUseCase;
         _removeUseCase = removeUseCase;
@@ -655,7 +652,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     }
 
     /// <summary>
-    /// 指定した論理コピーを指定セルに配置する。D&D のドロップハンドラから呼ばれる。
+    /// 指定した論理コピーを指定セルに配置する。D&amp;D のドロップハンドラから呼ばれる。
     /// </summary>
     public async Task<bool> PlaceCopyAtAsync(Guid copyId, CellPosition position, CancellationToken ct = default)
     {
@@ -886,7 +883,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     public async Task<bool> SavePngBytesAsync(byte[] bytes, CancellationToken ct = default)
     {
         var grid = CurrentGrid;
-        if (grid is null || bytes is null || bytes.Length == 0) return false;
+        if (grid is null || bytes.Length == 0) return false;
 
         var suggested = $"{SanitizeFileName(grid.Name)}.png";
         var path = await _filePicker.PickSavePngPathAsync(suggested, ct);
@@ -1319,8 +1316,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             CopyName = trimmed,
             ClearCopyName = trimmed is null,
         };
-        var beforeLabel = string.IsNullOrWhiteSpace(beforeName) ? Terminology.VariantUnnamed : beforeName!;
-        var afterLabel = string.IsNullOrWhiteSpace(trimmed) ? Terminology.VariantUnnamed : trimmed!;
+        var beforeLabel = string.IsNullOrWhiteSpace(beforeName) ? Terminology.VariantUnnamed : beforeName;
+        var afterLabel = string.IsNullOrWhiteSpace(trimmed) ? Terminology.VariantUnnamed : trimmed;
         var description = $"{Terminology.Variant}名変更: 「{beforeLabel}」→「{afterLabel}」";
         var command = new UpdateImageCopyCommand(_updateCopyUseCase, candidate.CopyId, before, after, description);
 

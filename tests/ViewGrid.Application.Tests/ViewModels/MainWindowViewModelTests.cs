@@ -92,7 +92,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             NullLogger<FitGridWeightToPlacementUseCase>.Instance);
         _gridWorkspace = new GridWorkspaceViewModel(
             _fx.GridRepository, _fx.CopyRepository, _fx.AssetRepository, _fx.PlacementRepository,
-            _fx.Thumbnails, _fx.Storage, _fx.CropResolver,
+            _fx.Thumbnails, _fx.CropResolver,
             place, remove, move, swap, render, export, updateWeights, updateLocks, offset,
             fitWeight, createCopy, updateCopy, picker, _messenger, sharedHistory, inspector,
             NullLogger<GridWorkspaceViewModel>.Instance);

@@ -40,7 +40,7 @@ internal sealed class AvaloniaFilePickerService : IFilePickerService
         };
 
         var files = await _owner.StorageProvider.OpenFilePickerAsync(options);
-        if (files is null || files.Count == 0)
+        if (files.Count == 0)
             return [];
 
         return files

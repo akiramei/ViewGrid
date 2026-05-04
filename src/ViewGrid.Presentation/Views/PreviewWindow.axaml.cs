@@ -269,10 +269,10 @@ public partial class PreviewWindow : Window
     /// <item>古いレイアウトでアンカー直下の画像座標を [0, 1] 正規化で取得</item>
     /// <item>ズーム適用 (Image.Width/Height 更新)</item>
     /// <item><see cref="Layoutable.UpdateLayout"/> で同期的にレイアウト確定</item>
-    /// <item>新レイアウトで同正規化点が viewport 内のどこに移動したかを <see cref="Visual.TranslatePoint"/>
+    /// <item>新レイアウトで同正規化点が viewport 内のどこに移動したかを <c>TranslatePoint</c>
     /// で算出し、 アンカー位置に戻すよう Offset を補正</item>
     /// </list>
-    /// <see cref="Visual.TranslatePoint"/> を使うのは <c>HorizontalAlignment=Center</c> による
+    /// <c>TranslatePoint</c> を使うのは <c>HorizontalAlignment=Center</c> による
     /// 「画像が小さいときの中央寄せ」も自動で吸収できるため (画像位置を手計算せず済む)。
     /// </remarks>
     private void ZoomAt(Point anchor, double newZoom)

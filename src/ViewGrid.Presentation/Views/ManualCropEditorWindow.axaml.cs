@@ -14,7 +14,7 @@ namespace ViewGrid.Presentation.Views;
 /// ManualCrop（任意矩形トリミング）の詳細編集ダイアログ。元画像を ScrollViewer 上で
 /// ズーム表示し、8 ハンドル + マット表示 + 自動スクロール付きで矩形を編集する。
 /// 親 (CopyPropertiesView) から <see cref="Initialize"/> で入力値を渡し、
-/// <see cref="ShowDialog{TResult}"/> 後に <see cref="GetResult"/> で OK 時のみ
+/// <c>ShowDialog</c> 後に <see cref="GetResult"/> で OK 時のみ
 /// 編集後の値を取得する（キャンセル時は <c>null</c>）。
 /// </summary>
 public partial class ManualCropEditorWindow : Window
@@ -75,7 +75,7 @@ public partial class ManualCropEditorWindow : Window
     }
 
     /// <summary>
-    /// ダイアログを初期化する。<see cref="ShowDialog{TResult}"/> の前に呼ぶこと。
+    /// ダイアログを初期化する。<c>ShowDialog</c> の前に呼ぶこと。
     /// 入力ピクセル値が <c>0</c> なら未確定スタート（ユーザーがドラッグして初期矩形作成）。
     /// </summary>
     public void Initialize(string imagePath, int sourceWidth, int sourceHeight,

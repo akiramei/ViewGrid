@@ -74,7 +74,6 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             _fx.AssetRepository,
             _fx.PlacementRepository,
             _fx.Thumbnails,
-            _fx.Storage,
             _fx.CropResolver,
             place,
             remove,

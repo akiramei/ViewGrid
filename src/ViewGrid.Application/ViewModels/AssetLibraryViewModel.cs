@@ -163,7 +163,7 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// D&D 経由で呼ぶためのエントリポイント。複数ファイルを順に取り込み、
+    /// D&amp;D 経由で呼ぶためのエントリポイント。複数ファイルを順に取り込み、
     /// 既存（重複）は再読み込みで反映する。
     /// </summary>
     public async Task AddFilesAsync(IReadOnlyList<string> paths, CancellationToken ct = default)

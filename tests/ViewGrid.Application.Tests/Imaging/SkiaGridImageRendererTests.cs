@@ -501,7 +501,8 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         using (var canvas = new SKCanvas(bitmap))
         {
             canvas.Clear(SKColors.Transparent);
-            using var paint = new SKPaint { Color = leftColor };
+            using var paint = new SKPaint();
+            paint.Color = leftColor;
             canvas.DrawRect(0, 0, w / 2, h, paint);
             paint.Color = rightColor;
             canvas.DrawRect(w / 2, 0, w / 2, h, paint);

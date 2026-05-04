@@ -466,7 +466,7 @@ public sealed class PlacementGeometryTests
         rect.Height.Should().Be(200);
     }
 
-    /// <summary>None（原寸固定）で元寸 < セル寸 → 元寸の小さい矩形が中央配置。</summary>
+    /// <summary>None（原寸固定）で元寸 &lt; セル寸 → 元寸の小さい矩形が中央配置。</summary>
     [Fact]
     public void ComputeRenderedRect_None_SmallerThanCell_CenteredSmallRect()
     {

@@ -114,7 +114,7 @@ public partial class GridWorkspaceView : UserControl
     /// TreeView 内の任意 Visual から、最も内側の TreeViewItem を遡って
     /// その DataContext が <see cref="CopyCandidateViewModel"/> のときだけ返す。
     /// グループヘッダ（<see cref="CandidateGroupViewModel"/>）配下では null を返し、
-    /// D&D / インラインリネームの起動を抑止する。
+    /// D&amp;D / インラインリネームの起動を抑止する。
     /// </summary>
     private static CopyCandidateViewModel? FindCandidateItem(object? source)
     {

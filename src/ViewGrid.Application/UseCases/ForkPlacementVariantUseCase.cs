@@ -103,7 +103,7 @@ public sealed class ForkPlacementVariantUseCase(
 
     private static string MakeForkName(string? sourceName)
     {
-        var basis = string.IsNullOrWhiteSpace(sourceName) ? Terminology.Variant : sourceName!;
+        var basis = string.IsNullOrWhiteSpace(sourceName) ? Terminology.Variant : sourceName;
         return $"{basis} (派生)";
     }
 }

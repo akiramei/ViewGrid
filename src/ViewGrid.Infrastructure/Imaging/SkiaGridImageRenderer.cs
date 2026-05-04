@@ -77,7 +77,8 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         var canvas = surface.Canvas;
         canvas.Clear(SKColors.Transparent);
 
-        using var paint = new SKPaint { IsAntialias = true };
+        using var paint = new SKPaint();
+        paint.IsAntialias = true;
         var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear);
 
         foreach (var item in items.OrderBy(i => i.Placement.PlacementOrder))
@@ -699,7 +700,8 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             return RenderFlat(grid, items, options, ct);
         }
 
-        using var paint = new SKPaint { IsAntialias = true };
+        using var paint = new SKPaint();
+        paint.IsAntialias = true;
         var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear);
 
         // 中間 SKImage の解放を確実にするため List<IDisposable> で追跡。
@@ -790,7 +792,8 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 var pivotY = layoutItem.BaseRect.Y + layoutItem.BaseRect.Height / 2.0
                            + layoutItem.OffsetY + layoutItem.RotationPivotOffsetY + margin;
 
-                using var drawPaint = new SKPaint { IsAntialias = true };
+                using var drawPaint = new SKPaint();
+                drawPaint.IsAntialias = true;
                 if (layoutItem.ShadowAlpha > 0 && layoutItem.ShadowSigma > 0.0)
                 {
                     drawPaint.ImageFilter = SKImageFilter.CreateDropShadow(
@@ -903,8 +906,9 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         canvas.Clear(SKColors.Transparent);
 
         var frameColor = PhotoBoardFrameColor.WithAlpha(layout.FrameAlpha);
-        using (var framePaint = new SKPaint { Color = frameColor })
+        using (var framePaint = new SKPaint())
         {
+            framePaint.Color = frameColor;
             canvas.DrawRect(0, 0, compW, compH, framePaint);
         }
         canvas.DrawImage(placementImage, layout.FrameSidePx, layout.FrameSidePx);
