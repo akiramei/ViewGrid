@@ -367,6 +367,13 @@ public partial class PreviewWindow : Window
             var saved = await _workspace.SavePngBytesAsync(_bytes);
             if (saved) Close();
         }
+        catch (Exception)
+        {
+            // async void イベントハンドラの例外が SynchronizationContext へ漏れると
+            // プロセスクラッシュを招くため最終防御。 IOException / UnauthorizedAccessException
+            // は SavePngBytesAsync 内部で StatusMessage に逃げているので、 ここで掴むのは
+            // 予期せぬ例外 (NullReference / OOM / 取消等) のみのはず。
+        }
         finally
         {
             SaveButton.IsEnabled = true;
