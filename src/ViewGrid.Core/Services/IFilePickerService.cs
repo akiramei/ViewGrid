@@ -17,5 +17,6 @@ public interface IFilePickerService
     /// キャンセル時は <c>null</c>。
     /// </summary>
     /// <param name="suggestedFileName">既定のファイル名（拡張子含む）。</param>
+    /// <param name="ct">キャンセルトークン。</param>
     Task<string?> PickSavePngPathAsync(string suggestedFileName, CancellationToken ct = default);
 }

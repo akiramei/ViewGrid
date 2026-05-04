@@ -482,7 +482,9 @@ public partial class ManualCropEditorWindow : Window
         if (posSv.Y < AutoScrollMargin) newY -= AutoScrollSpeed;
         else if (posSv.Y > bh - AutoScrollMargin) newY += AutoScrollSpeed;
 
-        if (newX == off.X && newY == off.Y) return;
+        // AutoScroll 量 (整数定数 AutoScrollSpeed) を加減した結果の double 値を、
+        // double 演算誤差を許容する形で比較する (実用上は「動かないケース」を弾くだけの早期 return)。
+        if (Math.Abs(newX - off.X) < 1e-6 && Math.Abs(newY - off.Y) < 1e-6) return;
 
         // Extent / Viewport で max を計算してクランプ
         var maxX = Math.Max(0, sv.Extent.Width - sv.Viewport.Width);

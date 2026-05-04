@@ -9,7 +9,7 @@ namespace ViewGrid.Application.Selection;
 /// 将来 <c>AssetSelection</c> / <c>VariantSelection</c> 等を追加して拡張する。
 /// </para>
 /// <para>
-/// View 側では <see cref="ContentControl"/> の <see cref="DataTemplates"/> で型ごとの
+/// View 側では <c>ContentControl</c> の <c>DataTemplates</c> で型ごとの
 /// テンプレートを宣言し、<see cref="GridWorkspaceViewModel.CurrentSelection"/> をバインドするだけ
 /// で文脈に応じた UI が出るようにする。VM 側の if 文を増やさない設計が目的。
 /// </para>
