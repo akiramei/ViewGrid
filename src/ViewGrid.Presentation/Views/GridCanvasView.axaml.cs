@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using SkiaSharp;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
@@ -245,7 +246,45 @@ public partial class GridCanvasView : UserControl
                     return;
                 }
             }
+            return;
         }
+
+        // 共有特性 (Crop / Transform / Scaling / Alignment) の変更は Border 内の Image の
+        // Source / Stretch / W/H 等に幅広く影響するため、Border を再構築する必要がある。
+        // ApplyCopyChanges が複数プロパティを連続代入するため Dispatcher.UIThread.Post で
+        // 1 ディスパッチサイクルにデバウンスし、20 placements × 7 events のような連発で
+        // Rebuild が複数回走るのを防ぐ。_bitmapCacheLru で焼き込み済み Bitmap が
+        // キャッシュされるため、同一値ならディスク I/O は生じない。
+        if (e.PropertyName is nameof(PlacementItemViewModel.EffectiveCropFraction)
+            or nameof(PlacementItemViewModel.AutoCrop)
+            or nameof(PlacementItemViewModel.ManualCrop)
+            or nameof(PlacementItemViewModel.Rotation)
+            or nameof(PlacementItemViewModel.FlipX)
+            or nameof(PlacementItemViewModel.FlipY)
+            or nameof(PlacementItemViewModel.ScalingMode)
+            or nameof(PlacementItemViewModel.Alignment))
+        {
+            RequestRebuildForSharedChanges();
+            return;
+        }
+    }
+
+    private bool _pendingSharedChangesRebuild;
+
+    /// <summary>
+    /// 共有特性変更時の Rebuild をディスパッチサイクルにデバウンスする。
+    /// ApplyCopyChanges 内で AutoCrop / ManualCrop / Rotation 等が連続代入されても、
+    /// 最終的な Rebuild は 1 回だけ走る。
+    /// </summary>
+    private void RequestRebuildForSharedChanges()
+    {
+        if (_pendingSharedChangesRebuild) return;
+        _pendingSharedChangesRebuild = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _pendingSharedChangesRebuild = false;
+            Rebuild();
+        }, DispatcherPriority.Background);
     }
 
     private void UnsubscribePlacementChanges()
