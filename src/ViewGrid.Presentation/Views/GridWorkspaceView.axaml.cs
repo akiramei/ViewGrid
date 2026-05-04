@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ViewGrid.Application.ViewModels;
 
@@ -195,6 +196,65 @@ public partial class GridWorkspaceView : UserControl
         if (!candidate.IsEditing) return; // 既にキャンセル / 確定済み
 
         await vm.CommitEditCandidateAsync(candidate);
+    }
+
+    // ─── 中央上部ヘッダ: グリッド名のインラインリネーム ───
+
+    /// <summary>
+    /// グリッド名 TextBlock のダブルクリックで編集モードに入る。VM 経由で
+    /// <c>SelectedGrid.IsEditing</c>=true にし、TextBox がレイアウトされた後にフォーカスを移して全選択。
+    /// CopyCandidate のインラインリネーム (BeginEditCandidate) と同パターン。
+    /// </summary>
+    private void OnGridTitleDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (owner.DataContext is not MainWindowViewModel mainVm) return;
+        mainVm.GridList.BeginEditSelected();
+
+        // IsEditing=true 反映後の TextBox レイアウト完了を待ってフォーカス + 全選択。
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (this.FindControl<TextBox>("GridTitleEditor") is { } editor)
+            {
+                editor.Focus();
+                editor.SelectAll();
+            }
+        });
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 編集 TextBox 上で Enter → 確定 / Esc → キャンセル。
+    /// CopyCandidate の <c>OnEditingCandidateKeyDown</c> と同パターン。
+    /// </summary>
+    private async void OnGridTitleEditorKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (owner.DataContext is not MainWindowViewModel mainVm) return;
+
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            await mainVm.GridList.CommitEditSelectedAsync();
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            mainVm.GridList.CancelEditSelected();
+        }
+    }
+
+    /// <summary>
+    /// 編集 TextBox がフォーカスを失ったら確定（一般的なインラインリネーム UX）。
+    /// Esc キャンセルが既に IsEditing=false にしている場合は CommitEditSelectedAsync 内で no-op。
+    /// </summary>
+    private async void OnGridTitleEditorLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (owner.DataContext is not MainWindowViewModel mainVm) return;
+        var selected = mainVm.GridList.SelectedGrid;
+        if (selected is null || !selected.IsEditing) return;
+        await mainVm.GridList.CommitEditSelectedAsync();
     }
 
     /// <summary>

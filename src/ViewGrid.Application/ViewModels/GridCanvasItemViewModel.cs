@@ -41,6 +41,22 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
     [ObservableProperty]
     public partial ImmutableArray<bool> RowLocked { get; set; }
 
+    /// <summary>
+    /// 中央ヘッダ上でインラインリネーム編集中かどうか。<c>true</c> の間だけ View 側で
+    /// グリッド名 TextBlock が TextBox に切り替わる。ダブルクリックで <c>true</c>、
+    /// Enter / フォーカス喪失で確定 → <c>false</c>、Esc でキャンセル → <c>false</c>。
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsEditing { get; set; }
+
+    /// <summary>
+    /// インラインリネーム中の編集バッファ。<see cref="IsEditing"/>=true で View にバインドされる。
+    /// 編集開始時に <see cref="Name"/> を初期値としてコピー、確定時に
+    /// <see cref="GridCanvasListViewModel.CommitEditSelectedAsync"/> 経由で永続化される。
+    /// </summary>
+    [ObservableProperty]
+    public partial string? EditingName { get; set; }
+
     public string GridSizeLabel => $"{Cols}×{Rows} セル";
     public string CanvasSizeLabel => $"{CanvasWidth}×{CanvasHeight} px";
 

@@ -229,6 +229,52 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 中央ヘッダのインラインリネーム編集を開始する。<see cref="SelectedGrid"/> の
+    /// <see cref="GridCanvasItemViewModel.IsEditing"/>=true、<see cref="GridCanvasItemViewModel.EditingName"/>
+    /// に現在の名前をコピー。<see cref="SelectedGrid"/> が <c>null</c> なら no-op。
+    /// </summary>
+    public void BeginEditSelected()
+    {
+        var selected = SelectedGrid;
+        if (selected is null) return;
+        selected.EditingName = selected.Name;
+        selected.IsEditing = true;
+    }
+
+    /// <summary>インラインリネーム編集をキャンセル（保存しない）。</summary>
+    public void CancelEditSelected()
+    {
+        var selected = SelectedGrid;
+        if (selected is null) return;
+        selected.IsEditing = false;
+        selected.EditingName = null;
+    }
+
+    /// <summary>
+    /// インラインリネーム編集を確定して DB に保存する。<see cref="GridCanvasItemViewModel.EditingName"/>
+    /// を trim し、現在の名前と異なるなら <see cref="RenameSelectedAsync"/> を呼んで履歴に積む。
+    /// 編集状態は永続化前に閉じる（保存中の View 再描画でフォーカスが残らないよう）。
+    /// </summary>
+    public async Task CommitEditSelectedAsync(CancellationToken ct = default)
+    {
+        var selected = SelectedGrid;
+        if (selected is null) return;
+        if (!selected.IsEditing) return;
+
+        var draft = selected.EditingName ?? string.Empty;
+        // 編集状態は先に閉じる（CommitEditCandidateAsync と同パターン）
+        selected.IsEditing = false;
+        selected.EditingName = null;
+
+        var trimmed = draft.Trim();
+        // 空 or 同名なら永続化スキップ（RenameSelectedAsync 内のガードと同じ意味論）
+        if (string.IsNullOrWhiteSpace(trimmed)) return;
+        if (trimmed == selected.Name) return;
+
+        await RenameSelectedAsync(trimmed, ct);
+    }
+
+    /// <summary>
     /// "2,1,1" 形式の比率テキストを int 配列にパースする。空・パース失敗・要素 0 のときは null（均等扱い）。
     /// 検証は <see cref="CreateGridCanvasUseCase"/> 側で行うのでここでは構文だけ確認。
     /// </summary>

@@ -331,11 +331,44 @@
                          x:DataType を移動して、外側は親の型 (GridWorkspaceViewModel) で
                          CurrentGrid を解決させる。 -->
                     <StackPanel Grid.Column="0"
+                                Orientation="Horizontal"
+                                Spacing="6"
                                 VerticalAlignment="Center"
                                 DataContext="{Binding CurrentGrid}">
-                        <TextBlock FontWeight="SemiBold" FontSize="14"
-                                   x:DataType="vm:GridCanvasItemViewModel">
+                        <!--
+                            表示モード: グリッド名 + サマリ。ダブルクリックで TextBox に切替。
+                            Cursor=IBeam で「編集可能」をユーザーに示す。
+                        -->
+                        <TextBlock x:Name="GridTitleText"
+                                   FontWeight="SemiBold" FontSize="14"
+                                   x:DataType="vm:GridCanvasItemViewModel"
+                                   IsVisible="{Binding !IsEditing}"
+                                   Cursor="IBeam"
+                                   ToolTip.Tip="ダブルクリックで名前を変更"
+                                   DoubleTapped="OnGridTitleDoubleTapped">
                             <Run Text="{Binding Name}" />
+                            <Run Text=" — " />
+                            <Run Text="{Binding GridSizeLabel}" />
+                            <Run Text=" / " />
+                            <Run Text="{Binding CanvasSizeLabel}" />
+                        </TextBlock>
+                        <!--
+                            編集モード: 名前部分のみ TextBox に切替、サマリは右側に薄く残す。
+                            Enter で確定 / Esc でキャンセル / フォーカス喪失で確定 (CodeBehind ハンドラ)。
+                        -->
+                        <TextBox x:Name="GridTitleEditor"
+                                 x:DataType="vm:GridCanvasItemViewModel"
+                                 IsVisible="{Binding IsEditing}"
+                                 Text="{Binding EditingName}"
+                                 FontWeight="SemiBold" FontSize="14"
+                                 MinWidth="200"
+                                 KeyDown="OnGridTitleEditorKeyDown"
+                                 LostFocus="OnGridTitleEditorLostFocus" />
+                        <TextBlock x:DataType="vm:GridCanvasItemViewModel"
+                                   IsVisible="{Binding IsEditing}"
+                                   VerticalAlignment="Center"
+                                   Opacity="0.6"
+                                   FontSize="11">
                             <Run Text=" — " />
                             <Run Text="{Binding GridSizeLabel}" />
                             <Run Text=" / " />
