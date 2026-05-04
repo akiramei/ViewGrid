@@ -5,6 +5,7 @@
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="720"
         x:Class="ViewGrid.Presentation.Views.ManualCropEditorWindow"
         Title="任意矩形トリミング"
+        Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
         Width="1000" Height="720"
         MinWidth="640" MinHeight="480"
         WindowStartupLocation="CenterOwner">

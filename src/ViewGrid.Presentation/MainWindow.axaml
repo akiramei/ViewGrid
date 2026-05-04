@@ -11,6 +11,7 @@
         x:Name="MainWindowRoot"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
+        Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
         Width="1440" Height="900"
         MinWidth="1024" MinHeight="640"
         WindowStartupLocation="CenterScreen"
