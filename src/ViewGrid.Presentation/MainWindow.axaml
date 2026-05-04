@@ -58,9 +58,9 @@
                 <Grid.Background>
                     <MultiBinding Converter="{x:Static converters:HoveredJumpRangeBackgroundConverter.Instance}">
                         <Binding Path="Index" />
-                        <Binding ElementName="MainWindowRoot" Path="DataContext.HoveredJumpRangeLo" />
-                        <Binding ElementName="MainWindowRoot" Path="DataContext.HoveredJumpRangeHi" />
-                        <Binding ElementName="MainWindowRoot" Path="DataContext.HoveredJumpDirection" />
+                        <Binding ElementName="MainWindowRoot" Path="((vm:MainWindowViewModel)DataContext).HoveredJumpRangeLo" />
+                        <Binding ElementName="MainWindowRoot" Path="((vm:MainWindowViewModel)DataContext).HoveredJumpRangeHi" />
+                        <Binding ElementName="MainWindowRoot" Path="((vm:MainWindowViewModel)DataContext).HoveredJumpDirection" />
                     </MultiBinding>
                 </Grid.Background>
                 <TextBlock Grid.Column="0"
