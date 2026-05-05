@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Microsoft.Extensions.DependencyInjection;
 using ViewGrid.Application.ViewModels;
+using ViewGrid.Core.Settings;
 
 namespace ViewGrid.Presentation.Views;
 
@@ -41,5 +42,18 @@ public partial class SettingsDialog : Window
     {
         if (Avalonia.Application.Current is not App app || app.Services is null) return;
         await ThumbnailRegenDialog.ShowAsync(this, app.Services);
+    }
+
+    /// <summary>
+    /// アクセント色ドット (Button) クリック: VM の AccentColor を更新する。
+    /// Button.Tag に <see cref="AccentColorPreset.Id"/> を入れているので取り出して反映。
+    /// VM のセッターで JSON 保存 + Application.Resources 更新までトリガされる。
+    /// </summary>
+    private void OnAccentPresetClicked(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        if (btn.Tag is not string id) return;
+        if (DataContext is not SettingsDialogViewModel vm) return;
+        vm.AccentColor = id;
     }
 }
