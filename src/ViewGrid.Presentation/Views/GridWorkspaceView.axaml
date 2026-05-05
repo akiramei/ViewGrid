@@ -221,6 +221,7 @@
                             <TextBox x:Name="DraftVariantNameBox"
                                      Text="{Binding DraftVariantName, Mode=TwoWay}"
                                      PlaceholderText="名前（空欄で「バリアント N」自動採番）"
+                                     IsVisible="{Binding IsCreatingVariant}"
                                      controls:FocusOnVisible.IsEnabled="True">
                                 <TextBox.KeyBindings>
                                     <KeyBinding Gesture="Enter" Command="{Binding CommitCreateVariantCommand}" />
