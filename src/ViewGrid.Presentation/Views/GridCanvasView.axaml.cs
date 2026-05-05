@@ -806,9 +806,14 @@ public partial class GridCanvasView : UserControl
 
     private Border BuildPlacementVisual(PlacementItemViewModel placement, bool isSelected)
     {
+        // C' 案: 非選択時は背景透明 + 枠線なし + Margin 0 で Renderer (PNG 出力) と
+        // 完全に同一 geometry にする。これにより 3 placement で 1 枚の画像を分割表示する
+        // ような「連続画像」用途でも段差が出ない。空セル / placement 境界は Layer 1
+        // (LightGray 0.5px) の常時描画グリッド線で示される。
+        // 選択中は青系半透明背景 + DodgerBlue 2px 枠で「いま編集中の placement」を明示。
         var defaultBackground = isSelected
             ? (IBrush)new SolidColorBrush(Color.FromArgb(0x66, 0x33, 0x99, 0xFF))
-            : new SolidColorBrush(Color.FromArgb(0x33, 0x88, 0x88, 0x88));
+            : (IBrush)Brushes.Transparent;
 
         Control content;
         if (!string.IsNullOrEmpty(placement.ThumbnailPath) && File.Exists(placement.ThumbnailPath))
@@ -894,15 +899,18 @@ public partial class GridCanvasView : UserControl
             content = BuildLabelFallback(placement);
         }
 
-        var defaultBorderBrush = isSelected ? (IBrush)Brushes.DodgerBlue : Brushes.DimGray;
-        var defaultBorderThickness = new Thickness(isSelected ? 2 : 1);
+        var defaultBorderBrush = isSelected ? (IBrush)Brushes.DodgerBlue : Brushes.Transparent;
+        // C' 案: 非選択時は枠線も Margin もゼロにして Renderer と geometry を一致させる。
+        // 選択時のみ DodgerBlue 2px 枠を出すが、これは layout に参加するため Image が 2px 分
+        // 隠れる。気になる場合は将来的に Adornment / overlay 描画に切り替える余地あり。
+        var defaultBorderThickness = new Thickness(isSelected ? 2 : 0);
 
         var container = new Border
         {
             BorderBrush = defaultBorderBrush,
             BorderThickness = defaultBorderThickness,
             Background = defaultBackground,
-            Margin = new Thickness(2),
+            Margin = new Thickness(0),
             Child = content,
             Cursor = new Cursor(StandardCursorType.SizeAll),
             Tag = placement,
