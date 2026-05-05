@@ -331,11 +331,11 @@ public partial class CopyPropertiesView : UserControl
         var m = GetThumbnailDisplayMetrics();
         if (m is null) return null;
         var (_, _, _, _, scale, padX, padY) = m.Value;
-        // null（入力中で空欄）は 0 として扱う
-        var mx = _vm.ManualCropPixelX ?? 0.0;
-        var my = _vm.ManualCropPixelY ?? 0.0;
-        var mw = _vm.ManualCropPixelWidth ?? 0.0;
-        var mh = _vm.ManualCropPixelHeight ?? 0.0;
+        // null（入力中で空欄）は 0 として扱う (int? → double 暗黙昇格)
+        double mx = _vm.ManualCropPixelX ?? 0;
+        double my = _vm.ManualCropPixelY ?? 0;
+        double mw = _vm.ManualCropPixelWidth ?? 0;
+        double mh = _vm.ManualCropPixelHeight ?? 0;
         var x = padX + mx * scale;
         var y = padY + my * scale;
         var w = mw * scale;
@@ -501,8 +501,8 @@ public partial class CopyPropertiesView : UserControl
 
         _isDragging = true;
         _dragStartPoint = pos;
-        _dragStartRect = (_vm.ManualCropPixelX ?? 0.0, _vm.ManualCropPixelY ?? 0.0,
-                          _vm.ManualCropPixelWidth ?? 0.0, _vm.ManualCropPixelHeight ?? 0.0);
+        _dragStartRect = (_vm.ManualCropPixelX ?? 0, _vm.ManualCropPixelY ?? 0,
+                          _vm.ManualCropPixelWidth ?? 0, _vm.ManualCropPixelHeight ?? 0);
         e.Pointer.Capture(ManualCropOverlay);
         e.Handled = true;
     }
@@ -543,8 +543,8 @@ public partial class CopyPropertiesView : UserControl
             window.Initialize(
                 _vm.SourceImagePath,
                 _vm.SourceWidth, _vm.SourceHeight,
-                _vm.ManualCropPixelX ?? 0.0, _vm.ManualCropPixelY ?? 0.0,
-                _vm.ManualCropPixelWidth ?? 0.0, _vm.ManualCropPixelHeight ?? 0.0);
+                _vm.ManualCropPixelX ?? 0, _vm.ManualCropPixelY ?? 0,
+                _vm.ManualCropPixelWidth ?? 0, _vm.ManualCropPixelHeight ?? 0);
         }
         catch
         {
@@ -587,10 +587,10 @@ public partial class CopyPropertiesView : UserControl
                 var y1 = Math.Clamp(srcStart.Value.SrcY, 0, sh);
                 var x2 = Math.Clamp(srcCurrent.Value.SrcX, 0, sw);
                 var y2 = Math.Clamp(srcCurrent.Value.SrcY, 0, sh);
-                _vm.ManualCropPixelX = Math.Min(x1, x2);
-                _vm.ManualCropPixelY = Math.Min(y1, y2);
-                _vm.ManualCropPixelWidth = Math.Abs(x2 - x1);
-                _vm.ManualCropPixelHeight = Math.Abs(y2 - y1);
+                _vm.ManualCropPixelX = (int)Math.Round(Math.Min(x1, x2));
+                _vm.ManualCropPixelY = (int)Math.Round(Math.Min(y1, y2));
+                _vm.ManualCropPixelWidth = (int)Math.Round(Math.Abs(x2 - x1));
+                _vm.ManualCropPixelHeight = (int)Math.Round(Math.Abs(y2 - y1));
                 break;
             }
             case DragMode.Move:
@@ -599,8 +599,8 @@ public partial class CopyPropertiesView : UserControl
                 var dy = srcCurrent.Value.SrcY - srcStart.Value.SrcY;
                 var newX = Math.Clamp(_dragStartRect.X + dx, 0, sw - _dragStartRect.W);
                 var newY = Math.Clamp(_dragStartRect.Y + dy, 0, sh - _dragStartRect.H);
-                _vm.ManualCropPixelX = newX;
-                _vm.ManualCropPixelY = newY;
+                _vm.ManualCropPixelX = (int)Math.Round(newX);
+                _vm.ManualCropPixelY = (int)Math.Round(newY);
                 break;
             }
             case DragMode.ResizeNW:
@@ -619,10 +619,10 @@ public partial class CopyPropertiesView : UserControl
                 var moveX = Math.Clamp(srcCurrent.Value.SrcX, 0, sw);
                 var moveY = Math.Clamp(srcCurrent.Value.SrcY, 0, sh);
 
-                _vm.ManualCropPixelX = Math.Min(fixedX, moveX);
-                _vm.ManualCropPixelY = Math.Min(fixedY, moveY);
-                _vm.ManualCropPixelWidth = Math.Abs(moveX - fixedX);
-                _vm.ManualCropPixelHeight = Math.Abs(moveY - fixedY);
+                _vm.ManualCropPixelX = (int)Math.Round(Math.Min(fixedX, moveX));
+                _vm.ManualCropPixelY = (int)Math.Round(Math.Min(fixedY, moveY));
+                _vm.ManualCropPixelWidth = (int)Math.Round(Math.Abs(moveX - fixedX));
+                _vm.ManualCropPixelHeight = (int)Math.Round(Math.Abs(moveY - fixedY));
                 break;
             }
             case DragMode.ResizeN:
@@ -634,10 +634,10 @@ public partial class CopyPropertiesView : UserControl
                 var fixedY = _dragMode is DragMode.ResizeN ? startBottom : startY;
                 var moveY = Math.Clamp(srcCurrent.Value.SrcY, 0, sh);
 
-                _vm.ManualCropPixelX = _dragStartRect.X;
-                _vm.ManualCropPixelWidth = _dragStartRect.W;
-                _vm.ManualCropPixelY = Math.Min(fixedY, moveY);
-                _vm.ManualCropPixelHeight = Math.Abs(moveY - fixedY);
+                _vm.ManualCropPixelX = (int)Math.Round(_dragStartRect.X);
+                _vm.ManualCropPixelWidth = (int)Math.Round(_dragStartRect.W);
+                _vm.ManualCropPixelY = (int)Math.Round(Math.Min(fixedY, moveY));
+                _vm.ManualCropPixelHeight = (int)Math.Round(Math.Abs(moveY - fixedY));
                 break;
             }
             case DragMode.ResizeE:
@@ -649,10 +649,10 @@ public partial class CopyPropertiesView : UserControl
                 var fixedX = _dragMode is DragMode.ResizeW ? startRight : startX;
                 var moveX = Math.Clamp(srcCurrent.Value.SrcX, 0, sw);
 
-                _vm.ManualCropPixelY = _dragStartRect.Y;
-                _vm.ManualCropPixelHeight = _dragStartRect.H;
-                _vm.ManualCropPixelX = Math.Min(fixedX, moveX);
-                _vm.ManualCropPixelWidth = Math.Abs(moveX - fixedX);
+                _vm.ManualCropPixelY = (int)Math.Round(_dragStartRect.Y);
+                _vm.ManualCropPixelHeight = (int)Math.Round(_dragStartRect.H);
+                _vm.ManualCropPixelX = (int)Math.Round(Math.Min(fixedX, moveX));
+                _vm.ManualCropPixelWidth = (int)Math.Round(Math.Abs(moveX - fixedX));
                 break;
             }
         }

@@ -349,10 +349,11 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         _vm.Attach(source);
 
         _vm.ManualCropEnabled.Should().BeTrue();
-        _vm.ManualCropPixelX.Should().BeApproximately(10, 0.001);
-        _vm.ManualCropPixelY.Should().BeApproximately(20, 0.001);
-        _vm.ManualCropPixelWidth.Should().BeApproximately(30, 0.001);
-        _vm.ManualCropPixelHeight.Should().BeApproximately(40, 0.001);
+        // VM 値が int? に揃ったため round-trip は厳密一致
+        _vm.ManualCropPixelX.Should().Be(10);
+        _vm.ManualCropPixelY.Should().Be(20);
+        _vm.ManualCropPixelWidth.Should().Be(30);
+        _vm.ManualCropPixelHeight.Should().Be(40);
         _vm.IsManualCropDefined.Should().BeTrue();
     }
 

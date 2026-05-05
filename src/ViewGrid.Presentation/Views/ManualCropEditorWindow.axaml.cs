@@ -95,7 +95,7 @@ public partial class ManualCropEditorWindow : Window
     /// 入力ピクセル値が <c>0</c> なら未確定スタート（ユーザーがドラッグして初期矩形作成）。
     /// </summary>
     public void Initialize(string imagePath, int sourceWidth, int sourceHeight,
-        double initialX, double initialY, double initialWidth, double initialHeight)
+        int initialX, int initialY, int initialWidth, int initialHeight)
     {
         ArgumentNullException.ThrowIfNull(imagePath);
         if (!File.Exists(imagePath))
@@ -137,9 +137,13 @@ public partial class ManualCropEditorWindow : Window
         ApplyFitZoom();
     }
 
-    /// <summary>OK が押された場合のみ編集後の矩形を返す。キャンセル時は <c>null</c>。</summary>
-    public (double X, double Y, double W, double H)? GetResult()
-        => _committed ? (_x, _y, _w, _h) : null;
+    /// <summary>OK が押された場合のみ編集後の矩形を返す。キャンセル時は <c>null</c>。
+    /// 内部 _x/_y/_w/_h は (Stage 1 では) double 保持だが、 戻り値は整数で返して
+    /// VM 側 (int?) との境界で確実に整数化する。</summary>
+    public (int X, int Y, int W, int H)? GetResult()
+        => _committed
+            ? ((int)Math.Round(_x), (int)Math.Round(_y), (int)Math.Round(_w), (int)Math.Round(_h))
+            : null;
 
     // -------------------- ズーム --------------------
 

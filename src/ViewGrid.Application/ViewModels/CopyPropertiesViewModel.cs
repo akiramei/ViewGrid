@@ -93,34 +93,35 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// AutoCrop と排他で、こちらを ON にすると AutoCropEnabled が自動的に OFF になる。</summary>
     [ObservableProperty] public partial bool ManualCropEnabled { get; set; }
 
-    // ManualCropPixel* も同じ理由で double? として nullable 化。
+    // ManualCropPixel* は int? で保持。 編集 UI 内の真実をピクセル整数に揃え、
+    // 永続化形式 (ManualCropFraction) との境界だけで分数 / 整数を変換する責務分離。
     // 一時的な null（入力中の空白）はバインディング層で受けて、IsManualCropDefined や Save 時に
     // 0 として扱う（換算は既に 0 で「未確定」として扱う仕様）。
 
-    /// <summary>矩形左上 X（元画像ピクセル）。永続化時に SourceWidth で割って 0–1 比率に換算。</summary>
+    /// <summary>矩形左上 X（元画像ピクセル整数）。永続化時に SourceWidth で割って 0–1 比率に換算。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
-    public partial double? ManualCropPixelX { get; set; }
+    public partial int? ManualCropPixelX { get; set; }
 
-    /// <summary>矩形左上 Y（元画像ピクセル）。</summary>
+    /// <summary>矩形左上 Y（元画像ピクセル整数）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
-    public partial double? ManualCropPixelY { get; set; }
+    public partial int? ManualCropPixelY { get; set; }
 
-    /// <summary>矩形幅（元画像ピクセル）。0 のときは「未確定」状態（手動ラジオを選んだ直後など）。</summary>
+    /// <summary>矩形幅（元画像ピクセル整数）。0 のときは「未確定」状態（手動ラジオを選んだ直後など）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
-    public partial double? ManualCropPixelWidth { get; set; }
+    public partial int? ManualCropPixelWidth { get; set; }
 
-    /// <summary>矩形高さ（元画像ピクセル）。0 のときは未確定。</summary>
+    /// <summary>矩形高さ（元画像ピクセル整数）。0 のときは未確定。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
-    public partial double? ManualCropPixelHeight { get; set; }
+    public partial int? ManualCropPixelHeight { get; set; }
 
     /// <summary>矩形が確定しているか（W&gt;0 かつ H&gt;0）。「手動」ラジオ ON 直後でドラッグ前は false。
     /// 数値入力フィールドや矩形ハンドルの IsEnabled、Save 時の永続化判定に使う。</summary>
     public bool IsManualCropDefined =>
-        (ManualCropPixelWidth ?? 0.0) > 0.0 && (ManualCropPixelHeight ?? 0.0) > 0.0;
+        (ManualCropPixelWidth ?? 0) > 0 && (ManualCropPixelHeight ?? 0) > 0;
 
     /// <summary>
     /// 「OFF / 自動 / 手動」ラジオの「OFF」用バインド。両方 OFF なら true。
@@ -338,10 +339,11 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 if (source.ManualCrop is { } mc && source.SourceWidth > 0 && source.SourceHeight > 0)
                 {
                     ManualCropEnabled = true;
-                    ManualCropPixelX = mc.X * source.SourceWidth;
-                    ManualCropPixelY = mc.Y * source.SourceHeight;
-                    ManualCropPixelWidth = mc.Width * source.SourceWidth;
-                    ManualCropPixelHeight = mc.Height * source.SourceHeight;
+                    // fraction → 整数ピクセルへ Math.Round で丸めて round-trip 安定化
+                    ManualCropPixelX = (int)Math.Round(mc.X * source.SourceWidth);
+                    ManualCropPixelY = (int)Math.Round(mc.Y * source.SourceHeight);
+                    ManualCropPixelWidth = (int)Math.Round(mc.Width * source.SourceWidth);
+                    ManualCropPixelHeight = (int)Math.Round(mc.Height * source.SourceHeight);
                 }
                 else
                 {
@@ -395,10 +397,10 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         // 「手動」選択 + 未確定（W=0 or H=0）は実質 OFF として保存する（ユーザー認識と一致）。
         var afterManualCrop = (ManualCropEnabled && IsManualCropDefined && SourceWidth > 0 && SourceHeight > 0)
             ? new ManualCropFraction(
-                (ManualCropPixelX ?? 0.0) / SourceWidth,
-                (ManualCropPixelY ?? 0.0) / SourceHeight,
-                (ManualCropPixelWidth ?? 0.0) / SourceWidth,
-                (ManualCropPixelHeight ?? 0.0) / SourceHeight)
+                (ManualCropPixelX ?? 0) / (double)SourceWidth,
+                (ManualCropPixelY ?? 0) / (double)SourceHeight,
+                (ManualCropPixelWidth ?? 0) / (double)SourceWidth,
+                (ManualCropPixelHeight ?? 0) / (double)SourceHeight)
             : (ManualCropFraction?)null;
         var after = new UpdateImageCopyChanges
         {
