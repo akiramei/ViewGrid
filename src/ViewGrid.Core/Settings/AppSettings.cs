@@ -1,0 +1,23 @@
+using ViewGrid.Core.Entities;
+
+namespace ViewGrid.Core.Settings;
+
+/// <summary>
+/// アプリのユーザー設定。 ハードコードしていた UI / 既定値を集約し、
+/// 設定ダイアログから変更 + JSON 永続化する。 record で immutable に扱い、
+/// 変更時は新しい <see cref="AppSettings"/> を作って <see cref="Services.IAppSettingsService.SaveAsync"/> へ渡す。
+/// </summary>
+public sealed record AppSettings
+{
+    /// <summary>テーマ。 "Default" (システム追従) / "Light" / "Dark"。</summary>
+    public string Theme { get; init; } = "Default";
+
+    /// <summary>新規論理コピー作成時の既定スケーリング。</summary>
+    public ScalingMode DefaultScalingMode { get; init; } = ScalingMode.UniformContain;
+
+    /// <summary>AutoCrop を ON にしたときの既定プリセット (Custom は対象外)。</summary>
+    public AutoCropPreset DefaultAutoCropPreset { get; init; } = AutoCropPreset.White;
+
+    /// <summary>サムネイルの最大エッジサイズ (px)。 256 / 512 / 1024 / 2048 を想定。</summary>
+    public int ThumbnailMaxEdgePixels { get; init; } = 1024;
+}

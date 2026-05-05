@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<IGridCanvasRepository, EfGridCanvasRepository>();
         services.AddScoped<IGridPlacementRepository, EfGridPlacementRepository>();
 
+        services.AddSingleton<IAppSettingsService, JsonAppSettingsService>();
         services.AddSingleton<IImageHasher, Sha256ImageHasher>();
         services.AddSingleton<IImageProber, SkiaImageProber>();
         services.AddSingleton<IImageStorage, FileSystemImageStorage>();
