@@ -35,6 +35,9 @@ public partial class ManualCropEditorWindow : Window
     /// <summary>1 PointerMoved あたりの自動スクロール量（px）。</summary>
     private const double AutoScrollSpeed = 12;
 
+    /// <summary>パンのクリック / ドラッグ区別しきい値（px、 PreviewWindow と同値）。</summary>
+    private const double PanDragThreshold = 3.0;
+
     private static readonly double[] ZoomLevels = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0];
 
     // 入力
@@ -54,6 +57,12 @@ public partial class ManualCropEditorWindow : Window
     private DragMode _dragMode;
     private Point _dragStartPoint;
     private (double X, double Y, double W, double H) _dragStartRect;
+
+    // パン状態（中ボタン or Stage 3 の Space+左ボタン）
+    private bool _panActive;
+    private bool _panMoved;
+    private Point _panPressPoint;
+    private Vector _panStartOffset;
 
     // 入力同期抑止
     private bool _suppressNumericSync;
@@ -336,7 +345,17 @@ public partial class ManualCropEditorWindow : Window
 
     private void OnOverlayPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!e.GetCurrentPoint(EditorOverlay).Properties.IsLeftButtonPressed) return;
+        var props = e.GetCurrentPoint(EditorOverlay).Properties;
+
+        // 中ボタンドラッグはパン（左ボタンの矩形操作と完全分離）
+        if (props.IsMiddleButtonPressed)
+        {
+            StartPan(e);
+            e.Handled = true;
+            return;
+        }
+
+        if (!props.IsLeftButtonPressed) return;
 
         var pos = e.GetPosition(EditorOverlay);
 
@@ -362,6 +381,11 @@ public partial class ManualCropEditorWindow : Window
 
     private void OnOverlayPointerMoved(object? sender, PointerEventArgs e)
     {
+        if (_panActive)
+        {
+            UpdatePan(e);
+            return;
+        }
         if (!_isDragging) return;
         var posOverlay = e.GetPosition(EditorOverlay);
         ApplyDragUpdate(posOverlay);
@@ -373,11 +397,75 @@ public partial class ManualCropEditorWindow : Window
 
     private void OnOverlayPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (_panActive)
+        {
+            EndPan(e);
+            return;
+        }
         if (!_isDragging) return;
         _isDragging = false;
         _dragMode = DragMode.None;
         e.Pointer.Capture(null);
         e.Handled = true;
+    }
+
+    // -------------------- パン --------------------
+
+    /// <summary>
+    /// 中ボタン or Space+左ボタンでパン開始。 Capture を取って Overlay 外でも
+    /// PointerMoved / Released を確実に受ける。 PreviewWindow の左ボタンパンと
+    /// 同じ「画像をつかんで動かす」 (ドラッグと逆方向に Offset) 挙動。
+    /// </summary>
+    private void StartPan(PointerPressedEventArgs e)
+    {
+        _panActive = true;
+        _panMoved = false;
+        _panPressPoint = e.GetPosition(EditorScrollViewer);
+        _panStartOffset = EditorScrollViewer.Offset;
+        e.Pointer.Capture(EditorOverlay);
+    }
+
+    private void UpdatePan(PointerEventArgs e)
+    {
+        var current = e.GetPosition(EditorScrollViewer);
+        var deltaX = current.X - _panPressPoint.X;
+        var deltaY = current.Y - _panPressPoint.Y;
+
+        if (!_panMoved && (Math.Abs(deltaX) >= PanDragThreshold || Math.Abs(deltaY) >= PanDragThreshold))
+        {
+            _panMoved = true;
+            EditorOverlay.Cursor = new Cursor(StandardCursorType.SizeAll);
+        }
+
+        if (_panMoved)
+        {
+            // ScrollViewer.Offset は Extent / Viewport により自動クランプされる
+            EditorScrollViewer.Offset = new Vector(
+                _panStartOffset.X - deltaX,
+                _panStartOffset.Y - deltaY);
+        }
+    }
+
+    private void EndPan(PointerReleasedEventArgs e)
+    {
+        _panActive = false;
+        _panMoved = false;
+        EditorOverlay.Cursor = new Cursor(StandardCursorType.Cross);
+        e.Pointer.Capture(null);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 外部要因 (フォーカス喪失等) で Capture が外れたときのリセット保険。
+    /// 矩形ドラッグ / パンの両方を同時にリセットして整合性を保つ。
+    /// </summary>
+    private void OnOverlayPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        _panActive = false;
+        _panMoved = false;
+        _isDragging = false;
+        _dragMode = DragMode.None;
+        EditorOverlay.Cursor = new Cursor(StandardCursorType.Cross);
     }
 
     /// <summary>

@@ -57,7 +57,8 @@
                             Cursor="Cross"
                             PointerPressed="OnOverlayPointerPressed"
                             PointerMoved="OnOverlayPointerMoved"
-                            PointerReleased="OnOverlayPointerReleased" />
+                            PointerReleased="OnOverlayPointerReleased"
+                            PointerCaptureLost="OnOverlayPointerCaptureLost" />
                 </Grid>
             </ScrollViewer>
         </Border>
