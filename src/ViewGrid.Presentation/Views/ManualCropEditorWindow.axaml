@@ -22,7 +22,7 @@
                 <TextBlock x:Name="ZoomLabel" Text="100%" VerticalAlignment="Center" MinWidth="56" Margin="8,0,0,0" />
             </StackPanel>
             <TextBlock Grid.Column="1"
-                       Text="画像上をドラッグで矩形作成 / 内部ドラッグで移動 / 端ハンドルでサイズ変更"
+                       Text="画像上をドラッグで矩形作成 / 中ボタン or Space+ドラッグでパン"
                        Opacity="0.7"
                        FontSize="11"
                        VerticalAlignment="Center"
@@ -33,7 +33,8 @@
                         <Run Text="画像上をドラッグで矩形作成" /><LineBreak />
                         <Run Text="8 ハンドルで端 / 隅をリサイズ" /><LineBreak />
                         <Run Text="矩形内部ドラッグで移動" /><LineBreak />
-                        <Run Text="ドラッグ中に画像端へ近づくと自動スクロール" />
+                        <Run Text="ドラッグ中に画像端へ近づくと自動スクロール" /><LineBreak />
+                        <Run Text="中ボタンドラッグ または Space + 左ドラッグでパン" />
                     </TextBlock>
                 </ToolTip.Tip>
             </TextBlock>

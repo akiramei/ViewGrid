@@ -58,11 +58,14 @@ public partial class ManualCropEditorWindow : Window
     private Point _dragStartPoint;
     private (double X, double Y, double W, double H) _dragStartRect;
 
-    // パン状態（中ボタン or Stage 3 の Space+左ボタン）
+    // パン状態（中ボタン or Space+左ボタン）
     private bool _panActive;
     private bool _panMoved;
     private Point _panPressPoint;
     private Vector _panStartOffset;
+
+    // Space 押下中フラグ（Space + 左ドラッグでパンするため）
+    private bool _spaceHeld;
 
     // 入力同期抑止
     private bool _suppressNumericSync;
@@ -79,6 +82,12 @@ public partial class ManualCropEditorWindow : Window
             // CopyPropertiesView と同パターンで LayoutUpdated は使わない（再帰防止）。
             if (e.Property == BoundsProperty) UpdateOverlay();
         };
+
+        // Space + 左ドラッグでパンするための Window レベル KeyDown / KeyUp + Deactivated。
+        // KeyDown は Tunnel 段階で取り、 NumericUpDown 配下のフォーカス時は早期リターンする。
+        AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(KeyUpEvent, OnWindowKeyUp, RoutingStrategies.Tunnel);
+        Deactivated += OnWindowDeactivated;
     }
 
     /// <summary>
@@ -357,6 +366,14 @@ public partial class ManualCropEditorWindow : Window
 
         if (!props.IsLeftButtonPressed) return;
 
+        // Space 押下中の左ドラッグはパン (HitTestHandle / IsInsideRect を完全スキップ)
+        if (_spaceHeld)
+        {
+            StartPan(e);
+            e.Handled = true;
+            return;
+        }
+
         var pos = e.GetPosition(EditorOverlay);
 
         if (_w > 0 && _h > 0)
@@ -450,7 +467,8 @@ public partial class ManualCropEditorWindow : Window
     {
         _panActive = false;
         _panMoved = false;
-        EditorOverlay.Cursor = new Cursor(StandardCursorType.Cross);
+        // Space 押下中なら SizeAll 維持 (Space を離した時点で Cross に戻す)
+        EditorOverlay.Cursor = new Cursor(_spaceHeld ? StandardCursorType.SizeAll : StandardCursorType.Cross);
         e.Pointer.Capture(null);
         e.Handled = true;
     }
@@ -465,7 +483,7 @@ public partial class ManualCropEditorWindow : Window
         _panMoved = false;
         _isDragging = false;
         _dragMode = DragMode.None;
-        EditorOverlay.Cursor = new Cursor(StandardCursorType.Cross);
+        EditorOverlay.Cursor = new Cursor(_spaceHeld ? StandardCursorType.SizeAll : StandardCursorType.Cross);
     }
 
     /// <summary>
@@ -578,6 +596,61 @@ public partial class ManualCropEditorWindow : Window
         var maxX = Math.Max(0, sv.Extent.Width - sv.Viewport.Width);
         var maxY = Math.Max(0, sv.Extent.Height - sv.Viewport.Height);
         sv.Offset = new Vector(Math.Clamp(newX, 0, maxX), Math.Clamp(newY, 0, maxY));
+    }
+
+    // -------------------- Space + 左ドラッグ用キーハンドラ --------------------
+
+    /// <summary>
+    /// Space 押下で「パン待機」状態へ。 矩形操作中 (`_isDragging`) は無視して現操作を優先。
+    /// 下部の NumericUpDown にフォーカスがある場合も干渉を避けるため早期リターン。
+    /// </summary>
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Space) return;
+        if (_isDragging || _panActive) return;
+        if (IsInsideNumericInput(e.Source as Control)) return;
+
+        if (!_spaceHeld)
+        {
+            _spaceHeld = true;
+            EditorOverlay.Cursor = new Cursor(StandardCursorType.SizeAll);
+        }
+        // Space を消費して NumericUpDown 等への伝播を防ぐ
+        e.Handled = true;
+    }
+
+    private void OnWindowKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Space) return;
+        if (!_spaceHeld) return;
+        _spaceHeld = false;
+        // パン継続中なら EndPan が解放後に Cross に戻すので、 ここではパン非アクティブ時のみ戻す
+        if (!_panActive) EditorOverlay.Cursor = new Cursor(StandardCursorType.Cross);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Window 非アクティブ化で Space 状態をリセット (Alt+Tab 中の押下で取り残しを防ぐ)。
+    /// パン中の Capture は別途 PointerCaptureLost が拾うのでここでは触らない。
+    /// </summary>
+    private void OnWindowDeactivated(object? sender, EventArgs e)
+    {
+        if (!_spaceHeld) return;
+        _spaceHeld = false;
+        if (!_panActive) EditorOverlay.Cursor = new Cursor(StandardCursorType.Cross);
+    }
+
+    /// <summary>
+    /// 指定コントロール (= KeyDown の Source) が下部の数値入力 (`NumericUpDown`) 配下かを判定する。
+    /// 数値入力にフォーカスがあるときの Space は数値テキスト編集に任せる。
+    /// </summary>
+    private static bool IsInsideNumericInput(Control? control)
+    {
+        for (var c = control; c is not null; c = c.Parent as Control)
+        {
+            if (c is NumericUpDown) return true;
+        }
+        return false;
     }
 
     // -------------------- OK / Cancel --------------------
