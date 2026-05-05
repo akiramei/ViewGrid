@@ -78,31 +78,27 @@ public partial class App : global::Avalonia.Application
     }
 
     /// <summary>
-    /// <see cref="AppSettings.AccentColor"/> プリセットを Light/Dark 両 ThemeDictionary の
-    /// <c>SystemAccentColor*</c> 7 キーへ書き戻す。 Light/Dark 両方を同時に更新するため、
-    /// テーマ切替後も色が一貫する。 起動時 + 設定変更時に呼ばれる。
+    /// <see cref="AppSettings.AccentColor"/> プリセットの 7 色を <see cref="Application.Resources"/>
+    /// (トップレベル) に書き込む。 ThemeDictionaries 内の同名キーよりも優先されるため、
+    /// この経路で書くと <c>{DynamicResource}</c> 参照が確実に再評価される。
+    /// <para>
+    /// テーマ (Light / Dark) によって base 色を切り替える必要があるため、 現在の
+    /// <see cref="Avalonia.Application.ActualThemeVariant"/> を見てプリセット内の
+    /// Light / Dark パレットのどちらを使うかを判定する。 起動時 + 設定変更時 + テーマ切替時
+    /// に呼ばれる。
+    /// </para>
     /// </summary>
     private void ApplyAccentColor(AppSettings settings)
     {
         var preset = AccentColorPresets.Get(settings.AccentColor);
-        UpdateThemeDictionary(ThemeVariant.Light, preset.Light);
-        UpdateThemeDictionary(ThemeVariant.Dark, preset.Dark);
-    }
+        var palette = ActualThemeVariant == ThemeVariant.Dark ? preset.Dark : preset.Light;
 
-    private void UpdateThemeDictionary(ThemeVariant variant, AccentColorPalette palette)
-    {
-        if (!Resources.ThemeDictionaries.TryGetValue(variant, out var dictObj)
-            || dictObj is not ResourceDictionary dict)
-        {
-            return;
-        }
-
-        dict["SystemAccentColor"] = Color.Parse(palette.Color);
-        dict["SystemAccentColorDark1"] = Color.Parse(palette.Dark1);
-        dict["SystemAccentColorDark2"] = Color.Parse(palette.Dark2);
-        dict["SystemAccentColorDark3"] = Color.Parse(palette.Dark3);
-        dict["SystemAccentColorLight1"] = Color.Parse(palette.Light1);
-        dict["SystemAccentColorLight2"] = Color.Parse(palette.Light2);
-        dict["SystemAccentColorLight3"] = Color.Parse(palette.Light3);
+        Resources["SystemAccentColor"] = Color.Parse(palette.Color);
+        Resources["SystemAccentColorDark1"] = Color.Parse(palette.Dark1);
+        Resources["SystemAccentColorDark2"] = Color.Parse(palette.Dark2);
+        Resources["SystemAccentColorDark3"] = Color.Parse(palette.Dark3);
+        Resources["SystemAccentColorLight1"] = Color.Parse(palette.Light1);
+        Resources["SystemAccentColorLight2"] = Color.Parse(palette.Light2);
+        Resources["SystemAccentColorLight3"] = Color.Parse(palette.Light3);
     }
 }
