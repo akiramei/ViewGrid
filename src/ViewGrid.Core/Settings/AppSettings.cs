@@ -12,6 +12,9 @@ public sealed record AppSettings
     /// <summary>テーマ。 "Default" (システム追従) / "Light" / "Dark"。</summary>
     public string Theme { get; init; } = "Default";
 
+    /// <summary>アクセント色プリセット ID (例: "Sky"、 "Emerald")。 <see cref="AccentColorPresets"/> 参照。</summary>
+    public string AccentColor { get; init; } = "Sky";
+
     /// <summary>新規論理コピー作成時の既定スケーリング。</summary>
     public ScalingMode DefaultScalingMode { get; init; } = ScalingMode.UniformContain;
 

@@ -33,6 +33,7 @@ public sealed class JsonAppSettingsServiceTests : IAsyncLifetime
         var service = new JsonAppSettingsService(_options, NullLogger<JsonAppSettingsService>.Instance);
 
         service.Current.Theme.Should().Be("Default");
+        service.Current.AccentColor.Should().Be("Sky");
         service.Current.DefaultScalingMode.Should().Be(ScalingMode.UniformContain);
         service.Current.DefaultAutoCropPreset.Should().Be(AutoCropPreset.White);
         service.Current.ThumbnailMaxEdgePixels.Should().Be(1024);
@@ -41,11 +42,12 @@ public sealed class JsonAppSettingsServiceTests : IAsyncLifetime
     [Fact]
     public async Task Save_And_Reload_Round_Trips_All_Fields()
     {
-        // 全 4 フィールドが Save → 別インスタンスで Load して同じ値で復元
+        // 全 5 フィールドが Save → 別インスタンスで Load して同じ値で復元
         var service = new JsonAppSettingsService(_options, NullLogger<JsonAppSettingsService>.Instance);
         var newSettings = new AppSettings
         {
             Theme = "Dark",
+            AccentColor = "Emerald",
             DefaultScalingMode = ScalingMode.UniformCover,
             DefaultAutoCropPreset = AutoCropPreset.Transparent,
             ThumbnailMaxEdgePixels = 2048,
@@ -55,6 +57,7 @@ public sealed class JsonAppSettingsServiceTests : IAsyncLifetime
 
         var reloaded = new JsonAppSettingsService(_options, NullLogger<JsonAppSettingsService>.Instance);
         reloaded.Current.Theme.Should().Be("Dark");
+        reloaded.Current.AccentColor.Should().Be("Emerald");
         reloaded.Current.DefaultScalingMode.Should().Be(ScalingMode.UniformCover);
         reloaded.Current.DefaultAutoCropPreset.Should().Be(AutoCropPreset.Transparent);
         reloaded.Current.ThumbnailMaxEdgePixels.Should().Be(2048);

@@ -14,6 +14,7 @@ public sealed class SettingsDialogViewModelTests
         var fake = new FakeSettingsService(new AppSettings
         {
             Theme = "Dark",
+            AccentColor = "Emerald",
             DefaultScalingMode = ScalingMode.UniformCover,
             DefaultAutoCropPreset = AutoCropPreset.Black,
             ThumbnailMaxEdgePixels = 512,
@@ -23,10 +24,23 @@ public sealed class SettingsDialogViewModelTests
 
         vm.Theme.Should().Be("Dark");
         vm.IsThemeDark.Should().BeTrue();
+        vm.AccentColor.Should().Be("Emerald");
         vm.DefaultScalingMode.Should().Be(ScalingMode.UniformCover);
         vm.DefaultAutoCropPreset.Should().Be(AutoCropPreset.Black);
         vm.ThumbnailMaxEdgePixels.Should().Be(512);
         vm.IsThumb512.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AccentColor_Change_Saves_New_Settings()
+    {
+        var fake = new FakeSettingsService(new AppSettings { AccentColor = "Sky" });
+        var vm = new SettingsDialogViewModel(fake);
+
+        vm.AccentColor = "Rose";
+
+        fake.SaveCallCount.Should().Be(1);
+        fake.LastSaved!.AccentColor.Should().Be("Rose");
     }
 
     [Fact]

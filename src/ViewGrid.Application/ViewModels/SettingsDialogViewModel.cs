@@ -19,6 +19,9 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
     /// <summary>テーマ (Default / Light / Dark)。 文字列で持つのは <see cref="AppSettings.Theme"/> と整合させるため。</summary>
     [ObservableProperty] public partial string Theme { get; set; } = "Default";
 
+    /// <summary>アクセント色プリセット ID (例: "Sky")。 <see cref="AccentColorPresets"/> 参照。</summary>
+    [ObservableProperty] public partial string AccentColor { get; set; } = "Sky";
+
     /// <summary>新規論理コピー作成時の既定スケーリング。</summary>
     [ObservableProperty] public partial ScalingMode DefaultScalingMode { get; set; } = ScalingMode.UniformContain;
 
@@ -37,6 +40,7 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
         try
         {
             Theme = _settings.Current.Theme;
+            AccentColor = _settings.Current.AccentColor;
             DefaultScalingMode = _settings.Current.DefaultScalingMode;
             DefaultAutoCropPreset = _settings.Current.DefaultAutoCropPreset;
             ThumbnailMaxEdgePixels = _settings.Current.ThumbnailMaxEdgePixels;
@@ -80,6 +84,9 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
     public IReadOnlyList<AutoCropPreset> AutoCropPresetOptions { get; } =
         [AutoCropPreset.White, AutoCropPreset.Black, AutoCropPreset.Transparent];
 
+    /// <summary>アクセント色プリセット選択肢 (View が ItemsControl で色ドット表示)。</summary>
+    public IReadOnlyList<AccentColorPreset> AccentColorPresetOptions { get; } = AccentColorPresets.All;
+
     partial void OnThemeChanged(string value)
     {
         SaveCurrent(s => s with { Theme = value });
@@ -89,6 +96,7 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsThemeDark));
     }
 
+    partial void OnAccentColorChanged(string value) => SaveCurrent(s => s with { AccentColor = value });
     partial void OnDefaultScalingModeChanged(ScalingMode value) => SaveCurrent(s => s with { DefaultScalingMode = value });
     partial void OnDefaultAutoCropPresetChanged(AutoCropPreset value) => SaveCurrent(s => s with { DefaultAutoCropPreset = value });
 
