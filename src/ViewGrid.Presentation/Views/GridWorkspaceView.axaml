@@ -112,6 +112,34 @@
         <Style Selector="Button.resetIntensity:disabled">
             <Setter Property="Opacity" Value="0.55" />
         </Style>
+
+        <!--
+            「配置を削除」専用ボタン (危険操作リンク風)。
+            通常時は控えめにテキストリンク見え、 hover で薄い赤背景、 pressed でやや濃い赤背景。
+            「テキスト = リンクのみ」の見え方だと UI 部品としての押下可能性が伝わりにくいフィードバックを受けて、
+            hover/pressed を整えてボタンとしての応答を確保する。
+        -->
+        <Style Selector="Button.dangerLink">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemErrorTextColor}" />
+        </Style>
+        <Style Selector="Button.dangerLink:pointerover /template/ ContentPresenter">
+            <!-- 薄い赤の hover 背景 (alpha 0x1A = 約 10%)、 危険操作と分かる程度 -->
+            <Setter Property="Background" Value="#1AFF3333" />
+            <Setter Property="BorderBrush" Value="#33FF3333" />
+        </Style>
+        <Style Selector="Button.dangerLink:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#33FF3333" />
+            <Setter Property="BorderBrush" Value="#66FF3333" />
+        </Style>
+        <Style Selector="Button.dangerLink:disabled">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
     </UserControl.Styles>
 
     <!--
@@ -459,7 +487,12 @@
                               HorizontalScrollBarVisibility="Disabled"
                               AllowAutoHide="True"
                               Padding="0,0,4,0">
-                    <StackPanel Spacing="8">
+                    <!--
+                        最下部に 24px の余白を確保: スクロール末尾の Alignment ComboBox 等が
+                        固定配置の「配置を削除」ボタン (高さ約 28px) と重ならないよう、
+                        スクロール領域の末尾を空けておく。
+                    -->
+                    <StackPanel Spacing="8" Margin="0,0,0,24">
                         <TextBlock FontSize="11"
                                    Opacity="0.75"
                                    IsVisible="{Binding HasGrid}">
@@ -766,12 +799,8 @@
                 -->
                 <StackPanel Grid.Row="1" Spacing="4" Margin="0,8,0,0">
                     <Button Content="配置を削除"
+                            Classes="dangerLink"
                             HorizontalAlignment="Right"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Padding="8,4"
-                            FontSize="11"
-                            Foreground="{DynamicResource SystemErrorTextColor}"
                             Command="{Binding RemoveSelectedPlacementCommand}"
                             IsEnabled="{Binding IsPlacementSelected}" />
                     <ProgressBar Height="3"
