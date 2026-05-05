@@ -38,7 +38,7 @@ public partial class ManualCropEditorWindow : Window
     /// <summary>パンのクリック / ドラッグ区別しきい値（px、 PreviewWindow と同値）。</summary>
     private const double PanDragThreshold = 3.0;
 
-    private static readonly double[] ZoomLevels = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0];
+    private static readonly double[] ZoomLevels = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 16.0];
 
     // 入力
     private int _sourceWidth;
@@ -602,24 +602,49 @@ public partial class ManualCropEditorWindow : Window
         sv.Offset = new Vector(Math.Clamp(newX, 0, maxX), Math.Clamp(newY, 0, maxY));
     }
 
-    // -------------------- Space + 左ドラッグ用キーハンドラ --------------------
+    // -------------------- キーハンドラ (Space + 矢印キー) --------------------
 
     /// <summary>
-    /// Space 押下で「パン待機」状態へ。 矩形操作中 (`_isDragging`) は無視して現操作を優先。
+    /// Space 押下で「パン待機」状態へ + 矢印キーで矩形を 1px (Shift で 10px) 移動。
+    /// 矩形操作中 (`_isDragging`) / パン中は無視して現操作を優先。
     /// 下部の NumericUpDown にフォーカスがある場合も干渉を避けるため早期リターン。
     /// </summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Space) return;
+        // 矩形操作中 / パン中は何のキー入力も受け付けない (現操作優先)
         if (_isDragging || _panActive) return;
+        // NumericUpDown 配下フォーカス時は標準動作に任せる (Space は数値入力、 矢印は値増減)
         if (IsInsideNumericInput(e.Source as Control)) return;
 
-        if (!_spaceHeld)
+        if (e.Key == Key.Space)
         {
-            _spaceHeld = true;
-            EditorOverlay.Cursor = new Cursor(StandardCursorType.SizeAll);
+            if (!_spaceHeld)
+            {
+                _spaceHeld = true;
+                EditorOverlay.Cursor = new Cursor(StandardCursorType.SizeAll);
+            }
+            // Space を消費して伝播を防ぐ
+            e.Handled = true;
+            return;
         }
-        // Space を消費して NumericUpDown 等への伝播を防ぐ
+
+        // 矢印キーは矩形が確定しているときのみ反応
+        if (_w == 0 || _h == 0) return;
+        var step = (e.KeyModifiers & KeyModifiers.Shift) != 0 ? 10 : 1;
+        var dx = 0;
+        var dy = 0;
+        switch (e.Key)
+        {
+            case Key.Up: dy = -step; break;
+            case Key.Down: dy = step; break;
+            case Key.Left: dx = -step; break;
+            case Key.Right: dx = step; break;
+            default: return;
+        }
+        _x = Math.Clamp(_x + dx, 0, _sourceWidth - _w);
+        _y = Math.Clamp(_y + dy, 0, _sourceHeight - _h);
+        SyncNumericFromState();
+        UpdateOverlay();
         e.Handled = true;
     }
 

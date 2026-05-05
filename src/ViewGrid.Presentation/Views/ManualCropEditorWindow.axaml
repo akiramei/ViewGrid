@@ -34,7 +34,8 @@
                         <Run Text="8 ハンドルで端 / 隅をリサイズ" /><LineBreak />
                         <Run Text="矩形内部ドラッグで移動" /><LineBreak />
                         <Run Text="ドラッグ中に画像端へ近づくと自動スクロール" /><LineBreak />
-                        <Run Text="中ボタンドラッグ または Space + 左ドラッグでパン" />
+                        <Run Text="中ボタンドラッグ または Space + 左ドラッグでパン" /><LineBreak />
+                        <Run Text="矢印キーで 1px 移動、 Shift + 矢印で 10px 移動" />
                     </TextBlock>
                 </ToolTip.Tip>
             </TextBlock>
@@ -52,7 +53,9 @@
                 <Grid x:Name="EditorContainer"
                       HorizontalAlignment="Left"
                       VerticalAlignment="Top">
-                    <Image x:Name="EditorImage" Stretch="Fill" />
+                    <!-- 高倍率時にドット絵がぼやけないよう、 線形補間ではなく最近傍 (Nearest Neighbor) を使う。 -->
+                    <Image x:Name="EditorImage" Stretch="Fill"
+                           RenderOptions.BitmapInterpolationMode="None" />
                     <Canvas x:Name="EditorOverlay"
                             Background="Transparent"
                             Cursor="Cross"
