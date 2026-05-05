@@ -80,14 +80,38 @@
                 </Border>
             </StackPanel>
 
-            <!-- Row 1: 配置固有 (Auto = 必要分の高さ) -->
-            <Border Grid.Row="1" Classes="SubtleCard" Padding="8" Margin="0,0,0,10">
+            <!--
+                Row 1: 配置固有 (Auto = 必要分の高さ)。
+                出力設定 Expander と同じ折り畳みパターンに揃えて縦密度を制御可能にする。
+                操作頻度は共有特性より低い (一度決めた占有セル / PixelOffset を頻繁に変えない) ため、
+                IsExpanded=False を既定にして縦スペースを共有特性に譲る。
+                ヘッダーの副表示で 「N×M / Δ(x,y)」 形式の現在値を畳んだまま確認できる。
+            -->
+            <Expander Grid.Row="1"
+                      IsExpanded="False"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch"
+                      Margin="0,0,0,10">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="配置固有"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Opacity="0.6"
+                                   FontSize="11"
+                                   VerticalAlignment="Center">
+                            <Run Text="{Binding OccupyWidth, Mode=OneWay}" />
+                            <Run Text="×" />
+                            <Run Text="{Binding OccupyHeight, Mode=OneWay}" />
+                            <Run Text=" / Δ(" />
+                            <Run Text="{Binding PixelOffsetX, Mode=OneWay}" />
+                            <Run Text="," />
+                            <Run Text="{Binding PixelOffsetY, Mode=OneWay}" />
+                            <Run Text=")" />
+                        </TextBlock>
+                    </StackPanel>
+                </Expander.Header>
                 <StackPanel Spacing="6">
-                    <TextBlock Text="配置固有"
-                               FontWeight="SemiBold"
-                               FontSize="11"
-                               Opacity="0.85" />
-
                     <!-- 占有セル W×H (配置単位の固有特性) -->
                     <TextBlock Classes="FieldLabel" Text="占有セル (W×H)" />
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
@@ -137,24 +161,28 @@
                                FontStyle="Italic"
                                Text="ヒント: Shift+ドラッグ / Ctrl+矢印でも微調整可" />
                 </StackPanel>
-            </Border>
+            </Expander>
 
             <!--
                 Row 2: 共有特性 (Auto = 自然な高さ)。
-                内部 ScrollViewer は撤去し、右ペイン全体 (GridWorkspaceView の Column 2) の
-                ScrollViewer 1 本に集約。Inspector 自身は素直に縦に伸びるだけ。
+                placement 編集の主戦場 (Rotation/Flip/Scaling/Alignment/AutoCrop/ManualCrop) で
+                操作頻度が最も高いため IsExpanded=True を既定にして即アクセス可能に。
+                内部 ScrollViewer は撤去済み (右ペイン全体 ScrollViewer 1 本に集約)、
+                Inspector 自身は素直に縦に伸びる。
             -->
-            <Border Grid.Row="2" Classes="SubtleCard" Padding="8">
-                <StackPanel Spacing="6">
+            <Expander Grid.Row="2"
+                      IsExpanded="True"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch">
+                <Expander.Header>
                     <TextBlock Text="共有特性（同バリアントを参照する全配置に反映）"
                                FontWeight="SemiBold"
-                               FontSize="11"
-                               Opacity="0.85"
-                               TextWrapping="Wrap" />
-                    <views:CopyPropertiesView DataContext="{Binding CopyProperties}"
-                                              ShowSaveBar="False" />
-                </StackPanel>
-            </Border>
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                </Expander.Header>
+                <views:CopyPropertiesView DataContext="{Binding CopyProperties}"
+                                          ShowSaveBar="False" />
+            </Expander>
 
             <!--
                 Row 3: 分岐ボタン + ステータス。
