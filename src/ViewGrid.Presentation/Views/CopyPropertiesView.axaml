@@ -100,17 +100,23 @@
                 IsDirty 状態はタブ間で共有、保存/リセットは下部共通なので両タブを跨いで一括編集可能。
             -->
             <Grid RowDefinitions="Auto,*">
+                <!--
+                    タブ見出しは編集 UI 内で「セクション切替」程度の役割なので、本文 (FormGroup の
+                    SectionHeader) と視覚的に階層を作るため FontSize=14 に抑える。旧 26pt は
+                    「画面の主役」級で、限られた縦スペースを食いすぎていた。Spacing も 24 → 12 に。
+                -->
                 <StackPanel Grid.Row="0"
                             Orientation="Horizontal"
-                            Spacing="24"
-                            Margin="0,0,0,8">
+                            Spacing="12"
+                            Margin="0,0,0,4">
                     <Button Padding="0"
                             Background="Transparent"
                             BorderThickness="0"
                             Click="OnPropertiesTabClicked">
-                        <StackPanel Spacing="4">
+                        <StackPanel Spacing="2">
                             <TextBlock Text="特性"
-                                       FontSize="26"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
                                        Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
                             <Border Height="2"
                                     Background="{DynamicResource SystemAccentColor}"
@@ -121,9 +127,10 @@
                             Background="Transparent"
                             BorderThickness="0"
                             Click="OnCropTabClicked">
-                        <StackPanel Spacing="4">
+                        <StackPanel Spacing="2">
                             <TextBlock Text="トリミング"
-                                       FontSize="26"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
                                        Opacity="0.65"
                                        Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
                             <Border Height="2"
