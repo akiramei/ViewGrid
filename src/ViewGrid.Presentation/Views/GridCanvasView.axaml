@@ -53,6 +53,18 @@
                                 <SolidColorBrush Color="#3399FF" Opacity="0.25" />
                             </Border.Background>
                         </Border>
+                        <!--
+                            D&D ハイライト Adornment。Swap (黄) / Invalid (赤) を表現する。
+                            旧実装は placement Border の BorderThickness=4 を直接書き換えていたが
+                            layout に参加して画像が 4px 内側にズレる問題があったため Adornment 化。
+                            BorderBrush / Background は CodeBehind の ApplyPlacementHighlight で動的設定。
+                            ZIndex=101 で SelectionOverlay より手前 (D&D ハイライトの方が一時的・優先度高)。
+                        -->
+                        <Border x:Name="DragHighlightOverlay"
+                                BorderThickness="4"
+                                IsHitTestVisible="False"
+                                IsVisible="False"
+                                ZIndex="101" />
                     </Grid>
                     <!-- 境界ドラッグ用ハンドル（A2）。Canvas 上に絶対配置。
                          Background は付けない（Background があると Canvas 全体が hit-test 対象になり、

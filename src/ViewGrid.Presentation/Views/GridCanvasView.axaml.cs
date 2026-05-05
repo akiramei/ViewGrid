@@ -41,9 +41,6 @@ public partial class GridCanvasView : UserControl
     // セル位置 → セル Border 参照（範囲ハイライトの一括クリアに使う）
     private readonly Dictionary<CellPosition, Border> _cellBorders = new();
 
-    // 配置済み Border の元の枠スタイル（DragOver で変更したものを DragLeave で復元するため）
-    private readonly Dictionary<Border, (IBrush Brush, Thickness Thickness, IBrush? Background)> _placementVisualOriginals = new();
-
     // 配置済み Border → 対応する placement VM。SizeChanged 時に PixelOffset の換算を再適用する。
     private readonly Dictionary<Border, PlacementItemViewModel> _placementBorders = new();
 
@@ -339,7 +336,6 @@ public partial class GridCanvasView : UserControl
         }
         CanvasGrid.RowDefinitions.Clear();
         CanvasGrid.ColumnDefinitions.Clear();
-        _placementVisualOriginals.Clear();
         _cellBorders.Clear();
         _placementBorders.Clear();
         _occupantMap.Clear();
@@ -958,8 +954,6 @@ public partial class GridCanvasView : UserControl
             MinHeight = 0,
         };
 
-        _placementVisualOriginals[container] = (defaultBorderBrush, defaultBorderThickness, defaultBackground);
-
         // 移動ドラッグソース
         container.PointerPressed += OnPlacementPointerPressed;
         container.PointerMoved += OnPlacementPointerMoved;
@@ -1408,7 +1402,7 @@ public partial class GridCanvasView : UserControl
         switch (src.Kind)
         {
             case DragKind.Copy:
-                ApplyPlacementHighlight(border, PlacementInvalidBorderBrush, DragOverInvalidBrush);
+                ApplyPlacementHighlight(target, PlacementInvalidBorderBrush, DragOverInvalidBrush);
                 e.DragEffects = DragDropEffects.None;
                 break;
 
@@ -1419,7 +1413,7 @@ public partial class GridCanvasView : UserControl
                 break;
 
             case DragKind.Placement:
-                ApplyPlacementHighlight(border, PlacementSwapBorderBrush, DragOverSwapBrush);
+                ApplyPlacementHighlight(target, PlacementSwapBorderBrush, DragOverSwapBrush);
                 e.DragEffects = DragDropEffects.Move;
                 break;
 
@@ -1473,8 +1467,7 @@ public partial class GridCanvasView : UserControl
 
     private void OnPlacementDragLeave(object? sender, DragEventArgs e)
     {
-        if (sender is Border border)
-            RestorePlacementHighlight(border);
+        ClearDragHighlight();
     }
 
     private async void OnPlacementDrop(object? sender, DragEventArgs e)
@@ -1482,7 +1475,7 @@ public partial class GridCanvasView : UserControl
         if (sender is not Border border)
             return;
 
-        RestorePlacementHighlight(border);
+        ClearDragHighlight();
         ClearAllCellHighlights();
         e.Handled = true;
 
@@ -1530,21 +1523,26 @@ public partial class GridCanvasView : UserControl
         }
     }
 
-    private static void ApplyPlacementHighlight(Border border, IBrush borderBrush, IBrush background)
+    /// <summary>
+    /// D&amp;D ハイライト (Swap 黄 / Invalid 赤) を Adornment (DragHighlightOverlay) で表示する。
+    /// 旧実装は placement Border の BorderThickness=4 を直接書き換えていたが layout に参加して
+    /// 画像が 4px 内側にズレる問題があったため Adornment 化。
+    /// </summary>
+    private void ApplyPlacementHighlight(PlacementItemViewModel target, IBrush borderBrush, IBrush background)
     {
-        border.BorderBrush = borderBrush;
-        border.BorderThickness = new Thickness(4);
-        border.Background = background;
+        Grid.SetRow(DragHighlightOverlay, target.GridY);
+        Grid.SetColumn(DragHighlightOverlay, target.GridX);
+        Grid.SetRowSpan(DragHighlightOverlay, Math.Max(1, target.OccupyHeight));
+        Grid.SetColumnSpan(DragHighlightOverlay, Math.Max(1, target.OccupyWidth));
+        DragHighlightOverlay.BorderBrush = borderBrush;
+        DragHighlightOverlay.Background = background;
+        DragHighlightOverlay.IsVisible = true;
     }
 
-    private void RestorePlacementHighlight(Border border)
+    /// <summary>D&amp;D ハイライトを消す (DragLeave / Drop 完了時)。</summary>
+    private void ClearDragHighlight()
     {
-        if (!_placementVisualOriginals.TryGetValue(border, out var orig))
-            return;
-        border.BorderBrush = orig.Brush;
-        border.BorderThickness = orig.Thickness;
-        if (orig.Background is not null)
-            border.Background = orig.Background;
+        DragHighlightOverlay.IsVisible = false;
     }
 
     private void ClearAllCellHighlights()
