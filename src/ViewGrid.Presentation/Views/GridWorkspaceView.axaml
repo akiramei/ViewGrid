@@ -118,11 +118,13 @@
         ・Column 0 (320px): 配置元（バリアント）リストを大きく表示。「配置」「プレビュー」「PNG 出力」
           「トリム」操作も同居（旧右ペイン上部から移動）。
         ・Column 1 (*): 中央キャンバス（タイトル / GridCanvasView / ステータス、旧 Column 0 の構造維持）。
-        ・Column 2 (300px): プロパティパネル（ISelectionContext 駆動、旧右ペイン下部）。
+        ・Column 2 (440px): プロパティパネル（ISelectionContext 駆動、旧右ペイン下部）。
           「配置済み」要約 / 「配置を削除」ボタンも同居。
+          幅の変遷: 300 → 380 → 440。共有特性タブ (Rotation/Flip/Scaling/Alignment) や
+          数値入力 2 列 + ボタン類が体感で余裕を持つ幅 (1440 ウィンドウなら中央 680px 残る)。
         旧構造（中央 + 右ペイン 300px に候補とプロパティを混在）から、候補とプロパティを左右に分離する形。
     -->
-    <Grid ColumnDefinitions="320,*,380">
+    <Grid ColumnDefinitions="320,*,440">
 
         <!--
             Column 0: 配置元（バリアント）リスト + 操作ボタン。
