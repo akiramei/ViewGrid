@@ -131,7 +131,6 @@
                     Margin="0,12,0,0"
                     Spacing="8">
             <Button Content="閉じる"
-                    Classes="accent"
                     MinWidth="80"
                     IsDefault="True"
                     IsCancel="True"

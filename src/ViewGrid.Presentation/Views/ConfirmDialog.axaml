@@ -29,7 +29,7 @@
                     Spacing="8">
             <Button x:Name="ConfirmButton"
                     Content="削除"
-                    Classes="accent"
+                    Classes="dangerLink"
                     MinWidth="80"
                     Click="OnConfirmClicked" />
             <Button x:Name="CancelButton"

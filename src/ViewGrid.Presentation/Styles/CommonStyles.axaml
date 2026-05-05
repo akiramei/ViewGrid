@@ -125,6 +125,35 @@
     </Style>
 
     <!--
+        破壊操作 (削除など) 用のリンク風ボタン。 通常時は控えめなテキストリンク見え、
+        hover で薄い赤背景、 pressed でやや濃い赤背景。 アクセント色 (緑/青等の
+        ポジティブ) と区別して 「危険操作」 を視覚化する。 配置を削除 / グリッド削除 /
+        論理コピー削除確認等で使う。 元は GridWorkspaceView ローカル定義だったが、
+        全 View で再利用するため CommonStyles へ昇格。
+    -->
+    <Style Selector="Button.dangerLink">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{DynamicResource SystemErrorTextColor}" />
+    </Style>
+    <Style Selector="Button.dangerLink:pointerover /template/ ContentPresenter">
+        <!-- 薄い赤の hover 背景 (alpha 0x1A = 約 10%)、 危険操作と分かる程度 -->
+        <Setter Property="Background" Value="#1AFF3333" />
+        <Setter Property="BorderBrush" Value="#33FF3333" />
+    </Style>
+    <Style Selector="Button.dangerLink:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="#33FF3333" />
+        <Setter Property="BorderBrush" Value="#66FF3333" />
+    </Style>
+    <Style Selector="Button.dangerLink:disabled">
+        <Setter Property="Opacity" Value="0.4" />
+    </Style>
+
+    <!--
         P2: 主要 TabControl（準備 / 配置）のヘッダ強化。
         FluentTheme の既定だとフォントが本文と同じで「タブ」に見えにくい。
         ・FontSize 16、SemiBold で大きく見せる

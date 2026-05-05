@@ -135,10 +135,12 @@
                     </ComboBox.ItemTemplate>
                 </ComboBox>
                 <Button Content="+ 新規"
+                        Classes="accent"
                         Command="{Binding BeginCreateCommand}"
                         IsEnabled="{Binding !IsCreating}"
                         ToolTip.Tip="新しいグリッドを作成" />
                 <Button Content="削除"
+                        Classes="dangerLink"
                         Command="{Binding DeleteSelectedCommand}"
                         IsEnabled="{Binding SelectedGrid, Converter={x:Static ObjectConverters.IsNotNull}}"
                         ToolTip.Tip="選択中のグリッドを削除" />
