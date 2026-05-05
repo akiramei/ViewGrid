@@ -23,7 +23,7 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         _messenger = new WeakReferenceMessenger();
         var history = new UndoRedoService();
         _vm = new CopyPropertiesViewModel(
-            update, history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver,
+            update, history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
             NullLogger<CopyPropertiesViewModel>.Instance);
     }
 

@@ -4,12 +4,21 @@ using ViewGrid.Core.Services;
 
 namespace ViewGrid.Infrastructure.Services;
 
-internal sealed class SkiaThumbnailService(StorageOptions options, IImageStorage storage) : IThumbnailService
+internal sealed class SkiaThumbnailService(
+    StorageOptions options,
+    IImageStorage storage,
+    IAppSettingsService settings) : IThumbnailService
 {
     private readonly StorageOptions _options = options ?? throw new ArgumentNullException(nameof(options));
     private readonly IImageStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
+    private readonly IAppSettingsService _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
-    public int MaxEdgePixels => 1024;
+    /// <summary>
+    /// サムネ最大エッジ。 設定 (`AppSettings.ThumbnailMaxEdgePixels`) からの動的読み取り。
+    /// 既存サムネは早期リターン (<see cref="GenerateAsync"/> 行 25-26) で再生成されないため、
+    /// 設定変更後の効果は新規取り込みからのみ。 既存分の再生成は別フェーズの一括再生成 UseCase 待ち。
+    /// </summary>
+    public int MaxEdgePixels => _settings.Current.ThumbnailMaxEdgePixels;
 
     public async Task<ErrorOr<string>> GenerateAsync(
         string assetRelativePath,

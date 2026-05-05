@@ -40,7 +40,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         _history = new UndoRedoService();
         var updateCopyForInspector = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
         var copyPropertiesForInspector = new CopyPropertiesViewModel(
-            updateCopyForInspector, _history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver,
+            updateCopyForInspector, _history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
             NullLogger<CopyPropertiesViewModel>.Instance);
         var inspector = new PlacementInspectorViewModel(
             offset,

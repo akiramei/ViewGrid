@@ -32,7 +32,8 @@ public sealed class ImportImageUseCaseTests : IAsyncLifetime
         _tempDir = TestImageFactory.CreateTempDirectory();
         var storageOptions = new StorageOptions { DataDirectory = _tempDir.FullName };
         var storage = new FileSystemImageStorage(storageOptions);
-        var thumbnails = new SkiaThumbnailService(storageOptions, storage);
+        var settings = new JsonAppSettingsService(storageOptions, NullLogger<JsonAppSettingsService>.Instance);
+        var thumbnails = new SkiaThumbnailService(storageOptions, storage, settings);
 
         _useCase = new ImportImageUseCase(
             hasher: new Sha256ImageHasher(),
@@ -41,6 +42,7 @@ public sealed class ImportImageUseCaseTests : IAsyncLifetime
             thumbnailService: thumbnails,
             assetRepository: new EfImageAssetRepository(_db),
             copyRepository: new EfImageCopyRepository(_db),
+            settings: settings,
             logger: NullLogger<ImportImageUseCase>.Instance);
     }
 

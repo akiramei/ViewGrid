@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using SkiaSharp;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Infrastructure.Services;
@@ -16,7 +17,8 @@ public sealed class SkiaThumbnailServiceTests : IAsyncLifetime
         _tempDir = TestImageFactory.CreateTempDirectory();
         var options = new StorageOptions { DataDirectory = _tempDir.FullName };
         _storage = new FileSystemImageStorage(options);
-        _thumbnails = new SkiaThumbnailService(options, _storage);
+        var settings = new JsonAppSettingsService(options, NullLogger<JsonAppSettingsService>.Instance);
+        _thumbnails = new SkiaThumbnailService(options, _storage, settings);
         return Task.CompletedTask;
     }
 

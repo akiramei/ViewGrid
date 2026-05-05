@@ -30,6 +30,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
             thumbnailService: _fx.Thumbnails,
             assetRepository: _fx.AssetRepository,
             copyRepository: _fx.CopyRepository,
+            settings: _fx.AppSettings,
             logger: NullLogger<ImportImageUseCase>.Instance);
 
         var delete = new DeleteImageAssetUseCase(_fx.AssetRepository, _fx.Storage, _fx.Thumbnails);

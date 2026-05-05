@@ -32,7 +32,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         var history = new UndoRedoService();
         var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
         var copyProperties = new CopyPropertiesViewModel(
-            updateCopy, history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver,
+            updateCopy, history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
             NullLogger<CopyPropertiesViewModel>.Instance);
         _vm = new PlacementInspectorViewModel(
             offset,

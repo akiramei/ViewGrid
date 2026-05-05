@@ -1,7 +1,10 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using ViewGrid.Application.Services;
 using ViewGrid.Core.Entities;
+using ViewGrid.Core.Services;
+using ViewGrid.Core.Settings;
 using ViewGrid.Infrastructure.Imaging;
 using ViewGrid.Infrastructure.Persistence;
 using ViewGrid.Infrastructure.Repositories;
@@ -20,6 +23,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
     public DirectoryInfo TempDir { get; }
     public StorageOptions StorageOptions { get; }
     public FileSystemImageStorage Storage { get; }
+    public IAppSettingsService AppSettings { get; }
     public SkiaThumbnailService Thumbnails { get; }
     public AutoCropCache AutoCropCache { get; }
     public SkiaAutoCropBboxResolver AutoCropResolver { get; }
@@ -36,6 +40,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         DirectoryInfo tempDir,
         StorageOptions options,
         FileSystemImageStorage storage,
+        IAppSettingsService appSettings,
         SkiaThumbnailService thumbnails,
         AutoCropCache autoCropCache,
         SkiaAutoCropBboxResolver autoCropResolver,
@@ -51,6 +56,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         TempDir = tempDir;
         StorageOptions = options;
         Storage = storage;
+        AppSettings = appSettings;
         Thumbnails = thumbnails;
         AutoCropCache = autoCropCache;
         AutoCropResolver = autoCropResolver;
@@ -76,7 +82,9 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         var tempDir = TestImageFactory.CreateTempDirectory();
         var storageOptions = new StorageOptions { DataDirectory = tempDir.FullName };
         var storage = new FileSystemImageStorage(storageOptions);
-        var thumbnails = new SkiaThumbnailService(storageOptions, storage);
+        // 設定は実 JSON サービスを temp dir 上に作る (settings.json 不在 → 既定値で起動)
+        var appSettings = new JsonAppSettingsService(storageOptions, NullLogger<JsonAppSettingsService>.Instance);
+        var thumbnails = new SkiaThumbnailService(storageOptions, storage, appSettings);
         var autoCropCache = new AutoCropCache();
         var autoCropResolver = new SkiaAutoCropBboxResolver(autoCropCache);
         var cropResolver = new ImageCropResolver(autoCropResolver, storage);
@@ -88,6 +96,7 @@ internal sealed class UseCaseFixture : IAsyncDisposable
             tempDir,
             storageOptions,
             storage,
+            appSettings,
             thumbnails,
             autoCropCache,
             autoCropResolver,

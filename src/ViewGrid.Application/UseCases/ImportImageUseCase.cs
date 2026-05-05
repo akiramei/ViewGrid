@@ -17,6 +17,7 @@ public sealed partial class ImportImageUseCase(
     IThumbnailService thumbnailService,
     IImageAssetRepository assetRepository,
     IImageCopyRepository copyRepository,
+    IAppSettingsService settings,
     ILogger<ImportImageUseCase> logger)
 {
     private readonly IImageHasher _hasher = hasher;
@@ -25,6 +26,7 @@ public sealed partial class ImportImageUseCase(
     private readonly IThumbnailService _thumbnailService = thumbnailService;
     private readonly IImageAssetRepository _assetRepository = assetRepository;
     private readonly IImageCopyRepository _copyRepository = copyRepository;
+    private readonly IAppSettingsService _settings = settings;
     private readonly ILogger<ImportImageUseCase> _logger = logger;
 
     public async Task<ErrorOr<ImportImageResult>> ExecuteAsync(ImportImageRequest request, CancellationToken ct = default)
@@ -121,7 +123,8 @@ public sealed partial class ImportImageUseCase(
             AssetId = assetId,
             CopyName = null,
             Transform = ImageTransform.Identity,
-            ScalingMode = ScalingMode.UniformContain,
+            // 既定スケーリングは設定から (ユーザーが「設定 → 既定スケーリング」で変えていれば追従)
+            ScalingMode = _settings.Current.DefaultScalingMode,
             Alignment = Alignment.Center,
             OccupySize = OccupySize.OneByOne,
             CreatedAt = now,

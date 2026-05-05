@@ -24,6 +24,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     private readonly IMessenger _messenger;
     private readonly IImageColorPicker _colorPicker;
     private readonly IAutoCropBboxResolver _autoCropResolver;
+    private readonly IAppSettingsService _settings;
     private readonly ILogger<CopyPropertiesViewModel> _logger;
 
     private CopyItemViewModel? _source;
@@ -265,6 +266,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         IMessenger messenger,
         IImageColorPicker colorPicker,
         IAutoCropBboxResolver autoCropResolver,
+        IAppSettingsService settings,
         ILogger<CopyPropertiesViewModel> logger)
     {
         _updateUseCase = updateUseCase;
@@ -272,6 +274,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         _messenger = messenger;
         _colorPicker = colorPicker;
         _autoCropResolver = autoCropResolver;
+        _settings = settings;
         _logger = logger;
         PropertyChanged += OnAnyPropertyChanged;
     }
@@ -293,7 +296,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 AlignX = AnchorX.Center;
                 AlignY = AnchorY.Center;
                 AutoCropEnabled = false;
-                AutoCropPreset = AutoCropPreset.White;
+                AutoCropPreset = _settings.Current.DefaultAutoCropPreset;
                 AutoCropThreshold = 0;
                 AutoCropCustomColorHex = "#FFFFFF";
                 ManualCropEnabled = false;
@@ -332,7 +335,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 else
                 {
                     AutoCropEnabled = false;
-                    AutoCropPreset = AutoCropPreset.White;
+                    AutoCropPreset = _settings.Current.DefaultAutoCropPreset;
                     AutoCropThreshold = 0;
                     AutoCropCustomColorHex = "#FFFFFF";
                 }

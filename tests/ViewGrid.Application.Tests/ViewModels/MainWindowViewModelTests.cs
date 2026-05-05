@@ -39,6 +39,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             thumbnailService: _fx.Thumbnails,
             assetRepository: _fx.AssetRepository,
             copyRepository: _fx.CopyRepository,
+            settings: _fx.AppSettings,
             logger: NullLogger<ImportImageUseCase>.Instance);
         var deleteAsset = new DeleteImageAssetUseCase(_fx.AssetRepository, _fx.Storage, _fx.Thumbnails);
         var sharedHistory = new ViewGrid.Application.History.UndoRedoService();
@@ -51,7 +52,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
 
         // CopyPropertiesViewModel: PlacementInspector に inline embed されるため必要
         var copyProperties = new CopyPropertiesViewModel(
-            updateCopy, sharedHistory, _messenger, _fx.ColorPicker, _fx.AutoCropResolver,
+            updateCopy, sharedHistory, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
             NullLogger<CopyPropertiesViewModel>.Instance);
 
         // GridCanvasListViewModel
