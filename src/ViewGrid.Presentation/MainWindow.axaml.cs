@@ -1,8 +1,6 @@
-using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
-using CommunityToolkit.Mvvm.Input;
 using ViewGrid.Application.History;
 using ViewGrid.Application.ViewModels;
 using ViewGrid.Presentation.Views;
@@ -11,20 +9,25 @@ namespace ViewGrid.Presentation;
 
 public partial class MainWindow : Window
 {
-    /// <summary>
-    /// Ctrl+, ショートカットで設定ダイアログを開くためのコマンド。
-    /// MenuItem の InputGesture は表示専用で実バインドは Window.KeyBindings 側に必要なため、
-    /// View 側で完結させる目的で MainWindow 自身に持たせる (DataContext の VM ではなく
-    /// `ElementName=MainWindowRoot` 経由で参照)。
-    /// </summary>
-    public ICommand OpenSettingsCommand { get; }
-
     public MainWindow()
     {
         InitializeComponent();
-        OpenSettingsCommand = new RelayCommand(() => OnSettingsClicked(this, new Avalonia.Interactivity.RoutedEventArgs()));
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
+        // Ctrl+, は MainWindow 自身に紐付けたいが、 KeyBindings 内の ElementName 参照が
+        // NameScope の都合で解決しないため、 ここで KeyDown を直接購読する。 既存
+        // Ctrl+Z/Y/O/N/E は VM コマンドへの DataContext バインドなので KeyBindings で
+        // OK だが、 設定ダイアログ起動は View 側にあるためこちらの経路を使う。
+        KeyDown += OnWindowKeyDown;
+    }
+
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.OemComma && (e.KeyModifiers & KeyModifiers.Control) != 0)
+        {
+            OnSettingsClicked(this, new Avalonia.Interactivity.RoutedEventArgs());
+            e.Handled = true;
+        }
     }
 
     private static void OnDragOver(object? sender, DragEventArgs e)
