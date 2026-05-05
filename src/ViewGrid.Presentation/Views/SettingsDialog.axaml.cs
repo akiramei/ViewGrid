@@ -32,4 +32,14 @@ public partial class SettingsDialog : Window
     }
 
     private void OnCloseClicked(object? sender, RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// 「全サムネを再生成...」 ボタン: <see cref="ThumbnailRegenDialog"/> をモーダル表示する。
+    /// このダイアログを閉じずに上に重ねるので、 戻った後も設定ダイアログは継続。
+    /// </summary>
+    private async void OnRegenerateThumbnailsClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Avalonia.Application.Current is not App app || app.Services is null) return;
+        await ThumbnailRegenDialog.ShowAsync(this, app.Services);
+    }
 }

@@ -71,6 +71,17 @@
                             <RadioButton GroupName="ThumbSize" Content="1024" IsChecked="{Binding IsThumb1024}" />
                             <RadioButton GroupName="ThumbSize" Content="2048" IsChecked="{Binding IsThumb2048}" />
                         </StackPanel>
+
+                        <!-- 既存サムネ全件再生成 -->
+                        <Border Background="{DynamicResource ViewGridCardBorder}"
+                                Height="1" Margin="0,12,0,12" />
+                        <TextBlock Classes="FieldLabel" Text="既存サムネを再生成" />
+                        <TextBlock Classes="HintText"
+                                   Text="設定変更後の MaxEdge を全アセットに反映します。 反映にはアプリ再起動が必要です。"
+                                   Margin="0,0,0,4" />
+                        <Button Content="全サムネを再生成..."
+                                HorizontalAlignment="Left"
+                                Click="OnRegenerateThumbnailsClicked" />
                     </StackPanel>
                 </Border>
 

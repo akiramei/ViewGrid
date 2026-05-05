@@ -1,0 +1,82 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:ViewGrid.Application.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="320"
+        x:Class="ViewGrid.Presentation.Views.ThumbnailRegenDialog"
+        x:DataType="vm:ThumbnailRegenDialogViewModel"
+        Title="サムネを再生成"
+        Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
+        Width="520" Height="320"
+        MinWidth="480" MinHeight="280"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="20">
+        <!-- タイトル / 説明 -->
+        <StackPanel Grid.Row="0" Spacing="6">
+            <TextBlock FontWeight="SemiBold" FontSize="14"
+                       Text="全サムネを再生成" />
+            <TextBlock Opacity="0.75" FontSize="12" TextWrapping="Wrap"
+                       Text="設定の「サムネ最大エッジ」 を全アセットに反映します。 完了するまでアプリの操作はお控えください。 元画像が見つからないアセットはスキップされます。" />
+        </StackPanel>
+
+        <!-- 進捗バー -->
+        <ProgressBar Grid.Row="1"
+                     Maximum="{Binding Total}"
+                     Value="{Binding Completed}"
+                     Height="16"
+                     Margin="0,16,0,4" />
+
+        <!-- 進捗ラベル -->
+        <TextBlock Grid.Row="2"
+                   FontSize="12" Opacity="0.75"
+                   TextTrimming="CharacterEllipsis"
+                   Margin="0,0,0,8">
+            <Run Text="処理中: " />
+            <Run Text="{Binding CurrentAssetName}" />
+            <Run Text="  (" /><Run Text="{Binding Completed}" /><Run Text=" / " /><Run Text="{Binding Total}" /><Run Text=")" />
+        </TextBlock>
+
+        <!-- 集計 + 完了メッセージ -->
+        <StackPanel Grid.Row="3" Spacing="8">
+            <TextBlock FontSize="12">
+                <Run Text="成功: " /><Run Text="{Binding Successful}" />
+                <Run Text="    スキップ: " /><Run Text="{Binding Skipped}" />
+                <Run Text="    失敗: " /><Run Text="{Binding Failed}" />
+            </TextBlock>
+
+            <Border IsVisible="{Binding IsCompleted}"
+                    Background="{DynamicResource ViewGridCardBackground}"
+                    BorderBrush="{DynamicResource ViewGridCardBorder}"
+                    BorderThickness="1" CornerRadius="4"
+                    Padding="12">
+                <TextBlock Text="{Binding CompletionMessage}"
+                           TextWrapping="Wrap"
+                           FontSize="12" />
+            </Border>
+        </StackPanel>
+
+        <!-- ボタン: 開始 / キャンセル / 閉じる -->
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,16,0,0"
+                    Spacing="8">
+            <Button Content="開始"
+                    Classes="accent"
+                    MinWidth="80"
+                    IsDefault="True"
+                    Command="{Binding StartCommand}" />
+            <Button Content="キャンセル"
+                    MinWidth="80"
+                    Command="{Binding CancelCommand}" />
+            <Button Content="閉じる"
+                    MinWidth="80"
+                    IsCancel="True"
+                    Command="{Binding CloseCommand}" />
+        </StackPanel>
+    </Grid>
+</Window>
