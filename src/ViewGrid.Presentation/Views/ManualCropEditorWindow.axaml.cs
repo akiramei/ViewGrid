@@ -44,11 +44,11 @@ public partial class ManualCropEditorWindow : Window
     private int _sourceWidth;
     private int _sourceHeight;
 
-    // 編集中の矩形（元画像ピクセル）
-    private double _x;
-    private double _y;
-    private double _w;
-    private double _h;
+    // 編集中の矩形（元画像ピクセル整数）
+    private int _x;
+    private int _y;
+    private int _w;
+    private int _h;
 
     private double _zoom = 1.0;
 
@@ -56,7 +56,7 @@ public partial class ManualCropEditorWindow : Window
     private bool _isDragging;
     private DragMode _dragMode;
     private Point _dragStartPoint;
-    private (double X, double Y, double W, double H) _dragStartRect;
+    private (int X, int Y, int W, int H) _dragStartRect;
 
     // パン状態（中ボタン or Space+左ボタン）
     private bool _panActive;
@@ -137,13 +137,9 @@ public partial class ManualCropEditorWindow : Window
         ApplyFitZoom();
     }
 
-    /// <summary>OK が押された場合のみ編集後の矩形を返す。キャンセル時は <c>null</c>。
-    /// 内部 _x/_y/_w/_h は (Stage 1 では) double 保持だが、 戻り値は整数で返して
-    /// VM 側 (int?) との境界で確実に整数化する。</summary>
+    /// <summary>OK が押された場合のみ編集後の矩形を返す。キャンセル時は <c>null</c>。</summary>
     public (int X, int Y, int W, int H)? GetResult()
-        => _committed
-            ? ((int)Math.Round(_x), (int)Math.Round(_y), (int)Math.Round(_w), (int)Math.Round(_h))
-            : null;
+        => _committed ? (_x, _y, _w, _h) : null;
 
     // -------------------- ズーム --------------------
 
@@ -234,10 +230,11 @@ public partial class ManualCropEditorWindow : Window
     private void OnNumericValueChanged(object? sender, NumericUpDownValueChangedEventArgs e)
     {
         if (_suppressNumericSync) return;
-        _x = Math.Clamp((double)(XInput.Value ?? 0m), 0, _sourceWidth);
-        _y = Math.Clamp((double)(YInput.Value ?? 0m), 0, _sourceHeight);
-        _w = Math.Clamp((double)(WInput.Value ?? 0m), 0, _sourceWidth - _x);
-        _h = Math.Clamp((double)(HInput.Value ?? 0m), 0, _sourceHeight - _y);
+        // NumericUpDown.Value は decimal? なので int に丸めて取り込む (FormatString="0" で表示も整数)
+        _x = Math.Clamp((int)(XInput.Value ?? 0m), 0, _sourceWidth);
+        _y = Math.Clamp((int)(YInput.Value ?? 0m), 0, _sourceHeight);
+        _w = Math.Clamp((int)(WInput.Value ?? 0m), 0, _sourceWidth - _x);
+        _h = Math.Clamp((int)(HInput.Value ?? 0m), 0, _sourceHeight - _y);
         UpdateOverlay();
     }
 
@@ -503,10 +500,12 @@ public partial class ManualCropEditorWindow : Window
         {
             case DragMode.CreateNew:
             {
-                var x1 = Math.Clamp(startX, 0, _sourceWidth);
-                var y1 = Math.Clamp(startY, 0, _sourceHeight);
-                var x2 = Math.Clamp(curX, 0, _sourceWidth);
-                var y2 = Math.Clamp(curY, 0, _sourceHeight);
+                // ドラッグ起点 / 現在点はオーバーレイ座標 (double) なので、 ピクセル境界で
+                // Math.Round → Math.Clamp の順で int に丸める (整数スナップ)
+                var x1 = (int)Math.Clamp(Math.Round(startX), 0, _sourceWidth);
+                var y1 = (int)Math.Clamp(Math.Round(startY), 0, _sourceHeight);
+                var x2 = (int)Math.Clamp(Math.Round(curX), 0, _sourceWidth);
+                var y2 = (int)Math.Clamp(Math.Round(curY), 0, _sourceHeight);
                 _x = Math.Min(x1, x2);
                 _y = Math.Min(y1, y2);
                 _w = Math.Abs(x2 - x1);
@@ -515,10 +514,11 @@ public partial class ManualCropEditorWindow : Window
             }
             case DragMode.Move:
             {
+                // dx/dy は double のまま計算し、 最終代入で int に丸める
                 var dx = curX - startX;
                 var dy = curY - startY;
-                _x = Math.Clamp(_dragStartRect.X + dx, 0, _sourceWidth - _dragStartRect.W);
-                _y = Math.Clamp(_dragStartRect.Y + dy, 0, _sourceHeight - _dragStartRect.H);
+                _x = (int)Math.Clamp(Math.Round(_dragStartRect.X + dx), 0, _sourceWidth - _dragStartRect.W);
+                _y = (int)Math.Clamp(Math.Round(_dragStartRect.Y + dy), 0, _sourceHeight - _dragStartRect.H);
                 break;
             }
             case DragMode.ResizeNW:
@@ -532,8 +532,8 @@ public partial class ManualCropEditorWindow : Window
                 var sb = _dragStartRect.Y + _dragStartRect.H;
                 var fixedX = (_dragMode is DragMode.ResizeNE or DragMode.ResizeSE) ? sx : sr;
                 var fixedY = (_dragMode is DragMode.ResizeSW or DragMode.ResizeSE) ? sy : sb;
-                var moveX = Math.Clamp(curX, 0, _sourceWidth);
-                var moveY = Math.Clamp(curY, 0, _sourceHeight);
+                var moveX = (int)Math.Clamp(Math.Round(curX), 0, _sourceWidth);
+                var moveY = (int)Math.Clamp(Math.Round(curY), 0, _sourceHeight);
                 _x = Math.Min(fixedX, moveX);
                 _y = Math.Min(fixedY, moveY);
                 _w = Math.Abs(moveX - fixedX);
@@ -546,7 +546,7 @@ public partial class ManualCropEditorWindow : Window
                 var sy = _dragStartRect.Y;
                 var sb = _dragStartRect.Y + _dragStartRect.H;
                 var fixedY = _dragMode is DragMode.ResizeN ? sb : sy;
-                var moveY = Math.Clamp(curY, 0, _sourceHeight);
+                var moveY = (int)Math.Clamp(Math.Round(curY), 0, _sourceHeight);
                 _x = _dragStartRect.X;
                 _w = _dragStartRect.W;
                 _y = Math.Min(fixedY, moveY);
@@ -559,7 +559,7 @@ public partial class ManualCropEditorWindow : Window
                 var sx = _dragStartRect.X;
                 var sr = _dragStartRect.X + _dragStartRect.W;
                 var fixedX = _dragMode is DragMode.ResizeW ? sr : sx;
-                var moveX = Math.Clamp(curX, 0, _sourceWidth);
+                var moveX = (int)Math.Clamp(Math.Round(curX), 0, _sourceWidth);
                 _y = _dragStartRect.Y;
                 _h = _dragStartRect.H;
                 _x = Math.Min(fixedX, moveX);

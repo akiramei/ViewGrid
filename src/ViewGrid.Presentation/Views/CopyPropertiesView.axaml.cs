@@ -67,7 +67,7 @@ public partial class CopyPropertiesView : UserControl
     private bool _isDragging;
     private DragMode _dragMode;
     private Point _dragStartPoint;
-    private (double X, double Y, double W, double H) _dragStartRect;
+    private (int X, int Y, int W, int H) _dragStartRect;
 
     private const double HandleSize = 12;
     private const double HandleHitSlack = 4;
@@ -634,8 +634,8 @@ public partial class CopyPropertiesView : UserControl
                 var fixedY = _dragMode is DragMode.ResizeN ? startBottom : startY;
                 var moveY = Math.Clamp(srcCurrent.Value.SrcY, 0, sh);
 
-                _vm.ManualCropPixelX = (int)Math.Round(_dragStartRect.X);
-                _vm.ManualCropPixelWidth = (int)Math.Round(_dragStartRect.W);
+                _vm.ManualCropPixelX = _dragStartRect.X;
+                _vm.ManualCropPixelWidth = _dragStartRect.W;
                 _vm.ManualCropPixelY = (int)Math.Round(Math.Min(fixedY, moveY));
                 _vm.ManualCropPixelHeight = (int)Math.Round(Math.Abs(moveY - fixedY));
                 break;
@@ -649,8 +649,8 @@ public partial class CopyPropertiesView : UserControl
                 var fixedX = _dragMode is DragMode.ResizeW ? startRight : startX;
                 var moveX = Math.Clamp(srcCurrent.Value.SrcX, 0, sw);
 
-                _vm.ManualCropPixelY = (int)Math.Round(_dragStartRect.Y);
-                _vm.ManualCropPixelHeight = (int)Math.Round(_dragStartRect.H);
+                _vm.ManualCropPixelY = _dragStartRect.Y;
+                _vm.ManualCropPixelHeight = _dragStartRect.H;
                 _vm.ManualCropPixelX = (int)Math.Round(Math.Min(fixedX, moveX));
                 _vm.ManualCropPixelWidth = (int)Math.Round(Math.Abs(moveX - fixedX));
                 break;
