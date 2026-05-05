@@ -72,6 +72,37 @@ internal sealed class SkiaThumbnailService(
         }
     }
 
+    public async Task<ErrorOr<string>> RegenerateAsync(
+        string assetRelativePath,
+        string fileHash,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(assetRelativePath);
+        ArgumentException.ThrowIfNullOrEmpty(fileHash);
+
+        // 既存サムネがあれば削除してから GenerateAsync に委譲する。
+        // GenerateAsync は冒頭で File.Exists 早期リターンする仕様なので、 ここで消しておけば
+        // 再生成パスに入ってくれる。 設定 (MaxEdge) が変わっても既存サムネが置換されない問題への対処。
+        var thumbAbsolute = ResolveAbsolutePath(BuildRelativePath(fileHash));
+        if (File.Exists(thumbAbsolute))
+        {
+            try
+            {
+                File.Delete(thumbAbsolute);
+            }
+            catch (IOException ex)
+            {
+                return Error.Failure("Thumbnail.RegenerateDeleteFailed", ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Error.Failure("Thumbnail.RegenerateDeleteFailed", ex.Message);
+            }
+        }
+
+        return await GenerateAsync(assetRelativePath, fileHash, ct);
+    }
+
     public string? TryResolveAbsolutePath(string fileHash)
     {
         if (string.IsNullOrEmpty(fileHash))
