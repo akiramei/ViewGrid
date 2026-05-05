@@ -35,7 +35,25 @@
                 <Grid x:Name="CanvasContainer"
                       Grid.Row="1" Grid.Column="1"
                       Width="600" Height="600">
-                    <Grid x:Name="CanvasGrid" Background="White" />
+                    <Grid x:Name="CanvasGrid" Background="White">
+                        <!--
+                            選択枠 Adornment (C 案)。placement Border は常に Margin=0 / BorderThickness=0
+                            で Image を Renderer と完全同一 geometry で配置するため、選択強調は別レイヤーで
+                            重ねる。layout に参加せず Image 位置に影響しないよう IsHitTestVisible=False、
+                            placement Border より手前に出るよう ZIndex=100 を指定。Grid.Row/Column/RowSpan/
+                            ColumnSpan は CodeBehind が SelectedPlacement 変更時に更新する。
+                        -->
+                        <Border x:Name="SelectionOverlay"
+                                BorderBrush="DodgerBlue"
+                                BorderThickness="2"
+                                IsHitTestVisible="False"
+                                IsVisible="False"
+                                ZIndex="100">
+                            <Border.Background>
+                                <SolidColorBrush Color="#3399FF" Opacity="0.25" />
+                            </Border.Background>
+                        </Border>
+                    </Grid>
                     <!-- 境界ドラッグ用ハンドル（A2）。Canvas 上に絶対配置。
                          Background は付けない（Background があると Canvas 全体が hit-test 対象になり、
                          配置 Border の D&D を奪ってしまう）。子の Rectangle ハンドルだけが hit-test。 -->

@@ -171,11 +171,37 @@ public partial class GridCanvasView : UserControl
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(GridWorkspaceViewModel.CurrentGrid)
-            or nameof(GridWorkspaceViewModel.SelectedPlacement))
+        if (e.PropertyName == nameof(GridWorkspaceViewModel.CurrentGrid))
         {
+            // グリッド切替は全体再構築 (RowDefinitions/ColumnDefinitions / Layer 1/2 の総取り替え)。
             Rebuild();
         }
+        else if (e.PropertyName == nameof(GridWorkspaceViewModel.SelectedPlacement))
+        {
+            // 選択変更は SelectionOverlay の位置更新のみで完結 (Border 自体は不変)。
+            // 旧実装は Rebuild を呼んでいたが Layer 2 全 Border の再構築が無駄だった。
+            UpdateSelectionOverlay();
+        }
+    }
+
+    /// <summary>
+    /// 選択枠 Adornment (axaml の SelectionOverlay) を SelectedPlacement のセル位置に追従させる。
+    /// IsHitTestVisible=False なので D&D / クリックを阻害しない。layout に参加しないので
+    /// Image の位置は変わらない (Alignment.Right などでも選択時にズレない)。
+    /// </summary>
+    private void UpdateSelectionOverlay()
+    {
+        var sel = _vm?.SelectedPlacement;
+        if (sel is null)
+        {
+            SelectionOverlay.IsVisible = false;
+            return;
+        }
+        Grid.SetRow(SelectionOverlay, sel.GridY);
+        Grid.SetColumn(SelectionOverlay, sel.GridX);
+        Grid.SetRowSpan(SelectionOverlay, Math.Max(1, sel.OccupyHeight));
+        Grid.SetColumnSpan(SelectionOverlay, Math.Max(1, sel.OccupyWidth));
+        SelectionOverlay.IsVisible = true;
     }
 
     private void OnPlacementsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Rebuild();
@@ -225,6 +251,9 @@ public partial class GridCanvasView : UserControl
                     // 「全削除 + 再登録」で十分シンプル）
                     RemovePlacementFromOccupantMap(placement);
                     AddPlacementToOccupantMap(placement);
+                    // 選択中の placement なら SelectionOverlay も追従させる。
+                    if (ReferenceEquals(placement, _vm?.SelectedPlacement))
+                        UpdateSelectionOverlay();
                     return;
                 }
             }
@@ -243,6 +272,8 @@ public partial class GridCanvasView : UserControl
                     Grid.SetColumnSpan(border, Math.Max(1, placement.OccupyWidth));
                     RemovePlacementFromOccupantMap(placement);
                     AddPlacementToOccupantMap(placement);
+                    if (ReferenceEquals(placement, _vm?.SelectedPlacement))
+                        UpdateSelectionOverlay();
                     return;
                 }
             }
@@ -300,7 +331,12 @@ public partial class GridCanvasView : UserControl
         // Placements コレクション変更、DataContext 変更）すべてで漏れなく解除される。
         UnsubscribePlacementChanges();
 
-        CanvasGrid.Children.Clear();
+        // SelectionOverlay は Adornment なので Layer 1/2 の再構築でも消さない（常駐）。
+        for (int i = CanvasGrid.Children.Count - 1; i >= 0; i--)
+        {
+            if (!ReferenceEquals(CanvasGrid.Children[i], SelectionOverlay))
+                CanvasGrid.Children.RemoveAt(i);
+        }
         CanvasGrid.RowDefinitions.Clear();
         CanvasGrid.ColumnDefinitions.Clear();
         _placementVisualOriginals.Clear();
@@ -362,7 +398,9 @@ public partial class GridCanvasView : UserControl
         // Layer 2: 配置済み（自身もドロップ対象 = 入れ替え）
         foreach (var placement in _vm.Placements)
         {
-            var visual = BuildPlacementVisual(placement, _vm.SelectedPlacement?.PlacementId == placement.PlacementId);
+            // 選択強調は SelectionOverlay (CanvasGrid 直下、ZIndex=100) が担当するため、
+            // BuildPlacementVisual には isSelected を伝えなくてよい (常に非選択スタイル)。
+            var visual = BuildPlacementVisual(placement);
             Grid.SetRow(visual, placement.GridY);
             Grid.SetColumn(visual, placement.GridX);
             Grid.SetRowSpan(visual, Math.Max(1, placement.OccupyHeight));
@@ -390,6 +428,10 @@ public partial class GridCanvasView : UserControl
         // の Clear/Add が自動レイアウト更新を発火しないケースの保険として、明示的に
         // InvalidateMeasure を呼んで Star Sizing の再計算を強制する。
         CanvasGrid.InvalidateMeasure();
+
+        // SelectionOverlay は Layer 1/2 の再構築でも常駐させているが、
+        // 新しい RowDefinitions/ColumnDefinitions に追従させるため Grid.Row/Column を再設定。
+        UpdateSelectionOverlay();
     }
 
     /// <summary>
@@ -804,16 +846,13 @@ public partial class GridCanvasView : UserControl
             placement.PixelOffsetY * sy));
     }
 
-    private Border BuildPlacementVisual(PlacementItemViewModel placement, bool isSelected)
+    private Border BuildPlacementVisual(PlacementItemViewModel placement)
     {
-        // C' 案: 非選択時は背景透明 + 枠線なし + Margin 0 で Renderer (PNG 出力) と
-        // 完全に同一 geometry にする。これにより 3 placement で 1 枚の画像を分割表示する
-        // ような「連続画像」用途でも段差が出ない。空セル / placement 境界は Layer 1
-        // (LightGray 0.5px) の常時描画グリッド線で示される。
-        // 選択中は青系半透明背景 + DodgerBlue 2px 枠で「いま編集中の placement」を明示。
-        var defaultBackground = isSelected
-            ? (IBrush)new SolidColorBrush(Color.FromArgb(0x66, 0x33, 0x99, 0xFF))
-            : (IBrush)Brushes.Transparent;
+        // C 案: placement Border は常に Margin 0 + 枠線/背景なしで Renderer (PNG 出力) と
+        // 完全同一 geometry に保つ。選択強調は SelectionOverlay (axaml の CanvasGrid 直下、
+        // ZIndex=100, IsHitTestVisible=False) が担当するため、ここでは isSelected を見ない。
+        // これにより Alignment.Right などで配置した Image が選択時にズレる問題が解消する。
+        var defaultBackground = (IBrush)Brushes.Transparent;
 
         Control content;
         if (!string.IsNullOrEmpty(placement.ThumbnailPath) && File.Exists(placement.ThumbnailPath))
@@ -899,11 +938,10 @@ public partial class GridCanvasView : UserControl
             content = BuildLabelFallback(placement);
         }
 
-        var defaultBorderBrush = isSelected ? (IBrush)Brushes.DodgerBlue : Brushes.Transparent;
-        // C' 案: 非選択時は枠線も Margin もゼロにして Renderer と geometry を一致させる。
-        // 選択時のみ DodgerBlue 2px 枠を出すが、これは layout に参加するため Image が 2px 分
-        // 隠れる。気になる場合は将来的に Adornment / overlay 描画に切り替える余地あり。
-        var defaultBorderThickness = new Thickness(isSelected ? 2 : 0);
+        // C 案: 選択強調は SelectionOverlay が担当するため、placement Border 自体は常に
+        // 透明 + 0px。layout に参加する枠線がなくなり Alignment.Right などでも Image が動かない。
+        var defaultBorderBrush = (IBrush)Brushes.Transparent;
+        var defaultBorderThickness = new Thickness(0);
 
         var container = new Border
         {
