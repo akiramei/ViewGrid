@@ -34,6 +34,10 @@
         <KeyBinding Gesture="Ctrl+O" Command="{Binding AssetLibrary.PickFilesAndImportCommand}" />
         <KeyBinding Gesture="Ctrl+N" Command="{Binding GridWorkspace.BeginCreateVariantCommand}" />
         <KeyBinding Gesture="Ctrl+E" Command="{Binding GridWorkspace.ExportToPngCommand}" />
+        <!-- 設定ダイアログ起動は MainWindow 自身の OpenSettingsCommand 経由 (DataContext の
+             VM ではなく View が直接保持しているため、 ElementName で MainWindow を参照)。 -->
+        <KeyBinding Gesture="Ctrl+OemComma"
+                    Command="{Binding OpenSettingsCommand, ElementName=MainWindowRoot}" />
     </Window.KeyBindings>
 
     <Window.Resources>

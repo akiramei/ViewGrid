@@ -1,6 +1,8 @@
+using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
+using CommunityToolkit.Mvvm.Input;
 using ViewGrid.Application.History;
 using ViewGrid.Application.ViewModels;
 using ViewGrid.Presentation.Views;
@@ -9,9 +11,18 @@ namespace ViewGrid.Presentation;
 
 public partial class MainWindow : Window
 {
+    /// <summary>
+    /// Ctrl+, ショートカットで設定ダイアログを開くためのコマンド。
+    /// MenuItem の InputGesture は表示専用で実バインドは Window.KeyBindings 側に必要なため、
+    /// View 側で完結させる目的で MainWindow 自身に持たせる (DataContext の VM ではなく
+    /// `ElementName=MainWindowRoot` 経由で参照)。
+    /// </summary>
+    public ICommand OpenSettingsCommand { get; }
+
     public MainWindow()
     {
         InitializeComponent();
+        OpenSettingsCommand = new RelayCommand(() => OnSettingsClicked(this, new Avalonia.Interactivity.RoutedEventArgs()));
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
     }
