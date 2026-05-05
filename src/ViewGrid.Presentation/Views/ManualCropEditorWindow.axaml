@@ -22,12 +22,21 @@
                 <TextBlock x:Name="ZoomLabel" Text="100%" VerticalAlignment="Center" MinWidth="56" Margin="8,0,0,0" />
             </StackPanel>
             <TextBlock Grid.Column="1"
-                       Text="サムネ上でドラッグして矩形を描画 / 8 ハンドルでサイズ変更 / 内部ドラッグで移動 / ドラッグ中に画像端へ近づくと自動スクロール"
+                       Text="画像上をドラッグで矩形作成 / 内部ドラッグで移動 / 端ハンドルでサイズ変更"
                        Opacity="0.7"
                        FontSize="11"
                        VerticalAlignment="Center"
                        HorizontalAlignment="Right"
-                       TextWrapping="Wrap" />
+                       TextWrapping="Wrap">
+                <ToolTip.Tip>
+                    <TextBlock>
+                        <Run Text="画像上をドラッグで矩形作成" /><LineBreak />
+                        <Run Text="8 ハンドルで端 / 隅をリサイズ" /><LineBreak />
+                        <Run Text="矩形内部ドラッグで移動" /><LineBreak />
+                        <Run Text="ドラッグ中に画像端へ近づくと自動スクロール" />
+                    </TextBlock>
+                </ToolTip.Tip>
+            </TextBlock>
         </Grid>
 
         <!-- メイン: ScrollViewer + 画像 + Canvas オーバーレイ -->
