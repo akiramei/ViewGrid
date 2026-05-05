@@ -18,10 +18,9 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         var create = new CreateGridCanvasUseCase(_fx.GridRepository);
         var delete = new DeleteGridCanvasUseCase(_fx.GridRepository);
         var rename = new RenameGridCanvasUseCase(_fx.GridRepository);
-        var setActive = new SetActiveGridCanvasUseCase(_fx.GridRepository);
         var history = new UndoRedoService();
         _vm = new GridCanvasListViewModel(
-            _fx.GridRepository, create, delete, rename, setActive, history,
+            _fx.GridRepository, create, delete, rename, _fx.AppSettings, history,
             NullLogger<GridCanvasListViewModel>.Instance);
     }
 
@@ -62,7 +61,9 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         _vm.Grids.Should().HaveCount(1);
         _vm.SelectedGrid.Should().NotBeNull();
         _vm.SelectedGrid!.Name.Should().Be("new-grid");
-        _vm.SelectedGrid.IsActive.Should().BeTrue();
+        // 旧仕様: IsActive=true (auto-activate on create)。 「デフォルトグリッド」 概念廃止により
+        // 常に IsActive=false で永続化。 「直前に作成 → 自動選択」 の UX は SelectedGrid 直接代入で維持。
+        _vm.SelectedGrid.IsActive.Should().BeFalse();
     }
 
     [Fact]
@@ -79,7 +80,7 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ActivateSelectedAsync_Updates_IsActive_Exclusively()
+    public async Task LoadAsync_Restores_LastOpenedGrid_From_Settings()
     {
         _vm.BeginCreate();
         _vm.DraftName = "a";
@@ -87,13 +88,30 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
 
         _vm.BeginCreate();
         _vm.DraftName = "b";
-        await _vm.ConfirmCreateAsync(); // b がアクティブ
+        await _vm.ConfirmCreateAsync();
 
-        _vm.SelectedGrid = _vm.Grids.First(g => g.Name == "a");
-        await _vm.ActivateSelectedAsync();
+        // b が最後に作成されたため、 ConfirmCreate 末尾の SelectedGrid = 新規 で b が選ばれており、
+        // OnSelectedGridChanged が settings の LastOpenedGridId を b に更新している。
+        // ここで a に切替えて settings を a に書き戻す。
+        var gridA = _vm.Grids.First(g => g.Name == "a");
+        _vm.SelectedGrid = gridA;
+        // OnSelectedGridChanged は SaveAsync を fire-and-forget で起動するので、
+        // settings.json への書き出しが完了するまで待ってから次のアサーションに進む。
+        await _vm.LastOpenedSaveTask;
 
-        _vm.Grids.Single(g => g.Name == "a").IsActive.Should().BeTrue();
-        _vm.Grids.Single(g => g.Name == "b").IsActive.Should().BeFalse();
+        // 新しい VM (新セッション相当) を立てて LoadAsync で復元動作を確認する。
+        var create = new CreateGridCanvasUseCase(_fx.GridRepository);
+        var delete = new DeleteGridCanvasUseCase(_fx.GridRepository);
+        var rename = new RenameGridCanvasUseCase(_fx.GridRepository);
+        var history = new UndoRedoService();
+        var vm2 = new GridCanvasListViewModel(
+            _fx.GridRepository, create, delete, rename, _fx.AppSettings, history,
+            NullLogger<GridCanvasListViewModel>.Instance);
+
+        await vm2.LoadAsync();
+
+        vm2.SelectedGrid.Should().NotBeNull();
+        vm2.SelectedGrid!.Name.Should().Be("a");
     }
 
     [Fact]

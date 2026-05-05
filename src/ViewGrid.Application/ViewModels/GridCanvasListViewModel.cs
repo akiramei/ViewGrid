@@ -6,12 +6,15 @@ using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Interfaces;
+using ViewGrid.Core.Services;
 
 namespace ViewGrid.Application.ViewModels;
 
 /// <summary>
-/// 配置タブで使うグリッドキャンバス一覧。Create/Delete/Rename/Activate を提供。
+/// 配置タブで使うグリッドキャンバス一覧。Create/Delete/Rename を提供。
 /// 新規作成フォームはフライアウト展開用に VM 内で直接保持する。
+/// 「最後に開いていたグリッド」 を <see cref="IAppSettingsService"/> 経由で永続化し、
+/// 起動時に復元する (旧 「デフォルトグリッド」 (IsActive) UI 概念は廃止)。
 /// </summary>
 public sealed partial class GridCanvasListViewModel : ViewModelBase
 {
@@ -19,9 +22,22 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     private readonly CreateGridCanvasUseCase _createUseCase;
     private readonly DeleteGridCanvasUseCase _deleteUseCase;
     private readonly RenameGridCanvasUseCase _renameUseCase;
-    private readonly SetActiveGridCanvasUseCase _setActiveUseCase;
+    private readonly IAppSettingsService _appSettings;
     private readonly IUndoRedoService _history;
     private readonly ILogger<GridCanvasListViewModel> _logger;
+
+    /// <summary>
+    /// LoadAsync 中の SelectedGrid 自動選択 (LastOpenedGridId からの復元) で
+    /// OnSelectedGridChanged が同じ値を settings に書き戻す無駄を防ぐためのフラグ。
+    /// </summary>
+    private bool _suppressLastOpenedSave;
+
+    /// <summary>
+    /// 直近の LastOpenedGridId 保存タスク。 OnSelectedGridChanged は fire-and-forget で
+    /// settings.json を書き出すため、 テストや確実に永続化を待ちたい呼び出し元は
+    /// このタスクを await する。 永続化失敗 (権限不足等) は静かに飲んでアプリ操作を妨げない。
+    /// </summary>
+    public Task LastOpenedSaveTask { get; private set; } = Task.CompletedTask;
 
     public ObservableCollection<GridCanvasItemViewModel> Grids { get; } = [];
 
@@ -51,7 +67,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         CreateGridCanvasUseCase createUseCase,
         DeleteGridCanvasUseCase deleteUseCase,
         RenameGridCanvasUseCase renameUseCase,
-        SetActiveGridCanvasUseCase setActiveUseCase,
+        IAppSettingsService appSettings,
         IUndoRedoService history,
         ILogger<GridCanvasListViewModel> logger)
     {
@@ -59,9 +75,26 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         _createUseCase = createUseCase;
         _deleteUseCase = deleteUseCase;
         _renameUseCase = renameUseCase;
-        _setActiveUseCase = setActiveUseCase;
+        _appSettings = appSettings;
         _history = history;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// SelectedGrid が変わるたびに LastOpenedGridId を settings に保存する。
+    /// 起動時の自動復元で同じ値を再保存しないよう <see cref="_suppressLastOpenedSave"/> でガード。
+    /// 失敗 (権限不足等) は静かに飲む — 起動時の選択復元が出来ない程度の影響にとどまる。
+    /// fire-and-forget だが <see cref="LastOpenedSaveTask"/> でテスト等が完了を待てるようにする。
+    /// </summary>
+    partial void OnSelectedGridChanged(GridCanvasItemViewModel? value)
+    {
+        if (_suppressLastOpenedSave) return;
+
+        var current = _appSettings.Current;
+        var newId = value?.GridId.ToString();
+        if (current.LastOpenedGridId == newId) return;
+
+        LastOpenedSaveTask = _appSettings.SaveAsync(current with { LastOpenedGridId = newId });
     }
 
     [RelayCommand]
@@ -72,7 +105,21 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         {
             IsBusy = true;
             await ReloadGridsInternalAsync(ct);
-            SelectedGrid = Grids.FirstOrDefault(g => g.IsActive) ?? Grids.FirstOrDefault();
+
+            // 直前のセッションで開いていたグリッドを復元 (旧 IsActive 概念は廃止)。
+            // パース失敗 / 該当 Id なし / null なら先頭グリッドにフォールバック。
+            var lastId = _appSettings.Current.LastOpenedGridId;
+            GridCanvasItemViewModel? restored = null;
+            if (!string.IsNullOrWhiteSpace(lastId) && Guid.TryParse(lastId, out var parsed))
+                restored = Grids.FirstOrDefault(g => g.GridId == parsed);
+
+            // 復元時は OnSelectedGridChanged の無駄な settings 書き戻しを抑制する。
+            _suppressLastOpenedSave = true;
+            try
+            {
+                SelectedGrid = restored ?? Grids.FirstOrDefault();
+            }
+            finally { _suppressLastOpenedSave = false; }
         }
         catch (OperationCanceledException) { }
         finally { IsBusy = false; }
@@ -126,7 +173,6 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
                     CanvasHeight = DraftCanvasHeight,
                     ColWeights = parsedColWeights,
                     RowWeights = parsedRowWeights,
-                    SetAsActive = true,
                 },
                 ct);
 
@@ -169,34 +215,6 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
             Grids.Remove(selected);
             SelectedGrid = Grids.FirstOrDefault();
             StatusMessage = $"「{selected.Name}」を削除しました。";
-        }
-        finally { IsBusy = false; }
-    }
-
-    [RelayCommand]
-    public async Task ActivateSelectedAsync(CancellationToken ct = default)
-    {
-        var selected = SelectedGrid;
-        if (selected is null || IsBusy || selected.IsActive) return;
-        try
-        {
-            IsBusy = true;
-            // before の active grid id を取得して Undo に備える
-            var previousActive = await _repository.FindActiveAsync(ct);
-            var description = $"アクティブ切替: 「{selected.Name}」";
-            var command = new SetActiveGridCanvasCommand(
-                _setActiveUseCase, selected.GridId, previousActive?.Id, description);
-            var result = await _history.ExecuteAsync(command, ct);
-            if (result.IsError)
-            {
-                StatusMessage = string.Join(", ", result.Errors);
-                return;
-            }
-
-            foreach (var g in Grids)
-                g.IsActive = g.GridId == selected.GridId;
-
-            StatusMessage = $"「{selected.Name}」をアクティブにしました。";
         }
         finally { IsBusy = false; }
     }

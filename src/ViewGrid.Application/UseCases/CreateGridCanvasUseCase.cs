@@ -6,8 +6,9 @@ using ViewGrid.Core.Interfaces;
 namespace ViewGrid.Application.UseCases;
 
 /// <summary>
-/// 新規グリッドキャンバスを作成する。バリデーションに通れば DB に保存し、
-/// 要求に応じてアクティブ化する。
+/// 新規グリッドキャンバスを作成する。バリデーションに通れば DB に保存する。
+/// 「デフォルトグリッド」 概念は廃止されたため、 IsActive は常に false で保存される
+/// (DB カラム自体は後方互換のため残置、 起動時の自動選択は <see cref="ViewGrid.Core.Settings.AppSettings.LastOpenedGridId"/> を参照)。
 /// </summary>
 public sealed class CreateGridCanvasUseCase(IGridCanvasRepository repository)
 {
@@ -61,14 +62,6 @@ public sealed class CreateGridCanvasUseCase(IGridCanvasRepository repository)
         if (addResult.IsError)
             return addResult.Errors;
 
-        if (request.SetAsActive)
-        {
-            var activate = await repository.SetActiveAsync(grid.Id, ct);
-            if (activate.IsError)
-                return activate.Errors;
-            grid.IsActive = true;
-        }
-
         return grid;
     }
 
@@ -102,5 +95,4 @@ public sealed record CreateGridCanvasRequest
     public IReadOnlyList<int>? ColWeights { get; init; }
     /// <summary>行の高さ比率。null なら均等。</summary>
     public IReadOnlyList<int>? RowWeights { get; init; }
-    public bool SetAsActive { get; init; } = true;
 }

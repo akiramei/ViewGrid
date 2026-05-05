@@ -214,4 +214,58 @@
         <Setter Property="Orientation" Value="Horizontal" />
         <Setter Property="Spacing" Value="6" />
     </Style>
+
+    <!--
+        P6: アイコン + テキスト主要操作のアウトライン強調。
+        FluentTheme の Classes="accent" は Background をアクセント色で塗りつぶすため、
+        PathIcon + TextBlock を内包する主要操作には派手すぎる。
+        iconAccent は BorderBrush + Foreground でアクセント色を載せ、
+        Background は idle 透明 → hover で薄く色を載せるアウトラインボタン系統。
+        PathIcon は親 Button の Foreground を継承して同色に染まる。
+    -->
+    <Style Selector="Button.iconAccent">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource SystemAccentColor}" />
+    </Style>
+    <Style Selector="Button.iconAccent:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SystemAccentColorLight3}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource SystemAccentColor}" />
+    </Style>
+    <Style Selector="Button.iconAccent:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SystemAccentColorLight2}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource SystemAccentColor}" />
+    </Style>
+    <Style Selector="Button.iconAccent:disabled">
+        <Setter Property="Opacity" Value="0.4" />
+    </Style>
+
+    <!--
+        P6: 破壊操作のアウトライン版。 dangerLink は idle BorderBrush 透明で
+        「テキストリンク」 の主張だが、 アイコン + テキスト主要操作と並ぶ場合は
+        BorderBrush も常時赤色で 「ボタン感」 を残しつつ危険を視覚化する。
+        hover/pressed 背景は dangerLink と同じ HEX 値を踏襲。
+    -->
+    <Style Selector="Button.iconDanger">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SystemErrorTextColor}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource SystemErrorTextColor}" />
+    </Style>
+    <Style Selector="Button.iconDanger:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#1AFF3333" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SystemErrorTextColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource SystemErrorTextColor}" />
+    </Style>
+    <Style Selector="Button.iconDanger:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="#33FF3333" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SystemErrorTextColor}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource SystemErrorTextColor}" />
+    </Style>
+    <Style Selector="Button.iconDanger:disabled">
+        <Setter Property="Opacity" Value="0.4" />
+    </Style>
 </Styles>

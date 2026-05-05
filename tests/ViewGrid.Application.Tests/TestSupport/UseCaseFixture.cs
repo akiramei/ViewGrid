@@ -168,7 +168,21 @@ internal sealed class UseCaseFixture : IAsyncDisposable
     {
         await Db.DisposeAsync();
         await Connection.DisposeAsync();
-        if (TempDir.Exists)
-            TempDir.Delete(recursive: true);
+
+        // settings.json への fire-and-forget 書き込み (GridCanvasListViewModel.OnSelectedGridChanged 等)
+        // が完了する前に Delete を呼ぶと IOException で落ちることがあるので、 短いリトライを入れる。
+        for (int attempt = 0; attempt < 6; attempt++)
+        {
+            try
+            {
+                if (TempDir.Exists)
+                    TempDir.Delete(recursive: true);
+                return;
+            }
+            catch (IOException) when (attempt < 5)
+            {
+                await Task.Delay(50);
+            }
+        }
     }
 }

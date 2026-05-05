@@ -23,4 +23,12 @@ public sealed record AppSettings
 
     /// <summary>サムネイルの最大エッジサイズ (px)。 256 / 512 / 1024 / 2048 を想定。</summary>
     public int ThumbnailMaxEdgePixels { get; init; } = 1024;
+
+    /// <summary>
+    /// 最後に開いていたグリッドの Id。 起動時の自動選択に使う。
+    /// 「デフォルトグリッド」 (旧 IsActive) 概念は廃止し、 「直前のセッションの続き」 で
+    /// グリッドを復元する。 Guid? を JSON 上で扱いやすくするため string で保持
+    /// (空 / 不正値は null 扱いで先頭グリッドにフォールバック)。
+    /// </summary>
+    public string? LastOpenedGridId { get; init; }
 }

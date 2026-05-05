@@ -5,6 +5,7 @@
              xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
              xmlns:views="clr-namespace:ViewGrid.Presentation.Views"
              mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
+             x:Name="InspectorRoot"
              x:Class="ViewGrid.Presentation.Views.PlacementInspectorView"
              x:DataType="vm:PlacementInspectorViewModel">
 
@@ -38,31 +39,44 @@
                                Opacity="0.7" />
                 </StackPanel>
 
-                <!-- 統一保存バー: 配置固有 (PixelOffset) + 共有特性 (Rotation/Flip/etc) を一括処理 -->
+                <!--
+                    統一保存バー: 配置固有 (PixelOffset) + 共有特性 (Rotation/Flip/etc) を一括処理。
+                    右端に「配置を削除」(iconDanger) を Spacer 列で離して配置することで、 placement レベルの
+                    操作 (保存 / リセット / 削除) を 1 箇所に視覚統合する。 削除コマンドは親 (GridWorkspaceVM) の
+                    RemoveSelectedPlacementCommand を、 UserControl 独自 NameScope を跨ぐ AvaloniaProperty
+                    (#InspectorRoot.RemoveCommand) 経由で受け取る。
+                -->
                 <Border Classes="SubtleCard" Padding="8,6">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Button Command="{Binding SaveAllCommand}"
-                                Classes="accent"
-                                ToolTip.Tip="配置固有 + 共有特性 をまとめて保存">
-                            <StackPanel Classes="IconButtonContent">
-                                <PathIcon Data="{StaticResource SaveGeometry}" Width="14" Height="14" />
-                                <TextBlock Text="保存" />
-                            </StackPanel>
-                        </Button>
-                        <Button Command="{Binding RevertAllCommand}"
-                                ToolTip.Tip="編集前の値に戻す">
-                            <StackPanel Classes="IconButtonContent">
-                                <PathIcon Data="{StaticResource RefreshGeometry}" Width="14" Height="14" />
-                                <TextBlock Text="リセット" />
-                            </StackPanel>
-                        </Button>
-                        <TextBlock Text="●"
-                                   FontSize="14"
-                                   Foreground="{DynamicResource SystemAccentColor}"
-                                   VerticalAlignment="Center"
-                                   IsVisible="{Binding IsAnyDirty}"
-                                   ToolTip.Tip="未保存の変更があります" />
-                    </StackPanel>
+                    <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Command="{Binding SaveAllCommand}"
+                                    Classes="accent"
+                                    ToolTip.Tip="配置固有 + 共有特性 をまとめて保存">
+                                <StackPanel Classes="IconButtonContent">
+                                    <PathIcon Data="{StaticResource SaveGeometry}" Width="14" Height="14" />
+                                    <TextBlock Text="保存" />
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{Binding RevertAllCommand}"
+                                    ToolTip.Tip="編集前の値に戻す">
+                                <StackPanel Classes="IconButtonContent">
+                                    <PathIcon Data="{StaticResource RefreshGeometry}" Width="14" Height="14" />
+                                    <TextBlock Text="リセット" />
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="●"
+                                       FontSize="14"
+                                       Foreground="{DynamicResource SystemAccentColor}"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding IsAnyDirty}"
+                                       ToolTip.Tip="未保存の変更があります" />
+                        </StackPanel>
+                        <Button Grid.Column="2"
+                                Content="配置を削除"
+                                Classes="iconDanger"
+                                Command="{Binding #InspectorRoot.RemoveCommand}"
+                                ToolTip.Tip="この配置を削除します" />
+                    </Grid>
                 </Border>
             </StackPanel>
 

@@ -90,7 +90,7 @@ public sealed class GridCanvasLifecycleUseCaseTests : IAsyncLifetime
         });
         var second = await _create.ExecuteAsync(new CreateGridCanvasRequest
         {
-            Name = "b", Rows = 2, Cols = 2, CanvasWidth = 400, CanvasHeight = 400, SetAsActive = false,
+            Name = "b", Rows = 2, Cols = 2, CanvasWidth = 400, CanvasHeight = 400,
         });
 
         var result = await _setActive.ExecuteAsync(second.Value.Id);

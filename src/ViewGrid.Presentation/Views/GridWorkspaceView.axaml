@@ -170,6 +170,7 @@
                                 Classes="accent"
                                 ToolTip.Tip="選択中のバリアントを最初の空きセルに配置します" />
                         <Button Command="{Binding BeginCreateVariantCommand}"
+                                Classes="iconAccent"
                                 ToolTip.Tip="選択中バリアントと同じアセットから新規バリアントを作成">
                             <StackPanel Classes="IconButtonContent">
                                 <PathIcon Data="{StaticResource AddGeometry}" Width="14" Height="14" />
@@ -177,6 +178,7 @@
                             </StackPanel>
                         </Button>
                         <Button Command="{Binding DeleteSelectedCandidateCommand}"
+                                Classes="iconDanger"
                                 ToolTip.Tip="選択中バリアントを削除（関連配置も削除されます）">
                             <StackPanel Classes="IconButtonContent">
                                 <PathIcon Data="{StaticResource DeleteGeometry}" Width="14" Height="14" />
@@ -465,11 +467,11 @@
                               AllowAutoHide="True"
                               Padding="0,0,4,0">
                     <!--
-                        最下部に 24px の余白を確保: スクロール末尾の Alignment ComboBox 等が
-                        固定配置の「配置を削除」ボタン (高さ約 28px) と重ならないよう、
-                        スクロール領域の末尾を空けておく。
+                        スクロール末尾の余白: 旧来は固定下部の「配置を削除」(約 28px) との重なり回避で
+                        24px 確保していたが、 削除ボタンを Inspector 保存バーに統合した今、
+                        固定下部は 3px の ProgressBar のみ。 6px の余白で十分。
                     -->
-                    <StackPanel Spacing="8" Margin="0,0,0,24">
+                    <StackPanel Spacing="8" Margin="0,0,0,6">
                         <TextBlock FontSize="11"
                                    Opacity="0.75"
                                    IsVisible="{Binding HasGrid}">
@@ -741,9 +743,11 @@
                 <Grid>
                     <!-- 配置選択中: Inspector を表示（配置固有プロパティ + 共有特性編集 inline）。
                          ElementName 経由 DataContext は型 object なので明示キャストして
-                         compile-time binding の警告を回避。 -->
+                         compile-time binding の警告を回避。
+                         RemoveCommand は親 VM のコマンドを Inspector の保存バーに統合表示するために渡す。 -->
                     <views:PlacementInspectorView DataContext="{Binding Inspector}"
-                                                  IsVisible="{Binding #GridWorkspaceRoot.((vm:GridWorkspaceViewModel)DataContext).IsPlacementSelected}" />
+                                                  IsVisible="{Binding #GridWorkspaceRoot.((vm:GridWorkspaceViewModel)DataContext).IsPlacementSelected}"
+                                                  RemoveCommand="{Binding #GridWorkspaceRoot.((vm:GridWorkspaceViewModel)DataContext).RemoveSelectedPlacementCommand}" />
 
                     <!-- グリッドのみ選択中（配置未選択）: グリッド情報を表示 -->
                     <views:GridPropertiesView DataContext="{Binding CurrentGrid}"
@@ -770,20 +774,14 @@
                 </ScrollViewer>
 
                 <!--
-                    最下部固定の二次操作: 配置を削除 + ProgressBar。スクロール外に置いて常に押せる。
-                    削除は破壊操作だが、Save/Reset などの主要操作よりは頻度低いので「テキストリンク風」
-                    に控えめに表示する (FontSize=11, Background 透明, 右寄せ)。
+                    最下部固定の進捗表示。配置を削除ボタンは Inspector 保存バーに統合済みなので、
+                    ここは IsBusy 中の細い ProgressBar のみ残す (3px, スクロール外で常に見える)。
                 -->
-                <StackPanel Grid.Row="1" Spacing="4" Margin="0,8,0,0">
-                    <Button Content="配置を削除"
-                            Classes="dangerLink"
-                            HorizontalAlignment="Right"
-                            Command="{Binding RemoveSelectedPlacementCommand}"
-                            IsEnabled="{Binding IsPlacementSelected}" />
-                    <ProgressBar Height="3"
-                                 IsIndeterminate="True"
-                                 IsVisible="{Binding IsBusy}" />
-                </StackPanel>
+                <ProgressBar Grid.Row="1"
+                             Height="3"
+                             Margin="0,8,0,0"
+                             IsIndeterminate="True"
+                             IsVisible="{Binding IsBusy}" />
             </Grid>
         </Border>
     </Grid>

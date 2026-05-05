@@ -18,8 +18,10 @@ public sealed class CreateGridCanvasUseCaseTests : IAsyncLifetime
     public async Task DisposeAsync() => await _fx.DisposeAsync();
 
     [Fact]
-    public async Task Creates_Grid_With_Given_Dimensions_And_Activates_By_Default()
+    public async Task Creates_Grid_With_Given_Dimensions_And_Inactive_By_Default()
     {
+        // 「デフォルトグリッド」 (IsActive) 概念は廃止されたため、 新規作成は常に IsActive=false で
+        // 永続化される。 起動時の自動選択は AppSettings.LastOpenedGridId 経由 (UI 層の責務)。
         var result = await _useCase.ExecuteAsync(new CreateGridCanvasRequest
         {
             Name = "メイン",
@@ -35,7 +37,7 @@ public sealed class CreateGridCanvasUseCaseTests : IAsyncLifetime
         result.Value.GridCols.Should().Be(4);
         result.Value.CanvasSize.Width.Should().Be(1600);
         result.Value.CanvasSize.Height.Should().Be(1200);
-        result.Value.IsActive.Should().BeTrue();
+        result.Value.IsActive.Should().BeFalse();
     }
 
     [Fact]
@@ -48,36 +50,6 @@ public sealed class CreateGridCanvasUseCaseTests : IAsyncLifetime
         });
 
         result.Value.Name.Should().Be("trimmed");
-    }
-
-    [Fact]
-    public async Task SetAsActive_False_Leaves_Grid_Inactive()
-    {
-        var result = await _useCase.ExecuteAsync(new CreateGridCanvasRequest
-        {
-            Name = "draft",
-            Rows = 2, Cols = 2, CanvasWidth = 400, CanvasHeight = 400,
-            SetAsActive = false,
-        });
-
-        result.Value.IsActive.Should().BeFalse();
-    }
-
-    [Fact]
-    public async Task Second_Active_Creation_Deactivates_Previous_Active()
-    {
-        await _useCase.ExecuteAsync(new CreateGridCanvasRequest
-        {
-            Name = "first", Rows = 2, Cols = 2, CanvasWidth = 400, CanvasHeight = 400,
-        });
-        await _useCase.ExecuteAsync(new CreateGridCanvasRequest
-        {
-            Name = "second", Rows = 3, Cols = 3, CanvasWidth = 900, CanvasHeight = 900,
-        });
-
-        var all = await _fx.GridRepository.FindAllAsync();
-        all.Count(g => g.IsActive).Should().Be(1);
-        all.Single(g => g.IsActive).Name.Should().Be("second");
     }
 
     [Theory]
