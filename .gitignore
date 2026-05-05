@@ -30,3 +30,6 @@ local-data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code (per-user, not project-wide)
+.claude/settings.local.json
