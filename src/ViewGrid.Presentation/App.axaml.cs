@@ -20,6 +20,12 @@ public partial class App : global::Avalonia.Application
         _services = services;
     }
 
+    /// <summary>
+    /// MainWindow 等の View からダイアログ用 VM を取得するためのアクセサ。
+    /// `((App)Application.Current!).Services` で取り出す想定。 デザイン時 (`new App()`) は null。
+    /// </summary>
+    public IServiceProvider? Services => _services;
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);

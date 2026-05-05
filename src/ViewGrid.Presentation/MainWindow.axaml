@@ -109,6 +109,11 @@
                               Command="{Binding GridWorkspace.ExportToPngCommand}"
                               ToolTip.Tip="現在のグリッドを PNG 画像として書き出します。" />
                     <Separator />
+                    <MenuItem Header="設定..."
+                              InputGesture="Ctrl+,"
+                              Click="OnSettingsClicked"
+                              ToolTip.Tip="アプリの設定 (テーマ / 既定値 / サムネサイズ) を開きます。" />
+                    <Separator />
                     <MenuItem Header="終了"
                               InputGesture="Alt+F4"
                               Click="OnExitClicked" />

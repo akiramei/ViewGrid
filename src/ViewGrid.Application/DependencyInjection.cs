@@ -50,6 +50,7 @@ public static class DependencyInjection
         services.AddTransient<PlacementInspectorViewModel>();
         services.AddTransient<GridWorkspaceViewModel>();
         services.AddTransient<MainWindowViewModel>();
+        services.AddTransient<SettingsDialogViewModel>();
 
         return services;
     }

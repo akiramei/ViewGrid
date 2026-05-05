@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using ViewGrid.Application.History;
 using ViewGrid.Application.ViewModels;
+using ViewGrid.Presentation.Views;
 
 namespace ViewGrid.Presentation;
 
@@ -43,6 +44,18 @@ public partial class MainWindow : Window
 
     /// <summary>「ファイル → 終了」: Window を閉じる。</summary>
     private void OnExitClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// 「ファイル → 設定...」 (Ctrl+,) で設定ダイアログを開く。 VM は DI から取得。
+    /// 即時適用 + 自動保存型なので OK / Cancel ボタンはなく、 ダイアログを閉じても変更は確定済み。
+    /// </summary>
+    private async void OnSettingsClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        // 名前空間衝突回避のため Avalonia.Application を完全修飾。
+        // (using ViewGrid.Application.ViewModels の影響で `Application` 単体は VG 側に解決される)
+        if (Avalonia.Application.Current is not App app || app.Services is null) return;
+        await SettingsDialog.ShowAsync(this, app.Services);
+    }
 
     /// <summary>「ヘルプ → ViewGrid について」: 簡易な情報ダイアログ。</summary>
     private async void OnAboutClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
