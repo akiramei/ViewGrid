@@ -260,7 +260,8 @@ public partial class GridWorkspaceView : UserControl
     /// <summary>
     /// グループヘッダ ContextMenu の「アセットを削除...」クリック。確認ダイアログを表示し、
     /// 承認されたら親 Window 経由で <c>MainWindowViewModel.AssetLibrary.DeleteByIdAsync</c> を呼ぶ。
-    /// 削除は cascade で関連バリアント・配置を消す（既存の <see cref="DeleteImageAssetUseCase"/> 挙動）。
+    /// 削除は cascade で関連バリアント・配置を消す
+    /// (既存の <see cref="ViewGrid.Application.UseCases.DeleteImageAssetUseCase"/> 挙動)。
     /// </summary>
     private async void OnDeleteAssetClicked(object? sender, RoutedEventArgs e)
     {

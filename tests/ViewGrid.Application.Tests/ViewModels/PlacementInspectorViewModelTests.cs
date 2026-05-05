@@ -12,8 +12,8 @@ namespace ViewGrid.Application.Tests.ViewModels;
 /// <summary>
 /// PlacementInspectorViewModel は配置固有の <see cref="PlacementItemViewModel.PixelOffsetX"/> /
 /// <see cref="PlacementItemViewModel.PixelOffsetY"/> のみを編集する。
-/// 共有特性（Rotation/Flip/Scaling/Trim/Align/Occupy）の編集は CopyPropertiesViewModel に移譲され、
-/// Inspector からは「特性を編集 →」コマンドで <see cref="NavigateToCopyPropertiesMessage"/> を送る。
+/// 共有特性（Rotation/Flip/Scaling/Trim/Align/Occupy）の編集は <see cref="CopyPropertiesViewModel"/>
+/// に移譲される (準備タブ廃止後は同 VM をインライン埋め込み表示)。
 /// </summary>
 public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
 {
