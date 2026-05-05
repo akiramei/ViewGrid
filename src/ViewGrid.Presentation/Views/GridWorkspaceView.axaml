@@ -448,23 +448,25 @@
                 BorderThickness="1,0,0,0"
                 Padding="8">
             <!--
-                旧版は DockPanel に PlacementInspectorView / GridPropertiesView / 空状態 Border を
-                直接並べ「LastChildFill=true で最後の子が伸縮」する設計だった。しかし DockPanel の
-                子に <c>DockPanel.Dock</c> 未指定の場合は<b>既定で Dock=Left</b>として扱われ、
-                PlacementInspectorView は preferred width しか取れず右側に大きな余白が残っていた。
-                Grid RowDefinitions=Auto,*,Auto に変更し、中央行 (*) に Grid を重ねて 3 状態の
-                View を同じセルに置くことで、IsVisible=true の View が必ず幅一杯まで伸縮する。
+                スクロール一本化: 旧来は Inspector の共有特性カード内に内部 ScrollViewer があり、
+                外側の右ペインと二重スクロールで操作感が悪かった。右ペイン全体を 1 つの ScrollViewer
+                で囲み、Inspector / GridProperties / NoSelection と各種パネルが自然な高さで縦に
+                流れる構造に変更。最下部の「配置を削除」操作だけはスクロール外に固定 (常に押せる)。
             -->
-            <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
-                <TextBlock Grid.Row="0"
-                           FontSize="11"
-                           Opacity="0.75"
-                           Margin="0,0,0,8"
-                           IsVisible="{Binding HasGrid}">
-                    <Run Text="配置済み:" />
-                    <Run Text="{Binding Placements.Count}" />
-                    <Run Text="件" />
-                </TextBlock>
+            <Grid RowDefinitions="*,Auto">
+                <ScrollViewer Grid.Row="0"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              AllowAutoHide="True"
+                              Padding="0,0,4,0">
+                    <StackPanel Spacing="8">
+                        <TextBlock FontSize="11"
+                                   Opacity="0.75"
+                                   IsVisible="{Binding HasGrid}">
+                            <Run Text="配置済み:" />
+                            <Run Text="{Binding Placements.Count}" />
+                            <Run Text="件" />
+                        </TextBlock>
 
                 <!--
                     出力設定パネル: HasGrid のときのみ表示。 4 セクション
@@ -476,10 +478,10 @@
                     (共有特性タブ) を画面上部に押し上げる。出力モード / 切り出しの現在値を
                     ヘッダーに副表示することで畳んでいても状態確認できる。
                 -->
-                <Expander Grid.Row="1"
-                          IsVisible="{Binding HasGrid}"
+                <Expander IsVisible="{Binding HasGrid}"
                           IsExpanded="False"
-                          Margin="0,0,0,8">
+                          HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="出力設定"
@@ -494,7 +496,7 @@
                             </TextBlock>
                         </StackPanel>
                     </Expander.Header>
-                    <StackPanel Spacing="14">
+                    <StackPanel Spacing="10">
                         <!-- ─── 出力モード: 横幅いっぱいの segmented control ─── -->
                         <StackPanel Spacing="4">
                             <TextBlock Text="出力モード" Classes="SectionHeader" />
@@ -717,12 +719,8 @@
                     </StackPanel>
                 </Expander>
 
-                <!-- 既存パネルは Row=2 (Auto separator) と Row=3 (* contextual) と Row=4 (Auto actions) に下げる。
-                     ここでは Row 2 (区切り) は付けず、Border 自身の枠で十分視覚分離している。 -->
-                <Border Grid.Row="2"
-                        Height="1"
+                <Border Height="1"
                         Background="{DynamicResource SystemBaseLowColor}"
-                        Margin="0,0,0,8"
                         IsVisible="{Binding HasGrid}" />
 
                 <!--
@@ -730,7 +728,7 @@
                     IsVisible の参照は ElementName=GridWorkspaceRoot 経由で親 VM
                     (GridWorkspaceViewModel) のフラグを明示的に指す。
                 -->
-                <Grid Grid.Row="3">
+                <Grid>
                     <!-- 配置選択中: Inspector を表示（配置固有プロパティ + 共有特性編集 inline）。
                          ElementName 経由 DataContext は型 object なので明示キャストして
                          compile-time binding の警告を回避。 -->
@@ -758,10 +756,22 @@
                         </StackPanel>
                     </Border>
                 </Grid>
+                    </StackPanel>
+                </ScrollViewer>
 
-                <StackPanel Grid.Row="4" Spacing="4" Margin="0,8,0,0">
+                <!--
+                    最下部固定の二次操作: 配置を削除 + ProgressBar。スクロール外に置いて常に押せる。
+                    削除は破壊操作だが、Save/Reset などの主要操作よりは頻度低いので「テキストリンク風」
+                    に控えめに表示する (FontSize=11, Background 透明, 右寄せ)。
+                -->
+                <StackPanel Grid.Row="1" Spacing="4" Margin="0,8,0,0">
                     <Button Content="配置を削除"
-                            HorizontalAlignment="Stretch"
+                            HorizontalAlignment="Right"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="8,4"
+                            FontSize="11"
+                            Foreground="{DynamicResource SystemErrorTextColor}"
                             Command="{Binding RemoveSelectedPlacementCommand}"
                             IsEnabled="{Binding IsPlacementSelected}" />
                     <ProgressBar Height="3"

@@ -19,14 +19,13 @@
             CopyProperties は Inspector が AttachAsync で当該 placement の variant に紐付ける。
         -->
         <!--
-            旧版は外側 ScrollViewer + 内側 CopyPropertiesView の TabItem ScrollViewer の
-            二重スクロール構造で、内側の有効高さが Tab 領域に縛られて最後のフィールド
-            （占有セル NumericUpDown）の下端が見切れる問題があった。外側 ScrollViewer を
-            撤去し、Grid の RowDefinitions で「配置固有 = Auto / 共有特性 = *」に分けて、
-            共有特性 = CopyPropertiesView 内部の ScrollViewer が割り当てられた高さを
-            使い切って必要なら自前でスクロールする設計にする。
+            スクロールは右ペイン全体 (GridWorkspaceView の Column 2) で 1 本に統一する。
+            Inspector 内部にスクロールを持たないため、共有特性カード * の内部 ScrollViewer は
+            撤去 (本ファイル下部参照)。Row も「Auto,Auto,Auto,Auto」で全て自然な高さに流れる。
+            旧来の「配置固有 = Auto / 共有特性 = *」二重スクロールは入れ子で操作感が悪く、
+            最終フィールドが見切れる問題もあったので右ペイン外側スクロールに一本化。
         -->
-        <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto">
             <!-- Row 0: ヘッダ + 統一保存バー -->
             <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,8">
                 <StackPanel Spacing="2">
@@ -127,32 +126,20 @@
             </Border>
 
             <!--
-                Row 2: 共有特性 (* = 残りの高さ全て)。
-                スクロール責務はここで親が所有する: 共有特性カード内部を Grid Auto,* に分け、
-                Auto = タイトル / * = ScrollViewer + CopyPropertiesView。
-                ScrollViewer は finite height をもつ親 (共有特性カードの * 行) に置かれているため
-                正しい viewport を持ち、CopyPropertiesView の自然な高さがそれを越えたときだけ
-                AllowAutoHide=True でフェードインする overlay scrollbar を出す。
-                CopyPropertiesView 自身は内部 ScrollViewer を持たず、自然な高さで縦に流れるだけ。
+                Row 2: 共有特性 (Auto = 自然な高さ)。
+                内部 ScrollViewer は撤去し、右ペイン全体 (GridWorkspaceView の Column 2) の
+                ScrollViewer 1 本に集約。Inspector 自身は素直に縦に伸びるだけ。
             -->
             <Border Grid.Row="2" Classes="SubtleCard" Padding="8">
-                <Grid RowDefinitions="Auto,*">
-                    <TextBlock Grid.Row="0"
-                               Text="共有特性（同バリアントを参照する全配置に反映）"
+                <StackPanel Spacing="6">
+                    <TextBlock Text="共有特性（同バリアントを参照する全配置に反映）"
                                FontWeight="SemiBold"
                                FontSize="11"
                                Opacity="0.85"
-                               Margin="0,0,0,6"
                                TextWrapping="Wrap" />
-                    <ScrollViewer Grid.Row="1"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  AllowAutoHide="True"
-                                  Padding="0,0,8,0">
-                        <views:CopyPropertiesView DataContext="{Binding CopyProperties}"
-                                                  ShowSaveBar="False" />
-                    </ScrollViewer>
-                </Grid>
+                    <views:CopyPropertiesView DataContext="{Binding CopyProperties}"
+                                              ShowSaveBar="False" />
+                </StackPanel>
             </Border>
 
             <!--
