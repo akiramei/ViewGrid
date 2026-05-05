@@ -220,7 +220,8 @@
                             <TextBlock Text="新規バリアント" FontWeight="SemiBold" />
                             <TextBox x:Name="DraftVariantNameBox"
                                      Text="{Binding DraftVariantName, Mode=TwoWay}"
-                                     PlaceholderText="名前（空欄で「バリアント N」自動採番）">
+                                     PlaceholderText="名前（空欄で「バリアント N」自動採番）"
+                                     controls:FocusOnVisible.IsEnabled="True">
                                 <TextBox.KeyBindings>
                                     <KeyBinding Gesture="Enter" Command="{Binding CommitCreateVariantCommand}" />
                                     <KeyBinding Gesture="Escape" Command="{Binding CancelCreateVariantCommand}" />
