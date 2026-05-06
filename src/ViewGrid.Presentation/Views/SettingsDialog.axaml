@@ -132,6 +132,7 @@
                     Spacing="8">
             <Button Content="閉じる"
                     MinWidth="80"
+                    HorizontalContentAlignment="Center"
                     IsDefault="True"
                     IsCancel="True"
                     Click="OnCloseClicked" />

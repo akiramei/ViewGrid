@@ -31,10 +31,12 @@
                     Content="削除"
                     Classes="dangerLink"
                     MinWidth="80"
+                    HorizontalContentAlignment="Center"
                     Click="OnConfirmClicked" />
             <Button x:Name="CancelButton"
                     Content="キャンセル"
                     MinWidth="80"
+                    HorizontalContentAlignment="Center"
                     IsCancel="True"
                     Click="OnCancelClicked" />
         </StackPanel>

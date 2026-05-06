@@ -86,10 +86,12 @@
                     Classes="accent"
                     Margin="0,0,8,0"
                     MinWidth="80"
+                    HorizontalContentAlignment="Center"
                     Click="OnOkClicked" />
             <Button Grid.Column="3"
                     Content="キャンセル"
                     MinWidth="80"
+                    HorizontalContentAlignment="Center"
                     Click="OnCancelClicked" />
         </Grid>
     </Grid>

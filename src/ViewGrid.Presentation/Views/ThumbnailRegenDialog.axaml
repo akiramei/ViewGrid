@@ -68,13 +68,16 @@
             <Button Content="開始"
                     Classes="accent"
                     MinWidth="80"
+                    HorizontalContentAlignment="Center"
                     IsDefault="True"
                     Command="{Binding StartCommand}" />
             <Button Content="キャンセル"
                     MinWidth="80"
+                    HorizontalContentAlignment="Center"
                     Command="{Binding CancelCommand}" />
             <Button Content="閉じる"
                     MinWidth="80"
+                    HorizontalContentAlignment="Center"
                     IsCancel="True"
                     Command="{Binding CloseCommand}" />
         </StackPanel>
