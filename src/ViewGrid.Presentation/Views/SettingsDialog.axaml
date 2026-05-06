@@ -56,14 +56,17 @@
                                                          RelativeSource="{RelativeSource AncestorType=Window}" />
                                             </MultiBinding>
                                         </Border.BorderThickness>
-                                        <!-- 色ドット: 32x32 の円、 クリックで AccentColor を切り替え -->
-                                        <Button Width="32" Height="32"
+                                        <!--
+                                            色ドット: 32x32 の円。 Button だと FluentTheme の :pointerover
+                                            スタイルが Background を薄いグレーに上書きして Swatch 色が見えなく
+                                            なるため、 Border + PointerPressed ハンドラで実装する。
+                                        -->
+                                        <Border Width="32" Height="32"
                                                 CornerRadius="16"
-                                                Padding="0"
-                                                BorderThickness="0"
+                                                Cursor="Hand"
                                                 Background="{Binding SwatchColor, Converter={x:Static converters:HexToBrushConverter.Instance}}"
                                                 Tag="{Binding Id}"
-                                                Click="OnAccentPresetClicked"
+                                                PointerPressed="OnAccentPresetPressed"
                                                 ToolTip.Tip="{Binding DisplayName}" />
                                     </Border>
                                 </DataTemplate>

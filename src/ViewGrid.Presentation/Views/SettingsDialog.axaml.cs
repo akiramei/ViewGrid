@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Microsoft.Extensions.DependencyInjection;
 using ViewGrid.Application.ViewModels;
@@ -45,15 +46,18 @@ public partial class SettingsDialog : Window
     }
 
     /// <summary>
-    /// アクセント色ドット (Button) クリック: VM の AccentColor を更新する。
-    /// Button.Tag に <see cref="AccentColorPreset.Id"/> を入れているので取り出して反映。
+    /// アクセント色ドット (Border) クリック: VM の AccentColor を更新する。
+    /// Button だと FluentTheme の :pointerover スタイルが Background をグレーに上書きして
+    /// Swatch 色が見えなくなるので Border + PointerPressed で代替。
+    /// Border.Tag に <see cref="AccentColorPreset.Id"/> を入れているので取り出して反映。
     /// VM のセッターで JSON 保存 + Application.Resources 更新までトリガされる。
     /// </summary>
-    private void OnAccentPresetClicked(object? sender, RoutedEventArgs e)
+    private void OnAccentPresetPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is not Button btn) return;
-        if (btn.Tag is not string id) return;
+        if (sender is not Border border) return;
+        if (border.Tag is not string id) return;
         if (DataContext is not SettingsDialogViewModel vm) return;
+        if (!e.GetCurrentPoint(border).Properties.IsLeftButtonPressed) return;
         vm.AccentColor = id;
     }
 }
