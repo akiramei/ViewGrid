@@ -31,8 +31,13 @@ public interface IAppSettingsService
     /// <summary>
     /// 設定変更時に発火するイベント。 引数は新しい <see cref="AppSettings"/>。
     /// テーマ即時反映など UI 側の動的更新に購読する。
-    /// 内部 lock の外で発火するため、 ハンドラ内から <see cref="SaveAsync"/> /
-    /// <see cref="UpdateAsync"/> を呼んでも deadlock しない。
+    /// <para>
+    /// <b>制約</b>: ハンドラ内から <see cref="SaveAsync"/> / <see cref="UpdateAsync"/> を
+    /// 同期再呼出ししないこと。 並行 producer 間で Changed 発火順を保証するため
+    /// (= UI が古い値に戻らないため) 内部 lock 内で発火する仕様で、 ハンドラから
+    /// 同期再呼出しすると deadlock する。 設定の連鎖更新が必要な場合は
+    /// <c>Task.Run</c> で別スレッド経由 / fire-and-forget にする。
+    /// </para>
     /// </summary>
     event EventHandler<AppSettings>? Changed;
 }

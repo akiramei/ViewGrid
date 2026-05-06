@@ -44,34 +44,36 @@ internal sealed partial class JsonAppSettingsService : IAppSettingsService, IDis
         try
         {
             await WriteAndUpdateCurrentAsync(settings, ct);
+            // Changed は lock 内で発火する。 lock 外に出すと、 並行 save の
+            // 「先に lock を取得した側の Changed 発火」 が 「次の lock を取った側の Changed 発火」
+            // よりあとになる reorder で UI が古い値に戻る race が起きる (Codex review P2)。
+            // 制約: ハンドラは Save / Update を同期再呼出ししないこと (deadlock になる)。
+            // 本アプリの Changed handler は Application.Resources を触るのみで Save 呼出しなし。
+            Changed?.Invoke(this, settings);
         }
         finally
         {
             _saveLock.Release();
         }
-        // Changed は lock の外で発火 (handler が Save / Update を呼ぶ可能性に備えて
-        // re-entrancy deadlock を回避)。
-        Changed?.Invoke(this, settings);
     }
 
     public async Task UpdateAsync(Func<AppSettings, AppSettings> mutate, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(mutate);
 
-        AppSettings newSettings;
         await _saveLock.WaitAsync(ct);
         try
         {
             // lock 内で Current を読み直し → mutate → 書き込み を atomic に行うことで、
             // 別 producer が _current を進めた状態を上書き巻き戻ししない。
-            newSettings = mutate(_current);
+            var newSettings = mutate(_current);
             await WriteAndUpdateCurrentAsync(newSettings, ct);
+            Changed?.Invoke(this, newSettings);
         }
         finally
         {
             _saveLock.Release();
         }
-        Changed?.Invoke(this, newSettings);
     }
 
     private async Task WriteAndUpdateCurrentAsync(AppSettings settings, CancellationToken ct)
