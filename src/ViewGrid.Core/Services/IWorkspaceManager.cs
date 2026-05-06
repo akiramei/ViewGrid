@@ -1,0 +1,41 @@
+using ErrorOr;
+using ViewGrid.Core.Settings;
+
+namespace ViewGrid.Core.Services;
+
+/// <summary>
+/// ワークスペースの一覧 / 作成 / リネーム / 削除 / アクティブ切替を司る。
+/// 切替は <c>active.json</c> 書き換えのみで完結し、 実際にアプリ動作を切り替えるには再起動が必要。
+/// </summary>
+public interface IWorkspaceManager
+{
+    /// <summary>
+    /// ワークスペース一覧を取得する。 <c>workspaces.json</c> が存在しない場合は、
+    /// 現在 active なワークスペース 1 件のみのリストを返す (移行直後の自動補完)。
+    /// </summary>
+    Task<IReadOnlyList<WorkspaceManifest>> ListAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// 新規ワークスペースを作成する。 ディレクトリ <c>workspaces/&lt;name&gt;</c> を作成し、
+    /// <c>workspaces.json</c> に追記する。 同名の既存ワークスペース、 命名規約違反は拒否される。
+    /// </summary>
+    Task<ErrorOr<WorkspaceManifest>> CreateAsync(string name, string displayName, CancellationToken ct = default);
+
+    /// <summary>
+    /// 既存ワークスペースの表示名を変更する (内部識別名 <see cref="WorkspaceManifest.Name"/> は不変)。
+    /// </summary>
+    Task<ErrorOr<Success>> RenameAsync(string name, string newDisplayName, CancellationToken ct = default);
+
+    /// <summary>
+    /// ワークスペースを削除する。 即削除ではなく <c>workspaces/.trash/&lt;name&gt;-&lt;timestamp&gt;</c> へ
+    /// 移動して、 ユーザーが手動で復元・完全削除できる余地を残す。
+    /// 現在 active なワークスペースは削除できない (アプリが操作する DB を消すため)。
+    /// </summary>
+    Task<ErrorOr<Success>> DeleteAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// 次回起動時に開くワークスペースを設定する。 <c>active.json</c> を書き換えるだけで、
+    /// 現在のプロセス内では切り替わらない。 切替反映にはアプリ再起動が必要。
+    /// </summary>
+    Task<ErrorOr<Success>> SetActiveAsync(string name, CancellationToken ct = default);
+}
