@@ -207,32 +207,51 @@ public sealed partial class MainWindowViewModel
     /// <summary>
     /// Undo / Redo 直後に DB と VM の整合を取るため、各画面の VM を最新状態に再ロードする。
     /// <list type="bullet">
-    ///   <item><see cref="GridCanvasListViewModel.LoadAsync"/>: <c>RenameGridCanvasCommand</c> /
-    ///         <c>SetActiveGridCanvasCommand</c> 等の取り消し結果（名前 / IsActive）を
-    ///         グリッド切替バーに反映する。</item>
+    ///   <item><see cref="GridCanvasListViewModel.LoadAsync"/>: <c>RenameGridCanvasCommand</c>
+    ///         等の取り消し結果（名前変更）をグリッド切替バーに反映する。</item>
     ///   <item><see cref="CopyLibraryChangedMessage"/>: <c>GridWorkspaceViewModel</c> 受信側で
     ///         配置タブの候補・配置を再ロードする（<c>PlaceCommand</c> 等の取消結果を反映）。</item>
     /// </list>
     /// Stage 4 で準備タブと CopyList の連動は廃止された。Inspector が attached している
     /// ImageCopy の特性は、配置再ロード経路 (CopyLibraryChangedMessage → GridWorkspace
     /// 再ロード → SelectedPlacement 再選択 → Inspector.AttachAsync) で間接的に最新化される。
+    /// <para>
+    /// 並行更新の race を避ける順序:
+    /// (1) <see cref="GridCanvasListViewModel.LoadAsync"/> でグリッド一覧を最新化、
+    /// (2) Undo/Redo 対象が別グリッドなら <see cref="GridCanvasListViewModel.SelectedGrid"/> を切替
+    ///     (これが <see cref="GridWorkspaceViewModel.LoadGridAsync"/> 経由で配置を再ロードする)、
+    /// (3) グリッド切替が **発生しなかった** ときだけ <see cref="CopyLibraryChangedMessage"/> を送る。
+    /// 旧実装は (2) より先に <see cref="CopyLibraryChangedMessage"/> を送っていたため、
+    /// 同 EF DbContext / Repository 上で 「古い currentGrid の reload」 と 「新 grid の LoadGridAsync」 が
+    /// 並行実行され concurrent EF query / 古い結果 win の race が起き得た (Codex review P2 指摘)。
+    /// </para>
     /// </summary>
     private async Task RefreshAfterHistoryAsync(CancellationToken ct)
     {
         await GridList.LoadAsync(ct);
 
-        _messenger.Send(new CopyLibraryChangedMessage());
-
         // Undo/Redo 対象が現在のアクティブグリッドと異なる場合、当該グリッドへ自動切替する。
         // GridList.LoadAsync 後に行うことで、Grids 再構築後の最新インスタンスから検索できる。
         // JumpToAsync 内の連続 Undo/Redo は最後の event のみが反映される（_pendingAffectedGridId の上書き）。
+        var gridSwitched = false;
         if (_pendingAffectedGridId is { } gridId)
         {
             _pendingAffectedGridId = null;
             var target = GridList.Grids.FirstOrDefault(g => g.GridId == gridId);
             if (target is not null && !ReferenceEquals(GridList.SelectedGrid, target))
+            {
+                // OnGridListPropertyChanged 経由で GridWorkspace.LoadGridAsync が起動し、
+                // 新グリッドの placement が再ロードされる。 この経路自体に
+                // CopyLibraryChangedMessage と同等の効果があるため、 下の Send はスキップする。
                 GridList.SelectedGrid = target;
+                gridSwitched = true;
+            }
         }
+
+        // 同 grid 内 Undo/Redo (rename, placement 操作等) は LoadGridAsync が走らないので、
+        // ここで GridWorkspace に reload を促す必要がある。
+        if (!gridSwitched)
+            _messenger.Send(new CopyLibraryChangedMessage());
     }
 
     private bool CanUndoCommand() => CanUndo;
