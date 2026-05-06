@@ -60,12 +60,15 @@
             </ListBox>
         </Border>
 
-        <!-- リネーム + 削除 (選択中ワークスペース用) -->
+        <!-- リネーム + 削除 (選択中ワークスペース用) - 新規作成中は隠す -->
         <Border Grid.Row="3"
                 Classes="Card"
-                IsVisible="{Binding SelectedWorkspace, Converter={x:Static ObjectConverters.IsNotNull}}">
+                IsVisible="{Binding ShowSelectedEditor}">
             <StackPanel Spacing="6">
-                <TextBlock Text="表示名" Classes="FieldLabel" />
+                <TextBlock Classes="SectionHeader">
+                    <Run Text="選択中: " /><Run Text="{Binding SelectedWorkspace.DisplayName, FallbackValue=''}" FontWeight="SemiBold" />
+                </TextBlock>
+                <TextBlock Text="表示名を変更" Classes="FieldLabel" />
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
                     <TextBox Grid.Column="0"
                              Text="{Binding EditingDisplayName}"
@@ -90,16 +93,22 @@
                 Classes="Card"
                 IsVisible="{Binding IsCreating}">
             <StackPanel Spacing="6">
-                <TextBlock Text="新規ワークスペース" FontWeight="SemiBold" />
-                <TextBlock Text="内部名 (英数 / ハイフン / アンダースコア)" Classes="FieldLabel" />
+                <TextBlock Text="新しいワークスペースを作成" Classes="SectionHeader" />
+                <TextBlock Classes="HintText"
+                           TextWrapping="Wrap"
+                           Text="新しい空のワークスペースを追加します。 作成後はこのダイアログから「再起動して切替」 で開けます。" />
+                <TextBlock Text="内部名 (英数 / ハイフン / アンダースコア)"
+                           Classes="FieldLabel"
+                           Margin="0,4,0,0" />
                 <TextBox Text="{Binding DraftName}"
                          PlaceholderText="例: work" />
-                <TextBlock Text="表示名" Classes="FieldLabel" />
+                <TextBlock Text="表示名 (UI で表示される名前、 日本語可)" Classes="FieldLabel" />
                 <TextBox Text="{Binding DraftDisplayName}"
                          PlaceholderText="例: 仕事用" />
                 <StackPanel Orientation="Horizontal"
                             HorizontalAlignment="Right"
-                            Spacing="6">
+                            Spacing="6"
+                            Margin="0,4,0,0">
                     <Button Content="キャンセル"
                             MinWidth="80"
                             HorizontalContentAlignment="Center"

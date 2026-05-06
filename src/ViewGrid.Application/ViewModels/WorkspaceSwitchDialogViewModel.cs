@@ -23,6 +23,7 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(CanDeleteSelected))]
     [NotifyPropertyChangedFor(nameof(IsActiveSelected))]
     [NotifyPropertyChangedFor(nameof(EditingDisplayName))]
+    [NotifyPropertyChangedFor(nameof(ShowSelectedEditor))]
     public partial WorkspaceItem? SelectedWorkspace { get; set; }
 
     [ObservableProperty]
@@ -36,6 +37,7 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     /// <summary>新規作成フォームを開いている間 true。 ボタン押下で開閉する。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCreate))]
+    [NotifyPropertyChangedFor(nameof(ShowSelectedEditor))]
     public partial bool IsCreating { get; set; }
 
     [ObservableProperty]
@@ -69,6 +71,12 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
         && IsCreating
         && !string.IsNullOrWhiteSpace(DraftName)
         && !string.IsNullOrWhiteSpace(DraftDisplayName);
+
+    /// <summary>
+    /// 選択中ワークスペースのリネーム / 削除カードを表示するか。 新規作成中は文脈を切り分けるため
+    /// 隠して、 一覧 → 新規作成だけが見える状態にする。
+    /// </summary>
+    public bool ShowSelectedEditor => SelectedWorkspace is not null && !IsCreating;
 
     public WorkspaceSwitchDialogViewModel(IWorkspaceManager manager, IWorkspaceContext context)
     {
