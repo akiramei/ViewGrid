@@ -69,4 +69,53 @@ internal sealed class AvaloniaFilePickerService : IFilePickerService
         var file = await _owner.StorageProvider.SaveFilePickerAsync(options);
         return file?.TryGetLocalPath();
     }
+
+    public async Task<string?> PickSaveJsonPathAsync(string suggestedFileName, string title, CancellationToken ct = default)
+    {
+        if (_owner is null)
+            throw new InvalidOperationException("Owner window is not set. Call SetOwnerWindow first.");
+
+        var options = new FilePickerSaveOptions
+        {
+            Title = title,
+            SuggestedFileName = suggestedFileName,
+            DefaultExtension = "json",
+            ShowOverwritePrompt = true,
+            FileTypeChoices =
+            [
+                new FilePickerFileType("JSON ファイル")
+                {
+                    Patterns = ["*.json"],
+                    MimeTypes = ["application/json"],
+                },
+            ],
+        };
+
+        var file = await _owner.StorageProvider.SaveFilePickerAsync(options);
+        return file?.TryGetLocalPath();
+    }
+
+    public async Task<string?> PickOpenJsonPathAsync(string title, CancellationToken ct = default)
+    {
+        if (_owner is null)
+            throw new InvalidOperationException("Owner window is not set. Call SetOwnerWindow first.");
+
+        var options = new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("JSON ファイル")
+                {
+                    Patterns = ["*.json"],
+                    MimeTypes = ["application/json"],
+                },
+                FilePickerFileTypes.All,
+            ],
+        };
+
+        var files = await _owner.StorageProvider.OpenFilePickerAsync(options);
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
 }

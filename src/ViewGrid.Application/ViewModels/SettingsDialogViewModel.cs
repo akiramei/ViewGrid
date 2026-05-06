@@ -1,4 +1,7 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.Services;
 using ViewGrid.Core.Settings;
@@ -14,7 +17,18 @@ namespace ViewGrid.Application.ViewModels;
 public sealed partial class SettingsDialogViewModel : ViewModelBase
 {
     private readonly IAppSettingsService _settings;
+    private readonly IFilePickerService _filePicker;
     private bool _suppressSave;
+
+    /// <summary>
+    /// エクスポート / インポート結果のステータス文字列 (例: 「インポートしました: ...」)。
+    /// 空文字なら表示しない。 成功 / 失敗どちらも HintText 1 行で View 側に出す。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasIoStatus))]
+    public partial string IoStatus { get; set; } = string.Empty;
+
+    public bool HasIoStatus => !string.IsNullOrEmpty(IoStatus);
 
     /// <summary>
     /// 直近の SaveAsync チェイン。 OnXChanged は fire-and-forget で settings.json を書き出すため、
@@ -37,11 +51,20 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
     /// <summary>サムネイルの最大エッジサイズ (px)。 256 / 512 / 1024 / 2048 から選ぶ。</summary>
     [ObservableProperty] public partial int ThumbnailMaxEdgePixels { get; set; } = 1024;
 
-    public SettingsDialogViewModel(IAppSettingsService settings)
+    public SettingsDialogViewModel(IAppSettingsService settings, IFilePickerService filePicker)
     {
         _settings = settings;
+        _filePicker = filePicker;
+        ReloadFromCurrent();
+    }
 
-        // 初期表示は現在の Current から (Save 抑止フラグで初期化中の OnXChanged を黙らせる)
+    /// <summary>
+    /// VM の各プロパティを <see cref="IAppSettingsService.Current"/> から再ロードする。
+    /// 初期化時 + インポート完了時に呼ばれる。 <see cref="_suppressSave"/> で初期化中の
+    /// <c>OnXChanged</c> による fire-and-forget save を抑止する。
+    /// </summary>
+    private void ReloadFromCurrent()
+    {
         _suppressSave = true;
         try
         {
@@ -126,4 +149,72 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
         if (_suppressSave) return;
         PendingSaveTask = _settings.UpdateAsync(mutate);
     }
+
+    /// <summary>
+    /// 現在の <see cref="AppSettings"/> を JSON ファイルとして書き出す (別 PC / ユーザー間共有用)。
+    /// キャンセル時はサイレント終了。 ファイル書き込み失敗時は <see cref="IoStatus"/> にメッセージ。
+    /// </summary>
+    [RelayCommand]
+    private async Task ExportSettingsAsync()
+    {
+        var path = await _filePicker.PickSaveJsonPathAsync("viewgrid-settings.json", "設定をエクスポート");
+        if (string.IsNullOrEmpty(path))
+        {
+            IoStatus = string.Empty;
+            return;
+        }
+        try
+        {
+            var json = JsonSerializer.Serialize(_settings.Current, JsonOptions);
+            await File.WriteAllTextAsync(path, json);
+            IoStatus = $"エクスポートしました: {Path.GetFileName(path)}";
+        }
+        catch (Exception ex)
+        {
+            IoStatus = $"エクスポートに失敗しました: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// JSON ファイルから <see cref="AppSettings"/> を読み込んで <see cref="IAppSettingsService.SaveAsync"/> 経由で
+    /// 全置換する。 完了後 VM のプロパティも再ロードして View に即反映する。 不正 JSON / 解析失敗は
+    /// <see cref="IoStatus"/> にメッセージ。
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportSettingsAsync()
+    {
+        var path = await _filePicker.PickOpenJsonPathAsync("設定をインポート");
+        if (string.IsNullOrEmpty(path))
+        {
+            IoStatus = string.Empty;
+            return;
+        }
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+            var imported = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+            if (imported is null)
+            {
+                IoStatus = "インポートに失敗しました: JSON が空または不正です。";
+                return;
+            }
+            await _settings.SaveAsync(imported);
+            ReloadFromCurrent();
+            IoStatus = $"インポートしました: {Path.GetFileName(path)}";
+        }
+        catch (Exception ex)
+        {
+            IoStatus = $"インポートに失敗しました: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// エクスポート / インポート両方で使う JSON オプション。 enum は文字列表現で書く
+    /// (人間が手編集できる + バージョン間互換 = "Fill" 等のラベルが安定)。
+    /// </summary>
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
 }

@@ -121,6 +121,22 @@
                         <Button Content="全サムネを再生成..."
                                 HorizontalAlignment="Left"
                                 Click="OnRegenerateThumbnailsClicked" />
+
+                        <!-- 設定の入出力 (JSON エクスポート / インポート) -->
+                        <Border Background="{DynamicResource ViewGridCardBorder}"
+                                Height="1" Margin="0,12,0,12" />
+                        <TextBlock Classes="FieldLabel" Text="設定の入出力" />
+                        <TextBlock Classes="HintText"
+                                   Text="settings.json をファイルに書き出し / 読み込みます。 別 PC や別ユーザー間での共有に。"
+                                   Margin="0,0,0,4" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="エクスポート..." Command="{Binding ExportSettingsCommand}" />
+                            <Button Content="インポート..." Command="{Binding ImportSettingsCommand}" />
+                        </StackPanel>
+                        <TextBlock Classes="HintText"
+                                   Text="{Binding IoStatus}"
+                                   IsVisible="{Binding HasIoStatus}"
+                                   Margin="0,4,0,0" />
                     </StackPanel>
                 </Border>
 
