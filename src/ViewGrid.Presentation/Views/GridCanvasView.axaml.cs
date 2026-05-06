@@ -147,6 +147,13 @@ public partial class GridCanvasView : UserControl
             ApplyPixelOffsetTransform(border, placement);
     }
 
+    /// <summary>
+    /// 現在購読中の <see cref="GridWorkspaceViewModel.CurrentGrid"/>。 CanvasWidth / CanvasHeight 変更で
+    /// Rebuild を発火するため (右ペインのキャンバスサイズ編集に追従)、 同一インスタンス継続時は
+    /// purchase / 解除を省略する。
+    /// </summary>
+    private GridCanvasItemViewModel? _currentGridSubscription;
+
     private void OnDataContextChanged(object? newDataContext)
     {
         if (_vm is not null)
@@ -163,6 +170,7 @@ public partial class GridCanvasView : UserControl
             _vm.Placements.CollectionChanged += OnPlacementsChanged;
         }
 
+        SubscribeToCurrentGrid();
         Rebuild();
     }
 
@@ -171,6 +179,7 @@ public partial class GridCanvasView : UserControl
         if (e.PropertyName == nameof(GridWorkspaceViewModel.CurrentGrid))
         {
             // グリッド切替は全体再構築 (RowDefinitions/ColumnDefinitions / Layer 1/2 の総取り替え)。
+            SubscribeToCurrentGrid();
             Rebuild();
         }
         else if (e.PropertyName == nameof(GridWorkspaceViewModel.SelectedPlacement))
@@ -178,6 +187,31 @@ public partial class GridCanvasView : UserControl
             // 選択変更は SelectionOverlay の位置更新のみで完結 (Border 自体は不変)。
             // 旧実装は Rebuild を呼んでいたが Layer 2 全 Border の再構築が無駄だった。
             UpdateSelectionOverlay();
+        }
+    }
+
+    /// <summary>
+    /// CurrentGrid の購読を最新インスタンスに張り直す。 CanvasWidth / CanvasHeight が
+    /// 右ペインから変更されたときに <see cref="OnCurrentGridPropertyChanged"/> 経由で Rebuild が走る。
+    /// 重み (ColWeights / RowWeights) は <see cref="GridWorkspaceViewModel.ApplyGridWeightsAsync"/> 内で
+    /// 明示的に CurrentGrid 通知を再発火しているため、 こちら側でリッスンする必要はない。
+    /// </summary>
+    private void SubscribeToCurrentGrid()
+    {
+        if (_currentGridSubscription is not null)
+            _currentGridSubscription.PropertyChanged -= OnCurrentGridPropertyChanged;
+        _currentGridSubscription = _vm?.CurrentGrid;
+        if (_currentGridSubscription is not null)
+            _currentGridSubscription.PropertyChanged += OnCurrentGridPropertyChanged;
+    }
+
+    private void OnCurrentGridPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(GridCanvasItemViewModel.CanvasWidth)
+            or nameof(GridCanvasItemViewModel.CanvasHeight))
+        {
+            // CanvasSize 変更で OuterCanvasGrid のサイズと CanvasGrid 内のセル換算が変わる。
+            Rebuild();
         }
     }
 

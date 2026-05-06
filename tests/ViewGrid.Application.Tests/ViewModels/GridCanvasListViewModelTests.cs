@@ -4,6 +4,7 @@ using ViewGrid.Application.History;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
+using ViewGrid.Core.Entities;
 
 namespace ViewGrid.Application.Tests.ViewModels;
 
@@ -18,9 +19,10 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         var create = new CreateGridCanvasUseCase(_fx.GridRepository);
         var delete = new DeleteGridCanvasUseCase(_fx.GridRepository);
         var rename = new RenameGridCanvasUseCase(_fx.GridRepository);
+        var updateSize = new UpdateGridCanvasSizeUseCase(_fx.GridRepository);
         var history = new UndoRedoService();
         _vm = new GridCanvasListViewModel(
-            _fx.GridRepository, create, delete, rename, _fx.AppSettings, history,
+            _fx.GridRepository, create, delete, rename, updateSize, _fx.AppSettings, history,
             NullLogger<GridCanvasListViewModel>.Instance);
     }
 
@@ -103,9 +105,10 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         var create = new CreateGridCanvasUseCase(_fx.GridRepository);
         var delete = new DeleteGridCanvasUseCase(_fx.GridRepository);
         var rename = new RenameGridCanvasUseCase(_fx.GridRepository);
+        var updateSize = new UpdateGridCanvasSizeUseCase(_fx.GridRepository);
         var history = new UndoRedoService();
         var vm2 = new GridCanvasListViewModel(
-            _fx.GridRepository, create, delete, rename, _fx.AppSettings, history,
+            _fx.GridRepository, create, delete, rename, updateSize, _fx.AppSettings, history,
             NullLogger<GridCanvasListViewModel>.Instance);
 
         await vm2.LoadAsync();
@@ -172,5 +175,138 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         await _vm.RenameSelectedAsync("same");
 
         _vm.SelectedGrid!.Name.Should().Be("same");
+    }
+
+    // ─── UpdateSelectedCanvasSizeAsync (右ペイン GridPropertiesView から呼ばれる) ───
+
+    [Fact]
+    public async Task UpdateSelectedCanvasSizeAsync_Persists_And_Updates_VM()
+    {
+        _vm.BeginCreate();
+        _vm.DraftName = "g";
+        _vm.DraftCanvasWidth = 1200;
+        _vm.DraftCanvasHeight = 1200;
+        await _vm.ConfirmCreateAsync();
+
+        await _vm.UpdateSelectedCanvasSizeAsync(new PixelSize(1920, 1080));
+
+        _vm.SelectedGrid!.CanvasWidth.Should().Be(1920);
+        _vm.SelectedGrid.CanvasHeight.Should().Be(1080);
+    }
+
+    [Fact]
+    public async Task UpdateSelectedCanvasSizeAsync_With_Same_Size_Is_NoOp()
+    {
+        _vm.BeginCreate();
+        _vm.DraftName = "g";
+        _vm.DraftCanvasWidth = 1200;
+        _vm.DraftCanvasHeight = 1200;
+        await _vm.ConfirmCreateAsync();
+        var status = _vm.StatusMessage;
+
+        await _vm.UpdateSelectedCanvasSizeAsync(new PixelSize(1200, 1200));
+
+        // 同サイズなら履歴に積まずステータスメッセージも変わらない
+        _vm.StatusMessage.Should().Be(status);
+        _vm.SelectedGrid!.CanvasWidth.Should().Be(1200);
+        _vm.SelectedGrid.CanvasHeight.Should().Be(1200);
+    }
+
+    // ─── ドラフト編集 + 保存ボタン (CommitEditingAsync / RevertEditing) ───
+
+    [Fact]
+    public async Task GridCanvasItemViewModel_Initial_IsDirty_False()
+    {
+        _vm.BeginCreate();
+        _vm.DraftName = "g";
+        await _vm.ConfirmCreateAsync();
+
+        _vm.SelectedGrid!.IsDirty.Should().BeFalse();
+        _vm.SelectedGrid.EditingName.Should().Be(_vm.SelectedGrid.Name);
+        _vm.SelectedGrid.EditingCanvasWidth.Should().Be(_vm.SelectedGrid.CanvasWidth);
+        _vm.SelectedGrid.EditingCanvasHeight.Should().Be(_vm.SelectedGrid.CanvasHeight);
+    }
+
+    [Fact]
+    public async Task GridCanvasItemViewModel_EditingName_Sets_IsDirty()
+    {
+        _vm.BeginCreate();
+        _vm.DraftName = "old";
+        await _vm.ConfirmCreateAsync();
+
+        _vm.SelectedGrid!.EditingName = "new";
+
+        _vm.SelectedGrid.IsDirty.Should().BeTrue();
+        _vm.SelectedGrid.Name.Should().Be("old"); // 永続化値はまだ変わらない
+    }
+
+    [Fact]
+    public async Task GridCanvasItemViewModel_RevertEditing_Restores_Drafts()
+    {
+        _vm.BeginCreate();
+        _vm.DraftName = "old";
+        _vm.DraftCanvasWidth = 1200;
+        _vm.DraftCanvasHeight = 1200;
+        await _vm.ConfirmCreateAsync();
+
+        _vm.SelectedGrid!.EditingName = "new";
+        _vm.SelectedGrid.EditingCanvasWidth = 1920;
+        _vm.SelectedGrid.IsDirty.Should().BeTrue();
+
+        _vm.SelectedGrid.RevertEditing();
+
+        _vm.SelectedGrid.IsDirty.Should().BeFalse();
+        _vm.SelectedGrid.EditingName.Should().Be("old");
+        _vm.SelectedGrid.EditingCanvasWidth.Should().Be(1200);
+        _vm.SelectedGrid.EditingCanvasHeight.Should().Be(1200);
+    }
+
+    [Fact]
+    public async Task CommitEditingAsync_Persists_Both_Name_And_Size()
+    {
+        _vm.BeginCreate();
+        _vm.DraftName = "old";
+        _vm.DraftCanvasWidth = 1200;
+        _vm.DraftCanvasHeight = 1200;
+        await _vm.ConfirmCreateAsync();
+
+        _vm.SelectedGrid!.EditingName = "new";
+        _vm.SelectedGrid.EditingCanvasWidth = 1920;
+        _vm.SelectedGrid.EditingCanvasHeight = 1080;
+
+        await _vm.CommitEditingAsync();
+
+        _vm.SelectedGrid.Name.Should().Be("new");
+        _vm.SelectedGrid.CanvasWidth.Should().Be(1920);
+        _vm.SelectedGrid.CanvasHeight.Should().Be(1080);
+        _vm.SelectedGrid.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CommitEditingAsync_With_Empty_Name_Surfaces_Status_And_Skips_Save()
+    {
+        _vm.BeginCreate();
+        _vm.DraftName = "old";
+        await _vm.ConfirmCreateAsync();
+
+        _vm.SelectedGrid!.EditingName = "   "; // 空白のみ
+
+        await _vm.CommitEditingAsync();
+
+        _vm.SelectedGrid.Name.Should().Be("old");
+        _vm.StatusMessage.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task CommitEditingAsync_When_Not_Dirty_Is_NoOp()
+    {
+        _vm.BeginCreate();
+        _vm.DraftName = "g";
+        await _vm.ConfirmCreateAsync();
+        var status = _vm.StatusMessage;
+
+        await _vm.CommitEditingAsync();
+
+        _vm.StatusMessage.Should().Be(status);
     }
 }

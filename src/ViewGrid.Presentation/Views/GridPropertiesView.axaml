@@ -4,7 +4,8 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
              xmlns:conv="clr-namespace:ViewGrid.Presentation.Converters"
-             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="320"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="380"
+             x:Name="GridPropertiesRoot"
              x:Class="ViewGrid.Presentation.Views.GridPropertiesView"
              x:DataType="vm:GridCanvasItemViewModel">
 
@@ -14,9 +15,11 @@
     </UserControl.Resources>
 
     <!--
-        配置タブの右ペイン下段で、グリッド選択中（配置未選択）に表示される情報パネル。
-        グリッド名のみここから編集可能 (LostFocus / Enter で即時保存、Esc で revert)。
-        重み/ロックはキャンバスの境界ハンドル / ヘッダクリックから操作する設計を維持。
+        配置タブの右ペイン下段で、 グリッド選択中 (配置未選択) に表示される編集パネル。
+        グリッド名 + キャンバスサイズを 「ドラフト編集 → IsDirty → 保存ボタン」 パターンで編集。
+        CopyProperties / PlacementInspector と同じ動線。 重み / ロックはキャンバスの境界ハンドル /
+        ヘッダクリックから操作する設計を維持 (こちらは即時保存)。
+        SaveCommand / RevertCommand は親 GridCanvasListViewModel の CommitEditing / RevertEditing。
     -->
     <Border Padding="10,8"
             CornerRadius="4"
@@ -25,25 +28,72 @@
             <StackPanel Classes="FormGroup">
 
                 <!--
-                    グリッド名 編集 TextBox。
-                    Mode=OneWay にすることで、ユーザー入力で VM.Name が即座に書き換わるのを防ぎ、
-                    LostFocus / Enter で明示的に RenameSelectedAsync を呼んで履歴に積む。
-                    Esc キャンセル時は CodeBehind が VM.Name で TextBox を上書きして revert する。
+                    保存バー (Inspector の SaveAll/RevertAll と同じ視覚パターン)。
+                    SaveCommand / RevertCommand は AvaloniaProperty 経由で親 axaml から渡される。
                 -->
-                <StackPanel Spacing="2">
+                <Border Classes="SubtleCard" Padding="8,6">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button Click="OnSaveClicked"
+                                Classes="accent"
+                                IsEnabled="{Binding IsDirty}"
+                                ToolTip.Tip="名前 + キャンバスサイズの変更をまとめて保存">
+                            <StackPanel Classes="IconButtonContent">
+                                <PathIcon Data="{StaticResource SaveGeometry}" Width="14" Height="14" />
+                                <TextBlock Text="保存" />
+                            </StackPanel>
+                        </Button>
+                        <Button Click="OnRevertClicked"
+                                IsEnabled="{Binding IsDirty}"
+                                ToolTip.Tip="編集前の値に戻す">
+                            <StackPanel Classes="IconButtonContent">
+                                <PathIcon Data="{StaticResource RefreshGeometry}" Width="14" Height="14" />
+                                <TextBlock Text="リセット" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="●"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource SystemAccentColor}"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding IsDirty}"
+                                   ToolTip.Tip="未保存の変更があります" />
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Classes="FormSection">
                     <TextBlock Classes="FieldLabel" Text="グリッド名" />
-                    <TextBox x:Name="GridNameEditor"
-                             Text="{Binding Name, Mode=OneWay}"
+                    <TextBox Text="{Binding EditingName, Mode=TwoWay}"
                              FontWeight="SemiBold"
-                             FontSize="13"
-                             KeyDown="OnGridNameEditorKeyDown"
-                             LostFocus="OnGridNameEditorLostFocus" />
+                             FontSize="13" />
                 </StackPanel>
 
                 <StackPanel Classes="FormSection">
-                    <TextBlock Classes="FieldLabel" Text="サイズ" />
+                    <TextBlock Classes="FieldLabel" Text="セル数" />
                     <TextBlock Text="{Binding GridSizeLabel}" FontSize="12" />
-                    <TextBlock Text="{Binding CanvasSizeLabel}" FontSize="12" Opacity="0.75" />
+                </StackPanel>
+
+                <!--
+                    キャンバスサイズ (出力 PNG の解像度)。 配置 (CellPosition / OccupySize) や重みは
+                    変更されないので、 セルが等倍で拡縮されるだけ。 永続化は保存ボタン押下時のみ。
+                -->
+                <StackPanel Classes="FormSection">
+                    <TextBlock Classes="FieldLabel" Text="キャンバスサイズ (px)" />
+                    <Grid ColumnDefinitions="*,8,*"
+                          RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Column="0" Grid.Row="0" Text="幅" FontSize="11" Opacity="0.75" />
+                        <TextBlock Grid.Column="2" Grid.Row="0" Text="高さ" FontSize="11" Opacity="0.75" />
+                        <NumericUpDown Grid.Column="0" Grid.Row="1"
+                                       Value="{Binding EditingCanvasWidth, Mode=TwoWay}"
+                                       Minimum="1" Maximum="16384"
+                                       Increment="100"
+                                       FormatString="0"
+                                       FontSize="12" />
+                        <NumericUpDown Grid.Column="2" Grid.Row="1"
+                                       Value="{Binding EditingCanvasHeight, Mode=TwoWay}"
+                                       Minimum="1" Maximum="16384"
+                                       Increment="100"
+                                       FormatString="0"
+                                       FontSize="12" />
+                    </Grid>
                 </StackPanel>
 
                 <StackPanel Classes="FormSection">
@@ -71,7 +121,7 @@
                 </StackPanel>
 
                 <TextBlock Classes="HintText"
-                           Text="名前は Enter または別箇所をクリックで保存、Esc で取り消し。比率調整は境界ドラッグ、🔒 はヘッダクリック。" />
+                           Text="名前 / キャンバスサイズは編集後 「保存」 で確定 (Esc / リセットで取り消し)。比率調整は境界ドラッグ、🔒 はヘッダクリック。" />
 
             </StackPanel>
         </ScrollViewer>

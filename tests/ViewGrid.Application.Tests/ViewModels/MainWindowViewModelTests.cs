@@ -59,8 +59,9 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         var createGrid = new CreateGridCanvasUseCase(_fx.GridRepository);
         var deleteGrid = new DeleteGridCanvasUseCase(_fx.GridRepository);
         var renameGrid = new RenameGridCanvasUseCase(_fx.GridRepository);
+        var updateGridSize = new UpdateGridCanvasSizeUseCase(_fx.GridRepository);
         _gridList = new GridCanvasListViewModel(
-            _fx.GridRepository, createGrid, deleteGrid, renameGrid, _fx.AppSettings, sharedHistory,
+            _fx.GridRepository, createGrid, deleteGrid, renameGrid, updateGridSize, _fx.AppSettings, sharedHistory,
             NullLogger<GridCanvasListViewModel>.Instance);
 
         // GridWorkspaceViewModel + PlacementInspector

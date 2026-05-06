@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.UseCases;
+using ViewGrid.Core.Entities;
 using ViewGrid.Core.Interfaces;
 using ViewGrid.Core.Services;
 using ViewGrid.Core.Settings;
@@ -23,6 +24,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     private readonly CreateGridCanvasUseCase _createUseCase;
     private readonly DeleteGridCanvasUseCase _deleteUseCase;
     private readonly RenameGridCanvasUseCase _renameUseCase;
+    private readonly UpdateGridCanvasSizeUseCase _updateCanvasSizeUseCase;
     private readonly IAppSettingsService _appSettings;
     private readonly IUndoRedoService _history;
     private readonly ILogger<GridCanvasListViewModel> _logger;
@@ -74,6 +76,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         CreateGridCanvasUseCase createUseCase,
         DeleteGridCanvasUseCase deleteUseCase,
         RenameGridCanvasUseCase renameUseCase,
+        UpdateGridCanvasSizeUseCase updateCanvasSizeUseCase,
         IAppSettingsService appSettings,
         IUndoRedoService history,
         ILogger<GridCanvasListViewModel> logger)
@@ -82,6 +85,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         _createUseCase = createUseCase;
         _deleteUseCase = deleteUseCase;
         _renameUseCase = renameUseCase;
+        _updateCanvasSizeUseCase = updateCanvasSizeUseCase;
         _appSettings = appSettings;
         _history = history;
         _logger = logger;
@@ -252,25 +256,131 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         var selected = SelectedGrid;
         if (selected is null || IsBusy) return;
         if (string.IsNullOrWhiteSpace(newName)) return;
-        if (newName.Trim() == selected.Name) return;
+        var trimmed = newName.Trim();
+        if (trimmed == selected.Name) return;
 
         try
         {
             IsBusy = true;
-            var trimmed = newName.Trim();
-            var description = $"リネーム: 「{selected.Name}」→「{trimmed}」";
-            var command = new RenameGridCanvasCommand(
-                _renameUseCase, selected.GridId, selected.Name, trimmed, description);
-            var result = await _history.ExecuteAsync(command, ct);
-            if (result.IsError)
-            {
-                StatusMessage = string.Join(", ", result.Errors);
-                return;
-            }
-            selected.Name = trimmed;
-            StatusMessage = "名前を変更しました。";
+            var ok = await RenameInternalAsync(selected, trimmed, ct);
+            if (ok) StatusMessage = "名前を変更しました。";
         }
         finally { IsBusy = false; }
+    }
+
+    /// <summary>
+    /// 選択中グリッドの CanvasSize を更新する。 配置 (CellPosition / OccupySize) や重みは
+    /// 変更しないので、 視覚的にはセルが等倍で拡縮されるだけ。 Undo/Redo は
+    /// <see cref="UpdateGridCanvasSizeCommand"/> 経由。 同サイズなら no-op。
+    /// </summary>
+    [RelayCommand]
+    public async Task UpdateSelectedCanvasSizeAsync(PixelSize newSize, CancellationToken ct = default)
+    {
+        var selected = SelectedGrid;
+        if (selected is null || IsBusy) return;
+
+        var before = new PixelSize(selected.CanvasWidth, selected.CanvasHeight);
+        if (before == newSize) return;
+
+        try
+        {
+            IsBusy = true;
+            var ok = await UpdateCanvasSizeInternalAsync(selected, before, newSize, ct);
+            if (ok) StatusMessage = "キャンバスサイズを変更しました。";
+        }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>
+    /// 右ペイン GridPropertiesView の保存ボタンから呼ばれる。 ドラフト (EditingName / EditingCanvas*)
+    /// を読み、 永続化済み値と異なるものだけを順に Rename / UpdateCanvasSize で永続化する。
+    /// 各操作は独立した履歴エントリとして積まれる (両方変更時は Undo 2 回で元に戻る)。
+    /// 履歴は CopyProperties / PlacementInspector の 「保存ボタン経由」 パターンと同じ意味論。
+    /// </summary>
+    [RelayCommand]
+    public async Task CommitEditingAsync(CancellationToken ct = default)
+    {
+        var selected = SelectedGrid;
+        if (selected is null || IsBusy || !selected.IsDirty) return;
+
+        var newName = selected.EditingName?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            StatusMessage = "グリッド名を入力してください。";
+            return;
+        }
+
+        var nameChanged = newName != selected.Name;
+        var newWidth = selected.EditingCanvasWidth;
+        var newHeight = selected.EditingCanvasHeight;
+        var sizeChanged = newWidth != selected.CanvasWidth || newHeight != selected.CanvasHeight;
+
+        try
+        {
+            IsBusy = true;
+            var savedAny = false;
+            if (nameChanged)
+            {
+                var ok = await RenameInternalAsync(selected, newName, ct);
+                if (!ok) return;
+                savedAny = true;
+            }
+            if (sizeChanged)
+            {
+                var before = new PixelSize(selected.CanvasWidth, selected.CanvasHeight);
+                var after = new PixelSize(newWidth, newHeight);
+                var ok = await UpdateCanvasSizeInternalAsync(selected, before, after, ct);
+                if (!ok) return;
+                savedAny = true;
+            }
+            if (savedAny) StatusMessage = "グリッド情報を保存しました。";
+        }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>右ペインのリセットボタンから呼ばれる。 ドラフトを永続化済み値で上書き。</summary>
+    [RelayCommand]
+    public void RevertEditing() => SelectedGrid?.RevertEditing();
+
+    /// <summary>
+    /// <see cref="RenameSelectedAsync"/> と <see cref="CommitEditingAsync"/> の共通実装。
+    /// 履歴 ExecuteAsync + selected.Name 反映までを行い、 IsBusy / StatusMessage は呼び出し元で制御。
+    /// </summary>
+    private async Task<bool> RenameInternalAsync(
+        GridCanvasItemViewModel selected, string newName, CancellationToken ct)
+    {
+        var description = $"リネーム: 「{selected.Name}」→「{newName}」";
+        var command = new RenameGridCanvasCommand(
+            _renameUseCase, selected.GridId, selected.Name, newName, description);
+        var result = await _history.ExecuteAsync(command, ct);
+        if (result.IsError)
+        {
+            StatusMessage = string.Join(", ", result.Errors);
+            return false;
+        }
+        selected.Name = newName;
+        return true;
+    }
+
+    /// <summary>
+    /// <see cref="UpdateSelectedCanvasSizeAsync"/> と <see cref="CommitEditingAsync"/> の共通実装。
+    /// 履歴 ExecuteAsync + selected.CanvasWidth / Height 反映までを行う。
+    /// </summary>
+    private async Task<bool> UpdateCanvasSizeInternalAsync(
+        GridCanvasItemViewModel selected, PixelSize before, PixelSize after, CancellationToken ct)
+    {
+        var description = $"キャンバスサイズ: {before.Width}×{before.Height} → {after.Width}×{after.Height} px";
+        var command = new UpdateGridCanvasSizeCommand(
+            _updateCanvasSizeUseCase, selected.GridId, before, after, description);
+        var result = await _history.ExecuteAsync(command, ct);
+        if (result.IsError)
+        {
+            StatusMessage = string.Join(", ", result.Errors);
+            return false;
+        }
+        selected.CanvasWidth = after.Width;
+        selected.CanvasHeight = after.Height;
+        return true;
     }
 
     /// <summary>
