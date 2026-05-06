@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using FluentAssertions;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
@@ -57,6 +58,30 @@ public sealed class UpdateGridWeightsUseCaseTests : IAsyncLifetime
         var result = await _useCase.ExecuteAsync(Guid.NewGuid(), [1, 1], rowWeights: null);
         result.IsError.Should().BeTrue();
         result.FirstError.Type.Should().Be(ErrorOr.ErrorType.NotFound);
+    }
+
+    /// <summary>
+    /// 回帰: 列ロックが設定された grid に重み更新を流したとき、 ColLocked / RowLocked が
+    /// DB 上で保持されること。 旧実装は new GridCanvas { ... } で ColLocked / RowLocked を
+    /// 指定し忘れて default `[]` が書き戻されてしまい、 「列をロックしてから重み調整すると
+    /// ロックが消える」 バグになっていた。
+    /// </summary>
+    [Fact]
+    public async Task Preserves_ColLocked_And_RowLocked_When_Updating_Weights()
+    {
+        var grid = await SeedGridAsync(rows: 2, cols: 3);
+        // 中央列だけロック / 上行だけロックの状態を作る
+        var lockedCol = ImmutableArray.Create(false, true, false);
+        var lockedRow = ImmutableArray.Create(true, false);
+        var locks = new UpdateGridLocksUseCase(_fx.GridRepository);
+        await locks.ExecuteAsync(grid.Id, lockedCol, lockedRow);
+
+        var result = await _useCase.ExecuteAsync(grid.Id, [3, 1, 1], rowWeights: null);
+
+        result.IsError.Should().BeFalse();
+        var reloaded = await _fx.GridRepository.FindByIdAsync(grid.Id);
+        reloaded!.ColLocked.SequenceEqual(lockedCol).Should().BeTrue("列ロックが保持されるべき");
+        reloaded.RowLocked.SequenceEqual(lockedRow).Should().BeTrue("行ロックが保持されるべき");
     }
 
     private async Task<GridCanvas> SeedGridAsync(int rows, int cols)

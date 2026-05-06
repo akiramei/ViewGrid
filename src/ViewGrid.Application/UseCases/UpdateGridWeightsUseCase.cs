@@ -53,6 +53,12 @@ public sealed class UpdateGridWeightsUseCase(IGridCanvasRepository repository)
             GridCols = grid.GridCols,
             ColWeights = newColWeights,
             RowWeights = newRowWeights,
+            // ColLocked / RowLocked は本 UseCase で更新しない既存値を保持。
+            // Repository.UpdateAsync は CurrentValues.SetValues で全プロパティ上書きするため、
+            // ここで指定しないと default `[]` が DB に書き戻され、 「列をロックしてから重み調整
+            // するとロックが消える」 バグになる。
+            ColLocked = grid.ColLocked,
+            RowLocked = grid.RowLocked,
             CanvasSize = grid.CanvasSize,
             IsActive = grid.IsActive,
             CreatedAt = grid.CreatedAt,

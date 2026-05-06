@@ -52,6 +52,12 @@ public sealed class CreateGridCanvasUseCase(IGridCanvasRepository repository)
             GridCols = request.Cols,
             ColWeights = colWeights.Value,
             RowWeights = rowWeights.Value,
+            // ロック配列は要素数 = グリッド寸法で明示初期化 (全アンロック)。
+            // 旧実装は default `[]` のまま DB に書き出していたため、 GridCanvasItemViewModel の
+            // 「Length 不一致なら AllUnlocked にフォールバック」 ガードに依存して動いていた。
+            // DB 上の一貫性のため要素数を揃えて永続化する。
+            ColLocked = GridCanvas.AllUnlocked(request.Cols),
+            RowLocked = GridCanvas.AllUnlocked(request.Rows),
             CanvasSize = new PixelSize(request.CanvasWidth, request.CanvasHeight),
             IsActive = false,
             CreatedAt = now,
