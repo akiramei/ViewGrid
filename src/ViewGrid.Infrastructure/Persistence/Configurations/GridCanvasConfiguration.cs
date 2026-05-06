@@ -73,7 +73,6 @@ internal sealed class GridCanvasConfiguration : IEntityTypeConfiguration<GridCan
             .HasConversion(locksConverter, locksComparer)
             .IsRequired();
 
-        builder.HasIndex(x => x.IsActive);
         builder.HasIndex(x => x.UpdatedAt);
     }
 }

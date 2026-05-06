@@ -114,29 +114,6 @@ public sealed class ViewGridDbContextTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GridCanvas_SetActive_Ensures_Single_Active_Grid()
-    {
-        var repo = new EfGridCanvasRepository(_db);
-
-        var g1 = BuildGrid("A", isActive: true);
-        var g2 = BuildGrid("B", isActive: false);
-        var g3 = BuildGrid("C", isActive: false);
-        await repo.AddAsync(g1);
-        await repo.AddAsync(g2);
-        await repo.AddAsync(g3);
-
-        var result = await repo.SetActiveAsync(g2.Id);
-        result.IsError.Should().BeFalse();
-
-        var active = await repo.FindActiveAsync();
-        active.Should().NotBeNull();
-        active!.Id.Should().Be(g2.Id);
-
-        var all = await repo.FindAllAsync();
-        all.Count(x => x.IsActive).Should().Be(1);
-    }
-
-    [Fact]
     public async Task DeleteAsset_Cascades_To_Copies()
     {
         var assetRepo = new EfImageAssetRepository(_db);
@@ -175,20 +152,6 @@ public sealed class ViewGridDbContextTests : IAsyncLifetime
         ScalingMode = ScalingMode.UniformContain,
         Alignment = Alignment.Center,
         OccupySize = OccupySize.OneByOne,
-        CreatedAt = DateTimeOffset.UtcNow,
-        UpdatedAt = DateTimeOffset.UtcNow,
-    };
-
-    private static GridCanvas BuildGrid(string name, bool isActive) => new()
-    {
-        Id = Guid.NewGuid(),
-        Name = name,
-        GridRows = 3,
-        GridCols = 3,
-        ColWeights = GridCanvas.UniformWeights(3),
-        RowWeights = GridCanvas.UniformWeights(3),
-        CanvasSize = new PixelSize(1200, 1200),
-        IsActive = isActive,
         CreatedAt = DateTimeOffset.UtcNow,
         UpdatedAt = DateTimeOffset.UtcNow,
     };
