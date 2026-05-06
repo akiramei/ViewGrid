@@ -1,0 +1,68 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:ViewGrid.Application.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="280"
+        x:Class="ViewGrid.Presentation.Views.WorkspaceSwitchDialog"
+        x:DataType="vm:WorkspaceSwitchDialogViewModel"
+        Title="ワークスペース切替"
+        Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
+        Width="460"
+        SizeToContent="Height"
+        MinHeight="240"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="20" RowSpacing="10">
+        <TextBlock Grid.Row="0"
+                   FontWeight="SemiBold"
+                   FontSize="14"
+                   Text="ワークスペース切替" />
+
+        <TextBlock Grid.Row="1"
+                   Classes="HintText"
+                   TextWrapping="Wrap"
+                   Text="次に開くワークスペースを選択し「再起動して切替」を押してください。アプリが再起動され、選択したワークスペースのデータで開きます。" />
+
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,8,*" Margin="0,4,0,0">
+            <TextBlock Grid.Column="0" Text="現在: " VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold"
+                       Text="{Binding ActiveWorkspaceName}" />
+        </Grid>
+
+        <StackPanel Grid.Row="3" Spacing="6" Margin="0,4,0,0">
+            <TextBlock Text="切替先" FontWeight="SemiBold" />
+            <ComboBox ItemsSource="{Binding Workspaces}"
+                      SelectedItem="{Binding SelectedWorkspace}"
+                      DisplayMemberBinding="{Binding Label}"
+                      HorizontalAlignment="Stretch" />
+            <TextBlock Classes="HintText"
+                       IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Text="{Binding StatusMessage}"
+                       Foreground="{DynamicResource SystemErrorTextColor}" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8"
+                    Margin="0,8,0,0">
+            <Button Content="キャンセル"
+                    MinWidth="80"
+                    HorizontalContentAlignment="Center"
+                    IsCancel="True"
+                    Click="OnCancelClicked" />
+            <Button x:Name="ApplyButton"
+                    Content="再起動して切替"
+                    Classes="accent"
+                    MinWidth="120"
+                    HorizontalContentAlignment="Center"
+                    IsEnabled="{Binding CanApply}"
+                    Click="OnApplyClicked" />
+        </StackPanel>
+    </Grid>
+</Window>

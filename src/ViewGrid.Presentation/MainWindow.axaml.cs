@@ -71,6 +71,16 @@ public partial class MainWindow : Window
         await SettingsDialog.ShowAsync(this, app.Services);
     }
 
+    /// <summary>
+    /// 「ファイル → ワークスペース切替...」: 切替ダイアログを開く。 確定すると active.json 書き換え +
+    /// プロセス再起動 (--workspace=&lt;name&gt; 引数付き) で新ワークスペースのデータでアプリが再開する。
+    /// </summary>
+    private async void OnWorkspaceSwitchClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (Avalonia.Application.Current is not App app || app.Services is null) return;
+        await WorkspaceSwitchDialog.ShowAsync(this, app.Services);
+    }
+
     /// <summary>「ヘルプ → ViewGrid について」: 簡易な情報ダイアログ。</summary>
     private async void OnAboutClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {

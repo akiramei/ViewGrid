@@ -111,6 +111,9 @@
                               Command="{Binding GridWorkspace.ExportToPngCommand}"
                               ToolTip.Tip="現在のグリッドを PNG 画像として書き出します。" />
                     <Separator />
+                    <MenuItem Header="ワークスペース切替..."
+                              Click="OnWorkspaceSwitchClicked"
+                              ToolTip.Tip="別のワークスペースに切り替えます。アプリが再起動されます。" />
                     <MenuItem Header="設定..."
                               InputGesture="Ctrl+,"
                               Click="OnSettingsClicked"

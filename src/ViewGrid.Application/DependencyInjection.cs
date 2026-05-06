@@ -53,6 +53,7 @@ public static class DependencyInjection
         services.AddTransient<MainWindowViewModel>();
         services.AddTransient<SettingsDialogViewModel>();
         services.AddTransient<ThumbnailRegenDialogViewModel>();
+        services.AddTransient<WorkspaceSwitchDialogViewModel>();
 
         return services;
     }
