@@ -103,9 +103,4 @@ public sealed class RegenerateThumbnailsUseCaseTests : IAsyncLifetime
         reports[2].Should().Match<ThumbnailRegenProgress>(p => p.Completed == 2 && p.Total == 2 && p.Successful == 2);
     }
 
-    /// <summary>テスト中の順序保証用に同期的に callback を呼ぶ <see cref="IProgress{T}"/> 実装。</summary>
-    private sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
-    {
-        public void Report(T value) => callback(value);
-    }
 }

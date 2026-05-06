@@ -18,7 +18,12 @@ public sealed class ThumbnailRegenDialogViewModelTests : IAsyncLifetime
         _useCase = new RegenerateThumbnailsUseCase(
             _fx.AssetRepository, _fx.Thumbnails,
             NullLogger<RegenerateThumbnailsUseCase>.Instance);
-        _vm = new ThumbnailRegenDialogViewModel(_useCase);
+        // テストは SynchronizationContext 無し環境で動くため、 Progress<T> の callback が
+        // ThreadPool で非同期消化されて await 直後の assertion が race する。
+        // SynchronousProgress を inject して callback を同期的に処理する。
+        _vm = new ThumbnailRegenDialogViewModel(
+            _useCase,
+            callback => new SynchronousProgress<ThumbnailRegenProgress>(callback));
     }
 
     public async Task DisposeAsync()

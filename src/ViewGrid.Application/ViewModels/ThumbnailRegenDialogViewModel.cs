@@ -13,6 +13,7 @@ namespace ViewGrid.Application.ViewModels;
 public sealed partial class ThumbnailRegenDialogViewModel : ViewModelBase, IDisposable
 {
     private readonly RegenerateThumbnailsUseCase _useCase;
+    private readonly Func<Action<ThumbnailRegenProgress>, IProgress<ThumbnailRegenProgress>> _progressFactory;
     private CancellationTokenSource? _cts;
 
     [ObservableProperty]
@@ -52,9 +53,19 @@ public sealed partial class ThumbnailRegenDialogViewModel : ViewModelBase, IDisp
     /// </summary>
     public event EventHandler? CloseRequested;
 
-    public ThumbnailRegenDialogViewModel(RegenerateThumbnailsUseCase useCase)
+    /// <summary>
+    /// 既定では <see cref="Progress{T}"/> を生成して進捗 callback を SynchronizationContext 経由で
+    /// ディスパッチする (UI スレッド復帰)。 テストは同期 IProgress 実装を渡して race を排除できる
+    /// (SynchronizationContext のないテスト環境で <see cref="Progress{T}"/> が ThreadPool 非同期で
+    /// callback を消化する race を回避するため)。
+    /// </summary>
+    public ThumbnailRegenDialogViewModel(
+        RegenerateThumbnailsUseCase useCase,
+        Func<Action<ThumbnailRegenProgress>, IProgress<ThumbnailRegenProgress>>? progressFactory = null)
     {
         _useCase = useCase;
+        _progressFactory = progressFactory
+            ?? (callback => new Progress<ThumbnailRegenProgress>(callback));
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
@@ -70,7 +81,7 @@ public sealed partial class ThumbnailRegenDialogViewModel : ViewModelBase, IDisp
         CompletionMessage = string.Empty;
 
         _cts = new CancellationTokenSource();
-        var progress = new Progress<ThumbnailRegenProgress>(OnProgress);
+        var progress = _progressFactory(OnProgress);
         try
         {
             var result = await _useCase.ExecuteAsync(progress, _cts.Token);
