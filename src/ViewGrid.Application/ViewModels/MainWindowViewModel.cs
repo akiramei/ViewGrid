@@ -110,7 +110,7 @@ public sealed partial class MainWindowViewModel
             if (GridList.SelectedGrid is null)
                 return "上の「+ 新規」でグリッドを作成すると配置を始められます";
             if (GridWorkspace.SelectedPlacement is not null)
-                return "Shift+ドラッグ で微調整 / Ctrl+矢印 1px / Ctrl+Shift+矢印 10px / 境界をドラッグで比率調整";
+                return "Shift+ドラッグ で微調整 / Ctrl+矢印 1px / Ctrl+Shift+矢印 10px / 境界をドラッグで比率調整 / Esc で選択解除";
             if (GridWorkspace.SelectedCandidate is not null)
                 return "F2 でバリアント名変更 / Enter で確定 / Esc でキャンセル / セルへ D&D で配置";
             return "右の候補をセルへドラッグ&ドロップで配置 / 境界ドラッグで比率 / ヘッダ 🔒 で固定";

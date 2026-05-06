@@ -1679,14 +1679,16 @@ public partial class GridCanvasView : UserControl
         GrabOffset Offset);
 
     /// <summary>
-    /// Ctrl+Arrow（1px）/ Ctrl+Shift+Arrow（10px）でアクティブ配置の PixelOffset を微調整する。
+    /// 配置選択中のキーボード操作:
+    /// <list type="bullet">
+    ///   <item><b>Esc</b>: 選択解除 (<see cref="GridWorkspaceViewModel.SelectedPlacement"/> = null)。
+    ///         Photoshop / Figma 標準。 修飾キー無し。</item>
+    ///   <item><b>Ctrl+Arrow</b> (1px) / <b>Ctrl+Shift+Arrow</b> (10px):
+    ///         アクティブ配置の PixelOffset を微調整。 Ctrl なしの矢印は
+    ///         Inspector の NumericUpDown 等が処理するため干渉しない。</item>
+    /// </list>
     /// <para>
-    /// 動作条件: Ctrl 修飾必須、矢印キーのみ、<see cref="GridWorkspaceViewModel.SelectedPlacement"/>
-    /// が設定済み。Ctrl なしの矢印キーは Inspector の NumericUpDown 等が自然に処理するため
-    /// 干渉しない。
-    /// </para>
-    /// <para>
-    /// 仕様: <see cref="PlacementItemViewModel.PixelOffsetX"/> / <c>Y</c> を直接更新するだけ。
+    /// 仕様 (Ctrl+Arrow): <see cref="PlacementItemViewModel.PixelOffsetX"/> / <c>Y</c> を直接更新するだけ。
     /// Inspector が source の <see cref="PropertyChangedEventArgs"/> を購読していて
     /// IsDirty=true を立てるので、ユーザーが「保存」ボタンを押すまで永続化されない
     /// （Shift+ドラッグ・Inspector 数値直接入力と同じ「編集中バッファ → IsDirty → 保存／Revert」
@@ -1697,6 +1699,16 @@ public partial class GridCanvasView : UserControl
     {
         if (_vm?.SelectedPlacement is not { } placement)
             return;
+
+        // Esc で選択解除 (Photoshop / Figma 標準)。 修飾キー無し、 IsDirty 中でも単純に解除する
+        // (編集中の数値は IsDirty なので Inspector が再表示されると保存ボタンで救える)。
+        if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None)
+        {
+            _vm.SelectedPlacement = null;
+            e.Handled = true;
+            return;
+        }
+
         if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
             return;
 
