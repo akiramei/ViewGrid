@@ -112,13 +112,18 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
             || EditingCanvasHeight != CanvasHeight;
     }
 
-    /// <summary>ドラフトを永続化済み値に戻す (リセットボタン / Esc キャンセル用)。</summary>
+    /// <summary>
+    /// ドラフトを永続化済み値に戻す (リセットボタン / Esc キャンセル用)。
+    /// 保存完了後の defensive sync にも使う (CommitEditingAsync 末尾)。 既に同値の場合
+    /// <see cref="OnEditingNameChanged"/> 等の partial method がスキップされて IsDirty が
+    /// 古いまま残らないよう、 末尾で明示的に <see cref="RecomputeIsDirty"/> を呼ぶ。
+    /// </summary>
     public void RevertEditing()
     {
         EditingName = Name;
         EditingCanvasWidth = CanvasWidth;
         EditingCanvasHeight = CanvasHeight;
-        // OnEditing*Changed → RecomputeIsDirty で IsDirty=false に揃う
+        RecomputeIsDirty();
     }
 
     public GridCanvasItemViewModel(GridCanvas grid)

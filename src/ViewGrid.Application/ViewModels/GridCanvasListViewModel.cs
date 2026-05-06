@@ -333,7 +333,16 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
                 if (!ok) return;
                 savedAny = true;
             }
-            if (savedAny) StatusMessage = "グリッド情報を保存しました。";
+            if (savedAny)
+            {
+                // 保存完了後の defensive sync: RenameInternalAsync / UpdateCanvasSizeInternalAsync
+                // 内で selected.Name / CanvasWidth / CanvasHeight を更新すると OnNameChanged 等の
+                // partial method 経由で Editing も同期されるが、 同値スキップやタイミング差で
+                // IsDirty=true が残る稀なケースを防ぐため、 ここで RevertEditing で確実に揃える
+                // (Editing は最新の永続化値と一致 → IsDirty=false)。
+                selected.RevertEditing();
+                StatusMessage = "グリッド情報を保存しました。";
+            }
         }
         finally { IsBusy = false; }
     }
