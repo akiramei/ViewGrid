@@ -33,6 +33,49 @@ public partial class WorkspaceSwitchDialog : Window
 
     private void OnCancelClicked(object? sender, RoutedEventArgs e) => Close();
 
+    private void OnBeginCreateClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is WorkspaceSwitchDialogViewModel vm)
+            vm.BeginCreate();
+    }
+
+    private void OnCancelCreateClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is WorkspaceSwitchDialogViewModel vm)
+            vm.CancelCreate();
+    }
+
+    private async void OnConfirmCreateClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is WorkspaceSwitchDialogViewModel vm)
+            await vm.ConfirmCreateAsync();
+    }
+
+    private async void OnRenameClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is WorkspaceSwitchDialogViewModel vm)
+            await vm.RenameSelectedAsync();
+    }
+
+    /// <summary>
+    /// 「このワークスペースを削除」: 確認ダイアログを挟んで <see cref="WorkspaceSwitchDialogViewModel.DeleteSelectedAsync"/>。
+    /// 削除と言っても workspaces/.trash/ への Move なので、 ファイル自体は残る。
+    /// </summary>
+    private async void OnDeleteClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not WorkspaceSwitchDialogViewModel vm) return;
+        if (vm.SelectedWorkspace is not { } sel) return;
+
+        var confirmed = await ConfirmDialog.ShowAsync(
+            this,
+            "ワークスペースを削除",
+            $"「{sel.DisplayName}」を削除しますか?\nworkspaces/.trash/ にバックアップが残るため、 必要なら手動で復元できます。",
+            confirmLabel: "削除");
+        if (!confirmed) return;
+
+        await vm.DeleteSelectedAsync();
+    }
+
     /// <summary>
     /// 「再起動して切替」: SetActive で active.json を書き、 現 exe を <c>--workspace=&lt;name&gt;</c> 付きで
     /// 起動して、 自プロセスは <see cref="IClassicDesktopStyleApplicationLifetime.Shutdown(int)"/> で終了。

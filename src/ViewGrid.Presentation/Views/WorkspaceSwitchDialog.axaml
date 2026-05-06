@@ -3,66 +3,143 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:ViewGrid.Application.ViewModels"
-        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="280"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="520"
         x:Class="ViewGrid.Presentation.Views.WorkspaceSwitchDialog"
         x:DataType="vm:WorkspaceSwitchDialogViewModel"
-        Title="ワークスペース切替"
+        Title="ワークスペース"
         Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
-        Width="460"
-        SizeToContent="Height"
-        MinHeight="240"
-        CanResize="False"
-        ShowInTaskbar="False"
+        Width="520" Height="520"
+        MinWidth="480" MinHeight="420"
         WindowStartupLocation="CenterOwner">
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="20" RowSpacing="10">
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="20" RowSpacing="10">
         <TextBlock Grid.Row="0"
                    FontWeight="SemiBold"
                    FontSize="14"
-                   Text="ワークスペース切替" />
+                   Text="ワークスペース" />
 
         <TextBlock Grid.Row="1"
                    Classes="HintText"
                    TextWrapping="Wrap"
-                   Text="次に開くワークスペースを選択し「再起動して切替」を押してください。アプリが再起動され、選択したワークスペースのデータで開きます。" />
+                   Text="作業対象のワークスペースを選択して切替えると、 アプリが再起動して別のデータセットで開きます。 仕事用 / 趣味用などアセット混在を物理的に分離する用途を想定しています。" />
 
-        <Grid Grid.Row="2" ColumnDefinitions="Auto,8,*" Margin="0,4,0,0">
-            <TextBlock Grid.Column="0" Text="現在: " VerticalAlignment="Center" />
-            <TextBlock Grid.Column="2"
-                       VerticalAlignment="Center"
-                       FontWeight="SemiBold"
-                       Text="{Binding ActiveWorkspaceName}" />
-        </Grid>
+        <!-- ワークスペース一覧 -->
+        <Border Grid.Row="2"
+                BorderBrush="{DynamicResource SystemBaseLowColor}"
+                BorderThickness="1"
+                CornerRadius="4">
+            <ListBox ItemsSource="{Binding Workspaces}"
+                     SelectedItem="{Binding SelectedWorkspace}"
+                     Background="Transparent">
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="vm:WorkspaceSwitchDialogViewModel+WorkspaceItem">
+                        <Grid ColumnDefinitions="*,Auto" Margin="2,4">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="●"
+                                           Foreground="{DynamicResource SystemAccentColor}"
+                                           IsVisible="{Binding IsActive}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding DisplayName}"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Name, StringFormat=' ({0})'}"
+                                           VerticalAlignment="Center"
+                                           Opacity="0.6"
+                                           FontSize="11" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1"
+                                       Text="現在使用中"
+                                       Opacity="0.7"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"
+                                       Margin="8,0,4,0"
+                                       IsVisible="{Binding IsActive}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
 
-        <StackPanel Grid.Row="3" Spacing="6" Margin="0,4,0,0">
-            <TextBlock Text="切替先" FontWeight="SemiBold" />
-            <ComboBox ItemsSource="{Binding Workspaces}"
-                      SelectedItem="{Binding SelectedWorkspace}"
-                      DisplayMemberBinding="{Binding Label}"
-                      HorizontalAlignment="Stretch" />
+        <!-- リネーム + 削除 (選択中ワークスペース用) -->
+        <Border Grid.Row="3"
+                Classes="Card"
+                IsVisible="{Binding SelectedWorkspace, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="6">
+                <TextBlock Text="表示名" Classes="FieldLabel" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                    <TextBox Grid.Column="0"
+                             Text="{Binding EditingDisplayName}"
+                             PlaceholderText="表示名を入力" />
+                    <Button Grid.Column="1"
+                            Content="保存"
+                            MinWidth="64"
+                            HorizontalContentAlignment="Center"
+                            Click="OnRenameClicked" />
+                </Grid>
+                <Button Content="このワークスペースを削除..."
+                        Classes="dangerLink"
+                        HorizontalAlignment="Right"
+                        IsEnabled="{Binding CanDeleteSelected}"
+                        Click="OnDeleteClicked"
+                        ToolTip.Tip="ワークスペース データは workspaces/.trash/ に移動されます (即削除ではないため誤操作リスクが小さい)" />
+            </StackPanel>
+        </Border>
+
+        <!-- 新規作成フォーム (フライアウト風) -->
+        <Border Grid.Row="4"
+                Classes="Card"
+                IsVisible="{Binding IsCreating}">
+            <StackPanel Spacing="6">
+                <TextBlock Text="新規ワークスペース" FontWeight="SemiBold" />
+                <TextBlock Text="内部名 (英数 / ハイフン / アンダースコア)" Classes="FieldLabel" />
+                <TextBox Text="{Binding DraftName}"
+                         PlaceholderText="例: work" />
+                <TextBlock Text="表示名" Classes="FieldLabel" />
+                <TextBox Text="{Binding DraftDisplayName}"
+                         PlaceholderText="例: 仕事用" />
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="6">
+                    <Button Content="キャンセル"
+                            MinWidth="80"
+                            HorizontalContentAlignment="Center"
+                            Click="OnCancelCreateClicked" />
+                    <Button Content="作成"
+                            Classes="accent"
+                            MinWidth="80"
+                            HorizontalContentAlignment="Center"
+                            IsEnabled="{Binding CanCreate}"
+                            Click="OnConfirmCreateClicked" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- ステータス + フッタ -->
+        <StackPanel Grid.Row="5" Spacing="8">
             <TextBlock Classes="HintText"
                        IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        Text="{Binding StatusMessage}"
                        Foreground="{DynamicResource SystemErrorTextColor}" />
-        </StackPanel>
-
-        <StackPanel Grid.Row="4"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Right"
-                    Spacing="8"
-                    Margin="0,8,0,0">
-            <Button Content="キャンセル"
-                    MinWidth="80"
-                    HorizontalContentAlignment="Center"
-                    IsCancel="True"
-                    Click="OnCancelClicked" />
-            <Button x:Name="ApplyButton"
-                    Content="再起動して切替"
-                    Classes="accent"
-                    MinWidth="120"
-                    HorizontalContentAlignment="Center"
-                    IsEnabled="{Binding CanApply}"
-                    Click="OnApplyClicked" />
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                <Button Grid.Column="0"
+                        Content="新規作成..."
+                        IsEnabled="{Binding !IsCreating}"
+                        Click="OnBeginCreateClicked" />
+                <Button Grid.Column="2"
+                        Content="閉じる"
+                        MinWidth="80"
+                        HorizontalContentAlignment="Center"
+                        IsCancel="True"
+                        Click="OnCancelClicked" />
+                <Button Grid.Column="3"
+                        x:Name="ApplyButton"
+                        Content="再起動して切替"
+                        Classes="accent"
+                        MinWidth="120"
+                        HorizontalContentAlignment="Center"
+                        IsEnabled="{Binding CanApply}"
+                        Click="OnApplyClicked" />
+            </Grid>
         </StackPanel>
     </Grid>
 </Window>
