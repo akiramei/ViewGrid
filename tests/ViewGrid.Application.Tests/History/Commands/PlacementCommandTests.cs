@@ -230,7 +230,6 @@ public sealed class PlacementCommandTests : IAsyncLifetime
             ColWeights = GridCanvas.UniformWeights(cols),
             RowWeights = GridCanvas.UniformWeights(rows),
             CanvasSize = new PixelSize(800, 800),
-            IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

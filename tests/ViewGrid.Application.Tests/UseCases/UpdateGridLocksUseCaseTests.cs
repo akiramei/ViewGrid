@@ -72,7 +72,6 @@ public sealed class UpdateGridLocksUseCaseTests : IAsyncLifetime
             ColLocked = GridCanvas.AllUnlocked(cols),
             RowLocked = GridCanvas.AllUnlocked(rows),
             CanvasSize = new PixelSize(600, 600),
-            IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

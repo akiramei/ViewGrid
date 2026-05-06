@@ -518,7 +518,6 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         ColWeights = GridCanvas.UniformWeights(cols),
         RowWeights = GridCanvas.UniformWeights(rows),
         CanvasSize = canvas,
-        IsActive = true,
         CreatedAt = DateTimeOffset.UtcNow,
         UpdatedAt = DateTimeOffset.UtcNow,
     };

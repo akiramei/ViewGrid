@@ -17,7 +17,6 @@ internal sealed class GridCanvasConfiguration : IEntityTypeConfiguration<GridCan
         builder.Property(x => x.Name).HasMaxLength(128).IsRequired();
         builder.Property(x => x.GridRows).IsRequired();
         builder.Property(x => x.GridCols).IsRequired();
-        builder.Property(x => x.IsActive).IsRequired();
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 

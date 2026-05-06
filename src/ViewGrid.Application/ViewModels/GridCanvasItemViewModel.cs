@@ -11,9 +11,6 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
     [ObservableProperty]
     public partial string Name { get; set; }
 
-    [ObservableProperty]
-    public partial bool IsActive { get; set; }
-
     public int Rows { get; }
     public int Cols { get; }
 
@@ -131,7 +128,6 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(grid);
         GridId = grid.Id;
         Name = grid.Name;
-        IsActive = grid.IsActive;
         Rows = grid.GridRows;
         Cols = grid.GridCols;
         CanvasWidth = grid.CanvasSize.Width;

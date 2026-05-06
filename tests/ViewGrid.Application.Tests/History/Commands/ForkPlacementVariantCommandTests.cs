@@ -120,7 +120,6 @@ public sealed class ForkPlacementVariantCommandTests : IAsyncLifetime
             ColWeights = GridCanvas.UniformWeights(2),
             RowWeights = GridCanvas.UniformWeights(2),
             CanvasSize = new PixelSize(400, 400),
-            IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

@@ -52,7 +52,6 @@ public sealed class UpdateGridLocksUseCase(IGridCanvasRepository repository)
             ColLocked = newColLocked,
             RowLocked = newRowLocked,
             CanvasSize = grid.CanvasSize,
-            IsActive = grid.IsActive,
             CreatedAt = grid.CreatedAt,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

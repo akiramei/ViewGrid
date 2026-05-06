@@ -3,7 +3,8 @@ using System.Collections.Immutable;
 namespace ViewGrid.Core.Entities;
 
 /// <summary>
-/// 配置対象のグリッドキャンバス。複数持てるが編集対象（アクティブ）は常に 1 つ。
+/// 配置対象のグリッドキャンバス。複数持てる。編集中のグリッドは UI 側
+/// (<see cref="ViewGrid.Core.Settings.AppSettings.LastOpenedGridId"/>) で復元する。
 /// 列・行の比率を <see cref="ColWeights"/> / <see cref="RowWeights"/> で指定でき、
 /// 不均等なコマ割り（例: 2:1:1）にも対応する。
 /// </summary>
@@ -38,8 +39,6 @@ public sealed class GridCanvas
 
     /// <summary>最終出力サイズ（ピクセル）。</summary>
     public required PixelSize CanvasSize { get; init; }
-
-    public required bool IsActive { get; set; }
 
     public required DateTimeOffset CreatedAt { get; init; }
     public required DateTimeOffset UpdatedAt { get; set; }

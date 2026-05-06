@@ -63,9 +63,7 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         _vm.Grids.Should().HaveCount(1);
         _vm.SelectedGrid.Should().NotBeNull();
         _vm.SelectedGrid!.Name.Should().Be("new-grid");
-        // 旧仕様: IsActive=true (auto-activate on create)。 「デフォルトグリッド」 概念廃止により
-        // 常に IsActive=false で永続化。 「直前に作成 → 自動選択」 の UX は SelectedGrid 直接代入で維持。
-        _vm.SelectedGrid.IsActive.Should().BeFalse();
+        // 「直前に作成 → 自動選択」 の UX は SelectedGrid 直接代入で維持。
     }
 
     [Fact]

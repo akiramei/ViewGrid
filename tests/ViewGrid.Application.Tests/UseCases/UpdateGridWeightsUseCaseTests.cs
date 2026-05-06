@@ -95,7 +95,6 @@ public sealed class UpdateGridWeightsUseCaseTests : IAsyncLifetime
             ColWeights = GridCanvas.UniformWeights(cols),
             RowWeights = GridCanvas.UniformWeights(rows),
             CanvasSize = new PixelSize(600, 600),
-            IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

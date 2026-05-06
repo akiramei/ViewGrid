@@ -94,7 +94,6 @@ public sealed class ExportGridUseCaseTests : IAsyncLifetime
             ColWeights = GridCanvas.UniformWeights(cols),
             RowWeights = GridCanvas.UniformWeights(rows),
             CanvasSize = canvasSize,
-            IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

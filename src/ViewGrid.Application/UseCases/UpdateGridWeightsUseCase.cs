@@ -60,7 +60,6 @@ public sealed class UpdateGridWeightsUseCase(IGridCanvasRepository repository)
             ColLocked = grid.ColLocked,
             RowLocked = grid.RowLocked,
             CanvasSize = grid.CanvasSize,
-            IsActive = grid.IsActive,
             CreatedAt = grid.CreatedAt,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

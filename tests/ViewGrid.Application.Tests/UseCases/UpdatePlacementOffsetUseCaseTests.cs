@@ -76,7 +76,6 @@ public sealed class UpdatePlacementOffsetUseCaseTests : IAsyncLifetime
             ColWeights = GridCanvas.UniformWeights(2),
             RowWeights = GridCanvas.UniformWeights(2),
             CanvasSize = new PixelSize(200, 200),
-            IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

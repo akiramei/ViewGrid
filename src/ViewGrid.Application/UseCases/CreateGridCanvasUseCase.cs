@@ -7,8 +7,7 @@ namespace ViewGrid.Application.UseCases;
 
 /// <summary>
 /// 新規グリッドキャンバスを作成する。バリデーションに通れば DB に保存する。
-/// 「デフォルトグリッド」 概念は廃止されたため、 IsActive は常に false で保存される
-/// (DB カラム自体は後方互換のため残置、 起動時の自動選択は <see cref="ViewGrid.Core.Settings.AppSettings.LastOpenedGridId"/> を参照)。
+/// 起動時の自動選択は <see cref="ViewGrid.Core.Settings.AppSettings.LastOpenedGridId"/> を参照する。
 /// </summary>
 public sealed class CreateGridCanvasUseCase(IGridCanvasRepository repository)
 {
@@ -59,7 +58,6 @@ public sealed class CreateGridCanvasUseCase(IGridCanvasRepository repository)
             ColLocked = GridCanvas.AllUnlocked(request.Cols),
             RowLocked = GridCanvas.AllUnlocked(request.Rows),
             CanvasSize = new PixelSize(request.CanvasWidth, request.CanvasHeight),
-            IsActive = false,
             CreatedAt = now,
             UpdatedAt = now,
         };

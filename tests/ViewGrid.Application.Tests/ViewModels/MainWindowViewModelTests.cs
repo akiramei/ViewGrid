@@ -125,7 +125,6 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
-            IsActive = true,
             CreatedAt = System.DateTimeOffset.UtcNow,
             UpdatedAt = System.DateTimeOffset.UtcNow,
         };
@@ -170,7 +169,6 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
-            IsActive = true,
             CreatedAt = System.DateTimeOffset.UtcNow,
             UpdatedAt = System.DateTimeOffset.UtcNow,
         };
@@ -199,7 +197,6 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
-            IsActive = true,
             CreatedAt = System.DateTimeOffset.UtcNow,
             UpdatedAt = System.DateTimeOffset.UtcNow,
         };
@@ -253,7 +250,6 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
-            IsActive = true,
             CreatedAt = System.DateTimeOffset.UtcNow,
             UpdatedAt = System.DateTimeOffset.UtcNow,
         };
@@ -282,7 +278,6 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
-            IsActive = true,
             CreatedAt = System.DateTimeOffset.UtcNow,
             UpdatedAt = System.DateTimeOffset.UtcNow,
         };
@@ -312,7 +307,6 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
-            IsActive = true,
             CreatedAt = System.DateTimeOffset.UtcNow,
             UpdatedAt = System.DateTimeOffset.UtcNow,
         };
@@ -338,7 +332,6 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
             CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
-            IsActive = true,
             CreatedAt = System.DateTimeOffset.UtcNow,
             UpdatedAt = System.DateTimeOffset.UtcNow,
         };

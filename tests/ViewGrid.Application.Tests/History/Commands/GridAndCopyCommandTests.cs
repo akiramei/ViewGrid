@@ -221,7 +221,7 @@ public sealed class GridAndCopyCommandTests : IAsyncLifetime
         command.Description.Should().Be("特性編集: テスト");
     }
 
-    private async Task<GridCanvas> SeedGridAsync(int rows = 3, int cols = 3, string name = "test", bool isActive = true)
+    private async Task<GridCanvas> SeedGridAsync(int rows = 3, int cols = 3, string name = "test")
     {
         var grid = new GridCanvas
         {
@@ -232,7 +232,6 @@ public sealed class GridAndCopyCommandTests : IAsyncLifetime
             ColWeights = GridCanvas.UniformWeights(cols),
             RowWeights = GridCanvas.UniformWeights(rows),
             CanvasSize = new PixelSize(800, 800),
-            IsActive = isActive,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

@@ -248,7 +248,6 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
             ColWeights = GridCanvas.UniformWeights(cols),
             RowWeights = GridCanvas.UniformWeights(rows),
             CanvasSize = new PixelSize(600, 600),
-            IsActive = true,
             CreatedAt = now,
             UpdatedAt = now,
         };
