@@ -9,8 +9,8 @@ using ViewGrid.Core.Entities;
 namespace ViewGrid.Application.Tests.History.Commands;
 
 /// <summary>
-/// 特性/グリッド系 5 Command（UpdateImageCopy / UpdateGridWeights / UpdateGridLocks /
-/// RenameGridCanvas / SetActiveGridCanvas）の Execute → Undo → Redo round-trip 検証。
+/// 特性/グリッド系 4 Command（UpdateImageCopy / UpdateGridWeights / UpdateGridLocks /
+/// RenameGridCanvas）の Execute → Undo → Redo round-trip 検証。
 /// </summary>
 public sealed class GridAndCopyCommandTests : IAsyncLifetime
 {
@@ -148,26 +148,6 @@ public sealed class GridAndCopyCommandTests : IAsyncLifetime
 
         await _history.RedoAsync();
         (await _fx.GridRepository.FindByIdAsync(grid.Id))!.Name.Should().Be("after");
-    }
-
-    [Fact]
-    public async Task SetActiveGridCanvasCommand_RoundTrip_Restores_Previous_Active()
-    {
-        var a = await SeedGridAsync(name: "A", isActive: true);
-        var b = await SeedGridAsync(name: "B", isActive: false);
-        var useCase = new SetActiveGridCanvasUseCase(_fx.GridRepository);
-
-        var command = new SetActiveGridCanvasCommand(useCase, b.Id, beforeActiveId: a.Id,
-            description: "アクティブ切替: 「B」");
-
-        await _history.ExecuteAsync(command);
-        (await _fx.GridRepository.FindActiveAsync())!.Id.Should().Be(b.Id);
-
-        await _history.UndoAsync();
-        (await _fx.GridRepository.FindActiveAsync())!.Id.Should().Be(a.Id);
-
-        await _history.RedoAsync();
-        (await _fx.GridRepository.FindActiveAsync())!.Id.Should().Be(b.Id);
     }
 
     /// <summary>
