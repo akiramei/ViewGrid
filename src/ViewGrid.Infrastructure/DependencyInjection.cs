@@ -13,12 +13,21 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
-        string dataDirectory)
+        string rootDirectory,
+        string workspaceDirectory,
+        string activeWorkspaceName)
     {
-        var storageOptions = new StorageOptions { DataDirectory = dataDirectory };
+        var workspaceContext = new WorkspaceContext(rootDirectory, workspaceDirectory, activeWorkspaceName);
+        services.AddSingleton<IWorkspaceContext>(workspaceContext);
+
+        var storageOptions = new StorageOptions
+        {
+            RootDirectory = rootDirectory,
+            WorkspaceDirectory = workspaceDirectory,
+        };
         services.AddSingleton(storageOptions);
 
-        var dbPath = System.IO.Path.Combine(dataDirectory, "viewgrid.db");
+        var dbPath = System.IO.Path.Combine(workspaceDirectory, "viewgrid.db");
         services.AddDbContext<ViewGridDbContext>(options =>
             options.UseSqlite($"Data Source={dbPath}"));
 

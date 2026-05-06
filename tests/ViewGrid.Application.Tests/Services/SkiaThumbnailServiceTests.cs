@@ -15,7 +15,11 @@ public sealed class SkiaThumbnailServiceTests : IAsyncLifetime
     public Task InitializeAsync()
     {
         _tempDir = TestImageFactory.CreateTempDirectory();
-        var options = new StorageOptions { DataDirectory = _tempDir.FullName };
+        var options = new StorageOptions
+        {
+            RootDirectory = _tempDir.FullName,
+            WorkspaceDirectory = _tempDir.FullName,
+        };
         _storage = new FileSystemImageStorage(options);
         var settings = new JsonAppSettingsService(options, NullLogger<JsonAppSettingsService>.Instance);
         _thumbnails = new SkiaThumbnailService(options, _storage, settings);

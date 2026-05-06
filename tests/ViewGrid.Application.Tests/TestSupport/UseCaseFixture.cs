@@ -80,7 +80,11 @@ internal sealed class UseCaseFixture : IAsyncDisposable
         await db.Database.EnsureCreatedAsync();
 
         var tempDir = TestImageFactory.CreateTempDirectory();
-        var storageOptions = new StorageOptions { DataDirectory = tempDir.FullName };
+        var storageOptions = new StorageOptions
+        {
+            RootDirectory = tempDir.FullName,
+            WorkspaceDirectory = tempDir.FullName,
+        };
         var storage = new FileSystemImageStorage(storageOptions);
         // 設定は実 JSON サービスを temp dir 上に作る (settings.json 不在 → 既定値で起動)
         var appSettings = new JsonAppSettingsService(storageOptions, NullLogger<JsonAppSettingsService>.Instance);

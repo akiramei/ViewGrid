@@ -49,7 +49,7 @@ internal sealed class FileSystemImageStorage(StorageOptions options) : IImageSto
     {
         ArgumentException.ThrowIfNullOrEmpty(relativePath);
         var normalized = relativePath.Replace('/', Path.DirectorySeparatorChar);
-        return Path.Combine(_options.DataDirectory, normalized);
+        return Path.Combine(_options.WorkspaceDirectory, normalized);
     }
 
     public void Delete(string relativePath)

@@ -121,7 +121,7 @@ internal sealed class SkiaThumbnailService(
     private string ResolveAbsolutePath(string relativePath)
     {
         var normalized = relativePath.Replace('/', Path.DirectorySeparatorChar);
-        return Path.Combine(_options.DataDirectory, normalized);
+        return Path.Combine(_options.WorkspaceDirectory, normalized);
     }
 
     private (int Width, int Height) CalculateThumbnailSize(int sourceWidth, int sourceHeight)

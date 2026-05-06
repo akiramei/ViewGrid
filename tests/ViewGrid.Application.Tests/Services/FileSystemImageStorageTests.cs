@@ -12,7 +12,11 @@ public sealed class FileSystemImageStorageTests : IAsyncLifetime
     public Task InitializeAsync()
     {
         _tempDir = TestImageFactory.CreateTempDirectory();
-        _storage = new FileSystemImageStorage(new StorageOptions { DataDirectory = _tempDir.FullName });
+        _storage = new FileSystemImageStorage(new StorageOptions
+        {
+            RootDirectory = _tempDir.FullName,
+            WorkspaceDirectory = _tempDir.FullName,
+        });
         return Task.CompletedTask;
     }
 

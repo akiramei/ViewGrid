@@ -7,7 +7,9 @@ using ViewGrid.Core.Settings;
 namespace ViewGrid.Infrastructure.Services;
 
 /// <summary>
-/// <see cref="AppSettings"/> を <c>{DataDirectory}/settings.json</c> に永続化する実装。
+/// <see cref="AppSettings"/> を <c>{RootDirectory}/settings.json</c> に永続化する実装。
+/// ワークスペース横断で共有する設定 (テーマ / アクセント色等) のため <see cref="StorageOptions.RootDirectory"/>
+/// を使い、 ワークスペース固有データとは分離する。
 /// 起動時にコンストラクタ内で同期読み込み、 失敗時 (ファイル不在 / JSON 破損) は既定値で復帰。
 /// 既定値で復帰した場合は次回 <see cref="SaveAsync"/> 時に正常な JSON で上書きされる。
 /// </summary>
@@ -28,7 +30,7 @@ internal sealed partial class JsonAppSettingsService : IAppSettingsService, IDis
     {
         ArgumentNullException.ThrowIfNull(options);
         _logger = logger;
-        _filePath = Path.Combine(options.DataDirectory, "settings.json");
+        _filePath = Path.Combine(options.RootDirectory, "settings.json");
         _current = LoadOrDefault();
     }
 

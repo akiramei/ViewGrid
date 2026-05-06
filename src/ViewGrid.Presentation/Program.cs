@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using ViewGrid.Application;
 using ViewGrid.Infrastructure;
+using ViewGrid.Infrastructure.Services;
 
 namespace ViewGrid.Presentation;
 
@@ -59,30 +60,50 @@ internal static class Program
 
     private static IHost BuildHost(string[] args)
     {
-        var dataDir = Path.Combine(
+        var rootDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ViewGrid");
-        Directory.CreateDirectory(dataDir);
+        Directory.CreateDirectory(rootDir);
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
             .WriteTo.File(
-                path: Path.Combine(dataDir, "logs", "viewgrid-.log"),
+                path: Path.Combine(rootDir, "logs", "viewgrid-.log"),
                 formatProvider: CultureInfo.InvariantCulture,
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 14)
             .CreateLogger();
+
+        // ワークスペース解決 (旧バージョンからの自動移行 + active.json 解決)。
+        // --workspace=<name> 引数 (再起動経路) があれば優先する。
+        var cliWorkspace = ParseWorkspaceArg(args);
+        var (activeWorkspace, workspaceDir) = WorkspaceBootstrap.Resolve(rootDir, cliWorkspace);
 
         return Host.CreateDefaultBuilder(args)
             .UseSerilog()
             .ConfigureServices((_, services) =>
             {
                 services
-                    .AddInfrastructure(dataDir)
+                    .AddInfrastructure(rootDir, workspaceDir, activeWorkspace)
                     .AddApplication()
                     .AddPresentation();
             })
             .Build();
+    }
+
+    /// <summary>
+    /// <c>--workspace=&lt;name&gt;</c> をコマンドライン引数から抽出する (再起動経路で渡される)。
+    /// 見つからなければ <c>null</c>。
+    /// </summary>
+    private static string? ParseWorkspaceArg(string[] args)
+    {
+        const string prefix = "--workspace=";
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith(prefix, StringComparison.Ordinal))
+                return arg[prefix.Length..];
+        }
+        return null;
     }
 }

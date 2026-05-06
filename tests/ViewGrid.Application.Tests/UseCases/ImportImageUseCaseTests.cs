@@ -30,7 +30,11 @@ public sealed class ImportImageUseCaseTests : IAsyncLifetime
         await _db.Database.EnsureCreatedAsync();
 
         _tempDir = TestImageFactory.CreateTempDirectory();
-        var storageOptions = new StorageOptions { DataDirectory = _tempDir.FullName };
+        var storageOptions = new StorageOptions
+        {
+            RootDirectory = _tempDir.FullName,
+            WorkspaceDirectory = _tempDir.FullName,
+        };
         var storage = new FileSystemImageStorage(storageOptions);
         var settings = new JsonAppSettingsService(storageOptions, NullLogger<JsonAppSettingsService>.Instance);
         var thumbnails = new SkiaThumbnailService(storageOptions, storage, settings);

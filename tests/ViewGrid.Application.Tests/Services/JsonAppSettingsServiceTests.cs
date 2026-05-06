@@ -15,7 +15,11 @@ public sealed class JsonAppSettingsServiceTests : IAsyncLifetime
     public Task InitializeAsync()
     {
         _tempDir = TestImageFactory.CreateTempDirectory();
-        _options = new StorageOptions { DataDirectory = _tempDir.FullName };
+        _options = new StorageOptions
+        {
+            RootDirectory = _tempDir.FullName,
+            WorkspaceDirectory = _tempDir.FullName,
+        };
         return Task.CompletedTask;
     }
 
