@@ -25,9 +25,8 @@ public sealed record AppSettings
     public int ThumbnailMaxEdgePixels { get; init; } = 1024;
 
     /// <summary>
-    /// 最後に開いていたグリッドの Id。 起動時の自動選択に使う。
-    /// 「デフォルトグリッド」 (旧 IsActive) 概念は廃止し、 「直前のセッションの続き」 で
-    /// グリッドを復元する。 Guid? を JSON 上で扱いやすくするため string で保持
+    /// 最後に開いていたグリッドの Id。 起動時の「直前のセッションの続き」 復元に使う。
+    /// Guid? を JSON 上で扱いやすくするため string で保持
     /// (空 / 不正値は null 扱いで先頭グリッドにフォールバック)。
     /// </summary>
     public string? LastOpenedGridId { get; init; }

@@ -16,7 +16,7 @@ namespace ViewGrid.Application.ViewModels;
 /// 配置タブで使うグリッドキャンバス一覧。Create/Delete/Rename を提供。
 /// 新規作成フォームはフライアウト展開用に VM 内で直接保持する。
 /// 「最後に開いていたグリッド」 を <see cref="IAppSettingsService"/> 経由で永続化し、
-/// 起動時に復元する (旧 「デフォルトグリッド」 (IsActive) UI 概念は廃止)。
+/// 起動時に復元する。
 /// </summary>
 public sealed partial class GridCanvasListViewModel : ViewModelBase
 {
@@ -129,7 +129,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
 
             // 復元優先順:
             // (1) reload 前の SelectedGrid (mid-session で 「今見ている grid」 を保持する)、
-            // (2) AppSettings.LastOpenedGridId (起動直後 / 初回ロード時の復元、 旧 IsActive 概念は廃止)、
+            // (2) AppSettings.LastOpenedGridId (起動直後 / 初回ロード時の復元)、
             // (3) 先頭グリッド (fallback)。
             GridCanvasItemViewModel? restored = null;
             if (currentSelectedId is { } currentId)

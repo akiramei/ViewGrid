@@ -99,8 +99,7 @@
 
             <!--
                 メイン行: グリッド ComboBox + アクションボタン群。
-                「デフォルトグリッド」 (旧 IsActive ●) UI 概念は廃止。 起動時は
-                AppSettings.LastOpenedGridId で 「直前に開いていたグリッド」 を自動復元する。
+                起動時は AppSettings.LastOpenedGridId で 「直前に開いていたグリッド」 を自動復元する。
                 ComboBox では選択中のものが SelectedItem ハイライトでそのまま分かる。
             -->
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">

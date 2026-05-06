@@ -46,7 +46,6 @@ public sealed class UpdateGridCanvasSizeUseCase(IGridCanvasRepository repository
             ColLocked = grid.ColLocked,
             RowLocked = grid.RowLocked,
             CanvasSize = newSize,
-            IsActive = grid.IsActive,
             CreatedAt = grid.CreatedAt,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
