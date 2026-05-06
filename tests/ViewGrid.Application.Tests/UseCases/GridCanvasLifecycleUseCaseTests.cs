@@ -5,7 +5,7 @@ using ViewGrid.Application.UseCases;
 namespace ViewGrid.Application.Tests.UseCases;
 
 /// <summary>
-/// Delete / Rename / SetActive の薄いユースケースをまとめて検証する。
+/// Delete / Rename の薄いユースケースをまとめて検証する。
 /// </summary>
 public sealed class GridCanvasLifecycleUseCaseTests : IAsyncLifetime
 {
@@ -13,7 +13,6 @@ public sealed class GridCanvasLifecycleUseCaseTests : IAsyncLifetime
     private CreateGridCanvasUseCase _create = null!;
     private DeleteGridCanvasUseCase _delete = null!;
     private RenameGridCanvasUseCase _rename = null!;
-    private SetActiveGridCanvasUseCase _setActive = null!;
 
     public async Task InitializeAsync()
     {
@@ -21,7 +20,6 @@ public sealed class GridCanvasLifecycleUseCaseTests : IAsyncLifetime
         _create = new CreateGridCanvasUseCase(_fx.GridRepository);
         _delete = new DeleteGridCanvasUseCase(_fx.GridRepository);
         _rename = new RenameGridCanvasUseCase(_fx.GridRepository);
-        _setActive = new SetActiveGridCanvasUseCase(_fx.GridRepository);
     }
 
     public async Task DisposeAsync() => await _fx.DisposeAsync();
@@ -81,27 +79,4 @@ public sealed class GridCanvasLifecycleUseCaseTests : IAsyncLifetime
         result.FirstError.Type.Should().Be(ErrorOr.ErrorType.NotFound);
     }
 
-    [Fact]
-    public async Task SetActive_Switches_Active_Grid_Exclusively()
-    {
-        var first = await _create.ExecuteAsync(new CreateGridCanvasRequest
-        {
-            Name = "a", Rows = 2, Cols = 2, CanvasWidth = 400, CanvasHeight = 400,
-        });
-        var second = await _create.ExecuteAsync(new CreateGridCanvasRequest
-        {
-            Name = "b", Rows = 2, Cols = 2, CanvasWidth = 400, CanvasHeight = 400,
-        });
-
-        var result = await _setActive.ExecuteAsync(second.Value.Id);
-
-        result.IsError.Should().BeFalse();
-        var all = await _fx.GridRepository.FindAllAsync();
-        all.Count(g => g.IsActive).Should().Be(1);
-        all.Single(g => g.IsActive).Id.Should().Be(second.Value.Id);
-
-        // 最初のものは非アクティブ化されている
-        var firstReloaded = await _fx.GridRepository.FindByIdAsync(first.Value.Id);
-        firstReloaded!.IsActive.Should().BeFalse();
-    }
 }
