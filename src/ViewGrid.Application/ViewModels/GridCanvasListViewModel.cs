@@ -91,14 +91,8 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     /// SelectedGrid が変わるたびに LastOpenedGridId を settings に保存する。
     /// 起動時の自動復元で同じ値を再保存しないよう <see cref="_suppressLastOpenedSave"/> でガード。
     /// 失敗 (権限不足等) は静かに飲む — 起動時の選択復元が出来ない程度の影響にとどまる。
-    /// 連続して SelectedGrid が変わる場合 (例: ConfirmCreate 直後の自動選択 + 続けて手動切替) に
-    /// 並行 SaveAsync で settings.json への書込みが競合するのを避けるため、 Task continuation で
-    /// 前回 save 完了後に次の save を投げる serialize 戦略。 重複判定は pending save 中でも正しく
-    /// 効くよう、 同期で読める <see cref="IAppSettingsService.Current"/> ではなく
-    /// <see cref="_lastQueuedLastOpenedId"/> (= 最後に save 予約した id) と比較する。
-    /// 他フィールド (Theme / AccentColor 等) を巻き戻さないため、 <see cref="AppSettings"/> 全体は
-    /// save 実行時に <see cref="IAppSettingsService.Current"/> を読み直して構築する。
-    /// fire-and-forget だが <see cref="LastOpenedSaveTask"/> でテスト等が全 save 完了を待てる。
+    /// 並行更新の race は <see cref="IAppSettingsService.UpdateAsync"/> 側の lock で吸収されるため、
+    /// VM 側では fire-and-forget で良い (テストや確実な永続化待ちは <see cref="LastOpenedSaveTask"/>)。
     /// </summary>
     partial void OnSelectedGridChanged(GridCanvasItemViewModel? value)
     {
@@ -108,19 +102,9 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         if (_lastQueuedLastOpenedId == newId) return;
 
         _lastQueuedLastOpenedId = newId;
-        var previous = LastOpenedSaveTask;
-        LastOpenedSaveTask = SaveLastOpenedAfterAsync(previous, newId);
-    }
-
-    private async Task SaveLastOpenedAfterAsync(Task previous, string? newId)
-    {
-        try { await previous.ConfigureAwait(false); }
-        catch { /* 前段の失敗は無視 — 次の save に進む */ }
-
-        // save 実行時に最新の Current を読み直し、 LastOpenedGridId だけ差し替える。
-        // (他フィールドが OnSelectedGridChanged 後に他経路で変わっていても巻き戻さない)
-        var settings = _appSettings.Current with { LastOpenedGridId = newId };
-        await _appSettings.SaveAsync(settings).ConfigureAwait(false);
+        // UpdateAsync 内で最新 Current を読み直して LastOpenedGridId だけ差し替えるため、
+        // 他 VM が同時に Theme / AccentColor 等を変更していても巻き戻しは起きない。
+        LastOpenedSaveTask = _appSettings.UpdateAsync(s => s with { LastOpenedGridId = newId });
     }
 
     [RelayCommand]
@@ -130,14 +114,28 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         try
         {
             IsBusy = true;
+
+            // mid-session reload (RefreshAfterHistoryAsync 等から) で in-memory の現在選択を
+            // 維持するために、 reload 前に SelectedGrid.GridId を捕捉する。 持続中の
+            // LastOpenedGridId save が完了する前にここに来た場合、 _appSettings.Current は
+            // 古い id のままなので、 settings 値を見ると意図しないグリッドに切り戻る (Codex review P2)。
+            var currentSelectedId = SelectedGrid?.GridId;
+
             await ReloadGridsInternalAsync(ct);
 
-            // 直前のセッションで開いていたグリッドを復元 (旧 IsActive 概念は廃止)。
-            // パース失敗 / 該当 Id なし / null なら先頭グリッドにフォールバック。
-            var lastId = _appSettings.Current.LastOpenedGridId;
+            // 復元優先順:
+            // (1) reload 前の SelectedGrid (mid-session で 「今見ている grid」 を保持する)、
+            // (2) AppSettings.LastOpenedGridId (起動直後 / 初回ロード時の復元、 旧 IsActive 概念は廃止)、
+            // (3) 先頭グリッド (fallback)。
             GridCanvasItemViewModel? restored = null;
-            if (!string.IsNullOrWhiteSpace(lastId) && Guid.TryParse(lastId, out var parsed))
-                restored = Grids.FirstOrDefault(g => g.GridId == parsed);
+            if (currentSelectedId is { } currentId)
+                restored = Grids.FirstOrDefault(g => g.GridId == currentId);
+            if (restored is null)
+            {
+                var lastId = _appSettings.Current.LastOpenedGridId;
+                if (!string.IsNullOrWhiteSpace(lastId) && Guid.TryParse(lastId, out var parsed))
+                    restored = Grids.FirstOrDefault(g => g.GridId == parsed);
+            }
 
             // 復元時は OnSelectedGridChanged の無駄な settings 書き戻しを抑制する。
             _suppressLastOpenedSave = true;

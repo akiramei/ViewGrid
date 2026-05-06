@@ -117,5 +117,13 @@ public sealed class SettingsDialogViewModelTests
             Changed?.Invoke(this, settings);
             return Task.CompletedTask;
         }
+
+        public Task UpdateAsync(Func<AppSettings, AppSettings> mutate, CancellationToken ct = default)
+        {
+            // 同期スタブ: 実装側 (JsonAppSettingsService) は SemaphoreSlim で serialize するが、
+            // テストは単一スレッドかつ await 直後に Current 反映を期待するので素直に実行する。
+            var newSettings = mutate(Current);
+            return SaveAsync(newSettings, ct);
+        }
     }
 }

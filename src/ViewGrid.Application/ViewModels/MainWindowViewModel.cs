@@ -230,6 +230,14 @@ public sealed partial class MainWindowViewModel
     {
         await GridList.LoadAsync(ct);
 
+        // GridList.LoadAsync は内部で SelectedGrid を更新するため、 OnGridListPropertyChanged
+        // 経由の LoadGridAsync が fire-and-forget で動いている可能性がある。 次の SelectedGrid
+        // 切替で 2 つ目の LoadGridAsync を起動する前に、 まず先行 task の完了を待つことで
+        // 同 EF DbContext / Repository 上の concurrent query race を防ぐ (Codex review P2)。
+        // task の例外は OnGridListPropertyChanged 側で StatusMessage に格納済み。 こちらで
+        // 再 throw すると Undo/Redo/Jump の残処理が中断するので必ず握り潰す (Codex review P2)。
+        await ObserveQuietlyAsync(_pendingLoadGridTask);
+
         // Undo/Redo 対象が現在のアクティブグリッドと異なる場合、当該グリッドへ自動切替する。
         // GridList.LoadAsync 後に行うことで、Grids 再構築後の最新インスタンスから検索できる。
         // JumpToAsync 内の連続 Undo/Redo は最後の event のみが反映される（_pendingAffectedGridId の上書き）。
@@ -244,6 +252,8 @@ public sealed partial class MainWindowViewModel
                 // 新グリッドの placement が再ロードされる。 この経路自体に
                 // CopyLibraryChangedMessage と同等の効果があるため、 下の Send はスキップする。
                 GridList.SelectedGrid = target;
+                // 切替で起動した LoadGridAsync の完了を待つ (上の理由と同じ race 回避 + 例外握り潰し)。
+                await ObserveQuietlyAsync(_pendingLoadGridTask);
                 gridSwitched = true;
             }
         }
@@ -252,6 +262,19 @@ public sealed partial class MainWindowViewModel
         // ここで GridWorkspace に reload を促す必要がある。
         if (!gridSwitched)
             _messenger.Send(new CopyLibraryChangedMessage());
+    }
+
+    /// <summary>
+    /// Task の完了を待つが、 fault / cancel は無視する。 fire-and-forget な listener が既に
+    /// 例外を観測 (StatusMessage 反映等) していて、 こちらで再 throw すると上位処理を壊すケース用。
+    /// ConfigureAwait(false) は付けない: continuation が SelectedGrid setter 経由で
+    /// Avalonia の PropertyChanged 等を触るため、 UI thread の SynchronizationContext で
+    /// resume する必要がある (Codex review P2)。
+    /// </summary>
+    private static async Task ObserveQuietlyAsync(Task task)
+    {
+        try { await task; }
+        catch { /* listener 側でログ済み */ }
     }
 
     private bool CanUndoCommand() => CanUndo;
@@ -332,6 +355,15 @@ public sealed partial class MainWindowViewModel
     // CopyList ロードの直列化 (_copyLoadCts / _copyLoadGate) は撤去された。
     // 共有特性の編集は Inspector 内 inline embed で完結する。
 
+    /// <summary>
+    /// SelectedGrid 変更で起動した <see cref="GridWorkspaceViewModel.LoadGridAsync"/> の Task。
+    /// <see cref="OnGridListPropertyChanged"/> は async void だが、 タスクをここに退避することで
+    /// <see cref="RefreshAfterHistoryAsync"/> 等が完了を待ってから次の SelectedGrid 切替を
+    /// 投げられる。 これがないと Undo/Redo grid auto-switch で 2 つの LoadGridAsync が
+    /// 並行実行され EF DbContext race を起こす (Codex review P2)。
+    /// </summary>
+    private Task _pendingLoadGridTask = Task.CompletedTask;
+
     private async void OnGridListPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(GridCanvasListViewModel.SelectedGrid))
@@ -339,7 +371,14 @@ public sealed partial class MainWindowViewModel
 
         OnPropertyChanged(nameof(StatusSummary));
         OnPropertyChanged(nameof(CurrentHints));
-        await GridWorkspace.LoadGridAsync(GridList.SelectedGrid);
+
+        // Task をフィールドに退避してから await することで、 外部から同タスクの完了を待てる。
+        // 例外は async void で握り潰さず、 propagate させずに observe してログ済み扱いにする
+        // (LoadGridAsync 内で StatusMessage に格納される)。
+        var task = GridWorkspace.LoadGridAsync(GridList.SelectedGrid);
+        _pendingLoadGridTask = task;
+        try { await task; }
+        catch { /* GridWorkspace 側で StatusMessage に反映済み */ }
     }
 
     /// <summary>

@@ -16,6 +16,12 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
     private readonly IAppSettingsService _settings;
     private bool _suppressSave;
 
+    /// <summary>
+    /// 直近の SaveAsync チェイン。 OnXChanged は fire-and-forget で settings.json を書き出すため、
+    /// テストや確実に永続化を待ちたい呼び出し元はこのタスクを await する。
+    /// </summary>
+    public Task PendingSaveTask { get; private set; } = Task.CompletedTask;
+
     /// <summary>テーマ (Default / Light / Dark)。 文字列で持つのは <see cref="AppSettings.Theme"/> と整合させるため。</summary>
     [ObservableProperty] public partial string Theme { get; set; } = "Default";
 
@@ -112,12 +118,12 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
     /// <summary>
     /// Current に対して mutator を適用した新しい <see cref="AppSettings"/> を保存する。
     /// 初期化中 / View 側双方向バインディングのループは <see cref="_suppressSave"/> で抑止。
+    /// 並行更新の race は <see cref="IAppSettingsService.UpdateAsync"/> 側の lock で吸収されるため、
+    /// VM 側では fire-and-forget で良い (テストや確実な永続化待ちは <see cref="PendingSaveTask"/>)。
     /// </summary>
     private void SaveCurrent(Func<AppSettings, AppSettings> mutate)
     {
         if (_suppressSave) return;
-        var newSettings = mutate(_settings.Current);
-        // fire and forget: SaveAsync 内でファイル書き出し + Changed 発火
-        _ = _settings.SaveAsync(newSettings);
+        PendingSaveTask = _settings.UpdateAsync(mutate);
     }
 }
