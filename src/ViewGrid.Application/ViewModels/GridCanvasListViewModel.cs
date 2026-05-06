@@ -7,6 +7,7 @@ using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Interfaces;
 using ViewGrid.Core.Services;
+using ViewGrid.Core.Settings;
 
 namespace ViewGrid.Application.ViewModels;
 
@@ -38,6 +39,12 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     /// このタスクを await する。 永続化失敗 (権限不足等) は静かに飲んでアプリ操作を妨げない。
     /// </summary>
     public Task LastOpenedSaveTask { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// 最後に save 予約した LastOpenedGridId。 同期で読める <see cref="IAppSettingsService.Current"/>
+    /// は pending save の途中だと古い値を返すため、 重複保存スキップ判定にはこちらを使う。
+    /// </summary>
+    private string? _lastQueuedLastOpenedId;
 
     public ObservableCollection<GridCanvasItemViewModel> Grids { get; } = [];
 
@@ -84,17 +91,36 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     /// SelectedGrid が変わるたびに LastOpenedGridId を settings に保存する。
     /// 起動時の自動復元で同じ値を再保存しないよう <see cref="_suppressLastOpenedSave"/> でガード。
     /// 失敗 (権限不足等) は静かに飲む — 起動時の選択復元が出来ない程度の影響にとどまる。
-    /// fire-and-forget だが <see cref="LastOpenedSaveTask"/> でテスト等が完了を待てるようにする。
+    /// 連続して SelectedGrid が変わる場合 (例: ConfirmCreate 直後の自動選択 + 続けて手動切替) に
+    /// 並行 SaveAsync で settings.json への書込みが競合するのを避けるため、 Task continuation で
+    /// 前回 save 完了後に次の save を投げる serialize 戦略。 重複判定は pending save 中でも正しく
+    /// 効くよう、 同期で読める <see cref="IAppSettingsService.Current"/> ではなく
+    /// <see cref="_lastQueuedLastOpenedId"/> (= 最後に save 予約した id) と比較する。
+    /// 他フィールド (Theme / AccentColor 等) を巻き戻さないため、 <see cref="AppSettings"/> 全体は
+    /// save 実行時に <see cref="IAppSettingsService.Current"/> を読み直して構築する。
+    /// fire-and-forget だが <see cref="LastOpenedSaveTask"/> でテスト等が全 save 完了を待てる。
     /// </summary>
     partial void OnSelectedGridChanged(GridCanvasItemViewModel? value)
     {
         if (_suppressLastOpenedSave) return;
 
-        var current = _appSettings.Current;
         var newId = value?.GridId.ToString();
-        if (current.LastOpenedGridId == newId) return;
+        if (_lastQueuedLastOpenedId == newId) return;
 
-        LastOpenedSaveTask = _appSettings.SaveAsync(current with { LastOpenedGridId = newId });
+        _lastQueuedLastOpenedId = newId;
+        var previous = LastOpenedSaveTask;
+        LastOpenedSaveTask = SaveLastOpenedAfterAsync(previous, newId);
+    }
+
+    private async Task SaveLastOpenedAfterAsync(Task previous, string? newId)
+    {
+        try { await previous.ConfigureAwait(false); }
+        catch { /* 前段の失敗は無視 — 次の save に進む */ }
+
+        // save 実行時に最新の Current を読み直し、 LastOpenedGridId だけ差し替える。
+        // (他フィールドが OnSelectedGridChanged 後に他経路で変わっていても巻き戻さない)
+        var settings = _appSettings.Current with { LastOpenedGridId = newId };
+        await _appSettings.SaveAsync(settings).ConfigureAwait(false);
     }
 
     [RelayCommand]
@@ -118,6 +144,9 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
             try
             {
                 SelectedGrid = restored ?? Grids.FirstOrDefault();
+                // 復元した id で _lastQueuedLastOpenedId を初期化することで、 次回 SelectedGrid が
+                // 別グリッドに変わったときの重複判定が正しく効く (起動時 vs 手動切替の両経路を整合)。
+                _lastQueuedLastOpenedId = SelectedGrid?.GridId.ToString();
             }
             finally { _suppressLastOpenedSave = false; }
         }

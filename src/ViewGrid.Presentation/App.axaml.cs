@@ -55,12 +55,48 @@ public partial class App : global::Avalonia.Application
 
             desktop.MainWindow = window;
 
+            // シャットダウン時に LastOpenedGridId の永続化が完了するまで待つ。
+            // GridCanvasListViewModel / MainWindowViewModel は Transient 登録 (DependencyInjection.cs)
+            // のため、 DI から取り直すと LastOpenedSaveTask が Task.CompletedTask な別インスタンスを
+            // 引いてしまい race を取り逃がす。 必ず `desktop.MainWindow.DataContext` 経由で
+            // live VM を辿って await する。
+            desktop.ShutdownRequested += OnShutdownRequested;
+
             // 初回起動時にアセット一覧とグリッド一覧を読み込み
             _ = vm.AssetLibrary.LoadAsync();
             _ = vm.GridList.LoadAsync();
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// シャットダウン要求の再入防止フラグ。 一度 await してから <c>desktop.Shutdown()</c> を再呼出しすると
+    /// <see cref="IClassicDesktopStyleApplicationLifetime.ShutdownRequested"/> が再発火するので、
+    /// 2 回目以降は素通しする。
+    /// </summary>
+    private bool _shutdownAwaited;
+
+    /// <summary>
+    /// シャットダウン要求時に <see cref="GridCanvasListViewModel.LastOpenedSaveTask"/> を await する。
+    /// MainWindow の DataContext から live VM を読む (DI 経由 GetRequiredService は Transient のため
+    /// 別インスタンスを返してしまい race を取り逃がす設計上の罠)。
+    /// pending save 失敗 (権限不足等) は静かに飲んでシャットダウン進行を妨げない。
+    /// </summary>
+    private async void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
+    {
+        if (_shutdownAwaited) return;
+        if (sender is not IClassicDesktopStyleApplicationLifetime desktop) return;
+        if (desktop.MainWindow?.DataContext is not MainWindowViewModel mainVm) return;
+
+        var pending = mainVm.GridList.LastOpenedSaveTask;
+        if (pending.IsCompleted) return;
+
+        e.Cancel = true;
+        _shutdownAwaited = true;
+        try { await pending; }
+        catch { /* 永続化失敗は致命的でないので無視 */ }
+        desktop.Shutdown();
     }
 
     /// <summary>
