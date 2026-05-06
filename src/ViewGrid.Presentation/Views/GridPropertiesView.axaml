@@ -15,7 +15,7 @@
 
     <!--
         配置タブの右ペイン下段で、グリッド選択中（配置未選択）に表示される情報パネル。
-        編集 UI ではなく読み取り専用の状態確認用。リネームは左の GridCanvasListView、
+        グリッド名のみここから編集可能 (LostFocus / Enter で即時保存、Esc で revert)。
         重み/ロックはキャンバスの境界ハンドル / ヘッダクリックから操作する設計を維持。
     -->
     <Border Padding="10,8"
@@ -24,12 +24,20 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Classes="FormGroup">
 
+                <!--
+                    グリッド名 編集 TextBox。
+                    Mode=OneWay にすることで、ユーザー入力で VM.Name が即座に書き換わるのを防ぎ、
+                    LostFocus / Enter で明示的に RenameSelectedAsync を呼んで履歴に積む。
+                    Esc キャンセル時は CodeBehind が VM.Name で TextBox を上書きして revert する。
+                -->
                 <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="グリッド名" />
-                    <TextBlock Text="{Binding Name}"
-                               FontWeight="SemiBold"
-                               FontSize="13"
-                               TextTrimming="CharacterEllipsis" />
+                    <TextBox x:Name="GridNameEditor"
+                             Text="{Binding Name, Mode=OneWay}"
+                             FontWeight="SemiBold"
+                             FontSize="13"
+                             KeyDown="OnGridNameEditorKeyDown"
+                             LostFocus="OnGridNameEditorLostFocus" />
                 </StackPanel>
 
                 <StackPanel Classes="FormSection">
@@ -63,7 +71,7 @@
                 </StackPanel>
 
                 <TextBlock Classes="HintText"
-                           Text="キャンバス上の境界ドラッグで比率調整、ヘッダの 🔒 でロック切替ができます。" />
+                           Text="名前は Enter または別箇所をクリックで保存、Esc で取り消し。比率調整は境界ドラッグ、🔒 はヘッダクリック。" />
 
             </StackPanel>
         </ScrollViewer>

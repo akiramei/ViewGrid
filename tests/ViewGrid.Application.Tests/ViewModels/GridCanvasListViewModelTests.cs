@@ -133,90 +133,44 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         _vm.SelectedGrid.Should().NotBeNull();
     }
 
+    // ─── RenameSelectedAsync ガード仕様 ───
+    // 中央ヘッダのインライン編集は廃止し、 右ペイン GridPropertiesView から
+    // LostFocus / Enter で直接 RenameSelectedAsync を呼ぶ設計に変更。 入力 trim と
+    // 「空欄 / 同名は no-op」 のガードは VM 側に集約してテストする。
+
     [Fact]
-    public async Task BeginEditSelected_Sets_IsEditing_And_Copies_Name_To_Buffer()
+    public async Task RenameSelectedAsync_Trims_And_Persists_New_Name()
     {
         _vm.BeginCreate();
         _vm.DraftName = "old";
         await _vm.ConfirmCreateAsync();
 
-        _vm.BeginEditSelected();
+        await _vm.RenameSelectedAsync("  new  ");
 
-        _vm.SelectedGrid!.IsEditing.Should().BeTrue();
-        _vm.SelectedGrid.EditingName.Should().Be("old");
+        _vm.SelectedGrid!.Name.Should().Be("new");
     }
 
     [Fact]
-    public void BeginEditSelected_With_No_Selection_Is_NoOp()
-    {
-        _vm.SelectedGrid.Should().BeNull();
-
-        _vm.BeginEditSelected(); // 例外が出ないこと
-    }
-
-    [Fact]
-    public async Task CancelEditSelected_Clears_IsEditing_And_Buffer_Without_Saving()
+    public async Task RenameSelectedAsync_With_Whitespace_Skips_Save()
     {
         _vm.BeginCreate();
         _vm.DraftName = "keep";
         await _vm.ConfirmCreateAsync();
 
-        _vm.BeginEditSelected();
-        _vm.SelectedGrid!.EditingName = "discard";
+        await _vm.RenameSelectedAsync("   ");
 
-        _vm.CancelEditSelected();
-
-        _vm.SelectedGrid.IsEditing.Should().BeFalse();
-        _vm.SelectedGrid.EditingName.Should().BeNull();
-        _vm.SelectedGrid.Name.Should().Be("keep"); // 保存されていない
+        _vm.SelectedGrid!.Name.Should().Be("keep");
     }
 
     [Fact]
-    public async Task CommitEditSelectedAsync_Persists_Trimmed_Buffer()
-    {
-        _vm.BeginCreate();
-        _vm.DraftName = "old";
-        await _vm.ConfirmCreateAsync();
-
-        _vm.BeginEditSelected();
-        _vm.SelectedGrid!.EditingName = "  new  "; // 前後空白を含む
-
-        await _vm.CommitEditSelectedAsync();
-
-        _vm.SelectedGrid.IsEditing.Should().BeFalse();
-        _vm.SelectedGrid.EditingName.Should().BeNull();
-        _vm.SelectedGrid.Name.Should().Be("new"); // trim された値が永続化
-    }
-
-    [Fact]
-    public async Task CommitEditSelectedAsync_With_Empty_Buffer_Skips_Save()
-    {
-        _vm.BeginCreate();
-        _vm.DraftName = "keep";
-        await _vm.ConfirmCreateAsync();
-
-        _vm.BeginEditSelected();
-        _vm.SelectedGrid!.EditingName = "   "; // 空白のみ
-
-        await _vm.CommitEditSelectedAsync();
-
-        _vm.SelectedGrid.IsEditing.Should().BeFalse();
-        _vm.SelectedGrid.Name.Should().Be("keep"); // 元のまま
-    }
-
-    [Fact]
-    public async Task CommitEditSelectedAsync_With_Same_Name_Skips_Save()
+    public async Task RenameSelectedAsync_With_Same_Name_Skips_Save()
     {
         _vm.BeginCreate();
         _vm.DraftName = "same";
         await _vm.ConfirmCreateAsync();
 
-        _vm.BeginEditSelected();
-        // EditingName は BeginEdit で "same" になっている → 同じ
+        await _vm.RenameSelectedAsync("same");
 
-        await _vm.CommitEditSelectedAsync();
-
-        _vm.SelectedGrid!.IsEditing.Should().BeFalse();
-        _vm.SelectedGrid.Name.Should().Be("same");
+        _vm.SelectedGrid!.Name.Should().Be("same");
     }
 }
