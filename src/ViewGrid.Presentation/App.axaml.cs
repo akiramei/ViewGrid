@@ -118,16 +118,18 @@ public partial class App : global::Avalonia.Application
     /// (トップレベル) に書き込む。 ThemeDictionaries 内の同名キーよりも優先されるため、
     /// この経路で書くと <c>{DynamicResource}</c> 参照が確実に再評価される。
     /// <para>
-    /// テーマ (Light / Dark) によって base 色を切り替える必要があるため、 現在の
-    /// <see cref="Avalonia.Application.ActualThemeVariant"/> を見てプリセット内の
-    /// Light / Dark パレットのどちらを使うかを判定する。 起動時 + 設定変更時 + テーマ切替時
-    /// に呼ばれる。
+    /// テーマ (Light / Dark) によって base 色を切り替える必要があるため、 まず
+    /// <see cref="Avalonia.Application.RequestedThemeVariant"/> を見て Light / Dark を確定し
+    /// (= 設定で明示選択時はここで決まる)、 Default (システム追従) のときのみ
+    /// <see cref="Avalonia.Application.ActualThemeVariant"/> に問い合わせる。
+    /// 旧実装は <c>ApplyTheme</c> 直後の <c>ActualThemeVariant</c> の更新遅延で前テーマの
+    /// パレットが残る race があった。
     /// </para>
     /// </summary>
     private void ApplyAccentColor(AppSettings settings)
     {
         var preset = AccentColorPresets.Get(settings.AccentColor);
-        var palette = ActualThemeVariant == ThemeVariant.Dark ? preset.Dark : preset.Light;
+        var palette = ResolveIsDarkTheme() ? preset.Dark : preset.Light;
 
         Resources["SystemAccentColor"] = Color.Parse(palette.Color);
         Resources["SystemAccentColorDark1"] = Color.Parse(palette.Dark1);
@@ -136,5 +138,18 @@ public partial class App : global::Avalonia.Application
         Resources["SystemAccentColorLight1"] = Color.Parse(palette.Light1);
         Resources["SystemAccentColorLight2"] = Color.Parse(palette.Light2);
         Resources["SystemAccentColorLight3"] = Color.Parse(palette.Light3);
+    }
+
+    /// <summary>
+    /// 現在のテーマが Dark かどうかを判定する。 ユーザーが Light / Dark を明示選択している
+    /// 場合は <see cref="Avalonia.Application.RequestedThemeVariant"/> で即座に確定するので
+    /// <c>ApplyTheme</c> 直後でも race にならない。 Default (システム追従) の場合のみ
+    /// <see cref="Avalonia.Application.ActualThemeVariant"/> を見る (こちらは OS 確定値で起動時から安定)。
+    /// </summary>
+    private bool ResolveIsDarkTheme()
+    {
+        if (RequestedThemeVariant == ThemeVariant.Light) return false;
+        if (RequestedThemeVariant == ThemeVariant.Dark) return true;
+        return ActualThemeVariant == ThemeVariant.Dark;
     }
 }
