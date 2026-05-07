@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using ErrorOr;
 using ViewGrid.Core.Services;
@@ -16,6 +18,9 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
     private const string ManifestFileName = "workspaces.json";
     private const string ActiveFileName = "active.json";
     private const string TrashDirectoryName = ".trash";
+
+    /// <summary>エクスポート zip のルートに含めるメタデータファイル名。</summary>
+    internal const string ExportMetadataFileName = "workspace.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
@@ -224,6 +229,227 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
         }
     }
 
+    public async Task<ErrorOr<Success>> ExportAsync(
+        string sourceName, string destinationZipPath, CancellationToken ct = default)
+    {
+        if (!WorkspaceBootstrap.IsValidName(sourceName))
+            return Error.Validation("Workspace.InvalidName",
+                "ワークスペース名の形式が不正です。");
+
+        if (string.IsNullOrWhiteSpace(destinationZipPath))
+            return Error.Validation("Workspace.InvalidExportPath",
+                "エクスポート先のパスを指定してください。");
+
+        await _lock.WaitAsync(ct);
+        try
+        {
+            var sourceDir = Path.Combine(_context.RootDirectory,
+                WorkspaceBootstrap.WorkspacesSubdirectory, sourceName);
+            if (!Directory.Exists(sourceDir))
+                return Error.NotFound("Workspace.NotFound",
+                    $"エクスポート対象のワークスペース '{sourceName}' が見つかりません。");
+
+            var manifests = ReadManifestList();
+            var entry = manifests.FirstOrDefault(m =>
+                string.Equals(m.Name, sourceName, StringComparison.OrdinalIgnoreCase));
+            var displayName = entry?.DisplayName ?? sourceName;
+
+            var parentDir = Path.GetDirectoryName(destinationZipPath);
+            if (!string.IsNullOrEmpty(parentDir))
+                Directory.CreateDirectory(parentDir);
+
+            // 失敗時に半端な zip を残さないよう、 一時ファイル経由で書き出してから rename する。
+            var tempZip = destinationZipPath + ".tmp";
+            try
+            {
+                using (var zip = ZipFile.Open(tempZip, ZipArchiveMode.Create))
+                {
+                    WriteExportMetadata(zip, sourceName, displayName);
+                    AddWorkspaceFilesToZip(zip, sourceDir, ct);
+                }
+
+                // 既存 zip がある場合は File.Replace で原子的に置換する。 単純な「Delete → Move」 は
+                // Delete 成功 + Move 失敗のタイミングで元ファイルを失うデータロス窓ができるため避ける。
+                // 既存ファイルが無い場合は Replace は FileNotFoundException を出すので Move にフォールバック。
+                if (File.Exists(destinationZipPath))
+                    File.Replace(tempZip, destinationZipPath, destinationBackupFileName: null);
+                else
+                    File.Move(tempZip, destinationZipPath);
+            }
+            catch
+            {
+                try { if (File.Exists(tempZip)) File.Delete(tempZip); }
+                catch (IOException) { }
+                throw;
+            }
+
+            return Result.Success;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>
+    /// zip ルートに <c>workspace.json</c> (Name / DisplayName / ExportedAt) を書き出す。
+    /// インポート時のデフォルト名候補に使われる。
+    /// </summary>
+    private static void WriteExportMetadata(ZipArchive zip, string name, string displayName)
+    {
+        var meta = new ExportMetadataJson
+        {
+            Name = name,
+            DisplayName = displayName,
+            ExportedAt = DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+        };
+        var json = JsonSerializer.Serialize(meta, JsonOptions);
+        var entry = zip.CreateEntry(ExportMetadataFileName, CompressionLevel.NoCompression);
+        using var stream = entry.Open();
+        using var writer = new StreamWriter(stream, Encoding.UTF8);
+        writer.Write(json);
+    }
+
+    /// <summary>
+    /// ワークスペースディレクトリ配下のファイルを再帰的に zip に追加する。
+    /// <see cref="WorkspaceLock.LockFileName"/> はランタイムで保持中のため除外。
+    /// 万一ユーザーがワークスペースルートに <see cref="ExportMetadataFileName"/> を作っていた
+    /// 場合も、 メタデータ書き込みとの重複を避けるため除外する。
+    /// </summary>
+    private static void AddWorkspaceFilesToZip(ZipArchive zip, string sourceDir, CancellationToken ct)
+    {
+        var basePath = sourceDir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        foreach (var file in Directory.EnumerateFiles(sourceDir, "*", SearchOption.AllDirectories))
+        {
+            ct.ThrowIfCancellationRequested();
+            var fileName = Path.GetFileName(file);
+            if (string.Equals(fileName, WorkspaceLock.LockFileName, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (string.Equals(file, Path.Combine(sourceDir, ExportMetadataFileName), StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var relative = file[basePath.Length..].Replace(Path.DirectorySeparatorChar, '/');
+            zip.CreateEntryFromFile(file, relative, CompressionLevel.Optimal);
+        }
+    }
+
+    public async Task<ErrorOr<WorkspaceManifest>> ImportAsync(
+        string sourceZipPath, string newName, string newDisplayName, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sourceZipPath) || !File.Exists(sourceZipPath))
+            return Error.NotFound("Workspace.ImportSourceMissing",
+                "インポート元の zip ファイルが見つかりません。");
+
+        if (!WorkspaceBootstrap.IsValidName(newName))
+            return Error.Validation("Workspace.InvalidName",
+                "ワークスペース名は英数 / ハイフン / アンダースコアの 1〜64 文字で指定してください。");
+
+        var trimmedDisplay = (newDisplayName ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(trimmedDisplay))
+            return Error.Validation("Workspace.DisplayNameRequired", "表示名を入力してください。");
+
+        await _lock.WaitAsync(ct);
+        try
+        {
+            var manifests = ReadManifestList();
+            if (manifests.Any(m => string.Equals(m.Name, newName, StringComparison.OrdinalIgnoreCase)))
+                return Error.Conflict("Workspace.NameAlreadyExists",
+                    $"同名のワークスペース '{newName}' が既に存在します。");
+
+            var destDir = Path.Combine(_context.RootDirectory,
+                WorkspaceBootstrap.WorkspacesSubdirectory, newName);
+            if (Directory.Exists(destDir))
+                return Error.Conflict("Workspace.DirectoryAlreadyExists",
+                    $"ディレクトリ '{destDir}' が既に存在します。");
+
+            // zip を開いてメタデータと全エントリの安全性を先に検証する。 展開はすべての
+            // エントリが安全 (zip slip 等の親ディレクトリ脱出が無い) と確認できてから一括で
+            // 行う。 部分展開の掃除を 1 箇所に集約できる。
+            try
+            {
+                using var zip = ZipFile.OpenRead(sourceZipPath);
+                var metaEntry = zip.GetEntry(ExportMetadataFileName);
+                if (metaEntry is null)
+                    return Error.Validation("Workspace.InvalidExport",
+                        "zip にワークスペースのメタデータ (workspace.json) が含まれていません。 ViewGrid からエクスポートした zip を指定してください。");
+
+                foreach (var entry in zip.Entries)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (string.Equals(entry.FullName, ExportMetadataFileName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (string.IsNullOrEmpty(entry.Name))
+                        continue;
+
+                    if (ResolveSafeExtractPath(destDir, entry.FullName) is null)
+                        return Error.Validation("Workspace.UnsafeZipEntry",
+                            $"zip 内に親ディレクトリへ抜ける危険なパスが含まれています: '{entry.FullName}'");
+                }
+
+                Directory.CreateDirectory(destDir);
+                try
+                {
+                    foreach (var entry in zip.Entries)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        if (string.Equals(entry.FullName, ExportMetadataFileName, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        if (string.IsNullOrEmpty(entry.Name))
+                            continue;
+
+                        // 上で検証済みなので null 返却はあり得ない。
+                        var destPath = ResolveSafeExtractPath(destDir, entry.FullName)!;
+                        var entryDir = Path.GetDirectoryName(destPath);
+                        if (!string.IsNullOrEmpty(entryDir))
+                            Directory.CreateDirectory(entryDir);
+                        entry.ExtractToFile(destPath, overwrite: false);
+                    }
+                }
+                catch
+                {
+                    // 部分展開の掃除
+                    if (Directory.Exists(destDir))
+                    {
+                        try { Directory.Delete(destDir, recursive: true); } catch (IOException) { }
+                    }
+                    throw;
+                }
+            }
+            catch (InvalidDataException)
+            {
+                return Error.Validation("Workspace.InvalidZip",
+                    "zip ファイルが破損しているか、 形式が不正です。");
+            }
+
+            var added = new WorkspaceManifest(newName, trimmedDisplay);
+            WriteManifestList(manifests.Append(added));
+            return added;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>
+    /// zip エントリ名から実ファイルパスを解決する。 親ディレクトリへ抜ける zip slip 攻撃
+    /// (<c>../../etc/passwd</c> 等) や NTFS の代替データストリーム (<c>foo:stream</c>) 経由の
+    /// 脱出を弾くため、 解決後パスが <paramref name="destDir"/> 配下に留まることを検証する。
+    /// 危険なエントリには <c>null</c> を返す。
+    /// </summary>
+    private static string? ResolveSafeExtractPath(string destDir, string entryFullName)
+    {
+        // NTFS ADS は <ファイル名>:<ストリーム名> 構文で別ファイルへ書き込めるため、 ':' を
+        // 含むエントリ名は無条件で拒否する (Windows 専用脆弱性、 Linux でも安全側に倒す)。
+        if (entryFullName.Contains(':', StringComparison.Ordinal))
+            return null;
+
+        var normalized = entryFullName.Replace('/', Path.DirectorySeparatorChar);
+        var fullPath = Path.GetFullPath(Path.Combine(destDir, normalized));
+        var fullDest = Path.GetFullPath(destDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(fullDest, StringComparison.OrdinalIgnoreCase) ? fullPath : null;
+    }
+
     public async Task<ErrorOr<Success>> SetActiveAsync(string name, CancellationToken ct = default)
     {
         if (!WorkspaceBootstrap.IsValidName(name))
@@ -307,5 +533,12 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
     private sealed class ActiveJson
     {
         public string? Name { get; set; }
+    }
+
+    private sealed class ExportMetadataJson
+    {
+        public string? Name { get; set; }
+        public string? DisplayName { get; set; }
+        public string? ExportedAt { get; set; }
     }
 }

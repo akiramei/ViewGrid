@@ -46,4 +46,22 @@ public interface IWorkspaceManager
     /// 現在のプロセス内では切り替わらない。 切替反映にはアプリ再起動が必要。
     /// </summary>
     Task<ErrorOr<Success>> SetActiveAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// ワークスペース全体 (DB / assets / thumbnails) を 1 つの zip にまとめて
+    /// <paramref name="destinationZipPath"/> に書き出す。 zip ルートに <c>workspace.json</c>
+    /// (Name / DisplayName / ExportedAt) を含めるため、 インポート側でデフォルト名候補に使える。
+    /// アクティブワークスペースのエクスポートも許可される (SQLite WAL/SHM が残っていても整合性は保たれる前提)。
+    /// </summary>
+    Task<ErrorOr<Success>> ExportAsync(
+        string sourceName, string destinationZipPath, CancellationToken ct = default);
+
+    /// <summary>
+    /// <see cref="ExportAsync"/> で生成した zip を読み込み、 <paramref name="newName"/> /
+    /// <paramref name="newDisplayName"/> で新ワークスペースとして展開する。 <c>workspaces/&lt;newName&gt;/</c>
+    /// を作成 + zip 内のファイル群を配置 + manifest に追記。 既存名と衝突する場合は拒否される。
+    /// 不正な zip / <c>workspace.json</c> 不在の場合は <see cref="ErrorOr.ErrorType.Validation"/> を返す。
+    /// </summary>
+    Task<ErrorOr<WorkspaceManifest>> ImportAsync(
+        string sourceZipPath, string newName, string newDisplayName, CancellationToken ct = default);
 }

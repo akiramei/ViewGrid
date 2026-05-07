@@ -15,7 +15,9 @@ namespace ViewGrid.Infrastructure.Services;
 /// </remarks>
 public sealed class WorkspaceLock : IDisposable
 {
-    private const string LockFileName = ".lock";
+    /// <summary>ロックファイル名 (ワークスペースディレクトリ直下)。 エクスポート / インポート時に
+    /// zip から除外するため公開。</summary>
+    public const string LockFileName = ".lock";
 
     private FileStream? _stream;
     private readonly string _lockPath;
