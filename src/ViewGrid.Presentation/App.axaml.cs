@@ -8,6 +8,7 @@ using ViewGrid.Application.ViewModels;
 using ViewGrid.Core.Services;
 using ViewGrid.Core.Settings;
 using ViewGrid.Presentation.Services;
+using ViewGrid.Presentation.Views;
 
 namespace ViewGrid.Presentation;
 
@@ -47,24 +48,37 @@ public partial class App : global::Avalonia.Application
                 ApplyAccentColor(s);
             };
 
-            var vm = _services.GetRequiredService<MainWindowViewModel>();
-            var window = new MainWindow { DataContext = vm };
+            // ワークスペースロック取得失敗時は MainWindow ではなく WorkspaceLockedDialog を
+            // メインウィンドウとして表示する。 ユーザーが閉じるとデフォルトの ShutdownMode で
+            // アプリ終了。 DI 経由で MainWindowViewModel を生成しないので、 DB に触れない。
+            var lockedState = _services.GetRequiredService<WorkspaceLockedState>();
+            if (lockedState.IsLocked)
+            {
+                var lockedDialog = new WorkspaceLockedDialog();
+                lockedDialog.Configure(lockedState);
+                desktop.MainWindow = lockedDialog;
+            }
+            else
+            {
+                var vm = _services.GetRequiredService<MainWindowViewModel>();
+                var window = new MainWindow { DataContext = vm };
 
-            // FilePickerService は MainWindow を owner として使うので、ここで注入する
-            _services.GetRequiredService<AvaloniaFilePickerService>().SetOwnerWindow(window);
+                // FilePickerService は MainWindow を owner として使うので、ここで注入する
+                _services.GetRequiredService<AvaloniaFilePickerService>().SetOwnerWindow(window);
 
-            desktop.MainWindow = window;
+                desktop.MainWindow = window;
 
-            // シャットダウン時に LastOpenedGridId の永続化が完了するまで待つ。
-            // GridCanvasListViewModel / MainWindowViewModel は Transient 登録 (DependencyInjection.cs)
-            // のため、 DI から取り直すと LastOpenedSaveTask が Task.CompletedTask な別インスタンスを
-            // 引いてしまい race を取り逃がす。 必ず `desktop.MainWindow.DataContext` 経由で
-            // live VM を辿って await する。
-            desktop.ShutdownRequested += OnShutdownRequested;
+                // シャットダウン時に LastOpenedGridId の永続化が完了するまで待つ。
+                // GridCanvasListViewModel / MainWindowViewModel は Transient 登録 (DependencyInjection.cs)
+                // のため、 DI から取り直すと LastOpenedSaveTask が Task.CompletedTask な別インスタンスを
+                // 引いてしまい race を取り逃がす。 必ず `desktop.MainWindow.DataContext` 経由で
+                // live VM を辿って await する。
+                desktop.ShutdownRequested += OnShutdownRequested;
 
-            // 初回起動時にアセット一覧とグリッド一覧を読み込み
-            _ = vm.AssetLibrary.LoadAsync();
-            _ = vm.GridList.LoadAsync();
+                // 初回起動時にアセット一覧とグリッド一覧を読み込み
+                _ = vm.AssetLibrary.LoadAsync();
+                _ = vm.GridList.LoadAsync();
+            }
         }
 
         base.OnFrameworkInitializationCompleted();

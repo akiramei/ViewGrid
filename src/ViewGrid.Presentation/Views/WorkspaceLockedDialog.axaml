@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="220"
+        x:Class="ViewGrid.Presentation.Views.WorkspaceLockedDialog"
+        Title="ワークスペースが使用中"
+        Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
+        Width="460"
+        SizeToContent="Height"
+        MinHeight="200"
+        CanResize="False"
+        ShowInTaskbar="True"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="20" RowSpacing="10">
+        <TextBlock Grid.Row="0"
+                   FontWeight="SemiBold"
+                   FontSize="14"
+                   Text="ワークスペースが使用中です" />
+
+        <TextBlock Grid.Row="1"
+                   x:Name="WorkspaceNameText"
+                   FontWeight="SemiBold" />
+
+        <TextBlock Grid.Row="2"
+                   x:Name="OwnerInfoText"
+                   Opacity="0.8"
+                   FontSize="12" />
+
+        <TextBlock Grid.Row="3"
+                   Classes="HintText"
+                   TextWrapping="Wrap"
+                   Margin="0,8,0,0"
+                   Text="同じワークスペースを 2 つ以上のプロセスから同時に開くと、 SQLite データベースの整合性が壊れる可能性があります。 既に開いているウィンドウを使うか、 別のワークスペースに切替えてから起動してください。" />
+
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8"
+                    Margin="0,8,0,0">
+            <Button Content="閉じる"
+                    MinWidth="80"
+                    HorizontalContentAlignment="Center"
+                    IsCancel="True"
+                    Classes="accent"
+                    Click="OnCloseClicked" />
+        </StackPanel>
+    </Grid>
+</Window>
