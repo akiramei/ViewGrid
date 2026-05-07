@@ -68,28 +68,37 @@ public partial class WorkspaceSwitchDialog : Window
     /// 「エクスポート...」: 選択中ワークスペースを zip にまとめて書き出す。
     /// SaveFilePicker で保存先を尋ね、 確定後に <see cref="WorkspaceSwitchDialogViewModel.ExportSelectedAsync"/>
     /// で実行。 大規模なワークスペースは時間がかかるため StatusMessage で進行を伝える。
+    /// <c>async void</c> ハンドラのため、 想定外例外は握り潰してダイアログ上に表示する
+    /// (未キャッチ例外はプロセス強制終了の原因になる)。
     /// </summary>
     private async void OnExportClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not WorkspaceSwitchDialogViewModel vm) return;
         if (vm.SelectedWorkspace is not { } sel) return;
 
-        var topLevel = TopLevel.GetTopLevel(this);
-        if (topLevel is null) return;
-
-        var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        try
         {
-            Title = "ワークスペースをエクスポート",
-            DefaultExtension = "zip",
-            SuggestedFileName = $"{sel.Name}.zip",
-            FileTypeChoices = [new FilePickerFileType("ZIP") { Patterns = ["*.zip"] }],
-        });
-        if (file is null) return;
+            var topLevel = TopLevel.GetTopLevel(this);
+            if (topLevel is null) return;
 
-        var path = file.TryGetLocalPath();
-        if (string.IsNullOrEmpty(path)) return;
+            var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "ワークスペースをエクスポート",
+                DefaultExtension = "zip",
+                SuggestedFileName = $"{sel.Name}.zip",
+                FileTypeChoices = [new FilePickerFileType("ZIP") { Patterns = ["*.zip"] }],
+            });
+            if (file is null) return;
 
-        await vm.ExportSelectedAsync(path);
+            var path = file.TryGetLocalPath();
+            if (string.IsNullOrEmpty(path)) return;
+
+            await vm.ExportSelectedAsync(path);
+        }
+        catch (Exception ex)
+        {
+            vm.StatusMessage = $"エクスポートに失敗しました: {ex.Message}";
+        }
     }
 
     /// <summary>
@@ -101,21 +110,28 @@ public partial class WorkspaceSwitchDialog : Window
     {
         if (DataContext is not WorkspaceSwitchDialogViewModel vm) return;
 
-        var topLevel = TopLevel.GetTopLevel(this);
-        if (topLevel is null) return;
-
-        var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        try
         {
-            Title = "インポートするワークスペース zip を選択",
-            AllowMultiple = false,
-            FileTypeFilter = [new FilePickerFileType("ZIP") { Patterns = ["*.zip"] }],
-        });
-        if (files.Count == 0) return;
+            var topLevel = TopLevel.GetTopLevel(this);
+            if (topLevel is null) return;
 
-        var path = files[0].TryGetLocalPath();
-        if (string.IsNullOrEmpty(path)) return;
+            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "インポートするワークスペース zip を選択",
+                AllowMultiple = false,
+                FileTypeFilter = [new FilePickerFileType("ZIP") { Patterns = ["*.zip"] }],
+            });
+            if (files.Count == 0) return;
 
-        await vm.BeginImportAsync(path);
+            var path = files[0].TryGetLocalPath();
+            if (string.IsNullOrEmpty(path)) return;
+
+            await vm.BeginImportAsync(path);
+        }
+        catch (Exception ex)
+        {
+            vm.StatusMessage = $"インポートの準備に失敗しました: {ex.Message}";
+        }
     }
 
     /// <summary>

@@ -111,6 +111,38 @@ public sealed class WorkspaceImportExportTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ExportAsync_RejectsTargetInsideSourceDirectory()
+    {
+        // 出力先がソースディレクトリ内だと、 列挙中に自身を取り込もうとして race するため拒否する。
+        await SeedDefaultWorkspaceAsync();
+        var insideZip = Path.Combine(_workspaceDir, "self-export.zip");
+
+        var result = await _manager.ExportAsync(WorkspaceBootstrap.DefaultWorkspaceName, insideZip);
+
+        result.IsError.Should().BeTrue();
+        result.FirstError.Type.Should().Be(ErrorOr.ErrorType.Validation);
+    }
+
+    [Fact]
+    public async Task ExportAsync_SucceedsWhileSourceFileIsOpenForRead()
+    {
+        // SQLite が viewgrid.db を FileShare.ReadWrite|Delete で開いた状態を模擬する。
+        // ZipArchive 既定の FileShare.Read だと共有違反で失敗するが、 自前ヘルパが
+        // FileShare.ReadWrite で開くため成功する想定。
+        await SeedDefaultWorkspaceAsync();
+        var dbPath = Path.Combine(_workspaceDir, "viewgrid.db");
+        using var holder = new FileStream(dbPath, FileMode.Open, FileAccess.ReadWrite,
+            FileShare.ReadWrite | FileShare.Delete);
+
+        var zipPath = CreateZipPath("with-open-db");
+        var result = await _manager.ExportAsync(WorkspaceBootstrap.DefaultWorkspaceName, zipPath);
+
+        result.IsError.Should().BeFalse();
+        using var zip = ZipFile.OpenRead(zipPath);
+        zip.GetEntry("viewgrid.db").Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task ImportAsync_RoundTrip_RestoresFiles()
     {
         await SeedDefaultWorkspaceAsync();

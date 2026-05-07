@@ -254,6 +254,13 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
                 string.Equals(m.Name, sourceName, StringComparison.OrdinalIgnoreCase));
             var displayName = entry?.DisplayName ?? sourceName;
 
+            var sourceDirFull = Path.GetFullPath(sourceDir).TrimEnd(Path.DirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var destFull = Path.GetFullPath(destinationZipPath);
+            if (destFull.StartsWith(sourceDirFull, StringComparison.OrdinalIgnoreCase))
+                return Error.Validation("Workspace.ExportTargetInsideSource",
+                    "エクスポート先がワークスペースディレクトリ内です。 ワークスペース外の場所を選んでください。");
+
             var parentDir = Path.GetDirectoryName(destinationZipPath);
             if (!string.IsNullOrEmpty(parentDir))
                 Directory.CreateDirectory(parentDir);
@@ -275,6 +282,22 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
                     File.Replace(tempZip, destinationZipPath, destinationBackupFileName: null);
                 else
                     File.Move(tempZip, destinationZipPath);
+            }
+            catch (IOException ex)
+            {
+                // SQLite が viewgrid.db を排他的に開いている場合や、 出力先がロックされている場合の
+                // ファイル共有違反等。 アプリをクラッシュさせず StatusMessage に残すため Error 化する。
+                try { if (File.Exists(tempZip)) File.Delete(tempZip); }
+                catch (IOException) { }
+                return Error.Conflict("Workspace.ExportFailed",
+                    $"エクスポートに失敗しました: {ex.Message}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                try { if (File.Exists(tempZip)) File.Delete(tempZip); }
+                catch (IOException) { }
+                return Error.Conflict("Workspace.ExportFailed",
+                    $"アクセス権限がないためエクスポートできません: {ex.Message}");
             }
             catch
             {
@@ -316,10 +339,20 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
     /// 万一ユーザーがワークスペースルートに <see cref="ExportMetadataFileName"/> を作っていた
     /// 場合も、 メタデータ書き込みとの重複を避けるため除外する。
     /// </summary>
+    /// <remarks>
+    /// <see cref="ZipArchive.CreateEntryFromFile(string, string, CompressionLevel)"/> は内部で
+    /// <see cref="FileShare.Read"/> でファイルを開くため、 アクティブワークスペースの SQLite
+    /// (<c>viewgrid.db</c> / <c>-wal</c> / <c>-shm</c>) を開けないことがある。 自前で
+    /// <see cref="FileShare.ReadWrite"/> で開いてストリームコピーすることで、 アクティブな DB の
+    /// エクスポートも成功させる。
+    /// </remarks>
     private static void AddWorkspaceFilesToZip(ZipArchive zip, string sourceDir, CancellationToken ct)
     {
         var basePath = sourceDir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        foreach (var file in Directory.EnumerateFiles(sourceDir, "*", SearchOption.AllDirectories))
+        // ファイル一覧は zip 作成前のスナップショットを使う。 列挙中に zip 自身や WAL 更新で
+        // ファイルが現れて無限再帰や自己参照に陥るのを防ぐ。
+        var files = Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories);
+        foreach (var file in files)
         {
             ct.ThrowIfCancellationRequested();
             var fileName = Path.GetFileName(file);
@@ -329,7 +362,20 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
                 continue;
 
             var relative = file[basePath.Length..].Replace(Path.DirectorySeparatorChar, '/');
-            zip.CreateEntryFromFile(file, relative, CompressionLevel.Optimal);
+            var entry = zip.CreateEntry(relative, CompressionLevel.Optimal);
+            try
+            {
+                // FileShare.ReadWrite | FileShare.Delete で開く: SQLite が viewgrid.db を保持して
+                // いる状態でも読み取りに成功する (SQLite は WAL モードで Read|Write|Delete 共有で開く)。
+                using var src = new FileStream(file, FileMode.Open, FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                using var dst = entry.Open();
+                src.CopyTo(dst);
+            }
+            catch (FileNotFoundException)
+            {
+                // 列挙中に消えた一時ファイル (SQLite -journal 等)。 スキップして続行。
+            }
         }
     }
 
