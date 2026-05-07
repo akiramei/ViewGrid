@@ -11,3 +11,11 @@ namespace ViewGrid.Core.Settings;
 /// UI に表示する名称。 日本語可。 ユーザーがいつでもリネーム可能。
 /// </param>
 public sealed record WorkspaceManifest(string Name, string DisplayName);
+
+/// <summary>
+/// エクスポート zip 内 <c>workspace.json</c> から読み出した元ワークスペース情報。
+/// インポートダイアログのデフォルト候補に使う (ユーザーは任意で書き換え可)。
+/// </summary>
+/// <param name="Name">エクスポート時の内部識別名。</param>
+/// <param name="DisplayName">エクスポート時の表示名。</param>
+public sealed record WorkspaceExportInfo(string Name, string DisplayName);

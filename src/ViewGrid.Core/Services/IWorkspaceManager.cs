@@ -64,4 +64,10 @@ public interface IWorkspaceManager
     /// </summary>
     Task<ErrorOr<WorkspaceManifest>> ImportAsync(
         string sourceZipPath, string newName, string newDisplayName, CancellationToken ct = default);
+
+    /// <summary>
+    /// zip ルートの <c>workspace.json</c> から内部名 / 表示名を best-effort で読み出す。
+    /// インポートカードのデフォルト候補表示用。 不正な zip / メタデータ無しは <c>null</c>。
+    /// </summary>
+    Task<WorkspaceExportInfo?> PeekExportInfoAsync(string sourceZipPath, CancellationToken ct = default);
 }

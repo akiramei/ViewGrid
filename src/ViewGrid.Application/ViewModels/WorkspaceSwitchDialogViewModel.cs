@@ -21,6 +21,7 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanApply))]
     [NotifyPropertyChangedFor(nameof(CanDeleteSelected))]
+    [NotifyPropertyChangedFor(nameof(CanExportSelected))]
     [NotifyPropertyChangedFor(nameof(IsActiveSelected))]
     [NotifyPropertyChangedFor(nameof(EditingDisplayName))]
     [NotifyPropertyChangedFor(nameof(ShowSelectedEditor))]
@@ -29,7 +30,9 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanApply))]
     [NotifyPropertyChangedFor(nameof(CanDeleteSelected))]
+    [NotifyPropertyChangedFor(nameof(CanExportSelected))]
     [NotifyPropertyChangedFor(nameof(CanCreate))]
+    [NotifyPropertyChangedFor(nameof(CanImport))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty] public partial string? StatusMessage { get; set; }
@@ -37,6 +40,7 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     /// <summary>新規作成 / 複製フォームを開いている間 true。 ボタン押下で開閉する。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCreate))]
+    [NotifyPropertyChangedFor(nameof(CanImport))]
     [NotifyPropertyChangedFor(nameof(ShowSelectedEditor))]
     public partial bool IsCreating { get; set; }
 
@@ -53,13 +57,32 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
 
     public bool IsDuplicateMode => !string.IsNullOrEmpty(DuplicateSourceName);
 
-    /// <summary>新規作成カードのヘッダ文言。 複製モードでは「&lt;source&gt; を複製」 になる。</summary>
+    /// <summary>
+    /// インポートモードのとき、 取り込み元 zip の絶対パス。 通常の新規空作成 / 複製では <c>null</c>。
+    /// <see cref="ConfirmCreateAsync"/> はこの値で <c>ImportAsync</c> と <c>CreateAsync</c> /
+    /// <c>DuplicateAsync</c> を切り替える。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsImportMode))]
+    [NotifyPropertyChangedFor(nameof(CreateCardTitle))]
+    [NotifyPropertyChangedFor(nameof(CreateConfirmLabel))]
+    public partial string? ImportSourceZipPath { get; set; }
+
+    public bool IsImportMode => !string.IsNullOrEmpty(ImportSourceZipPath);
+
+    /// <summary>新規作成カードのヘッダ文言。 複製 / インポートモードでは別文言になる。</summary>
     public string CreateCardTitle => IsDuplicateMode
         ? $"「{DuplicateSourceName}」 を複製"
-        : "新しいワークスペースを作成";
+        : IsImportMode
+            ? "zip からインポート"
+            : "新しいワークスペースを作成";
 
-    /// <summary>確定ボタンのラベル。 複製モードでは「複製」 になる。</summary>
-    public string CreateConfirmLabel => IsDuplicateMode ? "複製" : "作成";
+    /// <summary>確定ボタンのラベル。 複製 / インポートモードでは別文言になる。</summary>
+    public string CreateConfirmLabel => IsDuplicateMode
+        ? "複製"
+        : IsImportMode
+            ? "インポート"
+            : "作成";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCreate))]
@@ -87,6 +110,12 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
         && string.Equals(sel.Name, _context.ActiveWorkspaceName, StringComparison.OrdinalIgnoreCase);
 
     public bool CanDeleteSelected => !IsBusy && SelectedWorkspace is not null && !IsActiveSelected;
+
+    /// <summary>選択中ワークスペースをエクスポート可能か (active も可、 ビジー中は不可)。</summary>
+    public bool CanExportSelected => !IsBusy && SelectedWorkspace is not null;
+
+    /// <summary>新しい zip をインポート可能か (作成 / 複製 / 別インポート進行中・ビジー中は不可)。</summary>
+    public bool CanImport => !IsBusy && !IsCreating;
 
     public bool CanCreate => !IsBusy
         && IsCreating
@@ -148,6 +177,7 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     public void BeginCreate()
     {
         DuplicateSourceName = null;
+        ImportSourceZipPath = null;
         DraftName = string.Empty;
         DraftDisplayName = string.Empty;
         StatusMessage = null;
@@ -162,8 +192,31 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     {
         if (SelectedWorkspace is not { } source) return;
         DuplicateSourceName = source.Name;
+        ImportSourceZipPath = null;
         DraftName = ProposeCopyName(source.Name);
         DraftDisplayName = $"{source.DisplayName} (コピー)";
+        StatusMessage = null;
+        IsCreating = true;
+    }
+
+    /// <summary>
+    /// 選択した zip からインポートするモードで作成カードを開く。 zip メタデータがあれば
+    /// 内部名 / 表示名のデフォルト値に使い、 既存と衝突する場合は「&lt;name&gt;-imported」
+    /// 連番に置き換える。 メタデータが取れないときは zip ファイル名から推測する。
+    /// </summary>
+    public async Task BeginImportAsync(string zipPath, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(zipPath)) return;
+
+        var info = await _manager.PeekExportInfoAsync(zipPath, ct);
+        var fallbackName = SanitizeName(Path.GetFileNameWithoutExtension(zipPath));
+        var nameFromZip = info?.Name ?? fallbackName;
+        var displayFromZip = info?.DisplayName ?? fallbackName;
+
+        DuplicateSourceName = null;
+        ImportSourceZipPath = zipPath;
+        DraftName = ProposeImportName(nameFromZip);
+        DraftDisplayName = displayFromZip;
         StatusMessage = null;
         IsCreating = true;
     }
@@ -172,6 +225,7 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     {
         IsCreating = false;
         DuplicateSourceName = null;
+        ImportSourceZipPath = null;
         DraftName = string.Empty;
         DraftDisplayName = string.Empty;
     }
@@ -192,6 +246,11 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
                 StatusMessage = "複製中... ワークスペースのサイズによっては時間がかかります。";
                 result = await _manager.DuplicateAsync(src, newName, newDisplay, ct);
             }
+            else if (ImportSourceZipPath is { } zip)
+            {
+                StatusMessage = "インポート中... ワークスペースのサイズによっては時間がかかります。";
+                result = await _manager.ImportAsync(zip, newName, newDisplay, ct);
+            }
             else
             {
                 result = await _manager.CreateAsync(newName, newDisplay, ct);
@@ -207,8 +266,33 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
             SelectedWorkspace = Workspaces.FirstOrDefault(w => w.Name == result.Value.Name);
             IsCreating = false;
             DuplicateSourceName = null;
+            ImportSourceZipPath = null;
             DraftName = string.Empty;
             DraftDisplayName = string.Empty;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// 選択中ワークスペースを zip にエクスポートする。 サイズが大きいと時間がかかる旨を
+    /// StatusMessage に出しつつ、 完了時に成功 / 失敗メッセージを残す。
+    /// </summary>
+    public async Task ExportSelectedAsync(string destinationZipPath, CancellationToken ct = default)
+    {
+        if (SelectedWorkspace is not { } sel) return;
+        if (string.IsNullOrWhiteSpace(destinationZipPath)) return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "エクスポート中... ワークスペースのサイズによっては時間がかかります。";
+            var result = await _manager.ExportAsync(sel.Name, destinationZipPath, ct);
+            StatusMessage = result.IsError
+                ? result.FirstError.Description
+                : $"エクスポートしました: {destinationZipPath}";
         }
         finally
         {
@@ -231,6 +315,45 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
             if (!existing.Contains(candidate)) return candidate;
         }
         return baseCandidate;
+    }
+
+    /// <summary>
+    /// インポート時の名前候補。 メタデータの内部名が既存と衝突しなければそのまま、
+    /// 衝突する場合は「&lt;name&gt;-imported」 / 「&lt;name&gt;-imported-2」 ...と連番。
+    /// </summary>
+    private string ProposeImportName(string sourceName)
+    {
+        var existing = Workspaces.Select(w => w.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!existing.Contains(sourceName)) return sourceName;
+        var baseCandidate = $"{sourceName}-imported";
+        if (!existing.Contains(baseCandidate)) return baseCandidate;
+        for (var i = 2; i < 1000; i++)
+        {
+            var candidate = $"{sourceName}-imported-{i}";
+            if (!existing.Contains(candidate)) return candidate;
+        }
+        return baseCandidate;
+    }
+
+    /// <summary>
+    /// zip ファイル名から内部名を作るときの正規化。 FS 互換のため英数 / ハイフン /
+    /// アンダースコア以外の文字をハイフンに置換し、 連続ハイフンを 1 つにまとめる。
+    /// 空になる場合は <c>"imported"</c> をデフォルトに使う。
+    /// </summary>
+    private static string SanitizeName(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "imported";
+        var chars = raw.Select(c =>
+            (c >= 'a' && c <= 'z') ||
+            (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') ||
+            c == '-' || c == '_'
+                ? c
+                : '-').ToArray();
+        var collapsed = string.Concat(new string(chars).Split('-', StringSplitOptions.RemoveEmptyEntries)
+            .DefaultIfEmpty("imported")
+            .Aggregate((a, b) => $"{a}-{b}"));
+        return collapsed.Length > 64 ? collapsed[..64] : collapsed;
     }
 
     public async Task RenameSelectedAsync(CancellationToken ct = default)

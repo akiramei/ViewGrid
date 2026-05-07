@@ -431,6 +431,32 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
         }
     }
 
+    public Task<WorkspaceExportInfo?> PeekExportInfoAsync(string sourceZipPath, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sourceZipPath) || !File.Exists(sourceZipPath))
+            return Task.FromResult<WorkspaceExportInfo?>(null);
+
+        try
+        {
+            using var zip = ZipFile.OpenRead(sourceZipPath);
+            var entry = zip.GetEntry(ExportMetadataFileName);
+            if (entry is null) return Task.FromResult<WorkspaceExportInfo?>(null);
+
+            using var stream = entry.Open();
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            var json = reader.ReadToEnd();
+            var meta = JsonSerializer.Deserialize<ExportMetadataJson>(json);
+            if (string.IsNullOrEmpty(meta?.Name) || string.IsNullOrEmpty(meta.DisplayName))
+                return Task.FromResult<WorkspaceExportInfo?>(null);
+
+            return Task.FromResult<WorkspaceExportInfo?>(new WorkspaceExportInfo(meta.Name, meta.DisplayName));
+        }
+        catch (InvalidDataException) { return Task.FromResult<WorkspaceExportInfo?>(null); }
+        catch (IOException) { return Task.FromResult<WorkspaceExportInfo?>(null); }
+        catch (UnauthorizedAccessException) { return Task.FromResult<WorkspaceExportInfo?>(null); }
+        catch (JsonException) { return Task.FromResult<WorkspaceExportInfo?>(null); }
+    }
+
     /// <summary>
     /// zip エントリ名から実ファイルパスを解決する。 親ディレクトリへ抜ける zip slip 攻撃
     /// (<c>../../etc/passwd</c> 等) や NTFS の代替データストリーム (<c>foo:stream</c>) 経由の

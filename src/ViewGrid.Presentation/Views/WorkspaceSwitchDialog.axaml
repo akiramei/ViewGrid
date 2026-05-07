@@ -90,6 +90,14 @@
                             <TextBlock Text="複製..." />
                         </StackPanel>
                     </Button>
+                    <Button IsEnabled="{Binding CanExportSelected}"
+                            Click="OnExportClicked"
+                            ToolTip.Tip="このワークスペース全体を 1 つの zip にまとめて書き出します (DB / 画像 / サムネを含む)。 別マシンへの移送やバックアップに使えます。">
+                        <StackPanel Classes="IconButtonContent">
+                            <PathIcon Data="{StaticResource ExportGeometry}" Width="14" Height="14" />
+                            <TextBlock Text="エクスポート..." />
+                        </StackPanel>
+                    </Button>
                     <Button Classes="iconDanger"
                             IsEnabled="{Binding CanDeleteSelected}"
                             Click="OnDeleteClicked"
@@ -149,18 +157,27 @@
                        IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        Text="{Binding StatusMessage}"
                        Foreground="{DynamicResource SystemErrorTextColor}" />
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
                 <Button Grid.Column="0"
                         Content="新規作成..."
                         IsEnabled="{Binding !IsCreating}"
                         Click="OnBeginCreateClicked" />
-                <Button Grid.Column="2"
+                <Button Grid.Column="1"
+                        IsEnabled="{Binding CanImport}"
+                        Click="OnImportClicked"
+                        ToolTip.Tip="エクスポート済の zip からワークスペースを取り込みます。 取り込み先名は zip 内のメタデータから提案されます。">
+                    <StackPanel Classes="IconButtonContent">
+                        <PathIcon Data="{StaticResource ImportGeometry}" Width="14" Height="14" />
+                        <TextBlock Text="インポート..." />
+                    </StackPanel>
+                </Button>
+                <Button Grid.Column="3"
                         Content="閉じる"
                         MinWidth="80"
                         HorizontalContentAlignment="Center"
                         IsCancel="True"
                         Click="OnCancelClicked" />
-                <Button Grid.Column="3"
+                <Button Grid.Column="4"
                         x:Name="ApplyButton"
                         Content="再起動して切替"
                         Classes="accent"
