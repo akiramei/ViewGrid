@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -601,6 +602,103 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
 
         _vm.Candidates.Single().Should().BeSameAs(originalCandidate);
+    }
+
+    /// <summary>
+    /// フィット操作が <see cref="IUndoRedoService"/> 経由で履歴に積まれ、 Undo で旧重みに戻り、
+    /// Redo で再計算後の重みに戻ることを保証する。
+    /// 修正前 (FitGridWeightAsync が _fitWeightUseCase.ExecuteAsync を直接呼んでいた頃) は
+    /// 履歴に乗らず、 redo スタックの stale snapshot で fit 後の重みが上書きされる回帰があった。
+    /// </summary>
+    [Fact]
+    public async Task FitGridWeightAsync_Roundtrips_Through_UndoRedo()
+    {
+        var (placementId, gridItem) = await SeedFitScenarioAsync();
+        await _vm.LoadGridAsync(gridItem);
+
+        var beforeCol = gridItem.ColWeights;
+        beforeCol.Should().Equal(GridCanvas.UniformWeights(3));
+
+        // フィット実行 → 重みが変わる
+        var ok = await _vm.FitGridWeightAsync(placementId, FitAxis.Column);
+        ok.Should().BeTrue();
+        var afterCol = gridItem.ColWeights;
+        afterCol.SequenceEqual(beforeCol).Should().BeFalse(
+            "fit が中央セルの列幅を縮めるはず (100x200 画像 + 200x200 セル)");
+
+        // Undo → 旧重みに戻る
+        _history.CanUndo.Should().BeTrue();
+        var undoResult = await _history.UndoAsync();
+        undoResult.IsError.Should().BeFalse();
+        var dbAfterUndo = (await _fx.GridRepository.FindByIdAsync(gridItem.GridId))!;
+        dbAfterUndo.ColWeights.SequenceEqual(beforeCol).Should().BeTrue(
+            "Undo で元の uniform weights に戻るべき");
+
+        // Redo → fit 結果が再現される (fit 再計算は決定論的)
+        _history.CanRedo.Should().BeTrue();
+        var redoResult = await _history.RedoAsync();
+        redoResult.IsError.Should().BeFalse();
+        var dbAfterRedo = (await _fx.GridRepository.FindByIdAsync(gridItem.GridId))!;
+        dbAfterRedo.ColWeights.SequenceEqual(afterCol).Should().BeTrue(
+            "Redo で fit 後の重みが再現されるべき");
+    }
+
+    /// <summary>
+    /// 元の Codex review 指摘の核: 「フィット前に redo スタックがあると、 fit 後に redo すると
+    /// stale snapshot が上書きしてフィット結果が破壊される」 — fit が history を通る今は redo
+    /// スタックが clear されるため、 fit 後に redo が空になることを検証する。
+    /// </summary>
+    [Fact]
+    public async Task FitGridWeightAsync_ClearsStaleRedoStack()
+    {
+        var (placementId, gridItem) = await SeedFitScenarioAsync();
+        await _vm.LoadGridAsync(gridItem);
+
+        // 先行で重みを手動編集 → undo して redo スタックに残す
+        var manual = ImmutableArray.Create(2, 1, 2);
+        var ok1 = await _vm.ApplyGridWeightsAsync(manual, null);
+        ok1.Should().BeTrue();
+        _history.CanUndo.Should().BeTrue();
+        (await _history.UndoAsync()).IsError.Should().BeFalse();
+        _history.CanRedo.Should().BeTrue("先行操作の Undo で redo スタックに stale snapshot が残るはず");
+
+        // フィットを実行 → 履歴経路を通るので redo スタックは clear されるべき
+        var ok2 = await _vm.FitGridWeightAsync(placementId, FitAxis.Column);
+        ok2.Should().BeTrue();
+        _history.CanRedo.Should().BeFalse(
+            "fit が _history.ExecuteAsync 経由で実行されたため、 古い redo スタックは破棄されるべき");
+    }
+
+    /// <summary>
+    /// 100x200 画像 + 3x3 600x600 grid + 中央セル (1,1) UniformContain。
+    /// 列フィットで列 1 が画像幅にぴったり、 余白は左右列に均等分配される (use case 既存テスト
+    /// FitColumn_CenterCell_TallImage_DistributesPaddingEvenly と同条件)。
+    /// </summary>
+    private async Task<(Guid PlacementId, GridCanvasItemViewModel Grid)> SeedFitScenarioAsync()
+    {
+        var asset = await _fx.SeedAssetAsync(width: 100, height: 200);
+        var copy = await _fx.SeedCopyAsync(asset.Id); // ScalingMode.UniformContain (既定)
+
+        var now = DateTimeOffset.UtcNow;
+        var grid = new GridCanvas
+        {
+            Id = Guid.NewGuid(),
+            Name = "fit-scenario",
+            GridRows = 3,
+            GridCols = 3,
+            ColWeights = GridCanvas.UniformWeights(3),
+            RowWeights = GridCanvas.UniformWeights(3),
+            CanvasSize = new PixelSize(600, 600),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        (await _fx.GridRepository.AddAsync(grid)).IsError.Should().BeFalse();
+
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        var placed = await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(1, 1));
+        placed.IsError.Should().BeFalse();
+
+        return (placed.Value.Id, new GridCanvasItemViewModel(grid));
     }
 
     /// <summary>

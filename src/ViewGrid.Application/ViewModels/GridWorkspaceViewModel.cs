@@ -1072,6 +1072,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// 指定 placement の実描画矩形に合わせて、占有列幅または行高を縮める。
     /// 余白は隣接列/行に分配（端列/端行で隣接がない側の余白は破棄）。
     /// 成功時は最新の重みを <see cref="CurrentGrid"/> に反映し、View を再構築させる。
+    /// 操作は <see cref="FitGridWeightCommand"/> でラップして履歴に積むため、 Undo で旧重みに戻り、
+    /// Redo で再計算される。 fit が no-op だった場合も command は履歴に積まれる
+    /// (空の Undo エントリになるが、 redo スタックの stale snapshot を確実に破棄するため)。
     /// </summary>
     public async Task<bool> FitGridWeightAsync(
         Guid placementId, FitAxis axis, CancellationToken ct = default)
@@ -1079,10 +1082,16 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         var grid = CurrentGrid;
         if (grid is null) return false;
 
-        var oldCol = grid.ColWeights;
-        var oldRow = grid.RowWeights;
+        var beforeCol = grid.ColWeights;
+        var beforeRow = grid.RowWeights;
 
-        var result = await _fitWeightUseCase.ExecuteAsync(placementId, axis, ct);
+        var description = $"フィット ({(axis == FitAxis.Column ? "列幅" : "行高")}): グリッド「{grid.Name}」";
+        var command = new FitGridWeightCommand(
+            _fitWeightUseCase, _updateWeightsUseCase,
+            grid.GridId, placementId, axis,
+            beforeCol, beforeRow,
+            description);
+        var result = await _history.ExecuteAsync(command, ct);
         if (result.IsError)
         {
             StatusMessage = string.Join(", ", result.Errors);
@@ -1094,8 +1103,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         if (reloaded is null) return false;
 
         var changed =
-            !reloaded.ColWeights.SequenceEqual(oldCol) ||
-            !reloaded.RowWeights.SequenceEqual(oldRow);
+            !reloaded.ColWeights.SequenceEqual(beforeCol) ||
+            !reloaded.RowWeights.SequenceEqual(beforeRow);
 
         grid.ColWeights = reloaded.ColWeights;
         grid.RowWeights = reloaded.RowWeights;
