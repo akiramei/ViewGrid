@@ -166,6 +166,191 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
         (cw[2] / sum).Should().BeApproximately(200.0 / 600.0, 0.02);
     }
 
+    /// <summary>
+    /// 1 回目のフィットで余白が消えるはずなので、 2 回目のフィット呼び出しは重みを変更しない
+    /// (= 冪等)。 ユーザー報告: 「クリック後にもう一度クリックすると更にサイズが変わる」 の回帰テスト。
+    /// </summary>
+    [Fact]
+    public async Task FitColumn_IsIdempotent_OnSecondCall()
+    {
+        var (placementId, gridId) = await SeedAsync(
+            assetWidth: 100, assetHeight: 200,
+            cols: 3, rows: 3,
+            placementCol: 1, placementRow: 1,
+            scalingMode: ScalingMode.UniformContain);
+
+        var first = await _useCase.ExecuteAsync(placementId, FitAxis.Column);
+        first.IsError.Should().BeFalse();
+        var afterFirst = (await _fx.GridRepository.FindByIdAsync(gridId))!.ColWeights;
+
+        var second = await _useCase.ExecuteAsync(placementId, FitAxis.Column);
+        second.IsError.Should().BeFalse();
+        var afterSecond = (await _fx.GridRepository.FindByIdAsync(gridId))!.ColWeights;
+
+        afterSecond.SequenceEqual(afterFirst).Should().BeTrue(
+            $"2 回目のフィットで重みが変わってはならない (afterFirst={string.Join(',', afterFirst)}, afterSecond={string.Join(',', afterSecond)})");
+    }
+
+    /// <summary>
+    /// 行版の冪等性確認。
+    /// </summary>
+    [Fact]
+    public async Task FitRow_IsIdempotent_OnSecondCall()
+    {
+        var (placementId, gridId) = await SeedAsync(
+            assetWidth: 200, assetHeight: 100,
+            cols: 3, rows: 3,
+            placementCol: 1, placementRow: 1,
+            scalingMode: ScalingMode.UniformContain);
+
+        var first = await _useCase.ExecuteAsync(placementId, FitAxis.Row);
+        first.IsError.Should().BeFalse();
+        var afterFirst = (await _fx.GridRepository.FindByIdAsync(gridId))!.RowWeights;
+
+        var second = await _useCase.ExecuteAsync(placementId, FitAxis.Row);
+        second.IsError.Should().BeFalse();
+        var afterSecond = (await _fx.GridRepository.FindByIdAsync(gridId))!.RowWeights;
+
+        afterSecond.SequenceEqual(afterFirst).Should().BeTrue(
+            $"2 回目のフィットで重みが変わってはならない (afterFirst={string.Join(',', afterFirst)}, afterSecond={string.Join(',', afterSecond)})");
+    }
+
+    /// <summary>
+    /// 列 0 をロックしてから中央セルの行をフィットしても、 ロック列の重みは保たれる。
+    /// 行フィット中に列重みが触られないことの基本確認。
+    /// </summary>
+    [Fact]
+    public async Task FitRow_DoesNotTouchColumnWeights_WhenColumnsAreLocked()
+    {
+        var (placementId, gridId) = await SeedAsync(
+            assetWidth: 200, assetHeight: 100,
+            cols: 3, rows: 3,
+            placementCol: 1, placementRow: 1,
+            scalingMode: ScalingMode.UniformContain);
+
+        var locks = new UpdateGridLocksUseCase(_fx.GridRepository);
+        await locks.ExecuteAsync(gridId, colLocked: [true, true, true], rowLocked: null);
+
+        var beforeCol = (await _fx.GridRepository.FindByIdAsync(gridId))!.ColWeights;
+        var result = await _useCase.ExecuteAsync(placementId, FitAxis.Row);
+        result.IsError.Should().BeFalse();
+
+        var afterCol = (await _fx.GridRepository.FindByIdAsync(gridId))!.ColWeights;
+        afterCol.SequenceEqual(beforeCol).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// 配置が占有する列群に隣接するロック列があるとき、 余白はロック列を飛ばして次のアンロック列に分配される。
+    /// </summary>
+    [Fact]
+    public async Task FitColumn_WithLockedNeighbor_SkipsLockedAndPreservesItsWeight()
+    {
+        var (placementId, gridId) = await SeedAsync(
+            assetWidth: 100, assetHeight: 200,
+            cols: 3, rows: 3,
+            placementCol: 1, placementRow: 1,
+            scalingMode: ScalingMode.UniformContain);
+
+        var locks = new UpdateGridLocksUseCase(_fx.GridRepository);
+        // 列 0 をロック → 左 pad の分配は飛ばされる (= 列 0 重みは保たれる、 左 pad は破棄される)
+        await locks.ExecuteAsync(gridId, colLocked: [true, false, false], rowLocked: null);
+
+        var result = await _useCase.ExecuteAsync(placementId, FitAxis.Column);
+        result.IsError.Should().BeFalse();
+
+        var grid = (await _fx.GridRepository.FindByIdAsync(gridId))!;
+        var cw = grid.ColWeights;
+        var sum = (double)cw.Sum();
+
+        // 元 [200, 200, 200] = 600
+        // 列 1 内側 100、 列 0 ロック (200 のまま) → 左 pad 50 は破棄、 右 pad 50 → 列 2 (250)
+        // 結果比率 [200, 100, 250] = 550
+        (cw[0] / sum).Should().BeApproximately(200.0 / 550.0, 0.02);
+        (cw[1] / sum).Should().BeApproximately(100.0 / 550.0, 0.02);
+        (cw[2] / sum).Should().BeApproximately(250.0 / 550.0, 0.02);
+    }
+
+    /// <summary>
+    /// PixelOffset があるとき、 現状の FitToOccupant はその時点の <i>visible 矩形</i> を基準に
+    /// 余白を計算するため、 1 回目で完全には収束せず 2 回目でさらに重みが変わる。
+    /// 設計判断 (visible に合わせる現行) のままなら期待通りだが、 ユーザーは「1 クリックで収束する」 を
+    /// 期待 → 別の収束戦略 (例: drawWidth 基準) を取るか、 PixelOffset != 0 のときフィット拒否すべき。
+    /// 修正方針が確定するまで Skip。
+    /// </summary>
+    [Fact(Skip = "PixelOffset 状態でフィット非冪等。 設計判断要 (現行は visible 合わせ、 ユーザー期待は 1 クリック収束)。")]
+    public async Task FitColumn_WithPixelOffset_IsIdempotent()
+    {
+        var (placementId, gridId) = await SeedAsync(
+            assetWidth: 100, assetHeight: 100,
+            cols: 3, rows: 3,
+            placementCol: 1, placementRow: 1,
+            scalingMode: ScalingMode.UniformCover);
+
+        var placement = await _fx.PlacementRepository.FindByIdAsync(placementId);
+        placement!.PixelOffsetX = 50;
+        await _fx.PlacementRepository.UpdateAsync(placement);
+
+        var first = await _useCase.ExecuteAsync(placementId, FitAxis.Column);
+        first.IsError.Should().BeFalse();
+        var afterFirst = (await _fx.GridRepository.FindByIdAsync(gridId))!.ColWeights;
+
+        var second = await _useCase.ExecuteAsync(placementId, FitAxis.Column);
+        second.IsError.Should().BeFalse();
+        var afterSecond = (await _fx.GridRepository.FindByIdAsync(gridId))!.ColWeights;
+
+        afterSecond.SequenceEqual(afterFirst).Should().BeTrue(
+            $"PixelOffset 状態でも 2 回目フィットは冪等であるべき (afterFirst={string.Join(',', afterFirst)}, afterSecond={string.Join(',', afterSecond)})");
+    }
+
+    /// <summary>
+    /// OccupySize > 1 (placement が複数セルにまたがる) のフィットも冪等。
+    /// </summary>
+    [Fact]
+    public async Task FitColumn_WithOccupySize_IsIdempotent()
+    {
+        var hash = $"hash{Guid.NewGuid():N}";
+        var asset = await _fx.SeedAssetAsync(hash, 100, 200);
+        var now = DateTimeOffset.UtcNow;
+        var copy = new ImageCopy
+        {
+            Id = Guid.NewGuid(),
+            AssetId = asset.Id,
+            Transform = ImageTransform.Identity,
+            ScalingMode = ScalingMode.UniformContain,
+            Alignment = Alignment.Center,
+            OccupySize = new OccupySize(2, 1),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        (await _fx.CopyRepository.AddAsync(copy)).IsError.Should().BeFalse();
+        var grid = new GridCanvas
+        {
+            Id = Guid.NewGuid(),
+            Name = "test",
+            GridRows = 3,
+            GridCols = 4,
+            ColWeights = GridCanvas.UniformWeights(4),
+            RowWeights = GridCanvas.UniformWeights(3),
+            CanvasSize = new PixelSize(800, 600),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        (await _fx.GridRepository.AddAsync(grid)).IsError.Should().BeFalse();
+        var p = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(1, 1));
+        p.IsError.Should().BeFalse();
+
+        var first = await _useCase.ExecuteAsync(p.Value.Id, FitAxis.Column);
+        first.IsError.Should().BeFalse();
+        var afterFirst = (await _fx.GridRepository.FindByIdAsync(grid.Id))!.ColWeights;
+
+        var second = await _useCase.ExecuteAsync(p.Value.Id, FitAxis.Column);
+        second.IsError.Should().BeFalse();
+        var afterSecond = (await _fx.GridRepository.FindByIdAsync(grid.Id))!.ColWeights;
+
+        afterSecond.SequenceEqual(afterFirst).Should().BeTrue(
+            $"OccupySize > 1 でも 2 回目フィットは冪等であるべき (afterFirst={string.Join(',', afterFirst)}, afterSecond={string.Join(',', afterSecond)})");
+    }
+
     [Fact]
     public async Task Returns_NotFound_For_Missing_Placement()
     {
