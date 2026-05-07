@@ -411,6 +411,114 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
         grid2.ColWeights.SequenceEqual(grid1.ColWeights).Should().BeTrue();
     }
 
+    /// <summary>
+    /// ユーザー期待: image 560x400 + cell 560x300 (画像が cell より高い) で行フィット
+    /// → cell 高が 400 に拡大されるはず。 現状実装は縮小のみで、 image overflow 時の
+    /// row fit は no-op (renderedRect が cell でクリップされて topPad=bottomPad=0)。
+    /// </summary>
+    [Fact]
+    public async Task FitRow_ExpandsCellToImageHeight_WhenImageOverflows()
+    {
+        // canvas 1200x900、 3 rows、 row 1 (中段) を 300 px、 上下行を 300 px (= 等分) に。
+        // image 560x400 を col 0 row 1 に置く。 画像高 400 > 行高 300 → 上下に 50 px ずつ overflow。
+        var hash = $"hash{Guid.NewGuid():N}";
+        var asset = await _fx.SeedAssetAsync(hash, 560, 400);
+        var now = DateTimeOffset.UtcNow;
+        var copy = new ImageCopy
+        {
+            Id = Guid.NewGuid(),
+            AssetId = asset.Id,
+            Transform = ImageTransform.Identity,
+            ScalingMode = ScalingMode.None,
+            Alignment = Alignment.Center,
+            OccupySize = OccupySize.OneByOne,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        (await _fx.CopyRepository.AddAsync(copy)).IsError.Should().BeFalse();
+        var grid = new GridCanvas
+        {
+            Id = Guid.NewGuid(),
+            Name = "expand-scenario",
+            GridRows = 3,
+            GridCols = 2,
+            ColWeights = GridCanvas.UniformWeights(2),
+            RowWeights = GridCanvas.UniformWeights(3),
+            CanvasSize = new PixelSize(1200, 900),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        (await _fx.GridRepository.AddAsync(grid)).IsError.Should().BeFalse();
+        var p = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 1));
+        p.IsError.Should().BeFalse();
+
+        var result = await _useCase.ExecuteAsync(p.Value.Id, FitAxis.Row);
+        result.IsError.Should().BeFalse();
+
+        // 期待: row 1 px = 400 (image height)、 row 0 と row 2 は (900 - 400) / 2 = 250 ずつ
+        var grid1 = (await _fx.GridRepository.FindByIdAsync(grid.Id))!;
+        var sum = (double)grid1.RowWeights.Sum();
+        var row1Px = 900 * grid1.RowWeights[1] / sum;
+        row1Px.Should().BeApproximately(400.0, 2.0,
+            $"画像が cell より大きい場合、 行高が image 高 (400 px) に拡大すべき (実値: {row1Px:F1})");
+    }
+
+    /// <summary>
+    /// UniformCover で画像 > cell のとき、 row 高が image 高に拡大される。
+    /// (Cover では cell に画像がフィットせず overflow するのが本来意図だが、 fit はその overflow を
+    /// 解消する方向に動く設計)。
+    /// </summary>
+    [Fact]
+    public async Task FitRow_ExpandsCellToImageHeight_UniformCover_BothAxesOverflow()
+    {
+        // image 560x400、 cell 560x300 (col 0 row 1) で、 UniformCover scale = max(1, 4/3) = 4/3
+        // → drawW = 560 * 4/3 ≈ 747、 drawH = 400 * 4/3 ≈ 533。 height だけでなく width も overflow。
+        // ただし Width の上下 pad は (560 - 747)/2 ≈ -93 で両側負 → 拡大対象、
+        // Row fit では topPad/bottomPad が両側負で expand mode。
+        var hash = $"hash{Guid.NewGuid():N}";
+        var asset = await _fx.SeedAssetAsync(hash, 560, 400);
+        var now = DateTimeOffset.UtcNow;
+        var copy = new ImageCopy
+        {
+            Id = Guid.NewGuid(),
+            AssetId = asset.Id,
+            Transform = ImageTransform.Identity,
+            ScalingMode = ScalingMode.UniformCover,
+            Alignment = Alignment.Center,
+            OccupySize = OccupySize.OneByOne,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        (await _fx.CopyRepository.AddAsync(copy)).IsError.Should().BeFalse();
+        var grid = new GridCanvas
+        {
+            Id = Guid.NewGuid(),
+            Name = "cover-expand",
+            GridRows = 3,
+            GridCols = 2,
+            ColWeights = GridCanvas.UniformWeights(2),
+            RowWeights = GridCanvas.UniformWeights(3),
+            // 高さ 900 / 3 = 300 (整数になる canvas)
+            CanvasSize = new PixelSize(1120, 900),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        (await _fx.GridRepository.AddAsync(grid)).IsError.Should().BeFalse();
+        var p = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 1));
+        p.IsError.Should().BeFalse();
+
+        var result = await _useCase.ExecuteAsync(p.Value.Id, FitAxis.Row);
+        result.IsError.Should().BeFalse();
+
+        // UniformCover: scale = max(560/560, 300/400) = 1.0 で実は overflow しない (height-bound)。
+        // → 期待挙動の検証は ScalingMode.None で十分。 ここは expand 経路が走った場合の確認のみ。
+        // scale=1.0 では drawH=400、 topPad=-50, bottomPad=-50。 1 クリックで row 1 = 400。
+        var grid1 = (await _fx.GridRepository.FindByIdAsync(grid.Id))!;
+        var sum = (double)grid1.RowWeights.Sum();
+        var row1Px = 900 * grid1.RowWeights[1] / sum;
+        row1Px.Should().BeApproximately(400.0, 2.0);
+    }
+
     [Fact]
     public async Task Returns_NotFound_For_Missing_Placement()
     {

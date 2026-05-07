@@ -72,14 +72,16 @@ public static class WeightRedistributor
 
     /// <summary>
     /// 占有セル群（<paramref name="occupantStart"/> から <paramref name="occupantSpan"/> 個）の幅を
-    /// 「実描画矩形の内側幅」<paramref name="occupantInner"/> に縮め、左右余白
-    /// <paramref name="leftPad"/> / <paramref name="rightPad"/> を隣接セルへ加算する。
-    /// 占有が端列 / 端行で片側に隣接セルが無い場合、 その余白は反対側の隣接セルへ加算する
-    /// (両側とも隣接無し = 単一セルグリッド時のみ余白破棄)。 これにより total 重みが保たれ、
+    /// 「画像の描画幅」<paramref name="occupantInner"/> に合わせて縮小 / 拡大し、
+    /// <paramref name="leftPad"/> / <paramref name="rightPad"/> (signed) を隣接セルへ加減算する。
+    /// pad が正値: cell が image より大きい → 余白を隣接セルへ加算 (= cell 縮小)。
+    /// pad が負値: image が cell より大きく overflow → 隣接セルから減算 (= cell 拡大)。
+    /// 占有が端列 / 端行で片側に隣接セルが無い場合、 反対側の隣接セルが両 pad を引き受ける。
+    /// 両側とも隣接無し = 単一セルグリッド時のみ no-op。 total 重みは保たれ、
     /// 1 回のフィットで occupant が確実に <paramref name="occupantInner"/> 幅に収束する。
     /// </summary>
     /// <remarks>
-    /// 入力は <c>leftPad + occupantInner + rightPad</c> ≒ 占有セル群の現在幅 を想定。
+    /// 入力は <c>leftPad + occupantInner + rightPad = </c> 占有セル群の現在幅 を想定 (signed)。
     /// この前提が崩れると比率が崩れるため、呼び出し側で保証すること。
     /// </remarks>
     public static int[] FitToOccupant(
@@ -112,7 +114,10 @@ public static class WeightRedistributor
         if (occupantStart < 0 || occupantStart >= startWeights.Count) return [.. startWeights];
         if (occupantSpan <= 0 || occupantStart + occupantSpan > startWeights.Count) return [.. startWeights];
         if (occupantInner <= 0) return [.. startWeights];
-        if (leftPad < 0 || rightPad < 0) return [.. startWeights];
+        // leftPad / rightPad は signed (負値 = 画像が cell より大きく overflow → cell 拡大)。
+        // 占有セル群の元幅 = leftPad + inner + rightPad (ガード: 1 px 以上)。
+        var occupantPxTotal = leftPad + occupantInner + rightPad;
+        if (occupantPxTotal <= 0) return [.. startWeights];
         if (leftPad == 0 && rightPad == 0) return [.. startWeights]; // 余白なし → 何もしない
 
         var hasLockArray = locked is not null && locked.Count == startWeights.Count;
@@ -149,9 +154,6 @@ public static class WeightRedistributor
         }
 
         if (leftNeighbor is null && rightNeighbor is null) return [.. startWeights]; // 分配先なし
-
-        var occupantPxTotal = leftPad + occupantInner + rightPad;
-        if (occupantPxTotal <= 0) return [.. startWeights];
 
         // 入力スケーリング: 小さい値で重み変換量が 0 に潰れないよう内部スケール。
         var weights = new long[startWeights.Count];

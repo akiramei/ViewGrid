@@ -197,6 +197,67 @@ public static class PlacementGeometry
         return ComputeRenderedRectCore(cellRect, destX, destY, destW, destH, sw, sh, copy);
     }
 
+    /// <summary>
+    /// 画像の <b>未クリップ</b> 描画矩形 (セル境界によるクリップ適用前の dst 座標) を返す。
+    /// 画像が cell より大きく overflow している場合、 戻り値の left/top は cell.x/y より小さく、
+    /// right/bottom は cell.right/bottom より大きい値を取り得る (= 負の padding)。
+    /// フィット計算で 「cell を image 実描画サイズに合わせて拡大 / 縮小」 する両方向対応に必要。
+    /// </summary>
+    public static (double X, double Y, double W, double H) ComputeImageDrawBounds(
+        PixelSize canvas,
+        int gridCols,
+        int gridRows,
+        IReadOnlyList<int>? colWeights,
+        IReadOnlyList<int>? rowWeights,
+        CellPosition position,
+        OccupySize occupy,
+        int sourceWidth,
+        int sourceHeight,
+        ImageCopy copy,
+        int pixelOffsetX,
+        int pixelOffsetY)
+    {
+        ArgumentNullException.ThrowIfNull(copy);
+        if (sourceWidth <= 0 || sourceHeight <= 0)
+            return (0, 0, 0, 0);
+
+        var rotateSwap = copy.Transform.Rotation is Rotation.Cw90 or Rotation.Cw270;
+        var sw = rotateSwap ? sourceHeight : sourceWidth;
+        var sh = rotateSwap ? sourceWidth : sourceHeight;
+
+        var cellRect = ComputeDestRect(
+            canvas, gridCols, gridRows, colWeights, rowWeights,
+            position, occupy, 0, 0);
+
+        var destX = (double)cellRect.X + pixelOffsetX;
+        var destY = (double)cellRect.Y + pixelOffsetY;
+        var destW = (double)cellRect.Width;
+        var destH = (double)cellRect.Height;
+
+        if (copy.ScalingMode == ScalingMode.Fill)
+            return (destX, destY, destW, destH);
+
+        var fitContain = Math.Min(destW / sw, destH / sh);
+        var fitCover = Math.Max(destW / sw, destH / sh);
+        var scale = copy.ScalingMode switch
+        {
+            ScalingMode.None => 1.0,
+            ScalingMode.UniformContain => fitContain,
+            ScalingMode.UniformContainShrinkOnly => Math.Min(1.0, fitContain),
+            ScalingMode.UniformContainEnlargeOnly => Math.Max(1.0, fitContain),
+            ScalingMode.UniformCover => fitCover,
+            _ => 1.0,
+        };
+
+        var anchorX = ToAnchor1D(copy.Alignment.X);
+        var anchorY = ToAnchor1D(copy.Alignment.Y);
+
+        var (dstX, dstW) = ComputeAxisDst(sw, destX, destW, scale, anchorX);
+        var (dstY, dstH) = ComputeAxisDst(sh, destY, destH, scale, anchorY);
+
+        return (dstX, dstY, dstW, dstH);
+    }
+
     private static PixelRect ComputeRenderedRectCore(
         PixelRect cellRect,
         double destX, double destY, double destW, double destH,
