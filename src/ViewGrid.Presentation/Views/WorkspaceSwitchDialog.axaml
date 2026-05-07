@@ -80,12 +80,18 @@
                             HorizontalContentAlignment="Center"
                             Click="OnRenameClicked" />
                 </Grid>
-                <Button Content="このワークスペースを削除..."
-                        Classes="dangerLink"
-                        HorizontalAlignment="Right"
-                        IsEnabled="{Binding CanDeleteSelected}"
-                        Click="OnDeleteClicked"
-                        ToolTip.Tip="ワークスペース データは workspaces/.trash/ に移動されます (即削除ではないため誤操作リスクが小さい)" />
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="6">
+                    <Button Content="複製..."
+                            Click="OnDuplicateClicked"
+                            ToolTip.Tip="このワークスペースの DB / 画像 / サムネを丸ごとコピーした派生を作成します。" />
+                    <Button Content="このワークスペースを削除..."
+                            Classes="dangerLink"
+                            IsEnabled="{Binding CanDeleteSelected}"
+                            Click="OnDeleteClicked"
+                            ToolTip.Tip="ワークスペース データは workspaces/.trash/ に移動されます (即削除ではないため誤操作リスクが小さい)" />
+                </StackPanel>
             </StackPanel>
         </Border>
 
@@ -94,10 +100,15 @@
                 Classes="Card"
                 IsVisible="{Binding IsCreating}">
             <StackPanel Spacing="6">
-                <TextBlock Text="新しいワークスペースを作成" Classes="SectionHeader" />
+                <TextBlock Text="{Binding CreateCardTitle}" Classes="SectionHeader" />
                 <TextBlock Classes="HintText"
                            TextWrapping="Wrap"
+                           IsVisible="{Binding !IsDuplicateMode}"
                            Text="新しい空のワークスペースを追加します。 作成後はこのダイアログから「再起動して切替」 で開けます。" />
+                <TextBlock Classes="HintText"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding IsDuplicateMode}"
+                           Text="複製元の DB / 画像 / サムネを丸ごとコピーします。 ワークスペースのサイズによっては時間がかかります。" />
                 <TextBlock Text="内部名 (英数 / ハイフン / アンダースコア)"
                            Classes="FieldLabel"
                            Margin="0,4,0,0" />
@@ -114,7 +125,7 @@
                             MinWidth="80"
                             HorizontalContentAlignment="Center"
                             Click="OnCancelCreateClicked" />
-                    <Button Content="作成"
+                    <Button Content="{Binding CreateConfirmLabel}"
                             Classes="accent"
                             MinWidth="80"
                             HorizontalContentAlignment="Center"

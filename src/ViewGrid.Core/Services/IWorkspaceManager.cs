@@ -22,6 +22,14 @@ public interface IWorkspaceManager
     Task<ErrorOr<WorkspaceManifest>> CreateAsync(string name, string displayName, CancellationToken ct = default);
 
     /// <summary>
+    /// 既存ワークスペースの DB / 画像 / サムネを丸ごとコピーして新ワークスペースを作る。
+    /// 「現状をベースに派生を作る」 「実験用にバックアップを取る」 用途。 source は active でも可
+    /// (read のみ)。 SQLite は単一ユーザー前提のため WAL ファイルが残っていてもコピーで実用上問題ない。
+    /// </summary>
+    Task<ErrorOr<WorkspaceManifest>> DuplicateAsync(
+        string sourceName, string newName, string newDisplayName, CancellationToken ct = default);
+
+    /// <summary>
     /// 既存ワークスペースの表示名を変更する (内部識別名 <see cref="WorkspaceManifest.Name"/> は不変)。
     /// </summary>
     Task<ErrorOr<Success>> RenameAsync(string name, string newDisplayName, CancellationToken ct = default);

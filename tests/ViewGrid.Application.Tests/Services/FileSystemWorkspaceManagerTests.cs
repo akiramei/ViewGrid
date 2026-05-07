@@ -131,6 +131,55 @@ public sealed class FileSystemWorkspaceManagerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DuplicateAsync_Copies_Files_And_Adds_To_Manifest()
+    {
+        // Default ワークスペースに DB と assets を仕込む
+        var dbPath = Path.Combine(_workspaceDir, "viewgrid.db");
+        await File.WriteAllTextAsync(dbPath, "fake-db-content");
+        var assetsDir = Path.Combine(_workspaceDir, "assets", "ab");
+        Directory.CreateDirectory(assetsDir);
+        var assetPath = Path.Combine(assetsDir, "abdef.png");
+        await File.WriteAllBytesAsync(assetPath, [0x89, 0x50, 0x4e, 0x47]);
+
+        var result = await _manager.DuplicateAsync(WorkspaceBootstrap.DefaultWorkspaceName,
+            "default-copy", "Default のコピー");
+
+        result.IsError.Should().BeFalse();
+        result.Value.Name.Should().Be("default-copy");
+
+        var copiedDb = Path.Combine(_root.FullName, "workspaces", "default-copy", "viewgrid.db");
+        File.Exists(copiedDb).Should().BeTrue();
+        (await File.ReadAllTextAsync(copiedDb)).Should().Be("fake-db-content");
+
+        var copiedAsset = Path.Combine(_root.FullName, "workspaces", "default-copy", "assets", "ab", "abdef.png");
+        File.Exists(copiedAsset).Should().BeTrue();
+
+        var entries = await _manager.ListAsync();
+        entries.Should().Contain(m => m.Name == "default-copy" && m.DisplayName == "Default のコピー");
+    }
+
+    [Fact]
+    public async Task DuplicateAsync_Rejects_Duplicate_Target_Name()
+    {
+        await _manager.CreateAsync("work", "仕事用");
+
+        var result = await _manager.DuplicateAsync(WorkspaceBootstrap.DefaultWorkspaceName,
+            "work", "重複");
+
+        result.IsError.Should().BeTrue();
+        result.FirstError.Type.Should().Be(ErrorOr.ErrorType.Conflict);
+    }
+
+    [Fact]
+    public async Task DuplicateAsync_Rejects_Missing_Source()
+    {
+        var result = await _manager.DuplicateAsync("nonexistent", "copy", "コピー");
+
+        result.IsError.Should().BeTrue();
+        result.FirstError.Type.Should().Be(ErrorOr.ErrorType.NotFound);
+    }
+
+    [Fact]
     public async Task SetActiveAsync_Rejects_Missing_Workspace()
     {
         var result = await _manager.SetActiveAsync("nonexistent");

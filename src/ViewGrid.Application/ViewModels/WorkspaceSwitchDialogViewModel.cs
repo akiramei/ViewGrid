@@ -34,11 +34,32 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
 
     [ObservableProperty] public partial string? StatusMessage { get; set; }
 
-    /// <summary>新規作成フォームを開いている間 true。 ボタン押下で開閉する。</summary>
+    /// <summary>新規作成 / 複製フォームを開いている間 true。 ボタン押下で開閉する。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCreate))]
     [NotifyPropertyChangedFor(nameof(ShowSelectedEditor))]
     public partial bool IsCreating { get; set; }
+
+    /// <summary>
+    /// 複製モードのとき複製元ワークスペース名。 通常の新規空作成では <c>null</c>。
+    /// <see cref="ConfirmCreateAsync"/> はこの値で <c>CreateAsync</c> と <c>DuplicateAsync</c> を
+    /// 切り替える。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDuplicateMode))]
+    [NotifyPropertyChangedFor(nameof(CreateCardTitle))]
+    [NotifyPropertyChangedFor(nameof(CreateConfirmLabel))]
+    public partial string? DuplicateSourceName { get; set; }
+
+    public bool IsDuplicateMode => !string.IsNullOrEmpty(DuplicateSourceName);
+
+    /// <summary>新規作成カードのヘッダ文言。 複製モードでは「&lt;source&gt; を複製」 になる。</summary>
+    public string CreateCardTitle => IsDuplicateMode
+        ? $"「{DuplicateSourceName}」 を複製"
+        : "新しいワークスペースを作成";
+
+    /// <summary>確定ボタンのラベル。 複製モードでは「複製」 になる。</summary>
+    public string CreateConfirmLabel => IsDuplicateMode ? "複製" : "作成";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCreate))]
@@ -126,8 +147,23 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
 
     public void BeginCreate()
     {
+        DuplicateSourceName = null;
         DraftName = string.Empty;
         DraftDisplayName = string.Empty;
+        StatusMessage = null;
+        IsCreating = true;
+    }
+
+    /// <summary>
+    /// 選択中のワークスペースを複製するモードで作成カードを開く。
+    /// Draft の初期値は「&lt;source&gt;-copy」 / 「&lt;displayName&gt; (コピー)」 を入れて編集しやすくする。
+    /// </summary>
+    public void BeginDuplicate()
+    {
+        if (SelectedWorkspace is not { } source) return;
+        DuplicateSourceName = source.Name;
+        DraftName = ProposeCopyName(source.Name);
+        DraftDisplayName = $"{source.DisplayName} (コピー)";
         StatusMessage = null;
         IsCreating = true;
     }
@@ -135,6 +171,7 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     public void CancelCreate()
     {
         IsCreating = false;
+        DuplicateSourceName = null;
         DraftName = string.Empty;
         DraftDisplayName = string.Empty;
     }
@@ -146,15 +183,30 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
         {
             IsBusy = true;
             StatusMessage = null;
-            var result = await _manager.CreateAsync(DraftName.Trim(), DraftDisplayName.Trim(), ct);
+            var newName = DraftName.Trim();
+            var newDisplay = DraftDisplayName.Trim();
+
+            ErrorOr.ErrorOr<WorkspaceManifest> result;
+            if (DuplicateSourceName is { } src)
+            {
+                StatusMessage = "複製中... ワークスペースのサイズによっては時間がかかります。";
+                result = await _manager.DuplicateAsync(src, newName, newDisplay, ct);
+            }
+            else
+            {
+                result = await _manager.CreateAsync(newName, newDisplay, ct);
+            }
+
             if (result.IsError)
             {
                 StatusMessage = result.FirstError.Description;
                 return;
             }
+            StatusMessage = null;
             await ReloadAsync(ct);
             SelectedWorkspace = Workspaces.FirstOrDefault(w => w.Name == result.Value.Name);
             IsCreating = false;
+            DuplicateSourceName = null;
             DraftName = string.Empty;
             DraftDisplayName = string.Empty;
         }
@@ -162,6 +214,23 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// 「source」 → 「source-copy」 「source-copy-2」 等の名前候補を生成する。
+    /// 既存ワークスペースと衝突しない最初の候補を返す。
+    /// </summary>
+    private string ProposeCopyName(string sourceName)
+    {
+        var existing = Workspaces.Select(w => w.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var baseCandidate = $"{sourceName}-copy";
+        if (!existing.Contains(baseCandidate)) return baseCandidate;
+        for (var i = 2; i < 1000; i++)
+        {
+            var candidate = $"{sourceName}-copy-{i}";
+            if (!existing.Contains(candidate)) return candidate;
+        }
+        return baseCandidate;
     }
 
     public async Task RenameSelectedAsync(CancellationToken ct = default)

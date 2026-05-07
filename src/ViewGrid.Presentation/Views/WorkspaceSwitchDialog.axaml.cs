@@ -39,6 +39,12 @@ public partial class WorkspaceSwitchDialog : Window
             vm.BeginCreate();
     }
 
+    private void OnDuplicateClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is WorkspaceSwitchDialogViewModel vm)
+            vm.BeginDuplicate();
+    }
+
     private void OnCancelCreateClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is WorkspaceSwitchDialogViewModel vm)

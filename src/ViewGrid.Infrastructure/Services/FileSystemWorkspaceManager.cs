@@ -78,6 +78,83 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
         }
     }
 
+    public async Task<ErrorOr<WorkspaceManifest>> DuplicateAsync(
+        string sourceName, string newName, string newDisplayName, CancellationToken ct = default)
+    {
+        if (!WorkspaceBootstrap.IsValidName(newName))
+            return Error.Validation("Workspace.InvalidName",
+                "ワークスペース名は英数 / ハイフン / アンダースコアの 1〜64 文字で指定してください。");
+
+        var trimmedDisplay = (newDisplayName ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(trimmedDisplay))
+            return Error.Validation("Workspace.DisplayNameRequired", "表示名を入力してください。");
+
+        await _lock.WaitAsync(ct);
+        try
+        {
+            var sourceDir = Path.Combine(_context.RootDirectory,
+                WorkspaceBootstrap.WorkspacesSubdirectory, sourceName);
+            if (!Directory.Exists(sourceDir))
+                return Error.NotFound("Workspace.NotFound",
+                    $"複製元のワークスペース '{sourceName}' が見つかりません。");
+
+            var manifests = ReadManifestList();
+            if (manifests.Any(m => string.Equals(m.Name, newName, StringComparison.OrdinalIgnoreCase)))
+                return Error.Conflict("Workspace.NameAlreadyExists",
+                    $"同名のワークスペース '{newName}' が既に存在します。");
+
+            var destDir = Path.Combine(_context.RootDirectory,
+                WorkspaceBootstrap.WorkspacesSubdirectory, newName);
+            if (Directory.Exists(destDir))
+                return Error.Conflict("Workspace.DirectoryAlreadyExists",
+                    $"ディレクトリ '{destDir}' が既に存在します。");
+
+            // 失敗時は途中まで作ったディレクトリを掃除する。 SQLite WAL/SHM が残っていても
+            // コピー後の DB は整合性が保たれる前提 (シングルユーザー / シングルプロセス設計)。
+            try
+            {
+                await CopyDirectoryAsync(sourceDir, destDir, ct);
+            }
+            catch (Exception)
+            {
+                if (Directory.Exists(destDir))
+                {
+                    try { Directory.Delete(destDir, recursive: true); } catch (IOException) { }
+                }
+                throw;
+            }
+
+            var entry = new WorkspaceManifest(newName, trimmedDisplay);
+            WriteManifestList(manifests.Append(entry));
+            return entry;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>
+    /// ディレクトリを再帰的にコピーする。 サブディレクトリ / ファイルを <paramref name="ct"/> で
+    /// キャンセル可能。 大規模ワークスペース (画像 GB 級) でも時間はかかるが進行可能。
+    /// </summary>
+    private static async Task CopyDirectoryAsync(string source, string dest, CancellationToken ct)
+    {
+        Directory.CreateDirectory(dest);
+        foreach (var file in Directory.GetFiles(source))
+        {
+            ct.ThrowIfCancellationRequested();
+            var target = Path.Combine(dest, Path.GetFileName(file));
+            File.Copy(file, target, overwrite: false);
+        }
+        foreach (var dir in Directory.GetDirectories(source))
+        {
+            ct.ThrowIfCancellationRequested();
+            var target = Path.Combine(dest, Path.GetFileName(dir));
+            await CopyDirectoryAsync(dir, target, ct);
+        }
+    }
+
     public async Task<ErrorOr<Success>> RenameAsync(
         string name, string newDisplayName, CancellationToken ct = default)
     {
