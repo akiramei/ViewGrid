@@ -54,6 +54,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             copyPropertiesForInspector,
             _history,
             _messenger,
+            _fx.AppSettings,
             NullLogger<PlacementInspectorViewModel>.Instance);
 
         var updateWeights = new UpdateGridWeightsUseCase(_fx.GridRepository);

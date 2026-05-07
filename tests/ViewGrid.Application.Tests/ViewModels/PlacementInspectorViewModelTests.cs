@@ -46,6 +46,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
             copyProperties,
             history,
             _messenger,
+            _fx.AppSettings,
             NullLogger<PlacementInspectorViewModel>.Instance);
         _place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
     }
@@ -185,6 +186,51 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         await _vm.AttachAsync(null);
 
         _vm.CopyProperties.HasCopy.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// auto-save ON: dirty 化後に <see cref="PlacementInspectorViewModel.FlushAutoSaveAsync"/> を呼ぶと、
+    /// 保留中の auto-save が即実行されて DB に永続化される (debounce 待ちを await でショートカット)。
+    /// </summary>
+    [Fact]
+    public async Task AutoSave_Enabled_FlushAutoSaveAsync_PersistsPixelOffsetWithoutManualSave()
+    {
+        var (item, _, gridVm) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item, gridVm);
+        await _fx.AppSettings.UpdateAsync(s => s with { EnableAutoSave = true });
+
+        // 値編集 → IsDirty=true → AutoSaveDispatcher が Schedule。 Flush で即実行 + 完了待機。
+        _vm.PixelOffsetX = 42;
+        _vm.PixelOffsetY = 7;
+        await _vm.FlushAutoSaveAsync();
+
+        _vm.IsDirty.Should().BeFalse();
+        var reloaded = await _fx.PlacementRepository.FindByIdAsync(item.PlacementId);
+        reloaded!.PixelOffsetX.Should().Be(42);
+        reloaded.PixelOffsetY.Should().Be(7);
+    }
+
+    /// <summary>
+    /// auto-save OFF (既定): 値編集しても dispatcher は Schedule されない。 FlushAutoSaveAsync は no-op。
+    /// 手動 SaveAsync を呼ぶまで DB に反映されない (従来挙動の保持)。
+    /// </summary>
+    [Fact]
+    public async Task AutoSave_Disabled_FlushAutoSaveAsync_DoesNotPersist()
+    {
+        var (item, _, gridVm) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item, gridVm);
+        // EnableAutoSave は既定 false。 明示的に確認。
+        _fx.AppSettings.Current.EnableAutoSave.Should().BeFalse();
+
+        var originalX = item.PixelOffsetX;
+        _vm.PixelOffsetX = 42;
+        await _vm.FlushAutoSaveAsync();
+
+        // DB は更新されていない (Schedule されていないので Flush は no-op)。
+        var reloaded = await _fx.PlacementRepository.FindByIdAsync(item.PlacementId);
+        reloaded!.PixelOffsetX.Should().Be(originalX);
+        // VM はまだ dirty。
+        _vm.IsDirty.Should().BeTrue();
     }
 
     private async Task<(PlacementItemViewModel item, ImageCopy copy, GridCanvasItemViewModel gridVm)> SeedAndPlaceAsync()

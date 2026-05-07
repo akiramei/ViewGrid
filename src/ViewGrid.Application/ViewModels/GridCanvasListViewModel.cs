@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using ViewGrid.Application.AutoSave;
 using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.UseCases;
@@ -18,8 +20,11 @@ namespace ViewGrid.Application.ViewModels;
 /// 「最後に開いていたグリッド」 を <see cref="IAppSettingsService"/> 経由で永続化し、
 /// 起動時に復元する。
 /// </summary>
-public sealed partial class GridCanvasListViewModel : ViewModelBase
+public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
 {
+    /// <summary>auto-save の debounce 時間。 SelectedGrid.IsDirty 立ち上がりからこの時間静止すれば 1 回だけ保存。</summary>
+    internal static readonly TimeSpan AutoSaveDebounce = TimeSpan.FromMilliseconds(1000);
+
     private readonly IGridCanvasRepository _repository;
     private readonly CreateGridCanvasUseCase _createUseCase;
     private readonly DeleteGridCanvasUseCase _deleteUseCase;
@@ -28,6 +33,19 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     private readonly IAppSettingsService _appSettings;
     private readonly IUndoRedoService _history;
     private readonly ILogger<GridCanvasListViewModel> _logger;
+
+    private readonly SaveCoordinator _autoSave;
+    /// <summary>
+    /// auto-save の対象アイテム。 IsDirty=true 検知時にセットし、 Coordinator の saveAction からこれを保存する。
+    /// SelectedGrid 切替で <see cref="SelectedGrid"/> が変わっても、 旧アイテムが正しく保存されるようにフィールドで保持。
+    /// </summary>
+    private GridCanvasItemViewModel? _autoSaveTarget;
+    /// <summary>
+    /// SelectedGrid 切替時、 旧アイテムの flush を退避する Task。 外部 (MainWindowVM) が
+    /// 切替後の LoadGridAsync 起動前に <see cref="WaitPendingSelectedGridFlushAsync"/> で待てる。
+    /// </summary>
+    private Task _pendingSelectedGridFlushTask = Task.CompletedTask;
+    private bool _disposed;
 
     /// <summary>
     /// LoadAsync 中の SelectedGrid 自動選択 (LastOpenedGridId からの復元) で
@@ -53,8 +71,28 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     [ObservableProperty]
     public partial GridCanvasItemViewModel? SelectedGrid { get; set; }
 
+    /// <summary>
+    /// 書き込み系コマンド (Create / Delete / Rename / UpdateCanvasSize / CommitEditing) の進行中フラグ。
+    /// auto-save はこのフラグだけを尊重する (= 自分自身の重複起動を防ぎつつ、 内部 reload には邪魔されない)。
+    /// </summary>
     [ObservableProperty]
-    public partial bool IsBusy { get; set; }
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    public partial bool IsSaving { get; set; }
+
+    /// <summary>
+    /// 読み込み系経路 (LoadAsync / RefreshAfterHistoryAsync) の進行中フラグ。 UI の ProgressBar
+    /// 表示や 「読み込み中なので操作スキップ」 ガードに使う。 auto-save はこのフラグでは止まらない。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    public partial bool IsLoading { get; set; }
+
+    /// <summary>
+    /// View 互換のための合成プロパティ。 ProgressBar の IsVisible 等にバインドされている既存
+    /// XAML を無傷に保つ。 内部ロジックは <see cref="IsSaving"/> / <see cref="IsLoading"/>
+    /// を直接見るほうが意図が明確 (auto-save 競合制御を細粒度化するため)。
+    /// </summary>
+    public bool IsBusy => IsSaving || IsLoading;
 
     [ObservableProperty]
     public partial string? StatusMessage { get; set; }
@@ -89,6 +127,60 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
         _appSettings = appSettings;
         _history = history;
         _logger = logger;
+        _autoSave = new SaveCoordinator(
+            AutoSaveDebounce,
+            isEnabled: () => _appSettings.Current.EnableAutoSave,
+            isDirty: () => _autoSaveTarget?.IsDirty == true,
+            signatureProvider: () => _autoSaveTarget is { } t ? ComputeAutoSaveSignature(t) : string.Empty,
+            saveAction: ct => _autoSaveTarget is { } t ? TryCommitEditingForAsync(t, ct) : Task.FromResult(true));
+        _appSettings.Changed += OnAppSettingsChanged;
+    }
+
+    private void OnAppSettingsChanged(object? sender, AppSettings settings)
+    {
+        if (!settings.EnableAutoSave) _autoSave.Cancel();
+    }
+
+    private static string ComputeAutoSaveSignature(GridCanvasItemViewModel target)
+        => string.Concat(
+            target.GridId, "|",
+            target.EditingName ?? string.Empty, "|",
+            target.EditingCanvasWidth, "|",
+            target.EditingCanvasHeight);
+
+    /// <summary>
+    /// 保留中の auto-save (旧 SelectedGrid 切替時のもの含む) が完了するまで待つ。
+    /// MainWindowVM が SelectedGrid 切替 → LoadGridAsync 起動前に await する。
+    /// </summary>
+    public Task WaitPendingSelectedGridFlushAsync() => _pendingSelectedGridFlushTask;
+
+    /// <summary>
+    /// 保留中の auto-save を即実行 + その完了を待つ。 アプリ終了時の <c>FlushAllAutoSavesAsync</c> から呼ばれる。
+    /// </summary>
+    public Task FlushAutoSaveAsync(CancellationToken ct = default) => _autoSave.FlushAsync(ct);
+
+    /// <summary>
+    /// 監視中アイテムの編集系プロパティ (Editing*) や IsDirty が変化したら、 dirty 状態のアイテムを
+    /// <see cref="_autoSaveTarget"/> に確定して Coordinator に通知する。 Coordinator 側で設定 OFF /
+    /// 同 signature 失敗 / dirty なし は内部 gate でスキップ。 連続編集 (例: 文字を続けて入力)
+    /// でも debounce が毎回リセットされる。
+    /// </summary>
+    private void OnSelectedItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_disposed) return;
+        if (sender is not GridCanvasItemViewModel item) return;
+        // 編集系プロパティか IsDirty 変化のみ対象。 他のプロパティ (Name 等の永続化値同期) はスキップ。
+        if (e.PropertyName is not (
+            nameof(GridCanvasItemViewModel.EditingName)
+            or nameof(GridCanvasItemViewModel.EditingCanvasWidth)
+            or nameof(GridCanvasItemViewModel.EditingCanvasHeight)
+            or nameof(GridCanvasItemViewModel.IsDirty)))
+            return;
+
+        // _autoSaveTarget は Coordinator の signature/save delegate が読むので、
+        // NotifyEdited より前にセットして最新値で評価される状態を作る。
+        _autoSaveTarget = item;
+        _autoSave.NotifyEdited();
     }
 
     /// <summary>
@@ -98,8 +190,49 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     /// 並行更新の race は <see cref="IAppSettingsService.UpdateAsync"/> 側の lock で吸収されるため、
     /// VM 側では fire-and-forget で良い (テストや確実な永続化待ちは <see cref="LastOpenedSaveTask"/>)。
     /// </summary>
+    /// <summary>
+    /// 旧 SelectedGrid の購読解除 + 旧アイテムが dirty なら flush 予約。
+    /// auto-save ON のときは、 dispatcher 経由の flush で取りこぼしが起きるケース
+    /// (例: auto-save OFF 中に edit → ON 化 → 切替 で <see cref="_autoSaveTarget"/> 未設定 +
+    /// dispatcher にタイマー無し) のために、 flush 後に <see cref="TryCommitEditingForAsync"/>
+    /// での直接 commit も試みる (Codex P2 指摘)。
+    /// auto-save OFF のときは既存仕様どおり、 切替時には保存しない (ユーザーが手動保存する設計を維持)。
+    /// </summary>
+    partial void OnSelectedGridChanging(GridCanvasItemViewModel? oldValue, GridCanvasItemViewModel? newValue)
+    {
+        if (oldValue is not null)
+            oldValue.PropertyChanged -= OnSelectedItemPropertyChanged;
+
+        if (oldValue is { IsDirty: true } && _appSettings.Current.EnableAutoSave)
+        {
+            _pendingSelectedGridFlushTask = FlushAndCommitOnSwitchAsync(oldValue);
+        }
+    }
+
+    /// <summary>
+    /// 旧 grid の dirty edit を確実に保存する。 Coordinator の保留中タイマーを先に flush し、
+    /// それで保存されなかった (target 不一致 / タイマー無し等の) 場合に備えて直接 commit を試みる。
+    /// 既に保存済みなら 2 段目の <see cref="TryCommitEditingForAsync"/> は IsDirty=false で即 return。
+    /// IsLoading 中 (reload 経路) でも IsSaving とは独立 gate なので edit はロストしない
+    /// (Phase B-2 で <c>allowDuringBusy</c> workaround を撤去)。
+    /// </summary>
+    private async Task FlushAndCommitOnSwitchAsync(GridCanvasItemViewModel target)
+    {
+        try { await _autoSave.FlushAsync(CancellationToken.None); }
+        catch { /* StatusMessage に反映済み想定。 続行する */ }
+
+        if (target.IsDirty)
+        {
+            try { await TryCommitEditingForAsync(target, CancellationToken.None); }
+            catch { /* 同上 */ }
+        }
+    }
+
     partial void OnSelectedGridChanged(GridCanvasItemViewModel? value)
     {
+        if (value is not null)
+            value.PropertyChanged += OnSelectedItemPropertyChanged;
+
         if (_suppressLastOpenedSave) return;
 
         var newId = value?.GridId.ToString();
@@ -114,10 +247,10 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     [RelayCommand]
     public async Task LoadAsync(CancellationToken ct = default)
     {
-        if (IsBusy) return;
+        if (IsLoading) return;
         try
         {
-            IsBusy = true;
+            IsLoading = true;
 
             // mid-session reload (RefreshAfterHistoryAsync 等から) で in-memory の現在選択を
             // 維持するために、 reload 前に SelectedGrid.GridId を捕捉する。 持続中の
@@ -153,7 +286,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
             finally { _suppressLastOpenedSave = false; }
         }
         catch (OperationCanceledException) { }
-        finally { IsBusy = false; }
+        finally { IsLoading = false; }
     }
 
     private async Task ReloadGridsInternalAsync(CancellationToken ct)
@@ -185,10 +318,10 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     [RelayCommand]
     public async Task ConfirmCreateAsync(CancellationToken ct = default)
     {
-        if (IsBusy) return;
+        if (IsSaving || IsLoading) return;
         try
         {
-            IsBusy = true;
+            IsSaving = true;
 
             // 比率テキスト → int 配列。空 / パース失敗時は null（=均等）。
             var parsedColWeights = ParseWeights(DraftColWeights);
@@ -222,17 +355,17 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
             IsCreating = false;
             StatusMessage = $"「{result.Value.Name}」を作成しました。";
         }
-        finally { IsBusy = false; }
+        finally { IsSaving = false; }
     }
 
     [RelayCommand]
     public async Task DeleteSelectedAsync(CancellationToken ct = default)
     {
         var selected = SelectedGrid;
-        if (selected is null || IsBusy) return;
+        if (selected is null || IsSaving || IsLoading) return;
         try
         {
-            IsBusy = true;
+            IsSaving = true;
             var result = await _deleteUseCase.ExecuteAsync(selected.GridId, ct);
             if (result.IsError)
             {
@@ -247,25 +380,25 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
             SelectedGrid = Grids.FirstOrDefault();
             StatusMessage = $"「{selected.Name}」を削除しました。";
         }
-        finally { IsBusy = false; }
+        finally { IsSaving = false; }
     }
 
     [RelayCommand]
     public async Task RenameSelectedAsync(string newName, CancellationToken ct = default)
     {
         var selected = SelectedGrid;
-        if (selected is null || IsBusy) return;
+        if (selected is null || IsSaving || IsLoading) return;
         if (string.IsNullOrWhiteSpace(newName)) return;
         var trimmed = newName.Trim();
         if (trimmed == selected.Name) return;
 
         try
         {
-            IsBusy = true;
+            IsSaving = true;
             var ok = await RenameInternalAsync(selected, trimmed, ct);
             if (ok) StatusMessage = "名前を変更しました。";
         }
-        finally { IsBusy = false; }
+        finally { IsSaving = false; }
     }
 
     /// <summary>
@@ -277,18 +410,18 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     public async Task UpdateSelectedCanvasSizeAsync(PixelSize newSize, CancellationToken ct = default)
     {
         var selected = SelectedGrid;
-        if (selected is null || IsBusy) return;
+        if (selected is null || IsSaving || IsLoading) return;
 
         var before = new PixelSize(selected.CanvasWidth, selected.CanvasHeight);
         if (before == newSize) return;
 
         try
         {
-            IsBusy = true;
+            IsSaving = true;
             var ok = await UpdateCanvasSizeInternalAsync(selected, before, newSize, ct);
             if (ok) StatusMessage = "キャンバスサイズを変更しました。";
         }
-        finally { IsBusy = false; }
+        finally { IsSaving = false; }
     }
 
     /// <summary>
@@ -296,55 +429,67 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
     /// を読み、 永続化済み値と異なるものだけを順に Rename / UpdateCanvasSize で永続化する。
     /// 各操作は独立した履歴エントリとして積まれる (両方変更時は Undo 2 回で元に戻る)。
     /// 履歴は CopyProperties / PlacementInspector の 「保存ボタン経由」 パターンと同じ意味論。
+    /// auto-save 経路は <see cref="TryCommitEditingForAsync"/> を直接呼ぶ (旧 SelectedGrid を引数で受け渡せるように)。
     /// </summary>
     [RelayCommand]
     public async Task CommitEditingAsync(CancellationToken ct = default)
-    {
-        var selected = SelectedGrid;
-        if (selected is null || IsBusy || !selected.IsDirty) return;
+        => _ = await TryCommitEditingForAsync(SelectedGrid, ct);
 
-        var newName = selected.EditingName?.Trim() ?? string.Empty;
+    /// <summary>
+    /// 指定 <paramref name="target"/> の編集ドラフトを保存する。 成功 (no-op 含む) で <c>true</c>、 失敗で <c>false</c>。
+    /// auto-save 経路は「dirty 検知時の対象アイテム」 を引数で受け渡すことで、
+    /// SelectedGrid 切替後でも旧アイテムを正しく保存できるようにしている (race 防止)。
+    /// <see cref="IsSaving"/> は本メソッド自身の重複起動だけを抑止し、 <see cref="IsLoading"/>
+    /// (reload 経路) との競合は内部 EF DbContext 同時クエリ問題なので別経路 (Phase C) で解決する想定。
+    /// </summary>
+    internal async Task<bool> TryCommitEditingForAsync(GridCanvasItemViewModel? target, CancellationToken ct = default)
+    {
+        if (target is null || !target.IsDirty) return true;
+        if (IsSaving) return true;
+
+        var newName = target.EditingName?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(newName))
         {
             StatusMessage = "グリッド名を入力してください。";
-            return;
+            return false;
         }
 
-        var nameChanged = newName != selected.Name;
-        var newWidth = selected.EditingCanvasWidth;
-        var newHeight = selected.EditingCanvasHeight;
-        var sizeChanged = newWidth != selected.CanvasWidth || newHeight != selected.CanvasHeight;
+        var nameChanged = newName != target.Name;
+        var newWidth = target.EditingCanvasWidth;
+        var newHeight = target.EditingCanvasHeight;
+        var sizeChanged = newWidth != target.CanvasWidth || newHeight != target.CanvasHeight;
 
         try
         {
-            IsBusy = true;
+            IsSaving = true;
             var savedAny = false;
             if (nameChanged)
             {
-                var ok = await RenameInternalAsync(selected, newName, ct);
-                if (!ok) return;
+                var ok = await RenameInternalAsync(target, newName, ct);
+                if (!ok) return false;
                 savedAny = true;
             }
             if (sizeChanged)
             {
-                var before = new PixelSize(selected.CanvasWidth, selected.CanvasHeight);
+                var before = new PixelSize(target.CanvasWidth, target.CanvasHeight);
                 var after = new PixelSize(newWidth, newHeight);
-                var ok = await UpdateCanvasSizeInternalAsync(selected, before, after, ct);
-                if (!ok) return;
+                var ok = await UpdateCanvasSizeInternalAsync(target, before, after, ct);
+                if (!ok) return false;
                 savedAny = true;
             }
             if (savedAny)
             {
                 // 保存完了後の defensive sync: RenameInternalAsync / UpdateCanvasSizeInternalAsync
-                // 内で selected.Name / CanvasWidth / CanvasHeight を更新すると OnNameChanged 等の
+                // 内で target.Name / CanvasWidth / CanvasHeight を更新すると OnNameChanged 等の
                 // partial method 経由で Editing も同期されるが、 同値スキップやタイミング差で
                 // IsDirty=true が残る稀なケースを防ぐため、 ここで RevertEditing で確実に揃える
                 // (Editing は最新の永続化値と一致 → IsDirty=false)。
-                selected.RevertEditing();
+                target.RevertEditing();
                 StatusMessage = "グリッド情報を保存しました。";
             }
+            return true;
         }
-        finally { IsBusy = false; }
+        finally { IsSaving = false; }
     }
 
     /// <summary>右ペインのリセットボタンから呼ばれる。 ドラフトを永続化済み値で上書き。</summary>
@@ -412,4 +557,14 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase
 
     [LoggerMessage(EventId = 4001, Level = LogLevel.Information, Message = "グリッド一覧を読み込み: {Count} 件")]
     private static partial void LogLoaded(ILogger logger, int count);
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _appSettings.Changed -= OnAppSettingsChanged;
+        if (SelectedGrid is not null)
+            SelectedGrid.PropertyChanged -= OnSelectedItemPropertyChanged;
+        _autoSave.Dispose();
+    }
 }

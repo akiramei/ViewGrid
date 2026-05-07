@@ -21,7 +21,7 @@ namespace ViewGrid.Application.ViewModels;
 /// 配置タブのワークスペース。アクティブグリッド、配置済み一覧、配置候補を保持し、
 /// 配置/取消コマンドを提供する。
 /// </summary>
-public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<CopyLibraryChangedMessage>
+public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<CopyLibraryChangedMessage>, IDisposable
 {
     private readonly IGridCanvasRepository _gridRepository;
     private readonly IImageCopyRepository _copyRepository;
@@ -286,13 +286,63 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _messenger.Register(this);
     }
 
+    /// <summary>
+    /// 直近の placement 切替に伴う Inspector flush + AttachAsync の Task。
+    /// 外部 (MainWindowVM 等) が <see cref="WaitPendingInspectorAttachAsync"/> 経由で
+    /// 切替の完了を await できる。 OnSelectedPlacementChanged は partial void なので、
+    /// Task をフィールドに退避することで「先行の保存が終わってから次の attach」 を保証する。
+    /// 連続切替時は各 task が前 task を await してから実行するので、 attach は厳密に直列化される
+    /// (= 旧選択への stale attach で UI が古いアイテムに固定される race を防ぐ)。
+    /// </summary>
+    private Task _pendingInspectorTask = Task.CompletedTask;
+
+    /// <summary>
+    /// SelectedPlacement 変更時に呼ばれる明示 async pipeline。 partial void hook
+    /// (<see cref="OnSelectedPlacementChanged"/>) は本メソッドを fire-and-forget で kick するだけ。
+    /// テストや外部呼び出しは戻り値の Task を await することで切替完了を待てる。
+    /// 連続切替で stale attach が古いアイテムに固定される race は、 _pendingInspectorTask の
+    /// task chain (previous task を await してから自分の処理) で吸収する。
+    /// </summary>
+    public Task SelectPlacementAsync(PlacementItemViewModel? value)
+    {
+        var previous = _pendingInspectorTask;
+        _pendingInspectorTask = FlushThenAttachAsync(previous, value, CurrentGrid);
+        NotifySelectionChanged();
+        return _pendingInspectorTask;
+    }
+
     /// <summary>SelectedPlacement 変更時に Inspector を Attach し、CurrentSelection も再計算する。
-    /// 描画域サイズの計算に CurrentGrid（重み・キャンバスサイズ）が必要なので渡す。</summary>
+    /// 描画域サイズの計算に CurrentGrid（重み・キャンバスサイズ）が必要なので渡す。
+    /// auto-save ON の場合は AttachAsync の前に Inspector の保留中 auto-save を flush する。
+    /// 先行の attach が走行中なら、 それを await してから今回の flush + attach を実行する
+    /// (連続切替で旧 task が新 grid load と並列実行 → stale attach 上書きする race を防止)。
+    /// View bindings は <see cref="SelectedPlacement"/> を通常通り叩くだけで本 hook が呼ばれる。
+    /// テスト経路は <see cref="SelectPlacementAsync"/> を直接 await することで完了を待てる
+    /// (Phase B-3: 旧 fire-and-forget の Task をテストや外部呼び出しから観測可能にした)。
+    /// </summary>
     partial void OnSelectedPlacementChanged(PlacementItemViewModel? value)
     {
-        _ = Inspector.AttachAsync(value, CurrentGrid);
-        NotifySelectionChanged();
+        _ = SelectPlacementAsync(value);
     }
+
+    private async Task FlushThenAttachAsync(
+        Task previous, PlacementItemViewModel? value, GridCanvasItemViewModel? grid)
+    {
+        // 先行 attach の完了を待つ (失敗は観測済み扱いで握る — 今回の attach は継続させる)。
+        try { await previous; } catch { }
+
+        try { await Inspector.FlushAutoSaveAsync(CancellationToken.None); }
+        catch { /* StatusMessage に反映済み想定。 attach は継続 */ }
+        await Inspector.AttachAsync(value, grid);
+    }
+
+    /// <summary>
+    /// 直近の SelectedPlacement 切替に伴う flush + attach の完了を待つ。
+    /// 外部の遷移処理 (グリッド切替・終了等) が attach 完了後の状態を必要とするときに使う。
+    /// 新規呼び出しコードは <see cref="SelectPlacementAsync"/> の戻り値を直接 await するほうが明確だが、
+    /// View binding 経由 (partial void) で起動された切替はこちらでしか待てないので公開を維持する。
+    /// </summary>
+    public Task WaitPendingInspectorAttachAsync() => _pendingInspectorTask;
 
     /// <summary>CurrentGrid 変更時にも CurrentSelection を再評価する。</summary>
     partial void OnCurrentGridChanged(GridCanvasItemViewModel? value)
@@ -362,6 +412,14 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         Placements.Clear();
         SelectedPlacement = null;
         StatusMessage = null;
+
+        // SelectedPlacement = null は OnSelectedPlacementChanged 経由で FlushThenAttachAsync を
+        // fire-and-forget 起動する。 そのタスクは Inspector の auto-save flush と同 DbContext での
+        // EF クエリを伴うため、 後続の LoadCandidatesAsync / LoadPlacementsAsync と並走させると
+        // concurrent EF クエリ race か、 旧 placement の保留中保存をロストしうる (Codex P1 指摘)。
+        // 再ロード前に必ず attach タスク (内部で flush 完了を保証) の完了を待つ。
+        try { await WaitPendingInspectorAttachAsync(); }
+        catch { /* StatusMessage に反映済み想定。 続行する */ }
 
         if (grid is null)
             return;
@@ -1370,4 +1428,10 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     [LoggerMessage(EventId = 5009, Level = LogLevel.Information, Message = "PNG 出力: trim={TrimMode} output={OutputMode} elapsed={ElapsedMs}ms bytes={Bytes}")]
     private static partial void LogPngExported(ILogger logger, TrimMode trimMode, OutputMode outputMode, long elapsedMs, long bytes);
+
+    public void Dispose()
+    {
+        _messenger.UnregisterAll(this);
+        Inspector.Dispose();
+    }
 }

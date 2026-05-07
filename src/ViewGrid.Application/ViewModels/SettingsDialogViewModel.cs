@@ -51,6 +51,12 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
     /// <summary>サムネイルの最大エッジサイズ (px)。 256 / 512 / 1024 / 2048 から選ぶ。</summary>
     [ObservableProperty] public partial int ThumbnailMaxEdgePixels { get; set; } = 1024;
 
+    /// <summary>
+    /// 自動保存 (Inspector / グリッドプロパティの値編集を 1 秒静止後に自動 commit) の ON/OFF。
+    /// 既定 OFF (後方互換)。
+    /// </summary>
+    [ObservableProperty] public partial bool EnableAutoSave { get; set; }
+
     public SettingsDialogViewModel(IAppSettingsService settings, IFilePickerService filePicker)
     {
         _settings = settings;
@@ -73,6 +79,7 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
             DefaultScalingMode = _settings.Current.DefaultScalingMode;
             DefaultAutoCropPreset = _settings.Current.DefaultAutoCropPreset;
             ThumbnailMaxEdgePixels = _settings.Current.ThumbnailMaxEdgePixels;
+            EnableAutoSave = _settings.Current.EnableAutoSave;
         }
         finally
         {
@@ -137,6 +144,8 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsThumb1024));
         OnPropertyChanged(nameof(IsThumb2048));
     }
+
+    partial void OnEnableAutoSaveChanged(bool value) => SaveCurrent(s => s with { EnableAutoSave = value });
 
     /// <summary>
     /// Current に対して mutator を適用した新しい <see cref="AppSettings"/> を保存する。

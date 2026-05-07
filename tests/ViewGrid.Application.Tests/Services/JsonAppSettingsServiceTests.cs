@@ -46,7 +46,7 @@ public sealed class JsonAppSettingsServiceTests : IAsyncLifetime
     [Fact]
     public async Task Save_And_Reload_Round_Trips_All_Fields()
     {
-        // 全 5 フィールドが Save → 別インスタンスで Load して同じ値で復元
+        // 全 6 フィールドが Save → 別インスタンスで Load して同じ値で復元
         var service = new JsonAppSettingsService(_options, NullLogger<JsonAppSettingsService>.Instance);
         var newSettings = new AppSettings
         {
@@ -55,6 +55,7 @@ public sealed class JsonAppSettingsServiceTests : IAsyncLifetime
             DefaultScalingMode = ScalingMode.UniformCover,
             DefaultAutoCropPreset = AutoCropPreset.Transparent,
             ThumbnailMaxEdgePixels = 2048,
+            EnableAutoSave = true,
         };
 
         await service.SaveAsync(newSettings);
@@ -65,6 +66,16 @@ public sealed class JsonAppSettingsServiceTests : IAsyncLifetime
         reloaded.Current.DefaultScalingMode.Should().Be(ScalingMode.UniformCover);
         reloaded.Current.DefaultAutoCropPreset.Should().Be(AutoCropPreset.Transparent);
         reloaded.Current.ThumbnailMaxEdgePixels.Should().Be(2048);
+        reloaded.Current.EnableAutoSave.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Default_EnableAutoSave_Is_False()
+    {
+        // 後方互換: 既存ユーザーの settings.json には EnableAutoSave フィールドが無いので、
+        // 欠損 JSON の読み込みでも record の init デフォルト false が適用されること。
+        var service = new JsonAppSettingsService(_options, NullLogger<JsonAppSettingsService>.Instance);
+        service.Current.EnableAutoSave.Should().BeFalse();
     }
 
     [Fact]

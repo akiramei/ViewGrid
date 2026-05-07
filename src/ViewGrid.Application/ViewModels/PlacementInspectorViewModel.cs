@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using ViewGrid.Application.AutoSave;
 using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.Messages;
@@ -27,8 +28,11 @@ namespace ViewGrid.Application.ViewModels;
 /// 統一保存 (<see cref="SaveAllAsync"/>) で配置固有 + 共有特性を 1 ボタン操作で永続化する。
 /// </para>
 /// </summary>
-public sealed partial class PlacementInspectorViewModel : ObservableObject
+public sealed partial class PlacementInspectorViewModel : ObservableObject, IDisposable
 {
+    /// <summary>auto-save の debounce 時間。 IsAnyDirty 立ち上がりからこの時間静止すれば 1 回だけ保存。</summary>
+    internal static readonly TimeSpan AutoSaveDebounce = TimeSpan.FromMilliseconds(1000);
+
     private readonly UpdatePlacementOffsetUseCase _offsetUseCase;
     private readonly UpdatePlacementOccupySizeUseCase _occupyUseCase;
     private readonly ForkPlacementVariantUseCase _forkUseCase;
@@ -39,7 +43,10 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     private readonly IImageStorage _imageStorage;
     private readonly IUndoRedoService _history;
     private readonly IMessenger _messenger;
+    private readonly IAppSettingsService _appSettings;
     private readonly ILogger<PlacementInspectorViewModel> _logger;
+    private readonly SaveCoordinator _autoSave;
+    private bool _disposed;
 
     /// <summary>
     /// 配置タブ Inspector 内に inline embed する共有特性編集（CopyPropertiesView）の VM。
@@ -115,6 +122,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         CopyPropertiesViewModel copyProperties,
         IUndoRedoService history,
         IMessenger messenger,
+        IAppSettingsService appSettings,
         ILogger<PlacementInspectorViewModel> logger)
     {
         _offsetUseCase = offsetUseCase;
@@ -128,18 +136,73 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         CopyProperties = copyProperties;
         _history = history;
         _messenger = messenger;
+        _appSettings = appSettings;
         _logger = logger;
+        _autoSave = new SaveCoordinator(
+            AutoSaveDebounce,
+            isEnabled: () => _appSettings.Current.EnableAutoSave,
+            isDirty: () => IsAnyDirty,
+            signatureProvider: ComputeAutoSaveSignature,
+            saveAction: TrySaveAllAsync);
         PropertyChanged += OnAnyPropertyChanged;
         // 共有特性側の IsDirty 変化を統一バーの CanExecute / 未保存マーカーへ転送
         CopyProperties.PropertyChanged += OnCopyPropertiesPropertyChanged;
+        _appSettings.Changed += OnAppSettingsChanged;
     }
+
+    private void OnAppSettingsChanged(object? sender, Core.Settings.AppSettings settings)
+    {
+        // 設定 OFF にされた瞬間に保留中の auto-save をキャンセル。 既に進行中の保存は完遂させる。
+        if (!settings.EnableAutoSave) _autoSave.Cancel();
+    }
+
+    /// <summary>
+    /// 現在の編集バッファの signature。 placement/copy 識別子 + Inspector 4 値 + CopyProperties の主要 9 値を連結。
+    /// <see cref="SaveCoordinator"/> が「同 signature の失敗 retry」 判定に使う。
+    /// 識別子を含めることで、 別 placement/copy を選び直したあとに同じ値の編集をしても
+    /// 「以前失敗した同じ編集」 とは別物として扱われ、 retry が走る。
+    /// </summary>
+    private string ComputeAutoSaveSignature()
+    {
+        // ToString は Globalization Invariant でないが、 比較用途で同 thread の文字列化なので問題なし。
+        var placementId = _source?.PlacementId.ToString() ?? "null";
+        var copyId = _source?.CopyId.ToString() ?? "null";
+        return string.Concat(
+            placementId, "@", copyId, "|",
+            PixelOffsetX, "|", PixelOffsetY, "|",
+            OccupyWidth, "|", OccupyHeight, "|",
+            CopyProperties.Rotation, "|",
+            CopyProperties.FlipX, "|", CopyProperties.FlipY, "|",
+            CopyProperties.ScalingMode, "|",
+            CopyProperties.AlignX, "|", CopyProperties.AlignY, "|",
+            CopyProperties.AutoCropEnabled, "|",
+            CopyProperties.AutoCropPreset, "|",
+            CopyProperties.AutoCropThreshold, "|",
+            CopyProperties.AutoCropCustomColorHex, "|",
+            CopyProperties.ManualCropEnabled, "|",
+            CopyProperties.ManualCropPixelX, "|", CopyProperties.ManualCropPixelY, "|",
+            CopyProperties.ManualCropPixelWidth, "|", CopyProperties.ManualCropPixelHeight);
+    }
+
+    /// <summary>
+    /// 保留中の auto-save を即実行 + その完了を待つ。 グリッド切替 / placement 切替 / アプリ終了時に呼ぶ。
+    /// </summary>
+    public Task FlushAutoSaveAsync(CancellationToken ct = default) => _autoSave.FlushAsync(ct);
 
     private void OnCopyPropertiesPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(CopyPropertiesViewModel.IsDirty)) return;
-        OnPropertyChanged(nameof(IsAnyDirty));
-        SaveAllCommand.NotifyCanExecuteChanged();
-        RevertAllCommand.NotifyCanExecuteChanged();
+        if (e.PropertyName == nameof(CopyPropertiesViewModel.IsDirty))
+        {
+            OnPropertyChanged(nameof(IsAnyDirty));
+            SaveAllCommand.NotifyCanExecuteChanged();
+            RevertAllCommand.NotifyCanExecuteChanged();
+        }
+
+        // 連続編集で debounce が毎回 reset されるよう、 CopyProperties が dirty 状態なら
+        // 各 PropertyChanged で notify を試みる。 Coordinator 側で設定 OFF / 同 signature 失敗
+        // / dirty なし は内部 gate でスキップされる。
+        if (CopyProperties.IsDirty)
+            _autoSave.NotifyEdited();
     }
 
     /// <summary>編集対象の placement を差し替える。null で無効状態。
@@ -159,8 +222,37 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         GridCanvasItemViewModel? grid = null,
         CancellationToken ct = default)
     {
+        // 別 placement への切替前に、 保留中の auto-save を確実に flush する。
+        // 通常は呼び出し側 (GridWorkspaceViewModel.FlushThenAttachAsync) でも flush しているが、
+        // AttachAsync を直接呼ぶ経路 (テスト含む) でも旧 placement の編集が失われないよう、
+        // ここで防御層として再 flush する (Codex P1 指摘: 「pending save が flush される前に
+        // _source を書き換える」)。 既に flush 済みなら FlushNowAsync は no-op に近いコスト。
+        if (_source is not null && !ReferenceEquals(_source, source))
+        {
+            try { await _autoSave.FlushAsync(ct); }
+            catch { /* 失敗しても切替は続行 (StatusMessage に反映済み想定) */ }
+
+            // off→on transition fallback: auto-save OFF 中に edit → ON 化 → 別 placement 選択
+            // のシナリオでは、 dispatcher にタイマーが無いため上記 FlushAsync は no-op。
+            // そのまま AttachAsync で旧 buffer を上書きすると dirty edit がロストするため、
+            // ここで直接 commit を試みる (GridCanvasList.FlushAndCommitOnSwitchAsync と同方針、
+            // Codex review P2 指摘)。 通常経路 (auto-save ずっと ON / OFF) では IsAnyDirty=false
+            // なので即 return で no-op。
+            if (IsAnyDirty)
+            {
+                try { await TrySaveAllAsync(ct); }
+                catch { /* 同上 */ }
+            }
+        }
+
         if (_source is not null)
             _source.PropertyChanged -= OnSourcePropertyChanged;
+
+        // 別 placement に切り替わるなら、 旧 placement の auto-save 失敗 signature をクリアして
+        // 新 placement での retry を許可する (signature 内に PlacementId が含まれるので新 placement の
+        // 編集は別 signature にはなるが、 万一の余白として明示的にクリアしておく)。
+        if (!ReferenceEquals(_source, source))
+            _autoSave.ResetFailureGuard();
 
         _source = source;
         _grid = grid;
@@ -257,13 +349,26 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         return $"画像描画域: {rect.Width}×{rect.Height} px";
     }
 
+    /// <summary>
+    /// 「保存」 ボタン用の RelayCommand エントリ。 戻り値は捨てて UI 互換性を維持する
+    /// (CommunityToolkit.Mvvm の <c>AsyncRelayCommand</c> は Task 戻り想定)。
+    /// auto-save 経路は <see cref="TrySaveAsync"/> を直接呼ぶ。
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     public async Task SaveAsync(CancellationToken ct = default)
+        => _ = await TrySaveAsync(ct);
+
+    /// <summary>
+    /// 配置固有の保存実装。 成功 (no-op 含む) で <c>true</c>、 検証/IO 失敗で <c>false</c>。
+    /// 失敗時は <see cref="IsDirty"/> を維持し <see cref="StatusMessage"/> にエラーを格納する
+    /// (auto-save 経路はこの戻り値を見て同 signature の再 schedule をブロックする)。
+    /// </summary>
+    internal async Task<bool> TrySaveAsync(CancellationToken ct = default)
     {
         // _source は外部要因で null 化される可能性があるためローカルキャプチャ。
         var source = _source;
         var grid = _grid;
-        if (source is null || grid is null || !IsDirty) return;
+        if (source is null || grid is null || !IsDirty) return true;
 
         var clampedX = Math.Clamp(PixelOffsetX, -MaxPixelOffset, MaxPixelOffset);
         var clampedY = Math.Clamp(PixelOffsetY, -MaxPixelOffset, MaxPixelOffset);
@@ -276,7 +381,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         if (current is null)
         {
             StatusMessage = $"GridPlacement {source.PlacementId} が見つかりません。";
-            return;
+            return false;
         }
 
         var offsetChanged = current.PixelOffsetX != clampedX || current.PixelOffsetY != clampedY;
@@ -288,7 +393,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
             _suppressDirty = true;
             try { IsDirty = false; StatusMessage = "保存しました（変更なし）。"; }
             finally { _suppressDirty = false; }
-            return;
+            return true;
         }
 
         // OccupySize → PixelOffset の順で永続化（OccupySize は Validation 失敗の可能性が高いので先）。
@@ -303,7 +408,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
             if (occupyResult.IsError)
             {
                 StatusMessage = string.Join(", ", occupyResult.Errors);
-                return;
+                return false;
             }
         }
 
@@ -317,7 +422,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
             if (execResult.IsError)
             {
                 StatusMessage = string.Join(", ", execResult.Errors);
-                return;
+                return false;
             }
         }
 
@@ -348,6 +453,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         }
 
         LogSaved(_logger, source.PlacementId);
+        return true;
     }
 
     /// <summary>
@@ -497,7 +603,9 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     {
         if (e.PropertyName == nameof(IsDirty))
         {
-            // IsDirty 自体の変化は IsAnyDirty / SaveAll/RevertAll の CanExecute に転送する
+            // IsDirty 自体の変化は IsAnyDirty / SaveAll/RevertAll の CanExecute に転送する。
+            // auto-save の Schedule は編集系プロパティ変更経路 (下) で行うので、 ここでは呼ばない
+            // (二重 Schedule を避ける + 連続編集で IsDirty が立ったままでも下で毎回 Schedule される)。
             OnPropertyChanged(nameof(IsAnyDirty));
             SaveAllCommand.NotifyCanExecuteChanged();
             RevertAllCommand.NotifyCanExecuteChanged();
@@ -513,6 +621,9 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
         if (!IsDirty) IsDirty = true;
         SaveCommand.NotifyCanExecuteChanged();
         RevertCommand.NotifyCanExecuteChanged();
+        // 連続編集で debounce が毎回 reset されるよう、 編集系プロパティ変更ごとに Coordinator に
+        // 通知する (Coordinator 側で設定 OFF / 同 signature 失敗 / dirty なし は内部 gate でスキップ)。
+        _autoSave.NotifyEdited();
     }
 
     /// <summary>
@@ -522,9 +633,17 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSaveAll))]
     public async Task SaveAllAsync(CancellationToken ct = default)
+        => _ = await TrySaveAllAsync(ct);
+
+    /// <summary>
+    /// 統一保存の bool 戻り値版。 配置固有・共有特性の両方が成功で <c>true</c>、 いずれか失敗で <c>false</c>。
+    /// auto-save 経路はこちらを直接呼ぶ。
+    /// </summary>
+    internal async Task<bool> TrySaveAllAsync(CancellationToken ct = default)
     {
-        if (IsDirty) await SaveAsync(ct);
-        if (CopyProperties.IsDirty) await CopyProperties.SaveAsync(ct);
+        var inspectorOk = !IsDirty || await TrySaveAsync(ct);
+        var copyOk = !CopyProperties.IsDirty || await CopyProperties.TrySaveAsync(ct);
+        return inspectorOk && copyOk;
     }
 
     /// <summary>配置固有 + 共有特性 を一括でリセットする。</summary>
@@ -544,4 +663,17 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject
     [LoggerMessage(EventId = 5102, Level = LogLevel.Information,
         Message = "配置のバリアントを分岐: placement={PlacementId} newCopy={NewCopyId}")]
     private static partial void LogForked(ILogger logger, Guid placementId, Guid newCopyId);
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _appSettings.Changed -= OnAppSettingsChanged;
+        CopyProperties.PropertyChanged -= OnCopyPropertiesPropertyChanged;
+        PropertyChanged -= OnAnyPropertyChanged;
+        if (_source is not null)
+            _source.PropertyChanged -= OnSourcePropertyChanged;
+        _autoSave.Dispose();
+        CopyProperties.Dispose();
+    }
 }

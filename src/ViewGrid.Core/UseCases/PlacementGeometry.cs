@@ -237,17 +237,7 @@ public static class PlacementGeometry
         if (copy.ScalingMode == ScalingMode.Fill)
             return (destX, destY, destW, destH);
 
-        var fitContain = Math.Min(destW / sw, destH / sh);
-        var fitCover = Math.Max(destW / sw, destH / sh);
-        var scale = copy.ScalingMode switch
-        {
-            ScalingMode.None => 1.0,
-            ScalingMode.UniformContain => fitContain,
-            ScalingMode.UniformContainShrinkOnly => Math.Min(1.0, fitContain),
-            ScalingMode.UniformContainEnlargeOnly => Math.Max(1.0, fitContain),
-            ScalingMode.UniformCover => fitCover,
-            _ => 1.0,
-        };
+        var scale = ComputeFitScale(destW, destH, sw, sh, copy.ScalingMode);
 
         var anchorX = ToAnchor1D(copy.Alignment.X);
         var anchorY = ToAnchor1D(copy.Alignment.Y);
@@ -256,6 +246,21 @@ public static class PlacementGeometry
         var (dstY, dstH) = ComputeAxisDst(sh, destY, destH, scale, anchorY);
 
         return (dstX, dstY, dstW, dstH);
+    }
+
+    private static double ComputeFitScale(double destW, double destH, int sw, int sh, ScalingMode mode)
+    {
+        var fitContain = Math.Min(destW / sw, destH / sh);
+        var fitCover = Math.Max(destW / sw, destH / sh);
+        return mode switch
+        {
+            ScalingMode.None => 1.0,
+            ScalingMode.UniformContain => fitContain,
+            ScalingMode.UniformContainShrinkOnly => Math.Min(1.0, fitContain),
+            ScalingMode.UniformContainEnlargeOnly => Math.Max(1.0, fitContain),
+            ScalingMode.UniformCover => fitCover,
+            _ => 1.0,
+        };
     }
 
     private static PixelRect ComputeRenderedRectCore(

@@ -92,10 +92,20 @@ public partial class App : global::Avalonia.Application
     private bool _shutdownAwaited;
 
     /// <summary>
-    /// シャットダウン要求時に <see cref="GridCanvasListViewModel.LastOpenedSaveTask"/> を await する。
-    /// MainWindow の DataContext から live VM を読む (DI 経由 GetRequiredService は Transient のため
-    /// 別インスタンスを返してしまい race を取り逃がす設計上の罠)。
-    /// pending save 失敗 (権限不足等) は静かに飲んでシャットダウン進行を妨げない。
+    /// MainWindowVM.Dispose の二重実行防止。 1 回目の await 後 + 2 回目の素通し時に
+    /// 二度 Dispose を呼ばないようガード。
+    /// </summary>
+    private bool _mainVmDisposed;
+
+    /// <summary>
+    /// シャットダウン要求時に下記を待機する:
+    /// <list type="bullet">
+    ///   <item><see cref="GridCanvasListViewModel.LastOpenedSaveTask"/> = LastOpenedGridId の永続化</item>
+    ///   <item><see cref="MainWindowViewModel.FlushAllAutoSavesAsync"/> = 保留中 auto-save の即実行</item>
+    /// </list>
+    /// 完了後に <see cref="MainWindowViewModel.Dispose"/> を 1 回だけ呼ぶ (Dispose 連鎖 + 購読解除)。
+    /// MainWindow の DataContext から live VM を読む (DI Transient による race 回避、 設計上の罠)。
+    /// 失敗 (権限不足 / Validation 等) は静かに飲んでシャットダウン進行を妨げない。
     /// </summary>
     private async void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
     {
@@ -104,13 +114,28 @@ public partial class App : global::Avalonia.Application
         if (desktop.MainWindow?.DataContext is not MainWindowViewModel mainVm) return;
 
         var pending = mainVm.GridList.LastOpenedSaveTask;
-        if (pending.IsCompleted) return;
+        var flushAll = mainVm.FlushAllAutoSavesAsync();
+
+        if (pending.IsCompleted && flushAll.IsCompleted)
+        {
+            DisposeMainVmOnce(mainVm);
+            return;
+        }
 
         e.Cancel = true;
         _shutdownAwaited = true;
-        try { await pending; }
-        catch { /* 永続化失敗は致命的でないので無視 */ }
+        try { await Task.WhenAll(pending, flushAll); }
+        catch { /* 永続化失敗 / auto-save 失敗は致命的でないので無視 */ }
+        DisposeMainVmOnce(mainVm);
         desktop.Shutdown();
+    }
+
+    private void DisposeMainVmOnce(MainWindowViewModel mainVm)
+    {
+        if (_mainVmDisposed) return;
+        _mainVmDisposed = true;
+        try { mainVm.Dispose(); }
+        catch { /* Dispose 失敗で終了経路を妨げない */ }
     }
 
     /// <summary>

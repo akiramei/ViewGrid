@@ -343,18 +343,17 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     private static string SanitizeName(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return "imported";
-        var chars = raw.Select(c =>
-            (c >= 'a' && c <= 'z') ||
-            (c >= 'A' && c <= 'Z') ||
-            (c >= '0' && c <= '9') ||
-            c == '-' || c == '_'
-                ? c
-                : '-').ToArray();
-        var collapsed = string.Concat(new string(chars).Split('-', StringSplitOptions.RemoveEmptyEntries)
-            .DefaultIfEmpty("imported")
-            .Aggregate((a, b) => $"{a}-{b}"));
+        var normalized = new string(raw.Select(c => IsAllowedNameChar(c) ? c : '-').ToArray());
+        var segments = normalized.Split('-', StringSplitOptions.RemoveEmptyEntries).DefaultIfEmpty("imported");
+        var collapsed = string.Join('-', segments);
         return collapsed.Length > 64 ? collapsed[..64] : collapsed;
     }
+
+    private static bool IsAllowedNameChar(char c) =>
+        (c >= 'a' && c <= 'z') ||
+        (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9') ||
+        c == '-' || c == '_';
 
     public async Task RenameSelectedAsync(CancellationToken ct = default)
     {

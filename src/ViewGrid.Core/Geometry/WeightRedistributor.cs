@@ -123,35 +123,16 @@ public static class WeightRedistributor
         var hasLockArray = locked is not null && locked.Count == startWeights.Count;
 
         // 占有セル群のいずれかがロックされていればフィット対象外
-        if (hasLockArray)
-        {
-            for (var i = occupantStart; i < occupantStart + occupantSpan; i++)
-            {
-                if (locked![i]) return [.. startWeights];
-            }
-        }
+        if (IsAnyOccupantLocked(locked, hasLockArray, occupantStart, occupantSpan))
+            return [.. startWeights];
 
         // 左隣の最初のアンロックセルを探す（ロック中はスキップ）
-        int? leftNeighbor = null;
-        for (var i = occupantStart - 1; i >= 0; i--)
-        {
-            if (!hasLockArray || !locked![i])
-            {
-                leftNeighbor = i;
-                break;
-            }
-        }
+        var leftNeighbor = FindUnlockedNeighbor(
+            locked, hasLockArray, occupantStart - 1, step: -1, count: startWeights.Count);
 
         // 右隣の最初のアンロックセルを探す
-        int? rightNeighbor = null;
-        for (var i = occupantStart + occupantSpan; i < startWeights.Count; i++)
-        {
-            if (!hasLockArray || !locked![i])
-            {
-                rightNeighbor = i;
-                break;
-            }
-        }
+        var rightNeighbor = FindUnlockedNeighbor(
+            locked, hasLockArray, occupantStart + occupantSpan, step: +1, count: startWeights.Count);
 
         if (leftNeighbor is null && rightNeighbor is null) return [.. startWeights]; // 分配先なし
 
@@ -231,5 +212,28 @@ public static class WeightRedistributor
             (a, b) = (b, a % b);
         }
         return a == 0 ? 1L : a;
+    }
+
+    private static bool IsAnyOccupantLocked(
+        IReadOnlyList<bool>? locked, bool hasLockArray, int occupantStart, int occupantSpan)
+    {
+        if (!hasLockArray) return false;
+        for (var i = occupantStart; i < occupantStart + occupantSpan; i++)
+            if (locked![i]) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// <paramref name="from"/> から <paramref name="step"/> 方向 (+1 または -1) に進み、
+    /// ロックされていない最初のインデックスを返す。範囲外に出たら null。
+    /// </summary>
+    private static int? FindUnlockedNeighbor(
+        IReadOnlyList<bool>? locked, bool hasLockArray, int from, int step, int count)
+    {
+        for (var i = from; i >= 0 && i < count; i += step)
+        {
+            if (!hasLockArray || !locked![i]) return i;
+        }
+        return null;
     }
 }

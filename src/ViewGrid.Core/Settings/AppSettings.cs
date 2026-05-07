@@ -30,4 +30,11 @@ public sealed record AppSettings
     /// (空 / 不正値は null 扱いで先頭グリッドにフォールバック)。
     /// </summary>
     public string? LastOpenedGridId { get; init; }
+
+    /// <summary>
+    /// 自動保存の有効/無効。 ON のとき、 ユーザーが Inspector やグリッドプロパティで値を編集すると、
+    /// 1 秒間操作が静止した時点で「保存」 ボタンを押さなくても自動的に永続化される。
+    /// 既定 false (後方互換)。
+    /// </summary>
+    public bool EnableAutoSave { get; init; }
 }

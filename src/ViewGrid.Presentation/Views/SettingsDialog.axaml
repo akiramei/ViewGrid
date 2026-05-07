@@ -95,6 +95,18 @@
                     </StackPanel>
                 </Border>
 
+                <!-- 保存動作 -->
+                <Border Classes="Card">
+                    <StackPanel Classes="FormSection">
+                        <TextBlock Classes="SectionHeader" Text="保存動作" />
+                        <TextBlock Classes="HintText"
+                                   Text="自動保存 ON のとき、 Inspector / グリッドプロパティでの値編集は 1 秒静止後に「保存」ボタンを押さなくても自動的に永続化されます。"
+                                   Margin="0,0,0,4" />
+                        <CheckBox Content="変更を自動的に保存する (実験的)"
+                                  IsChecked="{Binding EnableAutoSave}" />
+                    </StackPanel>
+                </Border>
+
                 <!-- 詳細 (サムネ) -->
                 <Border Classes="Card">
                     <StackPanel Classes="FormSection">

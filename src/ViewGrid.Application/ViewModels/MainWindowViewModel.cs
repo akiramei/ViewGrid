@@ -372,13 +372,38 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(StatusSummary));
         OnPropertyChanged(nameof(CurrentHints));
 
-        // Task をフィールドに退避してから await することで、 外部から同タスクの完了を待てる。
-        // 例外は async void で握り潰さず、 propagate させずに observe してログ済み扱いにする
-        // (LoadGridAsync 内で StatusMessage に格納される)。
-        var task = GridWorkspace.LoadGridAsync(GridList.SelectedGrid);
+        // 切替前に旧 SelectedGrid の auto-save 保留分の flush と LoadGridAsync を 1 つの Task に包んで、
+        // await yield 前に <see cref="_pendingLoadGridTask"/> へ publish する。
+        // 旧実装では先に flush を await してから _pendingLoadGridTask を更新していたため、
+        // yield 中に他の caller (RefreshAfterHistoryAsync 等) が古い完了済み Task を見て
+        // 「load 終わった」 と誤判定して並行 LoadGridAsync を走らせる race があった (Codex review P2)。
+        var task = WaitFlushThenLoadGridAsync(GridList.SelectedGrid);
         _pendingLoadGridTask = task;
         try { await task; }
-        catch { /* GridWorkspace 側で StatusMessage に反映済み */ }
+        catch { /* 内部で StatusMessage に反映済み */ }
+    }
+
+    /// <summary>
+    /// 旧 SelectedGrid の auto-save 保留分の flush 完了を待ってから新 grid の LoadGridAsync を
+    /// 起動する内部ヘルパ。 ラップ Task を <see cref="_pendingLoadGridTask"/> に publish することで、
+    /// 外部 caller は flush 段階から含めた切替全体の完了を観測できる (race 防止)。
+    /// </summary>
+    private async Task WaitFlushThenLoadGridAsync(GridCanvasItemViewModel? value)
+    {
+        try { await GridList.WaitPendingSelectedGridFlushAsync(); }
+        catch { /* GridList 側で StatusMessage に反映済み */ }
+        await GridWorkspace.LoadGridAsync(value);
+    }
+
+    /// <summary>
+    /// アプリ終了時 / ワークスペース切替時に、 全 auto-save dispatcher の保留分を
+    /// 即実行 + 完了待機する。 Inspector / GridList の順 (UI ハイヤラルキ通り)。
+    /// 失敗は飲んで続行する (終了経路で例外を投げると確実な終了が阻害されるため)。
+    /// </summary>
+    public async Task FlushAllAutoSavesAsync(CancellationToken ct = default)
+    {
+        try { await GridWorkspace.Inspector.FlushAutoSaveAsync(ct); } catch { }
+        try { await GridList.FlushAutoSaveAsync(ct); } catch { }
     }
 
     /// <summary>
@@ -415,8 +440,12 @@ public sealed partial class MainWindowViewModel
         }
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _history.StateChanged -= OnHistoryStateChanged;
         _history.Undone -= OnHistoryUndoneOrRedone;
         _history.Redone -= OnHistoryUndoneOrRedone;
@@ -424,5 +453,8 @@ public sealed partial class MainWindowViewModel
         GridList.PropertyChanged -= OnGridListPropertyChanged;
         GridWorkspace.PropertyChanged -= OnGridWorkspacePropertyChanged;
         GridWorkspace.Inspector.PropertyChanged -= OnDirtyTrackedPropertyChanged;
+        // Dispose 連鎖。 GridWorkspace.Dispose 内で Inspector.Dispose → CopyProperties.Dispose も走る。
+        GridWorkspace.Dispose();
+        GridList.Dispose();
     }
 }

@@ -372,11 +372,21 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         TriggerAutoCropPreviewUpdate();
     }
 
+    /// <summary>
+    /// 「保存」 ボタン用の RelayCommand エントリ。 auto-save 経路は <see cref="TrySaveAsync"/> を直接呼ぶ。
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     public async Task SaveAsync(CancellationToken ct = default)
+        => _ = await TrySaveAsync(ct);
+
+    /// <summary>
+    /// 共有特性の保存実装。 成功 (no-op 含む) で <c>true</c>、 検証/IO 失敗で <c>false</c>。
+    /// 失敗時は <see cref="IsDirty"/> を維持し <see cref="StatusMessage"/> にエラーを格納する。
+    /// </summary>
+    internal async Task<bool> TrySaveAsync(CancellationToken ct = default)
     {
         if (_source is null || !IsDirty)
-            return;
+            return true;
 
         // before snapshot: source の現在値（保存前 = ロード時 / 直前 Save 時の永続化済み値）。
         // CopyName は本タブの編集対象外（インラインリネーム経由）なので CopyName=null + ClearCopyName=false で
@@ -428,7 +438,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
             // ErrorOr.Error の自動 ToString は record dump 形式（"Error { Code=..., Description=..., ... }"）で
             // ユーザーには冗長すぎるため Description のみを連結する。検証エラーがそのまま画面に出る経路。
             StatusMessage = string.Join(", ", execResult.Errors.Select(e => e.Description));
-            return;
+            return false;
         }
 
         // source にも反映してリスト表示を最新化する（after の値で）。
@@ -455,6 +465,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
 
         _messenger.Send(new CopyLibraryChangedMessage());
         LogSaved(_logger, _source.CopyId);
+        return true;
     }
 
     [RelayCommand(CanExecute = nameof(CanRevert))]
