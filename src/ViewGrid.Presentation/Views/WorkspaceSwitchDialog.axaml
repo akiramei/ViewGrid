@@ -33,21 +33,22 @@
                      Background="Transparent">
                 <ListBox.ItemTemplate>
                     <DataTemplate DataType="vm:WorkspaceSwitchDialogViewModel+WorkspaceItem">
-                        <Grid ColumnDefinitions="*,Auto" Margin="2,4">
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="●"
-                                           Foreground="{DynamicResource SystemAccentColor}"
-                                           IsVisible="{Binding IsActive}"
-                                           VerticalAlignment="Center" />
+                        <!-- 列幅 16px は ● の有無に依らず固定し、 IsActive で切替えても DisplayName の左端が揃うように -->
+                        <Grid ColumnDefinitions="16,*,Auto" Margin="2,4">
+                            <TextBlock Grid.Column="0"
+                                       Text="●"
+                                       Foreground="{DynamicResource SystemAccentColor}"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Left"
+                                       IsVisible="{Binding IsActive}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding DisplayName}"
-                                           VerticalAlignment="Center"
                                            FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding Name, StringFormat=' ({0})'}"
-                                           VerticalAlignment="Center"
                                            Opacity="0.6"
                                            FontSize="11" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1"
+                            <TextBlock Grid.Column="2"
                                        Text="現在使用中"
                                        Opacity="0.7"
                                        FontSize="11"
