@@ -149,51 +149,51 @@ public sealed class WeightRedistributorTests
     }
 
     /// <summary>
-    /// 最左列が占有の場合、左隣がないので leftPad は破棄。右隣には rightPad を加算。
-    /// 結果として全体合計重みが減り、他の列が相対的に大きく見える。
+    /// 最左列が占有の場合、 左隣がないので leftPad と rightPad の両方を rightNeighbor に寄せる
+    /// (= 1 クリックで occupantInner 幅に収束)。 全体合計重みは保たれ、 占有列が確実に
+    /// inner ぴったり (1/6 = 100/600) になる。
     /// </summary>
     [Fact]
-    public void FitToOccupant_LeftmostOccupant_DiscardsLeftPad()
+    public void FitToOccupant_LeftmostOccupant_RedistributesBothPadsToRightNeighbor()
     {
         var start = new[] { 1, 1, 1 };
         var result = WeightRedistributor.FitToOccupant(
             start, occupantStart: 0, occupantSpan: 1,
             leftPad: 50, occupantInner: 100, rightPad: 50);
 
-        // 元 200/200/200 → 列 0 内側 100、列 1 (+rightPad) 250、列 2 そのまま 200
-        // 合計 550 px（leftPad の 50 px 分は破棄）
+        // 元 200/200/200 (canvas 600) → 列 0 内側 100、 leftPad+rightPad (50+50) を列 1 に寄せて
+        // 列 1 = 200+100=300、 列 2 そのまま 200。 合計 600 (canvas と一致 = 1 クリック収束)。
         var sum = (double)result.Sum();
         var col0Ratio = result[0] / sum;
         var col1Ratio = result[1] / sum;
         var col2Ratio = result[2] / sum;
 
-        col0Ratio.Should().BeApproximately(100.0 / 550.0, 0.02);
-        col1Ratio.Should().BeApproximately(250.0 / 550.0, 0.02);
-        col2Ratio.Should().BeApproximately(200.0 / 550.0, 0.02);
-        // 列 0 比率は元 1/3 から縮む
-        col0Ratio.Should().BeLessThan(1.0 / 3.0);
+        col0Ratio.Should().BeApproximately(100.0 / 600.0, 0.02);
+        col1Ratio.Should().BeApproximately(300.0 / 600.0, 0.02);
+        col2Ratio.Should().BeApproximately(200.0 / 600.0, 0.02);
     }
 
     /// <summary>
-    /// 最右列が占有の場合は対称。rightPad は破棄、leftPad は左隣に加算。
+    /// 最右列が占有の場合は対称。 rightPad と leftPad の両方を leftNeighbor に寄せる。
     /// </summary>
     [Fact]
-    public void FitToOccupant_RightmostOccupant_DiscardsRightPad()
+    public void FitToOccupant_RightmostOccupant_RedistributesBothPadsToLeftNeighbor()
     {
         var start = new[] { 1, 1, 1 };
         var result = WeightRedistributor.FitToOccupant(
             start, occupantStart: 2, occupantSpan: 1,
             leftPad: 50, occupantInner: 100, rightPad: 50);
 
+        // 列 1 (leftNeighbor) に leftPad+rightPad (100) を寄せる: 200+100=300
+        // 列 0 そのまま 200、 列 2 = 100。 合計 600 (canvas)
         var sum = (double)result.Sum();
         var col2Ratio = result[2] / sum;
         var col1Ratio = result[1] / sum;
         var col0Ratio = result[0] / sum;
 
-        col2Ratio.Should().BeApproximately(100.0 / 550.0, 0.02);
-        col1Ratio.Should().BeApproximately(250.0 / 550.0, 0.02);
-        col0Ratio.Should().BeApproximately(200.0 / 550.0, 0.02);
-        col2Ratio.Should().BeLessThan(1.0 / 3.0);
+        col2Ratio.Should().BeApproximately(100.0 / 600.0, 0.02);
+        col1Ratio.Should().BeApproximately(300.0 / 600.0, 0.02);
+        col0Ratio.Should().BeApproximately(200.0 / 600.0, 0.02);
     }
 
     /// <summary>

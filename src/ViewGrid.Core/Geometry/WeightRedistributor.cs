@@ -74,8 +74,9 @@ public static class WeightRedistributor
     /// 占有セル群（<paramref name="occupantStart"/> から <paramref name="occupantSpan"/> 個）の幅を
     /// 「実描画矩形の内側幅」<paramref name="occupantInner"/> に縮め、左右余白
     /// <paramref name="leftPad"/> / <paramref name="rightPad"/> を隣接セルへ加算する。
-    /// 隣接セルが存在しない側（占有が端列/端行）の余白は破棄され、全体合計重みが減る
-    /// （= 占有列群がさらに小さく見え、画像が端に張り付く挙動）。
+    /// 占有が端列 / 端行で片側に隣接セルが無い場合、 その余白は反対側の隣接セルへ加算する
+    /// (両側とも隣接無し = 単一セルグリッド時のみ余白破棄)。 これにより total 重みが保たれ、
+    /// 1 回のフィットで occupant が確実に <paramref name="occupantInner"/> 幅に収束する。
     /// </summary>
     /// <remarks>
     /// 入力は <c>leftPad + occupantInner + rightPad</c> ≒ 占有セル群の現在幅 を想定。
@@ -174,10 +175,24 @@ public static class WeightRedistributor
         for (var i = occupantStart; i < occupantStart + occupantSpan; i++)
             weights[i] = (long)Math.Round((double)weights[i] * newOccupantTotal / occupantWeightTotal);
 
-        if (leftNeighbor is { } li)
+        // 端列 (片側に隣接無し) は反対側に両方の余白を寄せる。 こうしないと leftPad / rightPad が
+        // 「破棄」 されて全体重みが減り、 占有セル群が <paramref name="occupantInner"/> ぴったりに
+        // ならず、 ユーザーが何度もクリックする羽目になる (3 回で収束する症状)。
+        if (leftNeighbor is { } li && rightNeighbor is { } ri)
+        {
             weights[li] += leftPadWeight;
-        if (rightNeighbor is { } ri)
             weights[ri] += rightPadWeight;
+        }
+        else if (leftNeighbor is { } liOnly)
+        {
+            // 占有が rightmost。 rightPad の行き先が無いので leftNeighbor に両方寄せる。
+            weights[liOnly] += leftPadWeight + rightPadWeight;
+        }
+        else if (rightNeighbor is { } riOnly)
+        {
+            // 占有が leftmost。 leftPad の行き先が無いので rightNeighbor に両方寄せる。
+            weights[riOnly] += leftPadWeight + rightPadWeight;
+        }
 
         for (var i = 0; i < weights.Length; i++)
             if (weights[i] < 1) weights[i] = 1;

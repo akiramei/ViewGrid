@@ -61,11 +61,12 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 最左セル (0,1) を占有 + 縦長画像 → 列フィットで左 pad 破棄。右隣のみ広がる。
-    /// 全体合計幅は縮み、列 2 が相対的に広く見える。
+    /// 最左セル (0,1) を占有 + 縦長画像 → 列フィットで列 0 が画像幅に収束、 leftPad は
+    /// 反対側 (rightNeighbor) の列 1 に rightPad と一緒に寄せる (端列で 1 クリック収束)。
+    /// 列 2 はそのまま。
     /// </summary>
     [Fact]
-    public async Task FitColumn_LeftmostCell_DiscardsLeftPad()
+    public async Task FitColumn_LeftmostCell_RedistributesLeftPadToRightNeighbor()
     {
         var (placementId, gridId) = await SeedAsync(
             assetWidth: 100, assetHeight: 200,
@@ -79,11 +80,12 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
         var grid = await _fx.GridRepository.FindByIdAsync(gridId);
         var cw = grid!.ColWeights;
 
-        // 元 200/200/200 → 列 0 内側 100、列 1 (+rightPad) 250、列 2 そのまま 200。合計 550px。
+        // 元 200/200/200 (canvas 600) → 列 0 内側 100、 leftPad+rightPad (50+50) を列 1 に寄せて
+        // 列 1 = 200+100=300、 列 2 そのまま 200。 合計 600 (canvas と一致)。
         var sum = (double)cw.Sum();
-        (cw[0] / sum).Should().BeApproximately(100.0 / 550.0, 0.02);
-        (cw[1] / sum).Should().BeApproximately(250.0 / 550.0, 0.02);
-        (cw[2] / sum).Should().BeApproximately(200.0 / 550.0, 0.02);
+        (cw[0] / sum).Should().BeApproximately(100.0 / 600.0, 0.02);
+        (cw[1] / sum).Should().BeApproximately(300.0 / 600.0, 0.02);
+        (cw[2] / sum).Should().BeApproximately(200.0 / 600.0, 0.02);
     }
 
     /// <summary>UniformCover (余白なし) は列フィットで何も変わらない。</summary>
@@ -262,12 +264,13 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
         var cw = grid.ColWeights;
         var sum = (double)cw.Sum();
 
-        // 元 [200, 200, 200] = 600
-        // 列 1 内側 100、 列 0 ロック (200 のまま) → 左 pad 50 は破棄、 右 pad 50 → 列 2 (250)
-        // 結果比率 [200, 100, 250] = 550
-        (cw[0] / sum).Should().BeApproximately(200.0 / 550.0, 0.02);
-        (cw[1] / sum).Should().BeApproximately(100.0 / 550.0, 0.02);
-        (cw[2] / sum).Should().BeApproximately(250.0 / 550.0, 0.02);
+        // 元 [200, 200, 200] = 600 (canvas)
+        // 列 1 内側 100、 列 0 ロック (200 のまま) → leftNeighbor は null (ロック飛ばしの結果)、
+        // rightNeighbor = 列 2。 leftPad+rightPad (50+50) を列 2 に寄せる。
+        // 結果比率 [200, 100, 300] = 600 (canvas と一致)
+        (cw[0] / sum).Should().BeApproximately(200.0 / 600.0, 0.02);
+        (cw[1] / sum).Should().BeApproximately(100.0 / 600.0, 0.02);
+        (cw[2] / sum).Should().BeApproximately(300.0 / 600.0, 0.02);
     }
 
     /// <summary>
@@ -351,6 +354,63 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
             $"OccupySize > 1 でも 2 回目フィットは冪等であるべき (afterFirst={string.Join(',', afterFirst)}, afterSecond={string.Join(',', afterSecond)})");
     }
 
+    /// <summary>
+    /// ユーザー報告シナリオ: 2x3 グリッド、 col 0 に画像を配置して col 0 の右境界を Ctrl+クリック
+    /// → 1 回目で col 0 が画像実描画幅にぴったり収束する (修正前は 3 回必要だった)。
+    /// ScalingMode.None で row 高 < 画像高なら drawW = 画像幅 そのまま。
+    /// </summary>
+    [Fact]
+    public async Task FitColumn_LeftmostCell_ConvergesInOneStep_UserScenario()
+    {
+        // 1200x944 canvas、 2 cols × 3 rows、 image 560x400 at col 0 row 1。
+        // ScalingMode.None: drawW = 560 そのまま。 cell 0,1 = 600x315 で leftPad=20, inner=560, rightPad=20。
+        var hash = $"hash{Guid.NewGuid():N}";
+        var asset = await _fx.SeedAssetAsync(hash, 560, 400);
+        var now = DateTimeOffset.UtcNow;
+        var copy = new ImageCopy
+        {
+            Id = Guid.NewGuid(),
+            AssetId = asset.Id,
+            Transform = ImageTransform.Identity,
+            ScalingMode = ScalingMode.None,
+            Alignment = Alignment.Center,
+            OccupySize = OccupySize.OneByOne,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        (await _fx.CopyRepository.AddAsync(copy)).IsError.Should().BeFalse();
+        var grid = new GridCanvas
+        {
+            Id = Guid.NewGuid(),
+            Name = "user-scenario",
+            GridRows = 3,
+            GridCols = 2,
+            ColWeights = GridCanvas.UniformWeights(2),
+            RowWeights = GridCanvas.UniformWeights(3),
+            CanvasSize = new PixelSize(1200, 944),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        (await _fx.GridRepository.AddAsync(grid)).IsError.Should().BeFalse();
+        var p = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 1));
+        p.IsError.Should().BeFalse();
+
+        var result = await _useCase.ExecuteAsync(p.Value.Id, FitAxis.Column);
+        result.IsError.Should().BeFalse();
+
+        // 期待: col 0 px = 560 (= image width)、 col 1 px = 1200 - 560 = 640
+        var grid1 = (await _fx.GridRepository.FindByIdAsync(grid.Id))!;
+        var sum = (double)grid1.ColWeights.Sum();
+        var col0Px = 1200 * grid1.ColWeights[0] / sum;
+        col0Px.Should().BeApproximately(560.0, 2.0,
+            $"1 回目のフィットで col 0 が画像幅 (560 px) に収束すべき (実値: {col0Px:F1})");
+
+        // 念のため 2 回目フィットしても変わらないこと (冪等)
+        await _useCase.ExecuteAsync(p.Value.Id, FitAxis.Column);
+        var grid2 = (await _fx.GridRepository.FindByIdAsync(grid.Id))!;
+        grid2.ColWeights.SequenceEqual(grid1.ColWeights).Should().BeTrue();
+    }
+
     [Fact]
     public async Task Returns_NotFound_For_Missing_Placement()
     {
@@ -384,15 +444,14 @@ public sealed class FitGridWeightToPlacementUseCaseTests : IAsyncLifetime
         var rw = grid!.RowWeights;
         var sum = (double)rw.Sum();
 
-        // 元 [200, 200, 200] (合計 600)
-        // 行 2 をフィット (横長画像 200x100 → 上下に 50 ずつ余白)
-        // 行 1 ロック → 行 1 の比率は元のまま 1/3 (200/600)
-        // 行 2 内側 → 100、上 pad 50 は行 1 を飛ばして行 0 に分配 → 行 0 = 250
-        // 下 pad 50 は破棄 (行 3 がない)
-        // 結果: [250, 200, 100] 合計 550
-        (rw[1] / sum).Should().BeApproximately(200.0 / 550.0, 0.02);
-        (rw[0] / sum).Should().BeApproximately(250.0 / 550.0, 0.02);
-        (rw[2] / sum).Should().BeApproximately(100.0 / 550.0, 0.02);
+        // 元 [200, 200, 200] (合計 600 = canvas)
+        // 行 2 をフィット (横長画像 200x100 → 上下に 50 ずつ余白)。
+        // 行 1 ロック、 bottomNeighbor は無し (行 3 がない) → topPad 50 + bottomPad 50 を
+        // ロック行 1 を飛ばして行 0 に寄せる → 行 0 = 200+100=300
+        // 結果: [300, 200, 100] 合計 600 (canvas と一致)
+        (rw[0] / sum).Should().BeApproximately(300.0 / 600.0, 0.02);
+        (rw[1] / sum).Should().BeApproximately(200.0 / 600.0, 0.02);
+        (rw[2] / sum).Should().BeApproximately(100.0 / 600.0, 0.02);
     }
 
     /// <summary>
