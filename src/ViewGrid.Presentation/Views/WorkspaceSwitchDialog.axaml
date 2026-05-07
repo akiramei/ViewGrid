@@ -83,14 +83,22 @@
                 <StackPanel Orientation="Horizontal"
                             HorizontalAlignment="Right"
                             Spacing="6">
-                    <Button Content="複製..."
-                            Click="OnDuplicateClicked"
-                            ToolTip.Tip="このワークスペースの DB / 画像 / サムネを丸ごとコピーした派生を作成します。" />
-                    <Button Content="このワークスペースを削除..."
-                            Classes="dangerLink"
+                    <Button Click="OnDuplicateClicked"
+                            ToolTip.Tip="このワークスペースの DB / 画像 / サムネを丸ごとコピーした派生を作成します。">
+                        <StackPanel Classes="IconButtonContent">
+                            <PathIcon Data="{StaticResource AddGeometry}" Width="14" Height="14" />
+                            <TextBlock Text="複製..." />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="iconDanger"
                             IsEnabled="{Binding CanDeleteSelected}"
                             Click="OnDeleteClicked"
-                            ToolTip.Tip="ワークスペース データは workspaces/.trash/ に移動されます (即削除ではないため誤操作リスクが小さい)" />
+                            ToolTip.Tip="ワークスペース データは workspaces/.trash/ に移動されます (即削除ではないため誤操作リスクが小さい)。 現在使用中のワークスペースは削除できません。">
+                        <StackPanel Classes="IconButtonContent">
+                            <PathIcon Data="{StaticResource DeleteGeometry}" Width="14" Height="14" />
+                            <TextBlock Text="削除" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </StackPanel>
         </Border>
