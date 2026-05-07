@@ -33,3 +33,6 @@ Thumbs.db
 
 # Claude Code (per-user, not project-wide)
 .claude/settings.local.json
+
+# diffguard (個人用ソース品質管理ツール、 リポジトリ管理対象外)
+.diffguard/
