@@ -385,37 +385,61 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// </summary>
     internal async Task<bool> TrySaveAsync(CancellationToken ct = default)
     {
-        if (_source is null || !IsDirty)
+        var source = _source;
+        if (source is null || !IsDirty)
             return true;
 
-        // before snapshot: source の現在値（保存前 = ロード時 / 直前 Save 時の永続化済み値）。
-        // CopyName は本タブの編集対象外（インラインリネーム経由）なので CopyName=null + ClearCopyName=false で
-        // 「変更しない」を明示する（UpdateImageCopyUseCase 側で current 値を保持する）。
-        // AutoCrop / ManualCrop は: null のときは Clear*=true で「OFF へ戻す」を明示する。
-        var before = new UpdateImageCopyChanges
-        {
-            Transform = new ImageTransform(_source.Rotation, _source.FlipX, _source.FlipY),
-            ScalingMode = _source.ScalingMode,
-            Alignment = _source.Alignment,
-            // OccupySize は本タブの編集対象外（配置固有に移管）。null = 変更しない。
-            AutoCrop = _source.AutoCrop,
-            ClearAutoCrop = _source.AutoCrop is null,
-            ManualCrop = _source.ManualCrop,
-            ClearManualCrop = _source.ManualCrop is null,
-        };
+        var before = BuildBeforeSnapshot(source);
+        var after = BuildAfterSnapshot();
 
-        // after: 編集バッファから組み立て。CopyName は触らない（インラインリネームとは独立）。
+        // Description は Save 時点での名前を表示用に使う（リネーム結果の追跡は UpdateImageCopyCommand
+        // のリネーム経路が別に表示するため、こちらは固定の「特性編集: 「{name}」」だけで良い）。
+        var nameLabel = string.IsNullOrWhiteSpace(source.CopyName) ? "(無名)" : source.CopyName!;
+        var description = $"特性編集: 「{nameLabel}」";
+        var command = new UpdateImageCopyCommand(_updateUseCase, source.CopyId, before, after, description);
+        var execResult = await _history.ExecuteAsync(command, ct);
+        if (execResult.IsError)
+        {
+            // ErrorOr.Error の自動 ToString は record dump 形式（"Error { Code=..., Description=..., ... }"）で
+            // ユーザーには冗長すぎるため Description のみを連結する。検証エラーがそのまま画面に出る経路。
+            StatusMessage = string.Join(", ", execResult.Errors.Select(e => e.Description));
+            return false;
+        }
+
+        ApplyAfterToSource(source, after);
+        ResetDirtyAndShowSavedMessage();
+
+        _messenger.Send(new CopyLibraryChangedMessage());
+        LogSaved(_logger, source.CopyId);
+        return true;
+    }
+
+    /// <summary>
+    /// 保存前の永続化済み値スナップショット。 <c>CopyName</c> は本タブの編集対象外なので
+    /// <c>null</c> + <c>ClearCopyName=false</c> で「変更しない」 を明示する (Use Case 側で current 値を保持)。
+    /// AutoCrop / ManualCrop は null のとき Clear*=true で「OFF へ戻す」 を明示。
+    /// </summary>
+    private static UpdateImageCopyChanges BuildBeforeSnapshot(CopyItemViewModel source) => new()
+    {
+        Transform = new ImageTransform(source.Rotation, source.FlipX, source.FlipY),
+        ScalingMode = source.ScalingMode,
+        Alignment = source.Alignment,
+        // OccupySize は本タブの編集対象外（配置固有に移管）。null = 変更しない。
+        AutoCrop = source.AutoCrop,
+        ClearAutoCrop = source.AutoCrop is null,
+        ManualCrop = source.ManualCrop,
+        ClearManualCrop = source.ManualCrop is null,
+    };
+
+    /// <summary>
+    /// 編集バッファから保存後の値スナップショットを組み立てる。 <c>CopyName</c> は触らない
+    /// (インラインリネームとは独立)。
+    /// </summary>
+    private UpdateImageCopyChanges BuildAfterSnapshot()
+    {
         var afterAutoCrop = AutoCropEnabled ? BuildAutoCropFromInputs() : (AutoCropSettings?)null;
-        // ManualCrop は「ラジオで手動を選んでいて、かつ矩形が確定している」ときのみ永続化。
-        // 「手動」選択 + 未確定（W=0 or H=0）は実質 OFF として保存する（ユーザー認識と一致）。
-        var afterManualCrop = (ManualCropEnabled && IsManualCropDefined && SourceWidth > 0 && SourceHeight > 0)
-            ? new ManualCropFraction(
-                (ManualCropPixelX ?? 0) / (double)SourceWidth,
-                (ManualCropPixelY ?? 0) / (double)SourceHeight,
-                (ManualCropPixelWidth ?? 0) / (double)SourceWidth,
-                (ManualCropPixelHeight ?? 0) / (double)SourceHeight)
-            : (ManualCropFraction?)null;
-        var after = new UpdateImageCopyChanges
+        var afterManualCrop = BuildAfterManualCrop();
+        return new UpdateImageCopyChanges
         {
             Transform = new ImageTransform(Rotation, FlipX, FlipY),
             ScalingMode = ScalingMode,
@@ -426,32 +450,40 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
             ManualCrop = afterManualCrop,
             ClearManualCrop = afterManualCrop is null,
         };
+    }
 
-        // Description は Save 時点での名前を表示用に使う（リネーム結果の追跡は UpdateImageCopyCommand
-        // のリネーム経路が別に表示するため、こちらは固定の「特性編集: 「{name}」」だけで良い）。
-        var nameLabel = string.IsNullOrWhiteSpace(_source.CopyName) ? "(無名)" : _source.CopyName!;
-        var description = $"特性編集: 「{nameLabel}」";
-        var command = new UpdateImageCopyCommand(_updateUseCase, _source.CopyId, before, after, description);
-        var execResult = await _history.ExecuteAsync(command, ct);
-        if (execResult.IsError)
-        {
-            // ErrorOr.Error の自動 ToString は record dump 形式（"Error { Code=..., Description=..., ... }"）で
-            // ユーザーには冗長すぎるため Description のみを連結する。検証エラーがそのまま画面に出る経路。
-            StatusMessage = string.Join(", ", execResult.Errors.Select(e => e.Description));
-            return false;
-        }
+    /// <summary>
+    /// ManualCrop は「ラジオで手動を選んでいて、 かつ矩形が確定している」 ときのみ永続化。
+    /// 「手動」選択 + 未確定 (W=0 or H=0) は実質 OFF として保存する (ユーザー認識と一致)。
+    /// </summary>
+    private ManualCropFraction? BuildAfterManualCrop()
+    {
+        if (!(ManualCropEnabled && IsManualCropDefined && SourceWidth > 0 && SourceHeight > 0))
+            return null;
+        return new ManualCropFraction(
+            (ManualCropPixelX ?? 0) / (double)SourceWidth,
+            (ManualCropPixelY ?? 0) / (double)SourceHeight,
+            (ManualCropPixelWidth ?? 0) / (double)SourceWidth,
+            (ManualCropPixelHeight ?? 0) / (double)SourceHeight);
+    }
 
-        // source にも反映してリスト表示を最新化する（after の値で）。
-        // CopyName は特性タブで触らないので _source の現状値を維持する。
-        _source.Rotation = after.Transform!.Value.Rotation;
-        _source.FlipX = after.Transform.Value.FlipX;
-        _source.FlipY = after.Transform.Value.FlipY;
-        _source.ScalingMode = after.ScalingMode!.Value;
-        _source.Alignment = after.Alignment!.Value;
-        // OccupySize は本タブの編集対象外なので _source への反映も行わない。
-        _source.AutoCrop = after.AutoCrop;
-        _source.ManualCrop = after.ManualCrop;
+    /// <summary>
+    /// 保存成功後の値を <see cref="_source"/> に反映してリスト表示を最新化する。
+    /// CopyName は特性タブで触らないので維持。 OccupySize は配置固有に移管されたので反映なし。
+    /// </summary>
+    private static void ApplyAfterToSource(CopyItemViewModel source, UpdateImageCopyChanges after)
+    {
+        source.Rotation = after.Transform!.Value.Rotation;
+        source.FlipX = after.Transform.Value.FlipX;
+        source.FlipY = after.Transform.Value.FlipY;
+        source.ScalingMode = after.ScalingMode!.Value;
+        source.Alignment = after.Alignment!.Value;
+        source.AutoCrop = after.AutoCrop;
+        source.ManualCrop = after.ManualCrop;
+    }
 
+    private void ResetDirtyAndShowSavedMessage()
+    {
         _suppressDirty = true;
         try
         {
@@ -462,10 +494,6 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         {
             _suppressDirty = false;
         }
-
-        _messenger.Send(new CopyLibraryChangedMessage());
-        LogSaved(_logger, _source.CopyId);
-        return true;
     }
 
     [RelayCommand(CanExecute = nameof(CanRevert))]

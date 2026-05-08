@@ -350,10 +350,7 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     }
 
     private static bool IsAllowedNameChar(char c) =>
-        (c >= 'a' && c <= 'z') ||
-        (c >= 'A' && c <= 'Z') ||
-        (c >= '0' && c <= '9') ||
-        c == '-' || c == '_';
+        char.IsAsciiLetterOrDigit(c) || c == '-' || c == '_';
 
     public async Task RenameSelectedAsync(CancellationToken ct = default)
     {

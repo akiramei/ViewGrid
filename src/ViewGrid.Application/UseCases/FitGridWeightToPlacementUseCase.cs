@@ -94,34 +94,9 @@ public sealed partial class FitGridWeightToPlacementUseCase(
         int effectiveSourceW, int effectiveSourceH,
         CancellationToken ct)
     {
-        var unclippedLeftPad = drawX - cellRect.X;
-        var unclippedRightPad = (cellRect.X + cellRect.Width) - (drawX + drawW);
-
-        long leftPad, inner, rightPad;
-        if (unclippedLeftPad < 0 && unclippedRightPad < 0)
-        {
-            // 純粋な overflow (両側で画像が cell をはみ出す) = 拡大モード。
-            // cell を image 描画幅に合わせて広げ、 隣接列から重みを引く (signed pad)。
-            leftPad = (long)Math.Round(unclippedLeftPad);
-            inner = (long)Math.Round(drawW);
-            rightPad = (long)Math.Round(unclippedRightPad);
-        }
-        else
-        {
-            // 通常 / 片側 overflow (PixelOffset 等): 旧来の visible-rect ベース縮小モード。
-            // 既存の Cover+PixelOffset 挙動 (visible 部に合わせて cell 縮小) を維持。
-            var renderedRect = PlacementGeometry.ComputeRenderedRect(
-                grid.CanvasSize, grid.GridCols, grid.GridRows,
-                grid.ColWeights, grid.RowWeights,
-                placement.Position, placement.OccupySize,
-                effectiveSourceW, effectiveSourceH, copy,
-                placement.PixelOffsetX, placement.PixelOffsetY);
-            leftPad = renderedRect.X - cellRect.X;
-            inner = renderedRect.Width;
-            rightPad = (cellRect.X + cellRect.Width) - (renderedRect.X + renderedRect.Width);
-            if (leftPad < 0) leftPad = 0;
-            if (rightPad < 0) rightPad = 0;
-        }
+        var (leftPad, inner, rightPad) = ComputeColumnPads(
+            grid, placement, copy, cellRect, drawX, drawW,
+            effectiveSourceW, effectiveSourceH);
 
         LogFitDiagColumn(logger,
             copy.ScalingMode, effectiveSourceW, effectiveSourceH,
@@ -142,36 +117,53 @@ public sealed partial class FitGridWeightToPlacementUseCase(
         return result.IsError ? result.Errors : Result.Success;
     }
 
+    /// <summary>
+    /// 列フィット用 pad 計算: 「両側 overflow = 拡大モード (signed pad)」 か 「片側以下 overflow = 縮小モード
+    /// (visible-rect ベース、 負値は 0 にクリップ)」 のどちらかを判定して (leftPad, inner, rightPad) を返す。
+    /// 旧 inline 分岐をそのまま helper に抽出 (動作変更なし)。
+    /// </summary>
+    private static (long LeftPad, long Inner, long RightPad) ComputeColumnPads(
+        GridCanvas grid, GridPlacement placement, ImageCopy copy,
+        PixelRect cellRect, double drawX, double drawW,
+        int effectiveSourceW, int effectiveSourceH)
+    {
+        var unclippedLeftPad = drawX - cellRect.X;
+        var unclippedRightPad = (cellRect.X + cellRect.Width) - (drawX + drawW);
+
+        if (unclippedLeftPad < 0 && unclippedRightPad < 0)
+        {
+            // 純粋な overflow (両側で画像が cell をはみ出す) = 拡大モード。
+            // cell を image 描画幅に合わせて広げ、 隣接列から重みを引く (signed pad)。
+            return (
+                (long)Math.Round(unclippedLeftPad),
+                (long)Math.Round(drawW),
+                (long)Math.Round(unclippedRightPad));
+        }
+
+        // 通常 / 片側 overflow (PixelOffset 等): 旧来の visible-rect ベース縮小モード。
+        // 既存の Cover+PixelOffset 挙動 (visible 部に合わせて cell 縮小) を維持。
+        var renderedRect = PlacementGeometry.ComputeRenderedRect(
+            grid.CanvasSize, grid.GridCols, grid.GridRows,
+            grid.ColWeights, grid.RowWeights,
+            placement.Position, placement.OccupySize,
+            effectiveSourceW, effectiveSourceH, copy,
+            placement.PixelOffsetX, placement.PixelOffsetY);
+        long leftPad = renderedRect.X - cellRect.X;
+        long rightPad = (cellRect.X + cellRect.Width) - (renderedRect.X + renderedRect.Width);
+        if (leftPad < 0) leftPad = 0;
+        if (rightPad < 0) rightPad = 0;
+        return (leftPad, renderedRect.Width, rightPad);
+    }
+
     private async Task<ErrorOr<Success>> FitRowAsync(
         GridCanvas grid, GridPlacement placement, ImageCopy copy,
         PixelRect cellRect, double drawY, double drawH,
         int effectiveSourceW, int effectiveSourceH,
         CancellationToken ct)
     {
-        var unclippedTopPad = drawY - cellRect.Y;
-        var unclippedBottomPad = (cellRect.Y + cellRect.Height) - (drawY + drawH);
-
-        long topPad, inner, bottomPad;
-        if (unclippedTopPad < 0 && unclippedBottomPad < 0)
-        {
-            topPad = (long)Math.Round(unclippedTopPad);
-            inner = (long)Math.Round(drawH);
-            bottomPad = (long)Math.Round(unclippedBottomPad);
-        }
-        else
-        {
-            var renderedRect = PlacementGeometry.ComputeRenderedRect(
-                grid.CanvasSize, grid.GridCols, grid.GridRows,
-                grid.ColWeights, grid.RowWeights,
-                placement.Position, placement.OccupySize,
-                effectiveSourceW, effectiveSourceH, copy,
-                placement.PixelOffsetX, placement.PixelOffsetY);
-            topPad = renderedRect.Y - cellRect.Y;
-            inner = renderedRect.Height;
-            bottomPad = (cellRect.Y + cellRect.Height) - (renderedRect.Y + renderedRect.Height);
-            if (topPad < 0) topPad = 0;
-            if (bottomPad < 0) bottomPad = 0;
-        }
+        var (topPad, inner, bottomPad) = ComputeRowPads(
+            grid, placement, copy, cellRect, drawY, drawH,
+            effectiveSourceW, effectiveSourceH);
 
         LogFitDiagRow(logger,
             copy.ScalingMode, effectiveSourceW, effectiveSourceH,
@@ -190,6 +182,38 @@ public sealed partial class FitGridWeightToPlacementUseCase(
 
         var result = await updateWeights.ExecuteAsync(grid.Id, null, newRowWeights, ct);
         return result.IsError ? result.Errors : Result.Success;
+    }
+
+    /// <summary>
+    /// 行フィット用 pad 計算 (<see cref="ComputeColumnPads"/> の Y 軸版)。
+    /// </summary>
+    private static (long TopPad, long Inner, long BottomPad) ComputeRowPads(
+        GridCanvas grid, GridPlacement placement, ImageCopy copy,
+        PixelRect cellRect, double drawY, double drawH,
+        int effectiveSourceW, int effectiveSourceH)
+    {
+        var unclippedTopPad = drawY - cellRect.Y;
+        var unclippedBottomPad = (cellRect.Y + cellRect.Height) - (drawY + drawH);
+
+        if (unclippedTopPad < 0 && unclippedBottomPad < 0)
+        {
+            return (
+                (long)Math.Round(unclippedTopPad),
+                (long)Math.Round(drawH),
+                (long)Math.Round(unclippedBottomPad));
+        }
+
+        var renderedRect = PlacementGeometry.ComputeRenderedRect(
+            grid.CanvasSize, grid.GridCols, grid.GridRows,
+            grid.ColWeights, grid.RowWeights,
+            placement.Position, placement.OccupySize,
+            effectiveSourceW, effectiveSourceH, copy,
+            placement.PixelOffsetX, placement.PixelOffsetY);
+        long topPad = renderedRect.Y - cellRect.Y;
+        long bottomPad = (cellRect.Y + cellRect.Height) - (renderedRect.Y + renderedRect.Height);
+        if (topPad < 0) topPad = 0;
+        if (bottomPad < 0) bottomPad = 0;
+        return (topPad, renderedRect.Height, bottomPad);
     }
 
     /// <summary>

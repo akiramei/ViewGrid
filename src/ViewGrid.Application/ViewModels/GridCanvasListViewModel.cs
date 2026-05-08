@@ -454,42 +454,53 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
             return false;
         }
 
+        try
+        {
+            IsSaving = true;
+            return await PerformCommitEditingAsync(target, newName, ct);
+        }
+        finally { IsSaving = false; }
+    }
+
+    /// <summary>
+    /// <see cref="TryCommitEditingForAsync"/> の実際の保存ロジック (Rename → CanvasSize → defensive sync)。
+    /// 呼び出し側が <see cref="IsSaving"/> ON/OFF のスコープと name バリデーション後の guard まで済ませた前提。
+    /// 失敗 (Rename / Resize 内部エラー) で <c>false</c>、 成功 (no-op 含む) で <c>true</c>。
+    /// </summary>
+    private async Task<bool> PerformCommitEditingAsync(
+        GridCanvasItemViewModel target, string newName, CancellationToken ct)
+    {
         var nameChanged = newName != target.Name;
         var newWidth = target.EditingCanvasWidth;
         var newHeight = target.EditingCanvasHeight;
         var sizeChanged = newWidth != target.CanvasWidth || newHeight != target.CanvasHeight;
 
-        try
+        var savedAny = false;
+        if (nameChanged)
         {
-            IsSaving = true;
-            var savedAny = false;
-            if (nameChanged)
-            {
-                var ok = await RenameInternalAsync(target, newName, ct);
-                if (!ok) return false;
-                savedAny = true;
-            }
-            if (sizeChanged)
-            {
-                var before = new PixelSize(target.CanvasWidth, target.CanvasHeight);
-                var after = new PixelSize(newWidth, newHeight);
-                var ok = await UpdateCanvasSizeInternalAsync(target, before, after, ct);
-                if (!ok) return false;
-                savedAny = true;
-            }
-            if (savedAny)
-            {
-                // 保存完了後の defensive sync: RenameInternalAsync / UpdateCanvasSizeInternalAsync
-                // 内で target.Name / CanvasWidth / CanvasHeight を更新すると OnNameChanged 等の
-                // partial method 経由で Editing も同期されるが、 同値スキップやタイミング差で
-                // IsDirty=true が残る稀なケースを防ぐため、 ここで RevertEditing で確実に揃える
-                // (Editing は最新の永続化値と一致 → IsDirty=false)。
-                target.RevertEditing();
-                StatusMessage = "グリッド情報を保存しました。";
-            }
-            return true;
+            var ok = await RenameInternalAsync(target, newName, ct);
+            if (!ok) return false;
+            savedAny = true;
         }
-        finally { IsSaving = false; }
+        if (sizeChanged)
+        {
+            var before = new PixelSize(target.CanvasWidth, target.CanvasHeight);
+            var after = new PixelSize(newWidth, newHeight);
+            var ok = await UpdateCanvasSizeInternalAsync(target, before, after, ct);
+            if (!ok) return false;
+            savedAny = true;
+        }
+        if (savedAny)
+        {
+            // 保存完了後の defensive sync: RenameInternalAsync / UpdateCanvasSizeInternalAsync
+            // 内で target.Name / CanvasWidth / CanvasHeight を更新すると OnNameChanged 等の
+            // partial method 経由で Editing も同期されるが、 同値スキップやタイミング差で
+            // IsDirty=true が残る稀なケースを防ぐため、 ここで RevertEditing で確実に揃える
+            // (Editing は最新の永続化値と一致 → IsDirty=false)。
+            target.RevertEditing();
+            StatusMessage = "グリッド情報を保存しました。";
+        }
+        return true;
     }
 
     /// <summary>右ペインのリセットボタンから呼ばれる。 ドラフトを永続化済み値で上書き。</summary>

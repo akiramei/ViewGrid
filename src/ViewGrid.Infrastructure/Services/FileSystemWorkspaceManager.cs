@@ -416,35 +416,8 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
             var targetErr = ValidateImportTarget(manifests, newName, out var destDir);
             if (targetErr is { } e2) return e2;
 
-            // zip を開いてメタデータと全エントリの安全性を先に検証する。 展開はすべての
-            // エントリが安全 (zip slip 等の親ディレクトリ脱出が無い) と確認できてから一括で
-            // 行う。 部分展開の掃除を 1 箇所に集約できる。
-            try
-            {
-                using var zip = ZipFile.OpenRead(sourceZipPath);
-                var entriesErr = ValidateZipEntries(zip, destDir, ct);
-                if (entriesErr is { } e3) return e3;
-
-                Directory.CreateDirectory(destDir);
-                try
-                {
-                    ExtractZipEntries(zip, destDir, ct);
-                }
-                catch
-                {
-                    // 部分展開の掃除
-                    if (Directory.Exists(destDir))
-                    {
-                        try { Directory.Delete(destDir, recursive: true); } catch (IOException) { }
-                    }
-                    throw;
-                }
-            }
-            catch (InvalidDataException)
-            {
-                return Error.Validation("Workspace.InvalidZip",
-                    "zip ファイルが破損しているか、 形式が不正です。");
-            }
+            var extractErr = OpenAndExtractZip(sourceZipPath, destDir, ct);
+            if (extractErr is { } e3) return e3;
 
             var added = new WorkspaceManifest(newName, trimmedDisplay);
             WriteManifestList(manifests.Append(added));
@@ -454,6 +427,45 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
         {
             _lock.Release();
         }
+    }
+
+    /// <summary>
+    /// zip を開いてメタデータと全エントリの安全性を先に検証 → 検証 OK なら一括展開する。
+    /// 展開途中の例外は部分展開を掃除してから再 throw する (lock の finally まで到達)。
+    /// 想定内 (破損 zip = <see cref="InvalidDataException"/>) は <c>Error.Validation</c> に変換。
+    /// </summary>
+    private static Error? OpenAndExtractZip(string sourceZipPath, string destDir, CancellationToken ct)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(sourceZipPath);
+            var entriesErr = ValidateZipEntries(zip, destDir, ct);
+            if (entriesErr is { } err) return err;
+
+            Directory.CreateDirectory(destDir);
+            try
+            {
+                ExtractZipEntries(zip, destDir, ct);
+            }
+            catch
+            {
+                CleanupPartialExtraction(destDir);
+                throw;
+            }
+            return null;
+        }
+        catch (InvalidDataException)
+        {
+            return Error.Validation("Workspace.InvalidZip",
+                "zip ファイルが破損しているか、 形式が不正です。");
+        }
+    }
+
+    private static void CleanupPartialExtraction(string destDir)
+    {
+        if (!Directory.Exists(destDir)) return;
+        try { Directory.Delete(destDir, recursive: true); }
+        catch (IOException) { /* 後続の re-throw で原因が伝わるので、 掃除失敗は飲む */ }
     }
 
     private static Error? ValidateImportPreLock(
@@ -544,23 +556,30 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
         try
         {
             using var zip = ZipFile.OpenRead(sourceZipPath);
-            var entry = zip.GetEntry(ExportMetadataFileName);
-            if (entry is null) return null;
-
-            using var stream = entry.Open();
-            using var reader = new StreamReader(stream, Encoding.UTF8);
-            var meta = JsonSerializer.Deserialize<ExportMetadataJson>(reader.ReadToEnd());
-            if (string.IsNullOrEmpty(meta?.Name) || string.IsNullOrEmpty(meta.DisplayName))
-                return null;
-
-            return new WorkspaceExportInfo(meta.Name, meta.DisplayName);
+            return ReadExportMetadataFromZip(zip);
         }
-        catch (Exception ex) when (ex is InvalidDataException or IOException
-                                      or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (IsExpectedExportReadFailure(ex))
         {
             return null;
         }
     }
+
+    private static WorkspaceExportInfo? ReadExportMetadataFromZip(ZipArchive zip)
+    {
+        var entry = zip.GetEntry(ExportMetadataFileName);
+        if (entry is null) return null;
+
+        using var stream = entry.Open();
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        var meta = JsonSerializer.Deserialize<ExportMetadataJson>(reader.ReadToEnd());
+        if (string.IsNullOrEmpty(meta?.Name) || string.IsNullOrEmpty(meta.DisplayName))
+            return null;
+
+        return new WorkspaceExportInfo(meta.Name, meta.DisplayName);
+    }
+
+    private static bool IsExpectedExportReadFailure(Exception ex) =>
+        ex is InvalidDataException or IOException or UnauthorizedAccessException or JsonException;
 
     /// <summary>
     /// zip エントリ名から実ファイルパスを解決する。 親ディレクトリへ抜ける zip slip 攻撃

@@ -222,28 +222,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         GridCanvasItemViewModel? grid = null,
         CancellationToken ct = default)
     {
-        // 別 placement への切替前に、 保留中の auto-save を確実に flush する。
-        // 通常は呼び出し側 (GridWorkspaceViewModel.FlushThenAttachAsync) でも flush しているが、
-        // AttachAsync を直接呼ぶ経路 (テスト含む) でも旧 placement の編集が失われないよう、
-        // ここで防御層として再 flush する (Codex P1 指摘: 「pending save が flush される前に
-        // _source を書き換える」)。 既に flush 済みなら FlushNowAsync は no-op に近いコスト。
-        if (_source is not null && !ReferenceEquals(_source, source))
-        {
-            try { await _autoSave.FlushAsync(ct); }
-            catch { /* 失敗しても切替は続行 (StatusMessage に反映済み想定) */ }
-
-            // off→on transition fallback: auto-save OFF 中に edit → ON 化 → 別 placement 選択
-            // のシナリオでは、 dispatcher にタイマーが無いため上記 FlushAsync は no-op。
-            // そのまま AttachAsync で旧 buffer を上書きすると dirty edit がロストするため、
-            // ここで直接 commit を試みる (GridCanvasList.FlushAndCommitOnSwitchAsync と同方針、
-            // Codex review P2 指摘)。 通常経路 (auto-save ずっと ON / OFF) では IsAnyDirty=false
-            // なので即 return で no-op。
-            if (IsAnyDirty)
-            {
-                try { await TrySaveAllAsync(ct); }
-                catch { /* 同上 */ }
-            }
-        }
+        await FlushAndCommitOldSourceIfNeededAsync(source, ct);
 
         if (_source is not null)
             _source.PropertyChanged -= OnSourcePropertyChanged;
@@ -260,6 +239,42 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         if (_source is not null)
             _source.PropertyChanged += OnSourcePropertyChanged;
 
+        InitializeEditingBufferFor(source, grid);
+        await AttachCopyPropertiesForAsync(source, ct);
+
+        ForkVariantCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// 別 placement への切替前に、 保留中の auto-save を確実に flush し、 必要なら直接 commit する。
+    /// 通常は呼び出し側 (GridWorkspaceViewModel.FlushThenAttachAsync) でも flush しているが、
+    /// AttachAsync を直接呼ぶ経路 (テスト含む) でも旧 placement の編集が失われないよう、 ここで
+    /// 防御層として再 flush する (Codex P1 指摘: 「pending save が flush される前に _source を書き換える」)。
+    /// off→on transition (auto-save OFF 中に edit → ON 化 → 別 placement 選択) では dispatcher に
+    /// タイマーが無く FlushAsync は no-op なので、 IsAnyDirty なら直接 TrySaveAllAsync を呼ぶ
+    /// (Codex P2 指摘、 GridCanvasList.FlushAndCommitOnSwitchAsync と同方針)。
+    /// </summary>
+    private async Task FlushAndCommitOldSourceIfNeededAsync(PlacementItemViewModel? newSource, CancellationToken ct)
+    {
+        if (_source is null || ReferenceEquals(_source, newSource)) return;
+
+        try { await _autoSave.FlushAsync(ct); }
+        catch { /* 失敗しても切替は続行 (StatusMessage に反映済み想定) */ }
+
+        if (IsAnyDirty)
+        {
+            try { await TrySaveAllAsync(ct); }
+            catch { /* 同上 */ }
+        }
+    }
+
+    /// <summary>
+    /// 編集バッファ (Header/Position/ImageDrawSize ラベル + PixelOffset/Occupy 数値) を新 source に
+    /// 合わせて初期化する。 <c>_suppressDirty</c> スコープ内で代入することで、 設定中の値変化が
+    /// IsDirty を立てる連鎖を防ぐ。
+    /// </summary>
+    private void InitializeEditingBufferFor(PlacementItemViewModel? source, GridCanvasItemViewModel? grid)
+    {
         _suppressDirty = true;
         try
         {
@@ -292,41 +307,43 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         {
             _suppressDirty = false;
         }
+    }
 
-        // 共有特性編集を当該 placement のバリアントに同期する（Stage 3）。
-        // CopyItemViewModel 構築には asset / thumb / source path / sizes が必要。
+    /// <summary>
+    /// 共有特性編集 (CopyProperties) を当該 placement のバリアントに同期する (Stage 3 以降の挙動)。
+    /// 取得失敗 / 関連エンティティ不在のときは <c>CopyProperties.Attach(null)</c> で無効状態へ。
+    /// <see cref="OperationCanceledException"/> のみ伝播 (上位 ct ハンドリング用)。
+    /// </summary>
+    private async Task AttachCopyPropertiesForAsync(PlacementItemViewModel? source, CancellationToken ct)
+    {
         if (source is null)
         {
             CopyProperties.Attach(null);
-        }
-        else
-        {
-            try
-            {
-                var copy = await _copyRepository.FindByIdAsync(source.CopyId, ct);
-                var asset = copy is null
-                    ? null
-                    : await _assetRepository.FindByIdAsync(copy.AssetId, ct);
-                if (copy is null || asset is null)
-                {
-                    CopyProperties.Attach(null);
-                }
-                else
-                {
-                    var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
-                    var sourcePath = _imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
-                    var item = new CopyItemViewModel(copy, thumb, sourcePath, asset.Size.Width, asset.Size.Height);
-                    CopyProperties.Attach(item);
-                }
-            }
-            catch (OperationCanceledException) { throw; }
-            catch
-            {
-                CopyProperties.Attach(null);
-            }
+            return;
         }
 
-        ForkVariantCommand.NotifyCanExecuteChanged();
+        try
+        {
+            var copy = await _copyRepository.FindByIdAsync(source.CopyId, ct);
+            var asset = copy is null
+                ? null
+                : await _assetRepository.FindByIdAsync(copy.AssetId, ct);
+            if (copy is null || asset is null)
+            {
+                CopyProperties.Attach(null);
+                return;
+            }
+
+            var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
+            var sourcePath = _imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
+            var item = new CopyItemViewModel(copy, thumb, sourcePath, asset.Size.Width, asset.Size.Height);
+            CopyProperties.Attach(item);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch
+        {
+            CopyProperties.Attach(null);
+        }
     }
 
     /// <summary>
@@ -372,9 +389,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
 
         var clampedX = Math.Clamp(PixelOffsetX, -MaxPixelOffset, MaxPixelOffset);
         var clampedY = Math.Clamp(PixelOffsetY, -MaxPixelOffset, MaxPixelOffset);
-        var newOccupyW = Math.Max(1, OccupyWidth);
-        var newOccupyH = Math.Max(1, OccupyHeight);
-        var newOccupy = new OccupySize(newOccupyW, newOccupyH);
+        var newOccupy = new OccupySize(Math.Max(1, OccupyWidth), Math.Max(1, OccupyHeight));
 
         // before の値は DB の永続化済み値から取得（Shift+ドラッグで _source が書き換わっている可能性がある）
         var current = await _placementRepository.FindByIdAsync(source.PlacementId, ct);
@@ -390,45 +405,73 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         if (!offsetChanged && !occupyChanged)
         {
             // 値変化なし — 履歴に積まない
-            _suppressDirty = true;
-            try { IsDirty = false; StatusMessage = "保存しました（変更なし）。"; }
-            finally { _suppressDirty = false; }
+            ResetDirtyWithMessage("保存しました（変更なし）。");
             return true;
         }
 
         // OccupySize → PixelOffset の順で永続化（OccupySize は Validation 失敗の可能性が高いので先）。
         // OccupySize で失敗した場合は PixelOffset の変更も保留して IsDirty を維持する。
-        if (occupyChanged)
-        {
-            var occupyDesc = $"占有セル変更: 「{source.Label}」 {current.OccupySize.Width}×{current.OccupySize.Height} → {newOccupy.Width}×{newOccupy.Height}";
-            var occupyCommand = new UpdatePlacementOccupySizeCommand(
-                _occupyUseCase, grid.GridId, source.PlacementId,
-                current.OccupySize, newOccupy, occupyDesc);
-            var occupyResult = await _history.ExecuteAsync(occupyCommand, ct);
-            if (occupyResult.IsError)
-            {
-                StatusMessage = string.Join(", ", occupyResult.Errors);
-                return false;
-            }
-        }
+        if (occupyChanged && !await TryPersistOccupyAsync(source, grid, current.OccupySize, newOccupy, ct))
+            return false;
 
-        if (offsetChanged)
-        {
-            var description = $"ピクセル微調整: 「{source.Label}」 ΔX={clampedX}, ΔY={clampedY}";
-            var command = new UpdatePlacementOffsetCommand(
-                _offsetUseCase, grid.GridId, source.PlacementId,
-                current.PixelOffsetX, current.PixelOffsetY, clampedX, clampedY, description);
-            var execResult = await _history.ExecuteAsync(command, ct);
-            if (execResult.IsError)
-            {
-                StatusMessage = string.Join(", ", execResult.Errors);
-                return false;
-            }
-        }
+        if (offsetChanged && !await TryPersistOffsetAsync(source, grid, current, clampedX, clampedY, ct))
+            return false;
 
-        // VM 側の表示用 PlacementItemViewModel にも同期。
-        // _suppressDirty スコープ内で代入することで、source の PropertyChanged が
-        // OnSourcePropertyChanged → OnAnyPropertyChanged を経由して IsDirty を再度立てるのを防ぐ。
+        ApplySavedValuesToSource(source, grid, offsetChanged, occupyChanged, clampedX, clampedY, newOccupy);
+
+        LogSaved(_logger, source.PlacementId);
+        return true;
+    }
+
+    /// <summary>
+    /// 占有サイズを履歴経由で永続化する。 失敗時は <see cref="StatusMessage"/> にエラーを格納し <c>false</c> を返す。
+    /// </summary>
+    private async Task<bool> TryPersistOccupyAsync(
+        PlacementItemViewModel source, GridCanvasItemViewModel grid,
+        OccupySize before, OccupySize after, CancellationToken ct)
+    {
+        var occupyDesc = $"占有セル変更: 「{source.Label}」 {before.Width}×{before.Height} → {after.Width}×{after.Height}";
+        var command = new UpdatePlacementOccupySizeCommand(
+            _occupyUseCase, grid.GridId, source.PlacementId, before, after, occupyDesc);
+        var result = await _history.ExecuteAsync(command, ct);
+        if (result.IsError)
+        {
+            StatusMessage = string.Join(", ", result.Errors);
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// ピクセルオフセットを履歴経由で永続化する。 失敗時は <see cref="StatusMessage"/> にエラー格納 + <c>false</c>。
+    /// </summary>
+    private async Task<bool> TryPersistOffsetAsync(
+        PlacementItemViewModel source, GridCanvasItemViewModel grid,
+        GridPlacement current, int clampedX, int clampedY, CancellationToken ct)
+    {
+        var description = $"ピクセル微調整: 「{source.Label}」 ΔX={clampedX}, ΔY={clampedY}";
+        var command = new UpdatePlacementOffsetCommand(
+            _offsetUseCase, grid.GridId, source.PlacementId,
+            current.PixelOffsetX, current.PixelOffsetY, clampedX, clampedY, description);
+        var result = await _history.ExecuteAsync(command, ct);
+        if (result.IsError)
+        {
+            StatusMessage = string.Join(", ", result.Errors);
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// 保存成功後、 表示用 <see cref="PlacementItemViewModel"/> と Inspector ラベルを反映する。
+    /// <c>_suppressDirty</c> スコープ内で更新することで、 source.PropertyChanged → OnSourcePropertyChanged
+    /// → OnAnyPropertyChanged 経由で IsDirty が再び立つのを防ぐ。
+    /// </summary>
+    private void ApplySavedValuesToSource(
+        PlacementItemViewModel source, GridCanvasItemViewModel grid,
+        bool offsetChanged, bool occupyChanged,
+        int clampedX, int clampedY, OccupySize newOccupy)
+    {
         _suppressDirty = true;
         try
         {
@@ -451,9 +494,13 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         {
             _suppressDirty = false;
         }
+    }
 
-        LogSaved(_logger, source.PlacementId);
-        return true;
+    private void ResetDirtyWithMessage(string message)
+    {
+        _suppressDirty = true;
+        try { IsDirty = false; StatusMessage = message; }
+        finally { _suppressDirty = false; }
     }
 
     /// <summary>

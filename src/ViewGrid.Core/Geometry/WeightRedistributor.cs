@@ -158,9 +158,24 @@ public static class WeightRedistributor
         for (var i = occupantStart; i < occupantStart + occupantSpan; i++)
             weights[i] = (long)Math.Round((double)weights[i] * newOccupantTotal / occupantWeightTotal);
 
-        // 端列 (片側に隣接無し) は反対側に両方の余白を寄せる。 こうしないと leftPad / rightPad が
-        // 「破棄」 されて全体重みが減り、 占有セル群が <paramref name="occupantInner"/> ぴったりに
-        // ならず、 ユーザーが何度もクリックする羽目になる (3 回で収束する症状)。
+        DistributePadWeights(weights, leftNeighbor, rightNeighbor, leftPadWeight, rightPadWeight);
+
+        for (var i = 0; i < weights.Length; i++)
+            if (weights[i] < 1) weights[i] = 1;
+
+        return NormalizeToSmallInt(weights);
+    }
+
+    /// <summary>
+    /// 余白重み (leftPad / rightPad に対応する重み) を隣接アンロックセルに分配する。
+    /// 端列 (片側に隣接無し) は反対側に両方の余白を寄せる。 こうしないと leftPad / rightPad が
+    /// 「破棄」 されて全体重みが減り、 占有セル群が <c>occupantInner</c> ぴったりにならず、
+    /// ユーザーが何度もクリックする羽目になる (旧版で 3 回かけて収束していた症状)。
+    /// </summary>
+    private static void DistributePadWeights(
+        long[] weights, int? leftNeighbor, int? rightNeighbor,
+        long leftPadWeight, long rightPadWeight)
+    {
         if (leftNeighbor is { } li && rightNeighbor is { } ri)
         {
             weights[li] += leftPadWeight;
@@ -176,11 +191,6 @@ public static class WeightRedistributor
             // 占有が leftmost。 leftPad の行き先が無いので rightNeighbor に両方寄せる。
             weights[riOnly] += leftPadWeight + rightPadWeight;
         }
-
-        for (var i = 0; i < weights.Length; i++)
-            if (weights[i] < 1) weights[i] = 1;
-
-        return NormalizeToSmallInt(weights);
     }
 
     /// <summary>
