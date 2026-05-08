@@ -119,46 +119,82 @@ public static class WeightRedistributor
         if (IsAnyOccupantLocked(locked, hasLockArray, occupantStart, occupantSpan))
             return [.. startWeights];
 
-        // 左隣の最初のアンロックセルを探す（ロック中はスキップ）
         var leftNeighbor = FindUnlockedNeighbor(
             locked, hasLockArray, occupantStart - 1, step: -1, count: startWeights.Count);
-
-        // 右隣の最初のアンロックセルを探す
         var rightNeighbor = FindUnlockedNeighbor(
             locked, hasLockArray, occupantStart + occupantSpan, step: +1, count: startWeights.Count);
 
         if (leftNeighbor is null && rightNeighbor is null) return [.. startWeights]; // 分配先なし
 
-        // 入力スケーリング: 小さい値で重み変換量が 0 に潰れないよう内部スケール。
+        var weights = BuildScaledWeights(startWeights);
+
+        var occupantWeightTotal = SumWeightsInRange(weights, occupantStart, occupantSpan);
+        if (occupantWeightTotal <= 0) return [.. startWeights];
+
+        var newOccupantTotal = ComputeNewOccupantTotal(
+            occupantWeightTotal, occupantInner, occupantPxTotal, occupantSpan);
+        var (leftPadWeight, rightPadWeight) = ComputePadWeights(
+            occupantWeightTotal, leftPad, rightPad, occupantPxTotal);
+
+        ScaleOccupantCells(weights, occupantStart, occupantSpan, occupantWeightTotal, newOccupantTotal);
+        DistributePadWeights(weights, leftNeighbor, rightNeighbor, leftPadWeight, rightPadWeight);
+        ClampMinimumOne(weights);
+
+        return NormalizeToSmallInt(weights);
+    }
+
+    /// <summary>
+    /// <paramref name="startWeights"/> を内部スケール (各要素 ≥1 × <see cref="InternalDragScale"/>) の
+    /// long 配列にコピーする。 小さい入力でも丸めで 0 に潰れない粒度を確保する。
+    /// </summary>
+    private static long[] BuildScaledWeights(IReadOnlyList<int> startWeights)
+    {
         var weights = new long[startWeights.Count];
         for (var i = 0; i < startWeights.Count; i++)
             weights[i] = (long)Math.Max(1, startWeights[i]) * InternalDragScale;
+        return weights;
+    }
 
-        long occupantWeightTotal = 0;
-        for (var i = occupantStart; i < occupantStart + occupantSpan; i++)
-            occupantWeightTotal += weights[i];
-        if (occupantWeightTotal <= 0) return [.. startWeights];
+    /// <summary><paramref name="weights"/> の <c>[start, start+span)</c> 区間の合計を返す。</summary>
+    private static long SumWeightsInRange(long[] weights, int start, int span)
+    {
+        long sum = 0;
+        for (var i = start; i < start + span; i++) sum += weights[i];
+        return sum;
+    }
 
-        // 占有セル群の新しい合計 = 元の合計 × (内側幅 / 元の合計幅)。 各セル最小 1 を保証するため
-        // occupantSpan 以上にクランプする。
-        var newOccupantTotal = Math.Max(
+    /// <summary>
+    /// 占有セル群の新しい合計重み = 元の合計 × (内側幅 / 元の合計幅)。
+    /// 各セル最小 1 を保証するため <paramref name="occupantSpan"/> 以上にクランプする。
+    /// </summary>
+    private static long ComputeNewOccupantTotal(
+        long occupantWeightTotal, long occupantInner, long occupantPxTotal, int occupantSpan)
+        => Math.Max(
             occupantSpan,
             (long)Math.Round((double)occupantWeightTotal * occupantInner / occupantPxTotal));
 
-        // 余白に対応する重み量（元の占有合計重みからの按分）
-        var leftPadWeight = (long)Math.Round((double)occupantWeightTotal * leftPad / occupantPxTotal);
-        var rightPadWeight = (long)Math.Round((double)occupantWeightTotal * rightPad / occupantPxTotal);
+    /// <summary>余白 px (signed) を元の占有合計重みから按分した重み量に変換する。</summary>
+    private static (long Left, long Right) ComputePadWeights(
+        long occupantWeightTotal, long leftPad, long rightPad, long occupantPxTotal)
+    {
+        var left = (long)Math.Round((double)occupantWeightTotal * leftPad / occupantPxTotal);
+        var right = (long)Math.Round((double)occupantWeightTotal * rightPad / occupantPxTotal);
+        return (left, right);
+    }
 
-        // 占有セル群を内部比率維持でスケール
-        for (var i = occupantStart; i < occupantStart + occupantSpan; i++)
-            weights[i] = (long)Math.Round((double)weights[i] * newOccupantTotal / occupantWeightTotal);
+    /// <summary>占有セル群を内部比率を維持したまま <paramref name="newTotal"/> にスケールする。</summary>
+    private static void ScaleOccupantCells(
+        long[] weights, int start, int span, long currentTotal, long newTotal)
+    {
+        for (var i = start; i < start + span; i++)
+            weights[i] = (long)Math.Round((double)weights[i] * newTotal / currentTotal);
+    }
 
-        DistributePadWeights(weights, leftNeighbor, rightNeighbor, leftPadWeight, rightPadWeight);
-
+    /// <summary>各要素の最小値を 1 に切り上げる (0 や負値の不正状態を防ぐ最後のガード)。</summary>
+    private static void ClampMinimumOne(long[] weights)
+    {
         for (var i = 0; i < weights.Length; i++)
             if (weights[i] < 1) weights[i] = 1;
-
-        return NormalizeToSmallInt(weights);
     }
 
     /// <summary>
