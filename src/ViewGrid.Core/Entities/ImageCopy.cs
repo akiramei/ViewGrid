@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace ViewGrid.Core.Entities;
 
 /// <summary>
@@ -90,6 +92,21 @@ public sealed class ImageCopy
             ManualCropHeight = value?.Height;
         }
     }
+
+    /// <summary>
+    /// 親画像の回転を受けず最終キャンバス水平で再描画される 「保護領域」 の配列
+    /// (PhotoBoard 出力時のみ有効、 描画順は <see cref="ProtectedRegion.SortOrder"/>)。
+    /// EF Core では子テーブル <c>image_copy_regions</c> を独立 entity としてマップしており、
+    /// 本プロパティは Repository 側で手動アセンブルする (<c>ImageCopyConfiguration</c> 側で Ignore)。
+    /// 既定は空配列。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="UpdatedAt"/> と同様に <c>set</c> アクセサを公開する。 これは Repository が
+    /// AsNoTracking で取得した <see cref="ImageCopy"/> に子テーブル由来の Regions を
+    /// 「後付けで attach」 するためのもので、 通常の Use case / VM 経路で書き換える用途では
+    /// ない (ImmutableArray 自体は不変なので、 アグリゲートの内部状態は実質的に保たれる)。
+    /// </remarks>
+    public ImmutableArray<ProtectedRegion> Regions { get; set; } = ImmutableArray<ProtectedRegion>.Empty;
 
     public required DateTimeOffset CreatedAt { get; init; }
     public required DateTimeOffset UpdatedAt { get; set; }

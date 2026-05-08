@@ -67,5 +67,10 @@ internal sealed class ImageCopyConfiguration : IEntityTypeConfiguration<ImageCop
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(x => x.AssetId);
+
+        // ProtectedRegion 集約は子テーブル image_copy_regions に独立 entity として保存し、
+        // Repository が手動でアセンブルする (本コードベースの shadow-FK 規約に合わせる)。
+        // ImageCopy.Regions は ImmutableArray のメモリ上ビューのみ。
+        builder.Ignore(x => x.Regions);
     }
 }

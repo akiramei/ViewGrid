@@ -8,6 +8,7 @@ public sealed class ViewGridDbContext(DbContextOptions<ViewGridDbContext> option
 {
     public DbSet<ImageAsset> ImageAssets => Set<ImageAsset>();
     public DbSet<ImageCopy> ImageCopies => Set<ImageCopy>();
+    public DbSet<ProtectedRegion> ProtectedRegions => Set<ProtectedRegion>();
     public DbSet<GridCanvas> GridCanvases => Set<GridCanvas>();
     public DbSet<GridPlacement> GridPlacements => Set<GridPlacement>();
 
