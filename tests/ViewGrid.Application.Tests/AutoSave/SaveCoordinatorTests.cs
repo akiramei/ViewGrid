@@ -76,7 +76,7 @@ public sealed class SaveCoordinatorTests
             });
 
         coord.NotifyEdited();
-        await Task.Delay(300);
+        await coord.FlushAsync();
 
         calls.Should().Be(1);
     }
@@ -101,10 +101,12 @@ public sealed class SaveCoordinatorTests
             });
 
         coord.NotifyEdited();
-        await Task.Delay(300);
+        await coord.FlushAsync();
         calls.Should().Be(1);
 
-        // 同 signature で再通知 → Coordinator 内で抑止される
+        // 同 signature で再通知 → Coordinator 内で抑止される (Schedule されないことの確認なので
+        // debounce 経過分の実時間待機を残す: FlushAsync(no-op) では「もし Schedule されたら
+        // 走ってしまう」 回帰を検知できない)
         coord.NotifyEdited();
         await Task.Delay(300);
         calls.Should().Be(1);
@@ -130,13 +132,13 @@ public sealed class SaveCoordinatorTests
             });
 
         coord.NotifyEdited();
-        await Task.Delay(300);
+        await coord.FlushAsync();
         calls.Should().Be(1);
 
         // signature 変化 = ユーザーが編集 → retry が走る
         sig = "sig-B";
         coord.NotifyEdited();
-        await Task.Delay(300);
+        await coord.FlushAsync();
         calls.Should().Be(2);
     }
 
@@ -160,12 +162,12 @@ public sealed class SaveCoordinatorTests
             });
 
         coord.NotifyEdited();
-        await Task.Delay(300);
+        await coord.FlushAsync();
         calls.Should().Be(1);
 
         coord.ResetFailureGuard();
         coord.NotifyEdited();
-        await Task.Delay(300);
+        await coord.FlushAsync();
         calls.Should().Be(2);
     }
 
@@ -269,10 +271,10 @@ public sealed class SaveCoordinatorTests
             });
 
         coord.NotifyEdited();
-        await Task.Delay(300);
+        await coord.FlushAsync();
         calls.Should().Be(1);
 
-        // 同 signature で再通知 → 抑止される
+        // 同 signature で再通知 → 抑止される (Schedule されないことの確認なので実時間待機を残す)
         coord.NotifyEdited();
         await Task.Delay(300);
         calls.Should().Be(1);
@@ -281,12 +283,12 @@ public sealed class SaveCoordinatorTests
         shouldFail = false;
         coord.ResetFailureGuard();
         coord.NotifyEdited();
-        await Task.Delay(300);
+        await coord.FlushAsync();
         calls.Should().Be(2);
 
         // 成功後の同 signature 通知も走る (失敗 guard はクリア済み)
         coord.NotifyEdited();
-        await Task.Delay(300);
+        await coord.FlushAsync();
         calls.Should().Be(3);
     }
 }
