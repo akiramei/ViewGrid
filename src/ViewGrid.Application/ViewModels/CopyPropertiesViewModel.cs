@@ -458,14 +458,23 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// </summary>
     private ManualCropFraction? BuildAfterManualCrop()
     {
-        if (!(ManualCropEnabled && IsManualCropDefined && SourceWidth > 0 && SourceHeight > 0))
-            return null;
+        if (!CanBuildManualCropFraction()) return null;
         return new ManualCropFraction(
-            (ManualCropPixelX ?? 0) / (double)SourceWidth,
-            (ManualCropPixelY ?? 0) / (double)SourceHeight,
-            (ManualCropPixelWidth ?? 0) / (double)SourceWidth,
-            (ManualCropPixelHeight ?? 0) / (double)SourceHeight);
+            PixelToFraction(ManualCropPixelX, SourceWidth),
+            PixelToFraction(ManualCropPixelY, SourceHeight),
+            PixelToFraction(ManualCropPixelWidth, SourceWidth),
+            PixelToFraction(ManualCropPixelHeight, SourceHeight));
     }
+
+    /// <summary>ManualCrop の永続化条件: 「手動」 ラジオ + 矩形確定 + 元画像サイズが既知。</summary>
+    private bool CanBuildManualCropFraction() =>
+        ManualCropEnabled && IsManualCropDefined && SourceWidth > 0 && SourceHeight > 0;
+
+    /// <summary>
+    /// 整数ピクセル値を 0–1 の比率に換算する。 入力 <paramref name="pixel"/> が <c>null</c> なら 0 として扱う
+    /// (ManualCrop* の編集中 null も保存時に 0 へ coerce する仕様に合わせる)。
+    /// </summary>
+    private static double PixelToFraction(int? pixel, int total) => (pixel ?? 0) / (double)total;
 
     /// <summary>
     /// 保存成功後の値を <see cref="_source"/> に反映してリスト表示を最新化する。

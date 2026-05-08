@@ -110,15 +110,8 @@ public static class WeightRedistributor
         IReadOnlyList<bool>? locked)
     {
         ArgumentNullException.ThrowIfNull(startWeights);
-        if (startWeights.Count == 0) return [.. startWeights];
-        if (occupantStart < 0 || occupantStart >= startWeights.Count) return [.. startWeights];
-        if (occupantSpan <= 0 || occupantStart + occupantSpan > startWeights.Count) return [.. startWeights];
-        if (occupantInner <= 0) return [.. startWeights];
-        // leftPad / rightPad は signed (負値 = 画像が cell より大きく overflow → cell 拡大)。
-        // 占有セル群の元幅 = leftPad + inner + rightPad (ガード: 1 px 以上)。
-        var occupantPxTotal = leftPad + occupantInner + rightPad;
-        if (occupantPxTotal <= 0) return [.. startWeights];
-        if (leftPad == 0 && rightPad == 0) return [.. startWeights]; // 余白なし → 何もしない
+        if (ShouldSkipFit(startWeights, occupantStart, occupantSpan, leftPad, occupantInner, rightPad, out var occupantPxTotal))
+            return [.. startWeights];
 
         var hasLockArray = locked is not null && locked.Count == startWeights.Count;
 
@@ -146,9 +139,11 @@ public static class WeightRedistributor
             occupantWeightTotal += weights[i];
         if (occupantWeightTotal <= 0) return [.. startWeights];
 
-        // 占有セル群の新しい合計 = 元の合計 × (内側幅 / 元の合計幅)
-        var newOccupantTotal = (long)Math.Round((double)occupantWeightTotal * occupantInner / occupantPxTotal);
-        if (newOccupantTotal < occupantSpan) newOccupantTotal = occupantSpan; // 各セル最小 1 を保証
+        // 占有セル群の新しい合計 = 元の合計 × (内側幅 / 元の合計幅)。 各セル最小 1 を保証するため
+        // occupantSpan 以上にクランプする。
+        var newOccupantTotal = Math.Max(
+            occupantSpan,
+            (long)Math.Round((double)occupantWeightTotal * occupantInner / occupantPxTotal));
 
         // 余白に対応する重み量（元の占有合計重みからの按分）
         var leftPadWeight = (long)Math.Round((double)occupantWeightTotal * leftPad / occupantPxTotal);
@@ -164,6 +159,28 @@ public static class WeightRedistributor
             if (weights[i] < 1) weights[i] = 1;
 
         return NormalizeToSmallInt(weights);
+    }
+
+    /// <summary>
+    /// 入力が範囲外 / no-op (余白なし含む) のとき <c>true</c> を返し、 fit を skip すべきと判定する。
+    /// 同時に <paramref name="occupantPxTotal"/> (占有セル群の元幅 px、 leftPad+inner+rightPad) を出力する。
+    /// signed pad (負値 = 画像 overflow による cell 拡大要求) を許容するため、 個別範囲ではなく合計値で判定。
+    /// </summary>
+    private static bool ShouldSkipFit(
+        IReadOnlyList<int> startWeights,
+        int occupantStart, int occupantSpan,
+        long leftPad, long occupantInner, long rightPad,
+        out long occupantPxTotal)
+    {
+        occupantPxTotal = leftPad + occupantInner + rightPad;
+        return startWeights.Count == 0
+            || occupantStart < 0
+            || occupantStart >= startWeights.Count
+            || occupantSpan <= 0
+            || occupantStart + occupantSpan > startWeights.Count
+            || occupantInner <= 0
+            || occupantPxTotal <= 0
+            || (leftPad == 0 && rightPad == 0); // 余白なし → 何もしない
     }
 
     /// <summary>

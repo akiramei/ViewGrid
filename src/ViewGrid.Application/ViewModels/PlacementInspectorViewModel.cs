@@ -251,8 +251,9 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
     /// AttachAsync を直接呼ぶ経路 (テスト含む) でも旧 placement の編集が失われないよう、 ここで
     /// 防御層として再 flush する (Codex P1 指摘: 「pending save が flush される前に _source を書き換える」)。
     /// off→on transition (auto-save OFF 中に edit → ON 化 → 別 placement 選択) では dispatcher に
-    /// タイマーが無く FlushAsync は no-op なので、 IsAnyDirty なら直接 TrySaveAllAsync を呼ぶ
-    /// (Codex P2 指摘、 GridCanvasList.FlushAndCommitOnSwitchAsync と同方針)。
+    /// タイマーが無く FlushAsync は no-op なので、 auto-save が現時点で ON のときに限り IsAnyDirty なら
+    /// 直接 TrySaveAllAsync を呼ぶ (Codex P2 指摘、 GridCanvasList.FlushAndCommitOnSwitchAsync と同方針)。
+    /// auto-save が OFF のままの場合は手動保存待ちの設計を尊重し、 直接 commit はしない。
     /// </summary>
     private async Task FlushAndCommitOldSourceIfNeededAsync(PlacementItemViewModel? newSource, CancellationToken ct)
     {
@@ -261,7 +262,9 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         try { await _autoSave.FlushAsync(ct); }
         catch { /* 失敗しても切替は続行 (StatusMessage に反映済み想定) */ }
 
-        if (IsAnyDirty)
+        // auto-save 設定が現在 ON のときだけ off→on fallback で直接 commit する。 OFF のときは
+        // 「ユーザーが Save ボタンを押すまで永続化しない」 manual-save 挙動を維持する。
+        if (_appSettings.Current.EnableAutoSave && IsAnyDirty)
         {
             try { await TrySaveAllAsync(ct); }
             catch { /* 同上 */ }
@@ -399,6 +402,19 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
             return false;
         }
 
+        return await CommitDirtyChangesAsync(source, grid, current, clampedX, clampedY, newOccupy, ct);
+    }
+
+    /// <summary>
+    /// 値変化判定 → 永続化 (OccupySize → PixelOffset の順) → source 反映 までを担当する内部ヘルパ。
+    /// 変化なしなら <c>true</c> + 「変更なし」 メッセージで早期 return。
+    /// 永続化失敗は <see cref="StatusMessage"/> にエラーを格納済みで <c>false</c> を返す。
+    /// OccupySize で失敗した場合は PixelOffset の変更も保留して IsDirty を維持する (旧挙動と同一)。
+    /// </summary>
+    private async Task<bool> CommitDirtyChangesAsync(
+        PlacementItemViewModel source, GridCanvasItemViewModel grid, GridPlacement current,
+        int clampedX, int clampedY, OccupySize newOccupy, CancellationToken ct)
+    {
         var offsetChanged = current.PixelOffsetX != clampedX || current.PixelOffsetY != clampedY;
         var occupyChanged = current.OccupySize != newOccupy;
 
@@ -409,8 +425,6 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
             return true;
         }
 
-        // OccupySize → PixelOffset の順で永続化（OccupySize は Validation 失敗の可能性が高いので先）。
-        // OccupySize で失敗した場合は PixelOffset の変更も保留して IsDirty を維持する。
         if (occupyChanged && !await TryPersistOccupyAsync(source, grid, current.OccupySize, newOccupy, ct))
             return false;
 
@@ -418,7 +432,6 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
             return false;
 
         ApplySavedValuesToSource(source, grid, offsetChanged, occupyChanged, clampedX, clampedY, newOccupy);
-
         LogSaved(_logger, source.PlacementId);
         return true;
     }
