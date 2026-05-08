@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using FluentAssertions;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
@@ -128,6 +129,88 @@ public sealed class UpdateImageCopyUseCaseTests : IAsyncLifetime
         var reloadedPlacement = await _fx.PlacementRepository.FindByIdAsync(placement.Id);
         reloadedPlacement!.OccupySize.Should().Be(OccupySize.OneByOne);
     }
+
+    [Fact]
+    public async Task Updates_Regions_When_Non_Empty_Array_Is_Provided()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+
+        var regionA = BuildRegion(copy.Id, 0, new RegionRectFraction(0.1, 0.1, 0.2, 0.2));
+        var regionB = BuildRegion(copy.Id, 1, new RegionRectFraction(0.5, 0.5, 0.3, 0.3));
+        var changes = new UpdateImageCopyChanges
+        {
+            Regions = ImmutableArray.Create(regionA, regionB),
+        };
+
+        var result = await _useCase.ExecuteAsync(copy.Id, changes);
+        result.IsError.Should().BeFalse();
+
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        reloaded!.Regions.Should().HaveCount(2);
+        reloaded.Regions[0].Id.Should().Be(regionA.Id);
+        reloaded.Regions[1].Id.Should().Be(regionB.Id);
+    }
+
+    [Fact]
+    public async Task Regions_Null_Preserves_Existing_Regions()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+
+        // 初期状態: Region 1 件
+        var initialRegion = BuildRegion(copy.Id, 0, new RegionRectFraction(0.1, 0.1, 0.2, 0.2));
+        await _useCase.ExecuteAsync(copy.Id, new UpdateImageCopyChanges
+        {
+            Regions = ImmutableArray.Create(initialRegion),
+        });
+
+        // 別フィールドを更新、 Regions は明示しない (= null)
+        var result = await _useCase.ExecuteAsync(copy.Id, new UpdateImageCopyChanges
+        {
+            ScalingMode = ScalingMode.UniformCover,
+        });
+        result.IsError.Should().BeFalse();
+
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        reloaded!.ScalingMode.Should().Be(ScalingMode.UniformCover);
+        reloaded.Regions.Should().HaveCount(1);
+        reloaded.Regions[0].Id.Should().Be(initialRegion.Id);
+    }
+
+    [Fact]
+    public async Task Regions_Empty_Array_Clears_All_Existing_Regions()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+
+        // 初期状態: Region 2 件
+        var r1 = BuildRegion(copy.Id, 0, new RegionRectFraction(0.0, 0.0, 0.2, 0.2));
+        var r2 = BuildRegion(copy.Id, 1, new RegionRectFraction(0.4, 0.4, 0.2, 0.2));
+        await _useCase.ExecuteAsync(copy.Id, new UpdateImageCopyChanges
+        {
+            Regions = ImmutableArray.Create(r1, r2),
+        });
+
+        // 明示的に Empty を渡して全削除
+        var result = await _useCase.ExecuteAsync(copy.Id, new UpdateImageCopyChanges
+        {
+            Regions = ImmutableArray<ProtectedRegion>.Empty,
+        });
+        result.IsError.Should().BeFalse();
+
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        reloaded!.Regions.Should().BeEmpty();
+    }
+
+    private static ProtectedRegion BuildRegion(Guid copyId, int sortOrder, RegionRectFraction rect) => new()
+    {
+        Id = Guid.NewGuid(),
+        ImageCopyId = copyId,
+        Rect = rect,
+        FillMode = ProtectedRegionFillMode.White,
+        SortOrder = sortOrder,
+    };
 
     private async Task<GridCanvas> SeedActiveGridAsync(int rows, int cols)
     {

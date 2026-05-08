@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using ErrorOr;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.Interfaces;
@@ -50,6 +51,10 @@ public sealed class UpdateImageCopyUseCase(
         var updatedManualCrop = changes.ClearManualCrop
             ? (ManualCropFraction?)null
             : (changes.ManualCrop ?? current.ManualCrop);
+        // Regions は AutoCrop / ManualCrop と異なり「常に配列 (空も valid)」 の値なので、
+        // null を 「変更なし」、 ImmutableArray (Empty 含む) を 「明示置換」 と解釈する。
+        // Empty 自体が明示状態として表現可能なので ClearRegions フラグは設けない。
+        var updatedRegions = changes.Regions ?? current.Regions;
         var updated = new ImageCopy
         {
             Id = current.Id,
@@ -61,6 +66,7 @@ public sealed class UpdateImageCopyUseCase(
             OccupySize = changes.OccupySize ?? current.OccupySize,
             AutoCrop = updatedAutoCrop,
             ManualCrop = updatedManualCrop,
+            Regions = updatedRegions,
             CreatedAt = current.CreatedAt,
             UpdatedAt = now,
         };
@@ -120,4 +126,17 @@ public sealed record UpdateImageCopyChanges
     /// 既定 <c>false</c>。Undo/Redo で「矩形設定 → OFF → Undo（矩形設定に戻す）」の往復を実現するために必要。
     /// </summary>
     public bool ClearManualCrop { get; init; }
+
+    /// <summary>
+    /// PhotoBoard 出力時の保護領域 (<see cref="ProtectedRegion"/>) 集約。
+    /// <c>null</c> は 「変更しない」、 非 null の <see cref="ImmutableArray{T}"/> (Empty 含む) は
+    /// 「明示置換」 を意味する。 Empty が明示的な空状態を表現できるため、
+    /// <c>ClearAutoCrop</c> / <c>ClearManualCrop</c> 相当のフラグは設けない。
+    /// </summary>
+    /// <remarks>
+    /// Repository (<c>EfImageCopyRepository.UpdateAsync</c>) で Id ベース差分同期される:
+    /// 既存のみ → 削除、 両方 → 更新、 新規のみ → 追加。 Region.Id は UI / Undo の参照キーと
+    /// して安定させる必要があるため、 Snapshot は元配列を丸ごと保持する。
+    /// </remarks>
+    public ImmutableArray<ProtectedRegion>? Regions { get; init; }
 }

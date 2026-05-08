@@ -70,6 +70,91 @@ public sealed class GridAndCopyCommandTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UpdateImageCopyCommand_RoundTrip_Restores_Regions()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var useCase = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
+
+        // 初期状態: Region 1 件 (Undo で戻る対象)。 SeedCopyAsync は Regions を持たないので、
+        // 「初期 Region あり」 の状態を最初に作るため UseCase 経由で 1 件追加してから snapshot を取る。
+        var initialRegion = BuildRegion(copy.Id, 0, new RegionRectFraction(0.1, 0.1, 0.2, 0.2));
+        await useCase.ExecuteAsync(copy.Id, new UpdateImageCopyChanges
+        {
+            Regions = ImmutableArray.Create(initialRegion),
+        });
+        var copyWithInitialRegion = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+
+        var before = UpdateImageCopyCommand.SnapshotFrom(copyWithInitialRegion!);
+        // after: 元 Region を残しつつ別 Region を 1 件追加 (合計 2 件)
+        var addedRegion = BuildRegion(copy.Id, 1, new RegionRectFraction(0.5, 0.5, 0.3, 0.3));
+        var after = new UpdateImageCopyChanges
+        {
+            Regions = ImmutableArray.Create(initialRegion, addedRegion),
+        };
+
+        var command = new UpdateImageCopyCommand(useCase, copy.Id, before, after,
+            description: "保護領域追加: テスト");
+
+        await _history.ExecuteAsync(command);
+        var afterExec = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        afterExec!.Regions.Should().HaveCount(2);
+        afterExec.Regions.Should().Contain(r => r.Id == initialRegion.Id);
+        afterExec.Regions.Should().Contain(r => r.Id == addedRegion.Id);
+
+        await _history.UndoAsync();
+        var afterUndo = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        afterUndo!.Regions.Should().HaveCount(1);
+        afterUndo.Regions[0].Id.Should().Be(initialRegion.Id);
+
+        await _history.RedoAsync();
+        var afterRedo = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        afterRedo!.Regions.Should().HaveCount(2);
+        afterRedo.Regions.Should().Contain(r => r.Id == addedRegion.Id);
+    }
+
+    [Fact]
+    public async Task UpdateImageCopyCommand_SnapshotFrom_Captures_Empty_Regions_For_Undo_To_Empty()
+    {
+        // Undo で 「Region なし」 状態に戻すには、 before snapshot の Regions が
+        // ImmutableArray.Empty (null ではない) として保存されている必要がある。
+        // これが null だと UseCase が 「変更なし」 と解釈してしまい、 Undo が機能しない。
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var useCase = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
+
+        // 初期状態は Region なし
+        var before = UpdateImageCopyCommand.SnapshotFrom(copy);
+        before.Regions.Should().NotBeNull();
+        before.Regions!.Value.Should().BeEmpty();
+
+        // after: Region 1 件追加
+        var addedRegion = BuildRegion(copy.Id, 0, new RegionRectFraction(0.0, 0.0, 0.5, 0.5));
+        var after = new UpdateImageCopyChanges
+        {
+            Regions = ImmutableArray.Create(addedRegion),
+        };
+        var command = new UpdateImageCopyCommand(useCase, copy.Id, before, after,
+            description: "初回保護領域追加: テスト");
+
+        await _history.ExecuteAsync(command);
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id))!.Regions.Should().HaveCount(1);
+
+        // Undo: Region なしの状態に戻る
+        await _history.UndoAsync();
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id))!.Regions.Should().BeEmpty();
+    }
+
+    private static ProtectedRegion BuildRegion(Guid copyId, int sortOrder, RegionRectFraction rect) => new()
+    {
+        Id = Guid.NewGuid(),
+        ImageCopyId = copyId,
+        Rect = rect,
+        FillMode = ProtectedRegionFillMode.White,
+        SortOrder = sortOrder,
+    };
+
+    [Fact]
     public async Task UpdateGridWeightsCommand_RoundTrip()
     {
         var grid = await SeedGridAsync(rows: 3, cols: 3);

@@ -70,6 +70,9 @@ public sealed class UpdateImageCopyCommand : IUndoableCommand
             ClearAutoCrop = source.AutoCrop is null,
             ManualCrop = source.ManualCrop,
             ClearManualCrop = source.ManualCrop is null,
+            // Regions は配列を丸ごと保持。 空配列も Empty として明示状態で残す
+            // (Undo で 「Region なし」 状態に戻すために必要)。
+            Regions = source.Regions,
         };
     }
 }
