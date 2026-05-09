@@ -386,12 +386,19 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         Math.Max(a.Right, b.Right),
         Math.Max(a.Bottom, b.Bottom));
 
+    /// <summary>
+    /// <paramref name="paintRegions"/>=<c>true</c> のとき、 通常描画後に <see cref="ImageCopy.Regions"/>
+    /// に登録された保護領域を白で塗りつぶす。 これは PhotoBoard 出力で 「親側を白塗り → overlay は
+    /// 別途 canvas 水平で重ね描き」 の前段階として cell-bounded 画像内の region 元位置を消す処理
+    /// (Phase 1)。 Flat / Normal モード経路では <c>false</c> のまま渡すこと (設計上 PhotoBoard 限定)。
+    /// </summary>
     private Error? DrawOne(
         SKCanvas canvas,
         GridCanvas grid,
         PlacementRenderItem item,
         SKSamplingOptions sampling,
-        SKPaint paint)
+        SKPaint paint,
+        bool paintRegions = false)
     {
         if (!File.Exists(item.SourceImageAbsolutePath))
             return Error.NotFound(
@@ -471,12 +478,162 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         {
             canvas.ClipRect(SKRect.Create(cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height));
             canvas.DrawImage(transformedImage, srcRect, dstRect, sampling, paint);
+
+            // PhotoBoard 経路でのみ、 親画像描画直後に保護領域を白塗りする (cell 境界クリップ
+            // 状態を維持したまま canvas 上に直接描く。 既存の DrawImage と同じ canvas 状態で
+            // 行うため別途 Save/Restore は不要)。
+            if (paintRegions && !item.Copy.Regions.IsDefaultOrEmpty)
+            {
+                PaintProtectedRegions(
+                    canvas,
+                    item.Copy,
+                    sourceWidth: decoded.Width, sourceHeight: decoded.Height,
+                    autoCropSourceRect: autoCropSourceRect,
+                    srcRectInTransformed: srcRect,
+                    dstRect: dstRect,
+                    cellRect: cellRect);
+            }
         }
         finally
         {
             canvas.Restore();
         }
         return null;
+    }
+
+    /// <summary>
+    /// <see cref="ImageCopy.Regions"/> を白で塗りつぶす。 PhotoBoard 出力時に 「親画像側で region
+    /// 元位置を消し、 overlay として後段で水平描画する」 前半を担当。
+    /// </summary>
+    /// <remarks>
+    /// 各 region の白塗り矩形計算は <see cref="ComputeRegionWhitePaintRect"/> に分離してあり、
+    /// 本メソッドは guards / 共通設定 / 描画ループだけを持つ。 Phase 1 の
+    /// <see cref="ProtectedRegionFillMode"/> は <c>White</c> 一択のため、 実装側でも白固定。 将来
+    /// Transparent / Inpaint を追加する際は <see cref="ComputeRegionWhitePaintRect"/> 呼び出し直前で分岐する。
+    /// </remarks>
+    private static void PaintProtectedRegions(
+        SKCanvas canvas,
+        ImageCopy copy,
+        int sourceWidth, int sourceHeight,
+        PixelRect? autoCropSourceRect,
+        SKRect srcRectInTransformed,
+        SKRect dstRect,
+        PixelRect cellRect)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0) return;
+        if (srcRectInTransformed.Width <= 0 || srcRectInTransformed.Height <= 0) return;
+        if (dstRect.Width <= 0 || dstRect.Height <= 0) return;
+
+        var effCrop = ComputeEffectiveCropFraction(autoCropSourceRect, sourceWidth, sourceHeight);
+        var cellSkRect = SKRect.Create(cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height);
+
+        using var fillPaint = new SKPaint
+        {
+            Color = SKColors.White,
+            Style = SKPaintStyle.Fill,
+            // 矩形は整数境界で十分、 AA で半透明端が出ると overlay と重なって滲む
+            IsAntialias = false,
+        };
+
+        foreach (var region in copy.Regions)
+        {
+            var paintRect = ComputeRegionWhitePaintRect(
+                region, effCrop, copy.Transform,
+                sourceWidth, sourceHeight,
+                srcRectInTransformed, dstRect, cellSkRect);
+            if (paintRect is { } rect)
+                canvas.DrawRect(rect, fillPaint);
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="autoCropSourceRect"/> (元画像 pixel 単位の effective Crop bbox、 null = 全画像) を
+    /// 0–1 比率の <see cref="CropFraction"/> に変換する。 <see cref="ImageCropResolver"/> 経由ではなく
+    /// renderer 内部で計算済みの <see cref="ComputeCropSourceRect"/> 結果を再利用するため、 専用ヘルパ。
+    /// </summary>
+    private static CropFraction ComputeEffectiveCropFraction(
+        PixelRect? autoCropSourceRect, int sourceWidth, int sourceHeight)
+        => autoCropSourceRect is { } src
+            ? new CropFraction(
+                (double)src.X / sourceWidth,
+                (double)src.Y / sourceHeight,
+                (double)src.Width / sourceWidth,
+                (double)src.Height / sourceHeight)
+            : CropFraction.Full;
+
+    /// <summary>
+    /// 1 件の <see cref="ProtectedRegion"/> を canvas 上の白塗り矩形に変換する。 描画対象なし
+    /// (effective Crop 外 / Transform 後 src rect 外 / cellRect 外) は <c>null</c>。
+    /// </summary>
+    /// <remarks>
+    /// 座標変換パイプライン (各段で交差なしなら null 返却):
+    /// <list type="number">
+    ///   <item>region.Rect (元画像 0–1) ∩ effective Crop → 元画像座標の交差矩形 (<see cref="RegionGeometry.Intersect"/>)</item>
+    ///   <item>元画像 pixel 矩形に展開 → <see cref="AutoCropCalculator.TransformRect"/> で
+    ///     <see cref="ImageCopy.Transform"/> を適用 (Flip + 90/180/270 回転対応) → transformed image 座標</item>
+    ///   <item><paramref name="srcRectInTransformed"/> (= 実際に描画される transformed 画像領域) との交差を取り、 可視部分に絞る</item>
+    ///   <item>線形写像 srcRect → dstRect で canvas 座標に変換</item>
+    ///   <item>cellRect で clip (PixelOffset で隣セルに飛び出した領域を除外)</item>
+    /// </list>
+    /// </remarks>
+    private static SKRect? ComputeRegionWhitePaintRect(
+        ProtectedRegion region,
+        CropFraction effCrop,
+        ImageTransform transform,
+        int sourceWidth, int sourceHeight,
+        SKRect srcRectInTransformed,
+        SKRect dstRect,
+        SKRect cellSkRect)
+    {
+        // 1. Region と effective Crop の交差 (元画像 0–1)
+        if (RegionGeometry.Intersect(region.Rect, effCrop) is not { } eff) return null;
+
+        // 2. 元画像 pixel 矩形に展開
+        var (sx, sy, sw, sh) = eff.SourceRect.ToPixelBbox(sourceWidth, sourceHeight);
+        if (sw <= 0 || sh <= 0) return null;
+
+        // 3. Transform (Flip + 回転) を適用 → transformed image 座標
+        var transformedRect = AutoCropCalculator.TransformRect(
+            new PixelRect(sx, sy, sw, sh), sourceWidth, sourceHeight, transform);
+        var transformedRectF = SKRect.Create(
+            transformedRect.X, transformedRect.Y,
+            transformedRect.Width, transformedRect.Height);
+
+        // 4. 実際に描画される範囲との交差で可視部分に絞る
+        if (!IntersectRect(transformedRectF, srcRectInTransformed, out var visible)) return null;
+
+        // 5. 線形写像 srcRect → dstRect で canvas 座標へ
+        var localFx = (visible.Left - srcRectInTransformed.Left) / srcRectInTransformed.Width;
+        var localFy = (visible.Top - srcRectInTransformed.Top) / srcRectInTransformed.Height;
+        var localFw = visible.Width / srcRectInTransformed.Width;
+        var localFh = visible.Height / srcRectInTransformed.Height;
+        var canvasRect = new SKRect(
+            dstRect.Left + localFx * dstRect.Width,
+            dstRect.Top + localFy * dstRect.Height,
+            dstRect.Left + (localFx + localFw) * dstRect.Width,
+            dstRect.Top + (localFy + localFh) * dstRect.Height);
+
+        // 6. cellRect で clip (PixelOffset で外に出た部分を除外)
+        if (!IntersectRect(canvasRect, cellSkRect, out var clipped)) return null;
+        return clipped;
+    }
+
+    /// <summary>
+    /// 2 矩形の交差を計算する。 交差なし (面積 0) → false、 ありなら <paramref name="result"/> に格納して true。
+    /// </summary>
+    private static bool IntersectRect(SKRect a, SKRect b, out SKRect result)
+    {
+        var left = Math.Max(a.Left, b.Left);
+        var top = Math.Max(a.Top, b.Top);
+        var right = Math.Min(a.Right, b.Right);
+        var bottom = Math.Min(a.Bottom, b.Bottom);
+        if (right <= left || bottom <= top)
+        {
+            result = SKRect.Empty;
+            return false;
+        }
+        result = new SKRect(left, top, right, bottom);
+        return true;
     }
 
     /// <summary>
@@ -732,7 +889,10 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 // surface 内に収まる。
                 cellCanvas.Translate(-cellRect.X, -cellRect.Y);
 
-                var error = DrawOne(cellCanvas, grid, item, sampling, paint);
+                // PhotoBoard 経路では paintRegions=true を渡し、 DrawOne 内で
+                // cell-bounded 画像に保護領域を白塗りさせる (overlay は step 7 で別途
+                // 最終キャンバスに canvas 水平描画する)。 Flat / Normal 経路は変更なし。
+                var error = DrawOne(cellCanvas, grid, item, sampling, paint, paintRegions: true);
                 if (error is not null)
                     return error.Value;
 
