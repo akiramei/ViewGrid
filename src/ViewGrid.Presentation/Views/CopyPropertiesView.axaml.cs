@@ -147,8 +147,8 @@ public partial class CopyPropertiesView : UserControl
     /// 保護領域 「編集...」 ボタンのハンドラ。 ManualCropEditorWindow を rect editor として
     /// 流用 (Title だけ書き換え) し、 OK で閉じられたら結果を <see cref="CopyPropertiesViewModel.UpdateRegionRect"/>
     /// に渡して反映する。 SourceImagePath / SourceWidth / SourceHeight が必要なので、 未取得
-    /// (取り込み済みでない論理コピー) では IsEnabled=false でガード (XAML 側で SelectedRegion
-    /// が non-null である必要があるが、 source が未取得だと結局 source path も null になる)。
+    /// (取り込み済みでない論理コピー) では StatusMessage で告知して開かない。
+    /// async void は Avalonia Click ハンドラの慣例 (既存 <see cref="OnOpenDetailEditorClicked"/> と同パターン)。
     /// </summary>
     private async void OnEditRegionClicked(object? sender, RoutedEventArgs e)
     {
@@ -162,24 +162,12 @@ public partial class CopyPropertiesView : UserControl
         if (_vm.SourceWidth <= 0 || _vm.SourceHeight <= 0) return;
         if (TopLevel.GetTopLevel(this) is not Window owner) return;
 
-        // 0–1 fraction → ピクセル整数 (rect editor の入出力単位)
-        var initX = (int)Math.Round(region.Rect.X * _vm.SourceWidth);
-        var initY = (int)Math.Round(region.Rect.Y * _vm.SourceHeight);
-        var initW = (int)Math.Round(region.Rect.Width * _vm.SourceWidth);
-        var initH = (int)Math.Round(region.Rect.Height * _vm.SourceHeight);
-
-        var window = new ManualCropEditorWindow
+        var window = OpenRegionEditorWindow(region.Rect, _vm.SourceImagePath, _vm.SourceWidth, _vm.SourceHeight);
+        if (window is null)
         {
-            Title = "保護領域 詳細編集",
-        };
-        try
-        {
-            window.Initialize(_vm.SourceImagePath, _vm.SourceWidth, _vm.SourceHeight,
-                initX, initY, initW, initH);
-        }
-        catch
-        {
-            // 画像読み込み失敗等。 ManualCrop と同じく静かに諦める (StatusMessage 表示は省略)。
+            // 画像読み込み失敗。 ユーザーに状況を告げて静かに諦める (旧版は黙っていたが、
+            // ゲート指摘で例外握りつぶしを明示メッセージ化)。
+            _vm.StatusMessage = "画像の読み込みに失敗したため、 保護領域エディタを開けませんでした。";
             return;
         }
 
@@ -187,15 +175,48 @@ public partial class CopyPropertiesView : UserControl
 
         if (window.GetResult() is { } r)
         {
-            // ピクセル整数 → 0–1 fraction に再換算して VM に反映
-            var newRect = new RegionRectFraction(
-                (double)r.X / _vm.SourceWidth,
-                (double)r.Y / _vm.SourceHeight,
-                (double)r.W / _vm.SourceWidth,
-                (double)r.H / _vm.SourceHeight);
+            var newRect = PixelRectToRegionFraction(r, _vm.SourceWidth, _vm.SourceHeight);
             _vm.UpdateRegionRect(region, newRect);
         }
     }
+
+    /// <summary>
+    /// region 編集用の <see cref="ManualCropEditorWindow"/> を初期化して返す。 画像読み込み失敗時は
+    /// <c>null</c>。 例外は内部で吸収する (caller がメッセージ表示する)。
+    /// </summary>
+    private static ManualCropEditorWindow? OpenRegionEditorWindow(
+        RegionRectFraction initialRect, string imagePath, int sourceWidth, int sourceHeight)
+    {
+        var (initX, initY, initW, initH) = RegionFractionToPixelRect(initialRect, sourceWidth, sourceHeight);
+        var window = new ManualCropEditorWindow { Title = "保護領域 詳細編集" };
+        try
+        {
+            window.Initialize(imagePath, sourceWidth, sourceHeight, initX, initY, initW, initH);
+            return window;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>0–1 fraction → ピクセル整数 (rect editor の入出力単位)。</summary>
+    private static (int X, int Y, int W, int H) RegionFractionToPixelRect(
+        RegionRectFraction rect, int sourceWidth, int sourceHeight)
+        => (
+            (int)Math.Round(rect.X * sourceWidth),
+            (int)Math.Round(rect.Y * sourceHeight),
+            (int)Math.Round(rect.Width * sourceWidth),
+            (int)Math.Round(rect.Height * sourceHeight));
+
+    /// <summary>ピクセル整数 → 0–1 fraction (永続化単位)。</summary>
+    private static RegionRectFraction PixelRectToRegionFraction(
+        (int X, int Y, int W, int H) rect, int sourceWidth, int sourceHeight)
+        => new(
+            (double)rect.X / sourceWidth,
+            (double)rect.Y / sourceHeight,
+            (double)rect.W / sourceWidth,
+            (double)rect.H / sourceHeight);
 
     /// <summary>
     /// AutoCrop の「画像クリックピッカー」用ハンドラ。サムネ <see cref="Image"/> 上の
