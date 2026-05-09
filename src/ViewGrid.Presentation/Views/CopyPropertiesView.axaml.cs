@@ -45,6 +45,16 @@ public partial class CopyPropertiesView : UserControl
         set => SetValue(IsCropTabSelectedProperty, value);
     }
 
+    public static readonly StyledProperty<bool> IsRegionsTabSelectedProperty =
+        AvaloniaProperty.Register<CopyPropertiesView, bool>(nameof(IsRegionsTabSelected), defaultValue: false);
+
+    /// <summary>「保護領域」 タブが選択中か (Phase 1 PhotoBoard 限定機能)。</summary>
+    public bool IsRegionsTabSelected
+    {
+        get => GetValue(IsRegionsTabSelectedProperty);
+        set => SetValue(IsRegionsTabSelectedProperty, value);
+    }
+
     private CopyPropertiesViewModel? _vm;
 
     private enum DragMode
@@ -115,12 +125,34 @@ public partial class CopyPropertiesView : UserControl
     {
         IsPropertiesTabSelected = true;
         IsCropTabSelected = false;
+        IsRegionsTabSelected = false;
     }
 
     private void OnCropTabClicked(object? sender, RoutedEventArgs e)
     {
         IsPropertiesTabSelected = false;
         IsCropTabSelected = true;
+        IsRegionsTabSelected = false;
+    }
+
+    private void OnRegionsTabClicked(object? sender, RoutedEventArgs e)
+    {
+        IsPropertiesTabSelected = false;
+        IsCropTabSelected = false;
+        IsRegionsTabSelected = true;
+    }
+
+    /// <summary>
+    /// 保護領域 「編集...」 ボタンのハンドラ。 RegionEditorWindow (Task 9) を起動して、
+    /// OK 時に <see cref="CopyPropertiesViewModel.UpdateRegionRect"/> で結果を反映する。
+    /// 現状 (Task 8b 段階) は Editor 未実装のためメッセージのみ表示するスタブ。
+    /// </summary>
+    private void OnEditRegionClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CopyPropertiesViewModel vm) return;
+        if (vm.SelectedRegion is null) return;
+        // Task 9 で RegionEditorWindow を実装したらここで起動する。
+        vm.StatusMessage = "保護領域エディタは未実装です。";
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ViewGrid.Core.Entities;
 
@@ -70,6 +71,14 @@ public sealed partial class CopyItemViewModel : ObservableObject
     [ObservableProperty]
     public partial ManualCropFraction? ManualCrop { get; set; }
 
+    /// <summary>
+    /// PhotoBoard 出力時の保護領域 (<see cref="ProtectedRegion"/>) 集約。 Phase 1 では
+    /// PhotoBoard 経路でのみ親側白塗り + canvas 水平 overlay として使われる。 通常モード
+    /// (Normal) では完全無視。 既定は空配列。
+    /// </summary>
+    [ObservableProperty]
+    public partial ImmutableArray<ProtectedRegion> Regions { get; set; } = ImmutableArray<ProtectedRegion>.Empty;
+
     public CopyItemViewModel(
         ImageCopy copy,
         string? thumbnailPath = null,
@@ -88,6 +97,7 @@ public sealed partial class CopyItemViewModel : ObservableObject
         Alignment = copy.Alignment;
         AutoCrop = copy.AutoCrop;
         ManualCrop = copy.ManualCrop;
+        Regions = copy.Regions;
         ThumbnailPath = thumbnailPath;
         SourceImagePath = sourceImagePath;
         SourceWidth = sourceWidth;

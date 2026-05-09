@@ -382,4 +382,154 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "seed");
         return new CopyItemViewModel(copy, sourceWidth: width, sourceHeight: height);
     }
+
+    // ─── ProtectedRegion (Phase 1 step 8a) ────────────────────────────────
+
+    [Fact]
+    public async Task AddRegion_Adds_Default_Centered_Rect_And_Marks_Dirty()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.AddRegionCommand.Execute(null);
+
+        _vm.RegionItems.Should().HaveCount(1);
+        _vm.RegionItems[0].Rect.Should().Be(ProtectedRegionItemViewModel.DefaultRect);
+        _vm.SelectedRegion.Should().Be(_vm.RegionItems[0]);
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RemoveRegion_Removes_Selected_And_Clears_Selection()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        _vm.AddRegionCommand.Execute(null);
+        _vm.SelectedRegion = _vm.RegionItems[0];
+
+        _vm.RemoveRegionCommand.Execute(null);
+
+        _vm.RegionItems.Should().HaveCount(1);
+        _vm.SelectedRegion.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RemoveRegion_CanExecute_False_When_Nothing_Selected()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.SelectedRegion.Should().BeNull();
+
+        _vm.RemoveRegionCommand.CanExecute(null).Should().BeFalse();
+
+        _vm.AddRegionCommand.Execute(null);
+        _vm.SelectedRegion.Should().NotBeNull();
+        _vm.RemoveRegionCommand.CanExecute(null).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task UpdateRegionRect_Marks_Dirty_And_Replaces_Rect()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        var item = _vm.RegionItems[0];
+
+        // Attach 後の Save 相当 (IsDirty=false にリセット) を模擬
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        var newRect = new RegionRectFraction(0.1, 0.2, 0.3, 0.4);
+        _vm.UpdateRegionRect(item, newRect);
+
+        item.Rect.Should().Be(newRect);
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task UpdateRegionRect_External_Item_Throws()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        var stranger = new ProtectedRegionItemViewModel(
+            Guid.NewGuid(),
+            new RegionRectFraction(0.0, 0.0, 0.5, 0.5),
+            ProtectedRegionFillMode.White);
+
+        var act = () => _vm.UpdateRegionRect(stranger, new RegionRectFraction(0.1, 0.1, 0.2, 0.2));
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task SaveAsync_Persists_Regions_And_Reload_Restores_Them()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+
+        _vm.AddRegionCommand.Execute(null);
+        _vm.AddRegionCommand.Execute(null);
+        _vm.UpdateRegionRect(_vm.RegionItems[0], new RegionRectFraction(0.0, 0.0, 0.4, 0.4));
+        _vm.UpdateRegionRect(_vm.RegionItems[1], new RegionRectFraction(0.5, 0.5, 0.3, 0.3));
+        var firstId = _vm.RegionItems[0].Id;
+
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        // 再 Attach (DB から読み直し)
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        var refreshed = new CopyItemViewModel(reloaded!);
+        _vm.Attach(refreshed);
+
+        _vm.RegionItems.Should().HaveCount(2);
+        _vm.RegionItems[0].Id.Should().Be(firstId, "Region.Id は永続化往復後も保たれる");
+        _vm.RegionItems[0].Rect.Width.Should().BeApproximately(0.4, 1e-9);
+        _vm.RegionItems[1].Rect.X.Should().BeApproximately(0.5, 1e-9);
+    }
+
+    [Fact]
+    public async Task SaveAsync_With_Empty_Regions_Persists_Empty_And_Clears_DB()
+    {
+        // 既存 Region を持つ copy を attach し、 全削除 → 保存 → 再読込で空であることを確認
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        await _vm.SaveAsync();
+
+        _vm.Attach(null);
+        var withRegion = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        var refreshed = new CopyItemViewModel(withRegion!);
+        _vm.Attach(refreshed);
+        _vm.RegionItems.Should().HaveCount(1);
+
+        // 全削除して保存
+        _vm.SelectedRegion = _vm.RegionItems[0];
+        _vm.RemoveRegionCommand.Execute(null);
+        _vm.IsDirty.Should().BeTrue();
+        await _vm.SaveAsync();
+
+        // 再読込で空
+        var afterClear = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        afterClear!.Regions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Attach_Loads_Regions_Without_Marking_Dirty()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        await _vm.SaveAsync();
+
+        // 別 VM 経由で再 attach (Attach 中に dirty が立たないこと)
+        _vm.Attach(null);
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        var refreshed = new CopyItemViewModel(reloaded!);
+
+        _vm.Attach(refreshed);
+
+        _vm.RegionItems.Should().HaveCount(1);
+        _vm.IsDirty.Should().BeFalse();
+    }
 }

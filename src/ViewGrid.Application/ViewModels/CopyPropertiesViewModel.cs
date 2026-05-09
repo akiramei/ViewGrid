@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -118,6 +121,20 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsManualCropDefined))]
     public partial int? ManualCropPixelHeight { get; set; }
+
+    // ─── ProtectedRegion (保護領域) タブ ────────────────────────────
+    // 0 件以上の region を ListBox で一覧表示し、 Editor (Task 9) で 8 ハンドル編集する。
+    // Phase 1 では FillMode.White 一択で UI には出さない。 並べ替えも Phase 2 で検討。
+
+    /// <summary>「保護領域」 タブ ListBox にバインドする region 一覧。 順序 = SortOrder。</summary>
+    public ObservableCollection<ProtectedRegionItemViewModel> RegionItems { get; } = new();
+
+    /// <summary>ListBox の選択行。 編集 / 削除コマンドの対象。</summary>
+    [ObservableProperty]
+    public partial ProtectedRegionItemViewModel? SelectedRegion { get; set; }
+
+    /// <summary>RegionItems が空のとき true。 「未登録です」 メッセージの表示用。</summary>
+    public bool HasNoRegions => RegionItems.Count == 0;
 
     /// <summary>矩形が確定しているか（W&gt;0 かつ H&gt;0）。「手動」ラジオ ON 直後でドラッグ前は false。
     /// 数値入力フィールドや矩形ハンドルの IsEnabled、Save 時の永続化判定に使う。</summary>
@@ -277,6 +294,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         _settings = settings;
         _logger = logger;
         PropertyChanged += OnAnyPropertyChanged;
+        RegionItems.CollectionChanged += OnRegionItemsCollectionChanged;
     }
 
     /// <summary>編集対象を差し替える。null で無効状態。</summary>
@@ -308,6 +326,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 SourceImagePath = null;
                 SourceWidth = 0;
                 SourceHeight = 0;
+                ClearRegionItems();
             }
             else
             {
@@ -356,6 +375,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                     ManualCropPixelWidth = 0;
                     ManualCropPixelHeight = 0;
                 }
+                LoadRegionItemsFromSource(source);
             }
             IsDirty = false;
             StatusMessage = null;
@@ -429,6 +449,10 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         ClearAutoCrop = source.AutoCrop is null,
         ManualCrop = source.ManualCrop,
         ClearManualCrop = source.ManualCrop is null,
+        // Regions は配列を丸ごと保持 (空配列も Empty として明示)。 これで Undo が
+        // 「Region なし状態」 にも正しく復元できる (UpdateImageCopyChanges.Regions の
+        // 仕様: null=変更しない / Empty=明示空 / 非空=置換)。
+        Regions = source.Regions,
     };
 
     /// <summary>
@@ -449,7 +473,35 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
             ClearAutoCrop = afterAutoCrop is null,
             ManualCrop = afterManualCrop,
             ClearManualCrop = afterManualCrop is null,
+            Regions = BuildAfterRegions(),
         };
+    }
+
+    /// <summary>
+    /// <see cref="RegionItems"/> の現状から永続化用 <see cref="ProtectedRegion"/> 配列を再構築する。
+    /// SortOrder = 配列 index、 ImageCopyId = source.CopyId を割り当てる (新規追加分の Id は VM 側で
+    /// 既に Guid.NewGuid() されているのでここでは引き継ぐだけ)。
+    /// </summary>
+    private ImmutableArray<ProtectedRegion> BuildAfterRegions()
+    {
+        var source = _source;
+        if (source is null) return ImmutableArray<ProtectedRegion>.Empty;
+        if (RegionItems.Count == 0) return ImmutableArray<ProtectedRegion>.Empty;
+
+        var builder = ImmutableArray.CreateBuilder<ProtectedRegion>(RegionItems.Count);
+        for (var i = 0; i < RegionItems.Count; i++)
+        {
+            var item = RegionItems[i];
+            builder.Add(new ProtectedRegion
+            {
+                Id = item.Id,
+                ImageCopyId = source.CopyId,
+                Rect = item.Rect,
+                FillMode = item.FillMode,
+                SortOrder = i,
+            });
+        }
+        return builder.ToImmutable();
     }
 
     /// <summary>
@@ -489,6 +541,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         source.Alignment = after.Alignment!.Value;
         source.AutoCrop = after.AutoCrop;
         source.ManualCrop = after.ManualCrop;
+        // Regions は after で必ず Empty 以上の配列が来る (BuildAfterRegions が ImmutableArray.Empty を返す)。
+        // null の防御は念のため。
+        source.Regions = after.Regions ?? source.Regions;
     }
 
     private void ResetDirtyAndShowSavedMessage()
@@ -674,6 +729,124 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
             AutoCropPreviewFraction = null;
             AutoCropPreviewMessage = $"プレビュー計算に失敗: {ex.Message}";
         }
+    }
+
+    // ─── ProtectedRegion コマンド + 内部同期 ─────────────────────────────
+
+    /// <summary>
+    /// 新規 region を追加する。 矩形は <see cref="ProtectedRegionItemViewModel.DefaultRect"/>
+    /// (画像中央 20%) で初期化され、 直後に Editor (Task 9) で形を整える運用。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanAddRegion))]
+    private void AddRegion()
+    {
+        var item = new ProtectedRegionItemViewModel(
+            Guid.NewGuid(),
+            ProtectedRegionItemViewModel.DefaultRect,
+            ProtectedRegionFillMode.White);
+        RegionItems.Add(item);
+        SelectedRegion = item;
+    }
+
+    private bool CanAddRegion() => HasCopy;
+
+    /// <summary>選択中の region を削除する。 SelectedRegion=null なら何もしない。</summary>
+    [RelayCommand(CanExecute = nameof(CanRemoveRegion))]
+    private void RemoveRegion()
+    {
+        if (SelectedRegion is not { } target) return;
+        RegionItems.Remove(target);
+        SelectedRegion = null;
+    }
+
+    private bool CanRemoveRegion() => SelectedRegion is not null;
+
+    /// <summary>
+    /// View 側の Editor (Task 9) が rect 編集を完了したときに呼ぶ。 <paramref name="item"/> の
+    /// <see cref="ProtectedRegionItemViewModel.Rect"/> を更新し、 IsDirty 連動も自動で発火する
+    /// (item 自身の PropertyChanged → <see cref="OnRegionItemPropertyChanged"/>)。
+    /// </summary>
+    public void UpdateRegionRect(ProtectedRegionItemViewModel item, RegionRectFraction newRect)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        // 自分の管理下にない item の更新は誤呼び出し。 IsDirty 連動の購読も
+        // Add 時にしか張らないので、 ここで外部 item を黙って書き換えると整合が崩れる。
+        if (!RegionItems.Contains(item))
+            throw new InvalidOperationException("Region item is not in the current collection.");
+        item.Rect = newRect;
+    }
+
+    /// <summary>
+    /// Attach 内で source.Regions から RegionItems を再構築する。 _suppressDirty=true 中に呼ばれる
+    /// 前提なので IsDirty は変動しない。 既存 item の PropertyChanged 購読も解除してから差し替える。
+    /// </summary>
+    private void LoadRegionItemsFromSource(CopyItemViewModel source)
+    {
+        ClearRegionItems();
+        if (source.Regions.IsDefaultOrEmpty) return;
+        foreach (var region in source.Regions)
+        {
+            var item = ProtectedRegionItemViewModel.From(region);
+            // CollectionChanged で自動的に PropertyChanged 購読される
+            RegionItems.Add(item);
+        }
+        SelectedRegion = null;
+    }
+
+    /// <summary>RegionItems の全要素をクリアし、 各 item の PropertyChanged 購読も解除する。</summary>
+    private void ClearRegionItems()
+    {
+        foreach (var item in RegionItems)
+            item.PropertyChanged -= OnRegionItemPropertyChanged;
+        RegionItems.Clear();
+        SelectedRegion = null;
+    }
+
+    /// <summary>
+    /// <see cref="RegionItems"/> の Add / Remove / Reset で呼ばれる。 新規追加は per-item の
+    /// PropertyChanged を購読、 削除は解除。 dirty も連動 (Attach 中は _suppressDirty で抑止)。
+    /// </summary>
+    private void OnRegionItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is not null)
+            foreach (ProtectedRegionItemViewModel item in e.NewItems)
+                item.PropertyChanged += OnRegionItemPropertyChanged;
+        if (e.OldItems is not null)
+            foreach (ProtectedRegionItemViewModel item in e.OldItems)
+                item.PropertyChanged -= OnRegionItemPropertyChanged;
+
+        // HasNoRegions は collection サイズに依存する派生プロパティ。 コレクション変更で必ず通知。
+        OnPropertyChanged(nameof(HasNoRegions));
+
+        if (_suppressDirty) return;
+        MarkRegionsDirty();
+    }
+
+    /// <summary>Region item の <see cref="ProtectedRegionItemViewModel.Rect"/> 変更で IsDirty 連動。</summary>
+    private void OnRegionItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_suppressDirty) return;
+        if (e.PropertyName == nameof(ProtectedRegionItemViewModel.Rect))
+            MarkRegionsDirty();
+    }
+
+    private void MarkRegionsDirty()
+    {
+        if (!IsDirty) IsDirty = true;
+        SaveCommand.NotifyCanExecuteChanged();
+        RevertCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>SelectedRegion 変動で削除コマンドの CanExecute を再評価。</summary>
+    partial void OnSelectedRegionChanged(ProtectedRegionItemViewModel? value)
+    {
+        RemoveRegionCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>HasCopy 変動で AddRegion コマンドの CanExecute を再評価。</summary>
+    partial void OnHasCopyChanged(bool value)
+    {
+        AddRegionCommand.NotifyCanExecuteChanged();
     }
 
     private void OnAnyPropertyChanged(object? sender, PropertyChangedEventArgs e)

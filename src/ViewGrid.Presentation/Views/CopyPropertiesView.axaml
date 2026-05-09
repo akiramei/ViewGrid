@@ -138,6 +138,23 @@
                                     IsVisible="{Binding #CopyPropertiesRoot.IsCropTabSelected}" />
                         </StackPanel>
                     </Button>
+                    <!-- 「保護領域」 タブ: Phase 1 では PhotoBoard 出力のみ有効。
+                         セリフ・注釈などキャンバス水平に保ちたい領域を矩形で登録する。 -->
+                    <Button Padding="0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="OnRegionsTabClicked">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="保護領域"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Opacity="0.65"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                            <Border Height="2"
+                                    Background="{DynamicResource SystemAccentColor}"
+                                    IsVisible="{Binding #CopyPropertiesRoot.IsRegionsTabSelected}" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
 
                 <!--
@@ -382,6 +399,71 @@
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
+                </StackPanel>
+
+                <!--
+                    保護領域タブ本文。 Phase 1 PhotoBoard 出力のみ有効。
+                    一覧 ListBox + 追加 / 編集 / 削除 ボタン。 並べ替えは Phase 2 で検討。
+                -->
+                <StackPanel Grid.Row="1"
+                            Classes="FormGroup"
+                            IsVisible="{Binding #CopyPropertiesRoot.IsRegionsTabSelected}">
+                    <StackPanel Classes="FormSection">
+                        <TextBlock Classes="FieldLabel"
+                                   Text="保護領域 (PhotoBoard 出力時のみ有効)" />
+                        <TextBlock Text="親写真の回転に巻き込まれずキャンバス水平で再描画したい領域 (セリフ・注釈など) を矩形で登録します。"
+                                   FontSize="11"
+                                   Opacity="0.65"
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,0,8" />
+
+                        <ListBox ItemsSource="{Binding RegionItems}"
+                                 SelectedItem="{Binding SelectedRegion}"
+                                 MaxHeight="200"
+                                 Margin="0,0,0,8">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="vm:ProtectedRegionItemViewModel">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <PathIcon Data="{StaticResource ImageGeometry}"
+                                                  Width="12" Height="12"
+                                                  Opacity="0.6" />
+                                        <TextBlock Text="{Binding LabelText}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button Command="{Binding AddRegionCommand}"
+                                    ToolTip.Tip="新しい保護領域を追加します (画像中央に既定矩形)">
+                                <StackPanel Classes="IconButtonContent">
+                                    <PathIcon Data="{StaticResource AddGeometry}" Width="12" Height="12" />
+                                    <TextBlock Text="追加" />
+                                </StackPanel>
+                            </Button>
+                            <Button Click="OnEditRegionClicked"
+                                    Content="編集..."
+                                    IsEnabled="{Binding SelectedRegion, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                    ToolTip.Tip="選択中の保護領域の矩形を編集します" />
+                            <Button Command="{Binding RemoveRegionCommand}"
+                                    Classes="iconDanger"
+                                    ToolTip.Tip="選択中の保護領域を削除します">
+                                <StackPanel Classes="IconButtonContent">
+                                    <PathIcon Data="{StaticResource DeleteGeometry}" Width="12" Height="12" />
+                                    <TextBlock Text="削除" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <TextBlock Text="登録された保護領域はありません。 「追加」 で 1 件作成してから、 「編集」 で形を整えてください。"
+                                   FontSize="11"
+                                   Opacity="0.55"
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,0"
+                                   IsVisible="{Binding HasNoRegions}" />
+                    </StackPanel>
                 </StackPanel>
             </Grid>
             </DockPanel>
