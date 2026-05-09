@@ -14,6 +14,17 @@ public sealed partial class MainWindowViewModel
     private readonly IUndoRedoService _history;
 
     /// <summary>
+    /// VM 構築時 (= UI thread) に capture した SynchronizationContext。
+    /// <see cref="IUndoRedoService.StateChanged"/> は ThreadPool 上で発火することが
+    /// あるため、 <see cref="OnHistoryStateChanged"/> 内で本 context へ Post して
+    /// AsyncRelayCommand.NotifyCanExecuteChanged 経由の Avalonia binding 更新を
+    /// UI thread で行う (Avalonia の VerifyAccess で InvalidOperationException が
+    /// 出るのを防ぐ)。 テスト等で SynchronizationContext が無い場合は <c>null</c>
+    /// となり、 ハンドラは inline で実行される (現状の挙動と互換)。
+    /// </summary>
+    private readonly SynchronizationContext? _uiContext;
+
+    /// <summary>
     /// 直近 Undo/Redo で取り消された/再適用された Command の <see cref="IUndoableCommand.AffectedGridId"/>。
     /// <see cref="IUndoRedoService.Undone"/> / <see cref="IUndoRedoService.Redone"/> ハンドラ内で退避し、
     /// <see cref="RefreshAfterHistoryAsync"/> 末尾でアクティブグリッド切替に使ったあとに <c>null</c> へ戻す。
@@ -157,6 +168,9 @@ public sealed partial class MainWindowViewModel
         GridWorkspace = gridWorkspace;
         _messenger = messenger;
         _history = history;
+        // UI thread の context を capture しておく (StateChanged が ThreadPool 上で
+        // 発火しても OnHistoryStateChanged を UI thread に marshal できるように)。
+        _uiContext = SynchronizationContext.Current;
 
         // Stage 4: AssetLibrary は「+ 画像を追加」/ ファイルメニュー経由で件数だけが
         // 変動する。Assets.CollectionChanged で StatusSummary / CurrentHints を更新する。
@@ -280,7 +294,26 @@ public sealed partial class MainWindowViewModel
     private bool CanUndoCommand() => CanUndo;
     private bool CanRedoCommand() => CanRedo;
 
+    /// <summary>
+    /// <see cref="IUndoRedoService.StateChanged"/> ハンドラ。 ExecuteAsync の継続が
+    /// ThreadPool に乗っているケース (= ConfigureAwait(false) 経由で UI 以外の thread に
+    /// 落ちている) では、 <see cref="_uiContext"/> 経由で UI thread に marshal してから
+    /// 中身を実行する。 この marshalling を入れないと、 NotifyCanExecuteChanged 経由で
+    /// Avalonia の MenuItem.Command (StyledProperty) を非 UI thread から触って
+    /// VerifyAccess で <see cref="InvalidOperationException"/> が出てプロセス終了する
+    /// (再現: Ctrl+クリックで grid fit → fit 操作後の StateChanged 発火)。
+    /// </summary>
     private void OnHistoryStateChanged()
+    {
+        if (_uiContext is { } ctx && SynchronizationContext.Current != ctx)
+        {
+            ctx.Post(static state => ((MainWindowViewModel)state!).OnHistoryStateChangedCore(), this);
+            return;
+        }
+        OnHistoryStateChangedCore();
+    }
+
+    private void OnHistoryStateChangedCore()
     {
         CanUndo = _history.CanUndo;
         CanRedo = _history.CanRedo;
