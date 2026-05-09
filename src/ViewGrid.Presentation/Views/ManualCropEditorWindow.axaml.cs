@@ -9,12 +9,16 @@ using Avalonia.Media.Imaging;
 namespace ViewGrid.Presentation.Views;
 
 /// <summary>
-/// ManualCrop（任意矩形トリミング）の詳細編集ダイアログ。元画像を ScrollViewer 上で
-/// ズーム表示し、8 ハンドル + マット表示 + 自動スクロール付きで矩形を編集する。
-/// 親 (CopyPropertiesView) から <see cref="Initialize"/> で入力値を渡し、
-/// <c>ShowDialog</c> 後に <see cref="GetResult"/> で OK 時のみ
-/// 編集後の値を取得する（キャンセル時は <c>null</c>）。
+/// 元画像座標系のピクセル矩形を 8 ハンドル + マット表示 + 自動スクロール付きで編集する
+/// 汎用ダイアログ。 元は ManualCrop 専用だったが、 入出力 (画像パス + 初期矩形 → 編集後矩形)
+/// が完全に汎用なので、 ProtectedRegion (保護領域) の矩形編集にも再利用する。
+/// 呼び出し側は <see cref="Window.Title"/> を上書きして用途を区別する。
 /// </summary>
+/// <remarks>
+/// 親 (CopyPropertiesView) から <see cref="Initialize"/> で入力値を渡し、 <c>ShowDialog</c>
+/// 後に <see cref="GetResult"/> で OK 時のみ編集後の値を取得する (キャンセル時は <c>null</c>)。
+/// クラス名は歴史的理由で残しているが、 機能としては rect editor。
+/// </remarks>
 public partial class ManualCropEditorWindow : Window
 {
     private enum DragMode

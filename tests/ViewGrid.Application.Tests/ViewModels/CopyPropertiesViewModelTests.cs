@@ -15,15 +15,16 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
     private UseCaseFixture _fx = null!;
     private CopyPropertiesViewModel _vm = null!;
     private WeakReferenceMessenger _messenger = null!;
+    private UndoRedoService _history = null!;
 
     public async Task InitializeAsync()
     {
         _fx = await UseCaseFixture.CreateAsync();
         var update = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
         _messenger = new WeakReferenceMessenger();
-        var history = new UndoRedoService();
+        _history = new UndoRedoService();
         _vm = new CopyPropertiesViewModel(
-            update, history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
+            update, _history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
             NullLogger<CopyPropertiesViewModel>.Instance);
     }
 
@@ -531,5 +532,54 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
 
         _vm.RegionItems.Should().HaveCount(1);
         _vm.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SaveAsync_Then_Undo_Reverts_Regions_To_Empty()
+    {
+        // VM → Save → History.Undo → DB 反映 の往復統合。 VM が UpdateImageCopyCommand
+        // を history に乗せ、 history.UndoAsync で UseCase 経由 before snapshot が DB に書き戻る
+        // ことを確認する (Region 追加前の空状態に戻る)。
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        _vm.UpdateRegionRect(_vm.RegionItems[0], new RegionRectFraction(0.1, 0.2, 0.3, 0.4));
+        await _vm.SaveAsync();
+
+        // 永続化された状態を確認
+        var saved = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        saved!.Regions.Should().HaveCount(1);
+
+        // History 経由で Undo
+        await _history.UndoAsync();
+
+        // DB 上で Region が空に戻っているはず (before snapshot は Empty)
+        var afterUndo = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        afterUndo!.Regions.Should().BeEmpty();
+
+        // VM に再 attach すると一覧も空に戻る
+        _vm.Attach(new CopyItemViewModel(afterUndo));
+        _vm.RegionItems.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SaveAsync_Then_Undo_Then_Redo_Restores_Regions()
+    {
+        // Undo の続きで Redo すると Region が復活する。 Region.Id 安定性も維持される。
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        var originalId = _vm.RegionItems[0].Id;
+        _vm.UpdateRegionRect(_vm.RegionItems[0], new RegionRectFraction(0.5, 0.5, 0.2, 0.2));
+        await _vm.SaveAsync();
+
+        await _history.UndoAsync();
+        (await _fx.CopyRepository.FindByIdAsync(source.CopyId))!.Regions.Should().BeEmpty();
+
+        await _history.RedoAsync();
+        var redone = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        redone!.Regions.Should().HaveCount(1);
+        redone.Regions[0].Id.Should().Be(originalId, "Redo で Region.Id が安定している");
+        redone.Regions[0].Rect.Width.Should().BeApproximately(0.2, 1e-9);
     }
 }

@@ -7,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using ViewGrid.Application.ViewModels;
+using ViewGrid.Core.Entities;
 
 namespace ViewGrid.Presentation.Views;
 
@@ -143,16 +144,57 @@ public partial class CopyPropertiesView : UserControl
     }
 
     /// <summary>
-    /// 保護領域 「編集...」 ボタンのハンドラ。 RegionEditorWindow (Task 9) を起動して、
-    /// OK 時に <see cref="CopyPropertiesViewModel.UpdateRegionRect"/> で結果を反映する。
-    /// 現状 (Task 8b 段階) は Editor 未実装のためメッセージのみ表示するスタブ。
+    /// 保護領域 「編集...」 ボタンのハンドラ。 ManualCropEditorWindow を rect editor として
+    /// 流用 (Title だけ書き換え) し、 OK で閉じられたら結果を <see cref="CopyPropertiesViewModel.UpdateRegionRect"/>
+    /// に渡して反映する。 SourceImagePath / SourceWidth / SourceHeight が必要なので、 未取得
+    /// (取り込み済みでない論理コピー) では IsEnabled=false でガード (XAML 側で SelectedRegion
+    /// が non-null である必要があるが、 source が未取得だと結局 source path も null になる)。
     /// </summary>
-    private void OnEditRegionClicked(object? sender, RoutedEventArgs e)
+    private async void OnEditRegionClicked(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not CopyPropertiesViewModel vm) return;
-        if (vm.SelectedRegion is null) return;
-        // Task 9 で RegionEditorWindow を実装したらここで起動する。
-        vm.StatusMessage = "保護領域エディタは未実装です。";
+        if (_vm is null) return;
+        if (_vm.SelectedRegion is not { } region) return;
+        if (string.IsNullOrEmpty(_vm.SourceImagePath))
+        {
+            _vm.StatusMessage = "保護領域の編集には元画像が必要です。";
+            return;
+        }
+        if (_vm.SourceWidth <= 0 || _vm.SourceHeight <= 0) return;
+        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+
+        // 0–1 fraction → ピクセル整数 (rect editor の入出力単位)
+        var initX = (int)Math.Round(region.Rect.X * _vm.SourceWidth);
+        var initY = (int)Math.Round(region.Rect.Y * _vm.SourceHeight);
+        var initW = (int)Math.Round(region.Rect.Width * _vm.SourceWidth);
+        var initH = (int)Math.Round(region.Rect.Height * _vm.SourceHeight);
+
+        var window = new ManualCropEditorWindow
+        {
+            Title = "保護領域 詳細編集",
+        };
+        try
+        {
+            window.Initialize(_vm.SourceImagePath, _vm.SourceWidth, _vm.SourceHeight,
+                initX, initY, initW, initH);
+        }
+        catch
+        {
+            // 画像読み込み失敗等。 ManualCrop と同じく静かに諦める (StatusMessage 表示は省略)。
+            return;
+        }
+
+        await window.ShowDialog(owner);
+
+        if (window.GetResult() is { } r)
+        {
+            // ピクセル整数 → 0–1 fraction に再換算して VM に反映
+            var newRect = new RegionRectFraction(
+                (double)r.X / _vm.SourceWidth,
+                (double)r.Y / _vm.SourceHeight,
+                (double)r.W / _vm.SourceWidth,
+                (double)r.H / _vm.SourceHeight);
+            _vm.UpdateRegionRect(region, newRect);
+        }
     }
 
     /// <summary>
