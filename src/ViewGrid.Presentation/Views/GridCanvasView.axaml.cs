@@ -405,16 +405,26 @@ public partial class GridCanvasView : UserControl
             return;
         }
 
+        // renderer は IsAntialias=false で SKCanvas.DrawRect する (pixel center 包含ルール)。
+        // ここでも canvas 座標を整数 pixel に snap してから display 倍率変換することで、
+        // PNG 出力との 1px ズレ (sub-pixel anti-alias 起因) を抑える。
+        var snapL = Math.Round(rect.X);
+        var snapT = Math.Round(rect.Y);
+        var snapR = Math.Round(rect.X + rect.W);
+        var snapB = Math.Round(rect.Y + rect.H);
+        var snapW = Math.Max(0, snapR - snapL);
+        var snapH = Math.Max(0, snapB - snapT);
+
         Grid.SetRow(RegionParentFillOverlay, 0);
         Grid.SetColumn(RegionParentFillOverlay, 0);
         Grid.SetRowSpan(RegionParentFillOverlay, Math.Max(1, grid.Rows));
         Grid.SetColumnSpan(RegionParentFillOverlay, Math.Max(1, grid.Cols));
         RegionParentFillOverlay.Margin = new Thickness(
-            rect.X * dispScaleX,
-            rect.Y * dispScaleY,
+            snapL * dispScaleX,
+            snapT * dispScaleY,
             0, 0);
-        RegionParentFillOverlay.Width = rect.W * dispScaleX;
-        RegionParentFillOverlay.Height = rect.H * dispScaleY;
+        RegionParentFillOverlay.Width = snapW * dispScaleX;
+        RegionParentFillOverlay.Height = snapH * dispScaleY;
 
         // FillMode に応じた Background。 Transparent は半透明グレーで 「ここが alpha=0 になる」 を示す。
         IBrush brush = region.FillMode switch
