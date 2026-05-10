@@ -443,6 +443,7 @@ public partial class GridCanvasView : UserControl
         PlacementItemViewModel placement,
         ProtectedRegionItemViewModel region)
     {
+        // cellRect: PixelOffset を含めない (cell 境界クリップ用)。 renderer の DrawOne と同じ流儀。
         var cellRect = PlacementGeometry.ComputeDestRect(
             new ViewGrid.Core.Entities.PixelSize(grid.CanvasWidth, grid.CanvasHeight),
             grid.Cols, grid.Rows,
@@ -451,6 +452,15 @@ public partial class GridCanvasView : UserControl
             pixelOffsetX: 0, pixelOffsetY: 0);
         if (cellRect.Width <= 0 || cellRect.Height <= 0) return null;
         if (placement.SourceWidth <= 0 || placement.SourceHeight <= 0) return null;
+
+        // dest: PixelOffset 適用後の dst rect 計算用 (ScalingMode + Alignment はこれを基準にする)。
+        var dest = PlacementGeometry.ComputeDestRect(
+            new ViewGrid.Core.Entities.PixelSize(grid.CanvasWidth, grid.CanvasHeight),
+            grid.Cols, grid.Rows,
+            grid.ColWeights, grid.RowWeights,
+            placement.Position, placement.OccupySize,
+            placement.PixelOffsetX, placement.PixelOffsetY);
+        if (dest.Width <= 0 || dest.Height <= 0) return null;
 
         // 1. region ∩ effectiveCrop (source 0-1)
         var crop = placement.EffectiveCropFraction ?? new CropFraction(0, 0, 1, 1);
@@ -473,10 +483,10 @@ public partial class GridCanvasView : UserControl
             new ViewGrid.Core.UseCases.PixelRect(cx, cy, cw, ch), srcW, srcH, transform);
         if (srcRectInTransformed.Width <= 0 || srcRectInTransformed.Height <= 0) return null;
 
-        // 5. dstRect (cell 内の描画矩形) を ScalingMode + Alignment で計算
+        // 5. dstRect (cell 内の描画矩形) を ScalingMode + Alignment で計算 (PixelOffset 反映後の dest を使う)。
         var dst = ComputeDstRectForFill(
             srcRectInTransformed.Width, srcRectInTransformed.Height,
-            cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height,
+            dest.X, dest.Y, dest.Width, dest.Height,
             placement.ScalingMode, placement.Alignment);
         if (dst.W <= 0 || dst.H <= 0) return null;
 
