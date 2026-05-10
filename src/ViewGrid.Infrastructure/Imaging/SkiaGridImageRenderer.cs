@@ -387,34 +387,17 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         Math.Max(a.Bottom, b.Bottom));
 
     /// <summary>
-    /// PhotoBoard step 7 (overlay 抽出) で <see cref="DrawOne"/> に渡される capture 関連の
-    /// 引数 3 つを 1 まとめにする内部レコード。 全フィールドが揃っているときのみ overlay 抽出が
-    /// 走る。 null を渡せば白塗りだけ実行される (= step 6 単体相当の挙動)。
-    /// </summary>
-    private sealed record ProtectedRegionCaptureContext(
-        SKSurface CellSurface,
-        List<IDisposable> SliceLifetimeBag,
-        List<PendingProtectedRegionOverlay> OverlaysOut);
-
-    /// <summary>
     /// <paramref name="paintRegions"/>=<c>true</c> のとき、 通常描画後に <see cref="ImageCopy.Regions"/>
-    /// に登録された保護領域を白で塗りつぶす。 これは PhotoBoard 出力で 「親側を白塗り → overlay は
-    /// 別途 canvas 水平で重ね描き」 の前段階として cell-bounded 画像内の region 元位置を消す処理
-    /// (Phase 1)。 Flat / Normal モード経路では <c>false</c> のまま渡すこと (設計上 PhotoBoard 限定)。
+    /// に登録された保護領域を <see cref="ProtectedRegionFillMode"/> に従って塗りつぶす。 region asset の
+    /// 描画 (cell 内ステッカー) は Phase C で再導入されるまで保留中で、 ここでは親側塗りのみ実行する。
     /// </summary>
-    /// <param name="overlayCapture">overlay slice の抽出先。 <paramref name="paintRegions"/> が
-    /// true で、 かつこれが non-null のときのみ、 白塗り直前の cell snapshot を取って各 region の
-    /// paint rect で <see cref="SKImage.Subset"/> し、 結果を context の output list に追加する。
-    /// snapshot 自体の lifetime は context の lifetime bag に積む (Subset の pixel 共有は実装定義の
-    /// ため、 親 snapshot を生かしておく)。</param>
     private Error? DrawOne(
         SKCanvas canvas,
         GridCanvas grid,
         PlacementRenderItem item,
         SKSamplingOptions sampling,
         SKPaint paint,
-        bool paintRegions = false,
-        ProtectedRegionCaptureContext? overlayCapture = null)
+        bool paintRegions = false)
     {
         if (!File.Exists(item.SourceImageAbsolutePath))
             return Error.NotFound(
@@ -495,25 +478,11 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             canvas.ClipRect(SKRect.Create(cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height));
             canvas.DrawImage(transformedImage, srcRect, dstRect, sampling, paint);
 
-            // PhotoBoard 経路でのみ、 親画像描画直後に保護領域を白塗りする (cell 境界クリップ
+            // PhotoBoard 経路でのみ、 親画像描画直後に保護領域を塗りつぶす (cell 境界クリップ
             // 状態を維持したまま canvas 上に直接描く。 既存の DrawImage と同じ canvas 状態で
-            // 行うため別途 Save/Restore は不要)。 さらに captureFrom が指定されているときは、
-            // 白塗り「直前」の cell snapshot から overlay slice を抽出する (step 7 で最終キャンバス
-            // に canvas 水平で再描画する素材)。
+            // 行うため別途 Save/Restore は不要)。 region asset 自体の描画は Phase C で実装。
             if (paintRegions && !item.Copy.Regions.IsDefaultOrEmpty)
             {
-                if (overlayCapture is { } capture)
-                {
-                    CaptureProtectedRegionOverlays(
-                        capture,
-                        item.Copy,
-                        sourceWidth: decoded.Width, sourceHeight: decoded.Height,
-                        autoCropSourceRect: autoCropSourceRect,
-                        srcRectInTransformed: srcRect,
-                        dstRect: dstRect,
-                        cellRect: cellRect);
-                }
-
                 PaintProtectedRegions(
                     canvas,
                     item.Copy,
@@ -532,136 +501,13 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     }
 
     /// <summary>
-    /// PhotoBoard step 5 (overlay 合成) を担当: 各 region の slice を、 PhotoBoard 親変換を含む位置に
-    /// 中心合わせで axis-aligned で描画する。 親回転は <see cref="RegionGeometry.ComputeOverlayPlacement"/>
-    /// に内包されているので、 ここで再度回転を適用しないことが重要 (KeepUpright = canvas 水平)。
-    /// 描画順は overlays の順 (= ImageCopy.Regions の SortOrder 昇順)。
-    /// </summary>
-    private static void DrawProtectedRegionOverlays(
-        SKCanvas finalCanvas,
-        PhotoBoardItem layoutItem,
-        IReadOnlyList<PendingProtectedRegionOverlay> overlays,
-        int margin,
-        SKSamplingOptions sampling)
-    {
-        using var overlayPaint = new SKPaint { IsAntialias = true };
-        foreach (var overlay in overlays)
-        {
-            var place = RegionGeometry.ComputeOverlayPlacement(layoutItem, overlay.CellLocalRect);
-            // pre-margin → final canvas (左上原点 + margin)
-            var left = place.CanvasCenterX - place.WidthPx / 2.0 + margin;
-            var top = place.CanvasCenterY - place.HeightPx / 2.0 + margin;
-            var dst = new SKRect(
-                (float)left,
-                (float)top,
-                (float)(left + place.WidthPx),
-                (float)(top + place.HeightPx));
-            finalCanvas.DrawImage(overlay.Slice, dst, sampling, overlayPaint);
-        }
-    }
-
-    /// <summary>
-    /// PhotoBoard step 4 (最終キャンバス合成) で canvas 水平描画される overlay 1 件分の情報。
-    /// <see cref="Slice"/> は cell-bounded image (白塗り「前」の状態) から切り出した SKImage、
-    /// <see cref="CellLocalRect"/> は cell 内 0–1 比率での位置 (<see cref="RegionGeometry.ComputeOverlayPlacement"/>
-    /// の入力)。 lifetime は呼び出し側 (RenderPhotoBoard) の <c>toDispose</c> で管理される。
-    /// </summary>
-    private sealed record PendingProtectedRegionOverlay(SKImage Slice, RegionRectFraction CellLocalRect);
-
-    /// <summary>
-    /// 白塗り直前の cell snapshot から、 各 region の paint rect に対応する SKImage slice を抽出して
-    /// <paramref name="capture"/> の output list に追加する。 snapshot 自体も capture の lifetime bag
-    /// に積み、 SKImage.Subset の pixel 共有が起こっても親が生きている保証を作る。
-    /// </summary>
-    private static void CaptureProtectedRegionOverlays(
-        ProtectedRegionCaptureContext capture,
-        ImageCopy copy,
-        int sourceWidth, int sourceHeight,
-        PixelRect? autoCropSourceRect,
-        SKRect srcRectInTransformed,
-        SKRect dstRect,
-        PixelRect cellRect)
-    {
-        if (sourceWidth <= 0 || sourceHeight <= 0) return;
-        if (cellRect.Width <= 0 || cellRect.Height <= 0) return;
-
-        var snapshot = capture.CellSurface.Snapshot();
-        if (snapshot is null) return;
-        capture.SliceLifetimeBag.Add(snapshot);
-
-        var effCrop = ComputeEffectiveCropFraction(autoCropSourceRect, sourceWidth, sourceHeight);
-        var cellSkRect = SKRect.Create(cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height);
-        var surfaceBounds = SKRectI.Create(0, 0, cellRect.Width, cellRect.Height);
-
-        foreach (var region in copy.Regions)
-        {
-            var overlay = TryBuildRegionOverlay(
-                region, snapshot, effCrop, copy.Transform,
-                sourceWidth, sourceHeight,
-                srcRectInTransformed, dstRect,
-                cellRect, cellSkRect, surfaceBounds);
-            if (overlay is null) continue;
-            capture.SliceLifetimeBag.Add(overlay.Slice);
-            capture.OverlaysOut.Add(overlay);
-        }
-    }
-
-    /// <summary>
-    /// 1 件の region について、 cell snapshot から overlay slice を切り出して
-    /// <see cref="PendingProtectedRegionOverlay"/> を構築する。 各段で交差なし / Subset 失敗なら
-    /// <c>null</c> を返してスキップ可能。
-    /// </summary>
-    private static PendingProtectedRegionOverlay? TryBuildRegionOverlay(
-        ProtectedRegion region,
-        SKImage cellSnapshot,
-        CropFraction effCrop,
-        ImageTransform transform,
-        int sourceWidth, int sourceHeight,
-        SKRect srcRectInTransformed,
-        SKRect dstRect,
-        PixelRect cellRect,
-        SKRect cellSkRect,
-        SKRectI surfaceBounds)
-    {
-        var paintRect = ComputeRegionWhitePaintRect(
-            region, effCrop, transform,
-            sourceWidth, sourceHeight,
-            srcRectInTransformed, dstRect, cellSkRect);
-        if (paintRect is not { } rect) return null;
-
-        // Surface pixel 座標 (= cellRect 原点に対する offset)。 Subset は整数座標なので round。
-        // 浮動小数誤差で 1px はみ出す可能性があるため surface bounds に clamp。
-        var sliceRect = new SKRectI(
-            (int)Math.Round(rect.Left - cellRect.X),
-            (int)Math.Round(rect.Top - cellRect.Y),
-            (int)Math.Round(rect.Right - cellRect.X),
-            (int)Math.Round(rect.Bottom - cellRect.Y));
-        sliceRect.Intersect(surfaceBounds);
-        if (sliceRect.Width <= 0 || sliceRect.Height <= 0) return null;
-
-        var slice = cellSnapshot.Subset(sliceRect);
-        if (slice is null) return null;
-
-        // cell-local 0–1 (ComputeOverlayPlacement への入力)。 整数 round 後の sliceRect 基準で
-        // 計算することで、 後段 (step 5) で描画位置とサイズが一致する。
-        var cellLocalRect = new RegionRectFraction(
-            (double)sliceRect.Left / cellRect.Width,
-            (double)sliceRect.Top / cellRect.Height,
-            (double)sliceRect.Width / cellRect.Width,
-            (double)sliceRect.Height / cellRect.Height);
-
-        return new PendingProtectedRegionOverlay(slice, cellLocalRect);
-    }
-
-    /// <summary>
-    /// <see cref="ImageCopy.Regions"/> を白で塗りつぶす。 PhotoBoard 出力時に 「親画像側で region
-    /// 元位置を消し、 overlay として後段で水平描画する」 前半を担当。
+    /// <see cref="ImageCopy.Regions"/> を <see cref="ProtectedRegionFillMode"/> に従って塗りつぶす。
+    /// region asset 本体の描画は Phase C で別経路として実装される。
     /// </summary>
     /// <remarks>
-    /// 各 region の白塗り矩形計算は <see cref="ComputeRegionWhitePaintRect"/> に分離してあり、
-    /// 本メソッドは guards / 共通設定 / 描画ループだけを持つ。 Phase 1 の
-    /// <see cref="ProtectedRegionFillMode"/> は <c>White</c> 一択のため、 実装側でも白固定。 将来
-    /// Transparent / Inpaint を追加する際は <see cref="ComputeRegionWhitePaintRect"/> 呼び出し直前で分岐する。
+    /// 各 region の塗り矩形計算は <see cref="ComputeRegionWhitePaintRect"/> に分離してあり、
+    /// 本メソッドは guards / 共通設定 / 描画ループだけを持つ。 現状は <see cref="ProtectedRegionFillMode.White"/>
+    /// 固定で塗っており、 他のモードは Phase C で扱う。
     /// </remarks>
     private static void PaintProtectedRegions(
         SKCanvas canvas,
@@ -1012,11 +858,9 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         try
         {
             // 1. 各 placement をセル矩形サイズの SKImage に切り出す (白背景でフレーム下地に)。
-            //    Regions が登録されている placement は、 白塗り直前の cell snapshot から overlay
-            //    slice をキャプチャして placementOverlays[i] に格納する (step 4 で canvas 水平描画)。
+            //    Regions が登録されている placement は cell-bounded image 生成時に塗りが入る。
             var placementImages = new List<SKImage>(sortedItems.Count);
             var baseRects = new List<PlacementBaseRect>(sortedItems.Count);
-            var placementOverlays = new List<List<PendingProtectedRegionOverlay>>(sortedItems.Count);
             foreach (var item in sortedItems)
             {
                 ct.ThrowIfCancellationRequested();
@@ -1044,15 +888,11 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 // surface 内に収まる。
                 cellCanvas.Translate(-cellRect.X, -cellRect.Y);
 
-                // PhotoBoard 経路では paintRegions=true + overlayCapture を渡し、 DrawOne 内で
-                // cell-bounded 画像に保護領域を白塗り + 直前 snapshot から overlay slice を抽出する。
-                // step 4 で canvas 水平描画する素材として overlaysForItem に格納される。
-                // Flat / Normal 経路は paintRegions=false (default) なので影響なし。
-                var overlaysForItem = new List<PendingProtectedRegionOverlay>();
+                // PhotoBoard 経路では paintRegions=true で DrawOne を呼び、 cell-bounded 画像に
+                // 保護領域を塗りつぶす。 Flat / Normal 経路は paintRegions=false (default)。
                 var error = DrawOne(
                     cellCanvas, grid, item, sampling, paint,
-                    paintRegions: true,
-                    overlayCapture: new ProtectedRegionCaptureContext(cellSurface, toDispose, overlaysForItem));
+                    paintRegions: true);
                 if (error is not null)
                     return error.Value;
 
@@ -1061,7 +901,6 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 placementImages.Add(snapshot);
                 baseRects.Add(new PlacementBaseRect(
                     item.Placement.Position.Y, item.Placement.Position.X, cellRect));
-                placementOverlays.Add(overlaysForItem);
             }
 
             if (placementImages.Count == 0)
@@ -1128,18 +967,6 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 var localY = -composite.Height / 2.0 - layoutItem.RotationPivotOffsetY;
                 finalCanvas.DrawImage(composite, (float)localX, (float)localY, drawPaint);
                 finalCanvas.Restore();
-
-                // 5. ProtectedRegion overlay を canvas 水平で重ね描き (KeepUpright 仕様)。
-                //    親側は既に白塗り済みなので、 overlay は穴を埋める形で region 元位置の
-                //    画像片を canvas 水平 (PhotoBoard rotation を打ち消した向き) で再描画する。
-                //    位置は RegionGeometry.ComputeOverlayPlacement で算出した pre-margin 座標 +
-                //    margin。 影 / フレーム は付けない (overlay は親より上のレイヤーとして純粋に
-                //    可読性のために置く扱い)。
-                var overlays = placementOverlays[i];
-                if (overlays.Count > 0)
-                {
-                    DrawProtectedRegionOverlays(finalCanvas, layoutItem, overlays, margin, sampling);
-                }
             }
 
             using var finalImage = finalSurface.Snapshot();

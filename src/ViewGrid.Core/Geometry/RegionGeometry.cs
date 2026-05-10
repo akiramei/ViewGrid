@@ -4,47 +4,24 @@ using ViewGrid.Core.UseCases;
 namespace ViewGrid.Core.Geometry;
 
 /// <summary>
-/// <see cref="ProtectedRegion"/> と effective Crop の交差結果。
-/// Phase 1 の renderer は <see cref="SourceRect"/> (元画像 0–1) で 「Region が画像内のどこに
-/// あるか」 を、 <see cref="CropLocalRect"/> (Crop 内 0–1) で 「cell-bounded image (= Crop 後の
-/// 画像) のどこを overlay として切り出し / 親側に白塗りするか」 を決める。
+/// <see cref="ProtectedRegion"/> と effective Crop の交差結果。 親側塗りつぶし矩形を計算する
+/// 際の入力として使う。 region asset 描画は Crop 非依存のため別経路。
 /// </summary>
 public readonly record struct EffectiveRegion(
     RegionRectFraction SourceRect,
     RegionRectFraction CropLocalRect);
 
 /// <summary>
-/// PhotoBoard の最終キャンバス上での overlay 配置。
-/// 中心位置 (<see cref="CanvasCenterX"/> / <see cref="CanvasCenterY"/>) は PhotoBoard の親変換
-/// (offset + rotation around pivot) を適用した後の sub-pixel 座標。
-/// サイズ (<see cref="WidthPx"/> / <see cref="HeightPx"/>) は cell-local pixel size と同一で、
-/// overlay は canvas 水平で axis-aligned 描画される (PhotoBoard rotation を打ち消す KeepUpright 仕様)。
-/// </summary>
-public readonly record struct OverlayPlacement(
-    double CanvasCenterX,
-    double CanvasCenterY,
-    double WidthPx,
-    double HeightPx);
-
-/// <summary>
 /// <see cref="ProtectedRegion"/> の幾何計算を純粋関数で提供する。
-/// renderer (<c>SkiaGridImageRenderer</c>) は本クラスの 2 関数を組み合わせて、
-/// 「Region をどこに白塗りし、 どこに overlay を描くか」 を決定する。
 /// </summary>
 /// <remarks>
-/// <para>処理パイプラインの位置付け:</para>
-/// <list type="number">
-///   <item>renderer が ImageCropResolver で effective Crop を解決</item>
-///   <item><see cref="Intersect"/> で Region × Crop の交差を計算 (null = 描画なし)</item>
-///   <item>renderer が cell-bounded image を生成 (Transform / ScalingMode / Alignment 適用)</item>
-///   <item><see cref="EffectiveRegion.CropLocalRect"/> で 「cell image のどこを overlay slice に
-///     使うか」 と 「親側で白塗りする領域」 を決める</item>
-///   <item>PhotoBoardLayout.Compute で各 placement の <see cref="PhotoBoardItem"/> を取得</item>
-///   <item><see cref="ComputeOverlayPlacement"/> で overlay の最終キャンバス上の位置を確定</item>
-///   <item>renderer は cell image に白塗り → 最終キャンバスに親画像合成 → overlay を canvas 水平で描画</item>
+/// <para>役割:</para>
+/// <list type="bullet">
+///   <item><see cref="Intersect"/>: 親側塗りつぶし計算用。 region と effective Crop の交差から
+///     「parent の可視部分のうち region に属する領域」 を切り出す</item>
+///   <item><see cref="ComputeSourceToCellScale"/>: region asset の描画サイズ計算用。
+///     親画像の source-pixel→cell-pixel スケール係数を返す (回転による軸入れ替えを考慮)</item>
 /// </list>
-/// <para>Transform (90° 回転等) と ScalingMode は cell-bounded image の生成時点で焼き込まれて
-/// いる前提で、 本クラスでは cell-local 座標から canvas 座標への変換だけを担う。</para>
 /// </remarks>
 public static class RegionGeometry
 {
@@ -84,51 +61,34 @@ public static class RegionGeometry
     }
 
     /// <summary>
-    /// <paramref name="item"/> の親変換 (BaseRect + offset + rotation around pivot) を適用し、
-    /// cell-local 0–1 で表現された <paramref name="cellLocalRegion"/> が最終キャンバス上で
-    /// どこに配置されるかを計算する。
+    /// 親画像の 「source-pixel → cell-pixel」 スケール係数を返す。 region asset を親と同じ倍率で
+    /// 描画するために使う (UniformContain なら Sx == Sy、 Fill なら異なり得る)。
     /// </summary>
-    /// <param name="item">対象 placement の PhotoBoard 描画パラメータ。</param>
-    /// <param name="cellLocalRegion">cell-bounded image (= BaseRect 内画像) における Region の
-    /// 位置 (0–1)。 通常は <see cref="EffectiveRegion.CropLocalRect"/> を渡す。</param>
-    /// <remarks>
-    /// 「KeepUpright」 仕様: 戻り値の中心位置は PhotoBoard rotation を含む親変換後の位置だが、
-    /// overlay は canvas 水平で描画する想定なので Width / Height は cell-local pixel size と
-    /// 同一の axis-aligned サイズを返す。 ImageCopy.Transform は cell-bounded image の中身に
-    /// すでに焼き込まれている前提で、 本関数では Transform を直接扱わない。
-    /// </remarks>
-    public static OverlayPlacement ComputeOverlayPlacement(
-        PhotoBoardItem item,
-        RegionRectFraction cellLocalRegion)
+    /// <param name="transform">親の <see cref="ImageTransform"/>。 Cw90 / Cw270 では source X 軸 ↔
+    /// transformed Y 軸が入れ替わる。 Flip は cell 内の見え方には影響するが scale magnitude には影響しない
+    /// ので、 ここでは Rotation だけ参照する。</param>
+    /// <param name="transformedSrcRectWidth">renderer が <see cref="ImageCropResolver"/> 経由で
+    /// 計算する「実際に描画される transformed image 領域」 の幅 (= 可視 src rect の幅、 transformed coord)。</param>
+    /// <param name="transformedSrcRectHeight">同上、 高さ。</param>
+    /// <param name="dstRectWidth">cell 内に描画される dest 矩形の幅 (cell-local pixel)。</param>
+    /// <param name="dstRectHeight">同上、 高さ。</param>
+    /// <returns>(Sx, Sy): source の X 軸 / Y 軸 1 px が cell 上で何 px に相当するか。
+    /// <paramref name="transformedSrcRectWidth"/> または <paramref name="transformedSrcRectHeight"/> が 0 以下なら (0, 0)。</returns>
+    public static (double Sx, double Sy) ComputeSourceToCellScale(
+        ImageTransform transform,
+        double transformedSrcRectWidth,
+        double transformedSrcRectHeight,
+        double dstRectWidth,
+        double dstRectHeight)
     {
-        ArgumentNullException.ThrowIfNull(item);
+        if (transformedSrcRectWidth <= 0 || transformedSrcRectHeight <= 0) return (0.0, 0.0);
 
-        var cellW = (double)item.BaseRect.Width;
-        var cellH = (double)item.BaseRect.Height;
+        var sxTransformed = dstRectWidth / transformedSrcRectWidth;
+        var syTransformed = dstRectHeight / transformedSrcRectHeight;
 
-        // 1. cell-local pixel 座標 (cell-bounded image 内)
-        var localCenterX = (cellLocalRegion.X + cellLocalRegion.Width / 2.0) * cellW;
-        var localCenterY = (cellLocalRegion.Y + cellLocalRegion.Height / 2.0) * cellH;
-        var widthPx = cellLocalRegion.Width * cellW;
-        var heightPx = cellLocalRegion.Height * cellH;
-
-        // 2. parent canvas 座標 (BaseRect + cell-local + PhotoBoard offset、 rotation 適用前)
-        var parentX = item.BaseRect.X + localCenterX + item.OffsetX;
-        var parentY = item.BaseRect.Y + localCenterY + item.OffsetY;
-
-        // 3. rotation pivot (cell center + pivot offset、 offset 適用後の canvas 座標)
-        var pivotX = item.BaseRect.X + cellW / 2.0 + item.OffsetX + item.RotationPivotOffsetX;
-        var pivotY = item.BaseRect.Y + cellH / 2.0 + item.OffsetY + item.RotationPivotOffsetY;
-
-        // 4. rotation 適用 (pivot を中心に回転)
-        var rad = item.RotationDeg * Math.PI / 180.0;
-        var cos = Math.Cos(rad);
-        var sin = Math.Sin(rad);
-        var dx = parentX - pivotX;
-        var dy = parentY - pivotY;
-        var rotatedX = pivotX + dx * cos - dy * sin;
-        var rotatedY = pivotY + dx * sin + dy * cos;
-
-        return new OverlayPlacement(rotatedX, rotatedY, widthPx, heightPx);
+        // 90° / 270° で source X 軸 ↔ transformed Y 軸 が swap される。
+        return transform.Rotation is Rotation.Cw90 or Rotation.Cw270
+            ? (syTransformed, sxTransformed)
+            : (sxTransformed, syTransformed);
     }
 }

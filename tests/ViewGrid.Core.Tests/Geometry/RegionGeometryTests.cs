@@ -7,7 +7,6 @@ namespace ViewGrid.Core.Tests.Geometry;
 
 /// <summary>
 /// <see cref="RegionGeometry"/> の純粋関数 2 つの境界・幾何検証。
-/// 設計詳細は HANDOFF/pending-designs.md の 「ProtectedRegion Phase 1 設計メモ」 を参照。
 /// </summary>
 public sealed class RegionGeometryTests
 {
@@ -114,101 +113,104 @@ public sealed class RegionGeometryTests
         result.Value.CropLocalRect.Height.Should().BeApproximately(0.8, 1e-9);
     }
 
-    // ─── ComputeOverlayPlacement: PhotoBoard 変形なし (恒等) ─────────────
+    // ─── ComputeSourceToCellScale: 回転なし (恒等) ──────────────────
 
     [Fact]
-    public void ComputeOverlayPlacement_Identity_PutsOverlayAtCellLocalCenter()
+    public void ComputeSourceToCellScale_Identity_UniformScale_ReturnsSameScaleBothAxes()
     {
-        // BaseRect = (100, 200, 400, 300)、 PhotoBoard 変形なし
-        var item = MakeItem(100, 200, 400, 300, offsetX: 0, offsetY: 0, rotationDeg: 0);
-        // cell-local rect = 中央 50% (X=0.25, Y=0.25, W=0.5, H=0.5)
-        var cellLocal = new RegionRectFraction(0.25, 0.25, 0.5, 0.5);
+        // src 100x200 → dst 50x100 (uniform 0.5x)、 transform は Identity
+        var (sx, sy) = RegionGeometry.ComputeSourceToCellScale(
+            ImageTransform.Identity,
+            transformedSrcRectWidth: 100, transformedSrcRectHeight: 200,
+            dstRectWidth: 50, dstRectHeight: 100);
 
-        var placement = RegionGeometry.ComputeOverlayPlacement(item, cellLocal);
-
-        // 中心 = BaseRect.X + cellW * 0.5 = 100 + 200 = 300
-        //       BaseRect.Y + cellH * 0.5 = 200 + 150 = 350
-        placement.CanvasCenterX.Should().BeApproximately(300.0, 1e-9);
-        placement.CanvasCenterY.Should().BeApproximately(350.0, 1e-9);
-        // サイズ = 0.5 * cell サイズ
-        placement.WidthPx.Should().BeApproximately(200.0, 1e-9);
-        placement.HeightPx.Should().BeApproximately(150.0, 1e-9);
-    }
-
-    // ─── ComputeOverlayPlacement: offset のみ ────────────────────────
-
-    [Fact]
-    public void ComputeOverlayPlacement_OffsetOnly_ShiftsCenter()
-    {
-        var item = MakeItem(100, 200, 400, 300, offsetX: 10, offsetY: -5, rotationDeg: 0);
-        var cellLocal = new RegionRectFraction(0.25, 0.25, 0.5, 0.5);
-
-        var placement = RegionGeometry.ComputeOverlayPlacement(item, cellLocal);
-
-        // offset 分だけ中心が動く (回転は 0 なので回転後座標は offset 適用済みと同じ)
-        placement.CanvasCenterX.Should().BeApproximately(310.0, 1e-9);
-        placement.CanvasCenterY.Should().BeApproximately(345.0, 1e-9);
-        // サイズは offset で変わらない
-        placement.WidthPx.Should().BeApproximately(200.0, 1e-9);
-        placement.HeightPx.Should().BeApproximately(150.0, 1e-9);
-    }
-
-    // ─── ComputeOverlayPlacement: rotation around pivot ──────────────
-
-    [Fact]
-    public void ComputeOverlayPlacement_Rotation_RotatesAroundPivot()
-    {
-        // BaseRect = (100, 100, 200, 200)、 中心 (200, 200)、 pivot offset = 0 (中心)、
-        // 90° CW 回転、 cell-local rect = 右半分 (X=0.5, Y=0, W=0.5, H=1)
-        var item = MakeItem(100, 100, 200, 200, offsetX: 0, offsetY: 0, rotationDeg: 90);
-        var cellLocal = new RegionRectFraction(0.5, 0.0, 0.5, 1.0);
-
-        var placement = RegionGeometry.ComputeOverlayPlacement(item, cellLocal);
-
-        // 回転前: cell-local center = (150, 100) → canvas (250, 200)、 pivot (200, 200)
-        // 90° CW で (250, 200) → pivot 中心に回転 → (200, 250)
-        // (回転は反時計回りが正の数学的慣例だが、 90° の回転で +X 方向 → +Y 方向 は時計回り、
-        // 実装は標準の cos / sin を使うため、 +X が +Y にマップされる方向 (時計回り)。)
-        placement.CanvasCenterX.Should().BeApproximately(200.0, 1e-9);
-        placement.CanvasCenterY.Should().BeApproximately(250.0, 1e-9);
-        // overlay は canvas 水平で axis-aligned 描画 → サイズは cell-local pixel size と同一
-        placement.WidthPx.Should().BeApproximately(100.0, 1e-9);
-        placement.HeightPx.Should().BeApproximately(200.0, 1e-9);
+        sx.Should().BeApproximately(0.5, 1e-9);
+        sy.Should().BeApproximately(0.5, 1e-9);
     }
 
     [Fact]
-    public void ComputeOverlayPlacement_NonZeroPivot_RotatesAroundOffsetPivot()
+    public void ComputeSourceToCellScale_Identity_NonUniform_FillModeProducesDifferentSxSy()
     {
-        // pivot offset が 0 でないケース。 pivot がセル中心からずれた位置にあると、
-        // 回転中心も移動する。
-        var item = MakeItem(0, 0, 200, 200,
-            offsetX: 0, offsetY: 0,
-            rotationDeg: 180, // 180° = pivot を中心とする点対称
-            pivotOffX: 10, pivotOffY: 20);
-        // cell-local center = (100, 100)、 pivot = cell center + offset = (110, 120)
-        var cellLocal = new RegionRectFraction(0.0, 0.0, 1.0, 1.0);
+        // Fill mode 想定: src 100x100 (transformed) → dst 200x50 (異方スケール)
+        var (sx, sy) = RegionGeometry.ComputeSourceToCellScale(
+            ImageTransform.Identity,
+            transformedSrcRectWidth: 100, transformedSrcRectHeight: 100,
+            dstRectWidth: 200, dstRectHeight: 50);
 
-        var placement = RegionGeometry.ComputeOverlayPlacement(item, cellLocal);
+        sx.Should().BeApproximately(2.0, 1e-9);
+        sy.Should().BeApproximately(0.5, 1e-9);
+    }
 
-        // 180° で pivot 中心の点対称: (100, 100) → 2*(110,120) - (100,100) = (120, 140)
-        placement.CanvasCenterX.Should().BeApproximately(120.0, 1e-9);
-        placement.CanvasCenterY.Should().BeApproximately(140.0, 1e-9);
+    // ─── ComputeSourceToCellScale: 90° / 270° で軸 swap ────────────────
+
+    [Fact]
+    public void ComputeSourceToCellScale_Cw90_SwapsAxes()
+    {
+        // 親が 90° CW 回転されているとき、 source の X 軸は transformed の Y 軸に対応する。
+        // src(transformed) 200x100、 dst 50x100 → sx_transformed=0.25, sy_transformed=1.0
+        // 軸 swap で source の (sx, sy) = (sy_transformed, sx_transformed) = (1.0, 0.25)
+        var (sx, sy) = RegionGeometry.ComputeSourceToCellScale(
+            new ImageTransform(Rotation.Cw90, false, false),
+            transformedSrcRectWidth: 200, transformedSrcRectHeight: 100,
+            dstRectWidth: 50, dstRectHeight: 100);
+
+        sx.Should().BeApproximately(1.0, 1e-9);
+        sy.Should().BeApproximately(0.25, 1e-9);
     }
 
     [Fact]
-    public void ComputeOverlayPlacement_OffsetAndRotation_AppliedInOrder()
+    public void ComputeSourceToCellScale_Cw270_SwapsAxes()
     {
-        // offset → rotation の順で適用される (rotation pivot も offset 適用後の座標で評価)。
-        // BaseRect = (0, 0, 100, 100)、 offset = (50, 0)、 rotation 90°、 pivot offset = 0
-        var item = MakeItem(0, 0, 100, 100, offsetX: 50, offsetY: 0, rotationDeg: 90);
-        var cellLocal = new RegionRectFraction(0.0, 0.0, 1.0, 1.0);
+        // 270° も同じく source X ↔ transformed Y。 Cw90 と同じ結果になる。
+        var (sx, sy) = RegionGeometry.ComputeSourceToCellScale(
+            new ImageTransform(Rotation.Cw270, false, false),
+            transformedSrcRectWidth: 200, transformedSrcRectHeight: 100,
+            dstRectWidth: 50, dstRectHeight: 100);
 
-        var placement = RegionGeometry.ComputeOverlayPlacement(item, cellLocal);
+        sx.Should().BeApproximately(1.0, 1e-9);
+        sy.Should().BeApproximately(0.25, 1e-9);
+    }
 
-        // cell-local center = (50, 50)、 offset 適用後 (100, 50)、 pivot = cell center + offset = (100, 50)
-        // pivot を中心に 90° → 自分自身が pivot なので位置不変 (100, 50)
-        placement.CanvasCenterX.Should().BeApproximately(100.0, 1e-9);
-        placement.CanvasCenterY.Should().BeApproximately(50.0, 1e-9);
+    [Fact]
+    public void ComputeSourceToCellScale_Cw180_DoesNotSwap()
+    {
+        // 180° は X / Y を入れ替えない (符号反転だけ、 scale magnitude は同じ)。
+        var (sx, sy) = RegionGeometry.ComputeSourceToCellScale(
+            new ImageTransform(Rotation.Cw180, false, false),
+            transformedSrcRectWidth: 100, transformedSrcRectHeight: 200,
+            dstRectWidth: 50, dstRectHeight: 100);
+
+        sx.Should().BeApproximately(0.5, 1e-9);
+        sy.Should().BeApproximately(0.5, 1e-9);
+    }
+
+    [Fact]
+    public void ComputeSourceToCellScale_FlipDoesNotAffectMagnitude()
+    {
+        // Flip は scale の符号 (向き) には影響するが、 ここでの scale は magnitude (常に正) なので
+        // FlipX / FlipY を立てても結果は変わらない。 region asset は左右反転されない仕様
+        // (回転・反転無視) のため、 これで正しい。
+        var (sxNoFlip, syNoFlip) = RegionGeometry.ComputeSourceToCellScale(
+            ImageTransform.Identity, 100, 200, 50, 100);
+        var (sxFlip, syFlip) = RegionGeometry.ComputeSourceToCellScale(
+            new ImageTransform(Rotation.None, FlipX: true, FlipY: true), 100, 200, 50, 100);
+
+        sxFlip.Should().BeApproximately(sxNoFlip, 1e-9);
+        syFlip.Should().BeApproximately(syNoFlip, 1e-9);
+    }
+
+    // ─── ComputeSourceToCellScale: 退化入力 ──────────────────────
+
+    [Fact]
+    public void ComputeSourceToCellScale_ZeroSrc_ReturnsZeroZero()
+    {
+        var (sx, sy) = RegionGeometry.ComputeSourceToCellScale(
+            ImageTransform.Identity,
+            transformedSrcRectWidth: 0, transformedSrcRectHeight: 100,
+            dstRectWidth: 50, dstRectHeight: 100);
+
+        sx.Should().Be(0.0);
+        sy.Should().Be(0.0);
     }
 
     // ─── ヘルパ ────────────────────────────────────────────────
@@ -221,25 +223,4 @@ public sealed class RegionGeometryTests
         actual.Width.Should().BeApproximately(expected.Width, tolerance);
         actual.Height.Should().BeApproximately(expected.Height, tolerance);
     }
-
-    private static PhotoBoardItem MakeItem(
-        int x, int y, int w, int h,
-        double offsetX, double offsetY,
-        double rotationDeg,
-        double pivotOffX = 0,
-        double pivotOffY = 0)
-        => new(
-            BaseRect: new PixelRect(x, y, w, h),
-            OffsetX: offsetX,
-            OffsetY: offsetY,
-            RotationDeg: rotationDeg,
-            RotationPivotOffsetX: pivotOffX,
-            RotationPivotOffsetY: pivotOffY,
-            FrameSidePx: 0,
-            FrameBottomPx: 0,
-            FrameAlpha: 0,
-            ShadowOffsetX: 0,
-            ShadowOffsetY: 0,
-            ShadowSigma: 0,
-            ShadowAlpha: 0);
 }

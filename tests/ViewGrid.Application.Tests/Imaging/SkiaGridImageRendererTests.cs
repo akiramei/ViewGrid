@@ -484,108 +484,9 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         hasFramePixel.Should().BeTrue("ポラロイド風フレーム (#FAFAF8) のピクセルが出力に現れること");
     }
 
-    // ─── ProtectedRegion 白塗り + overlay 統合テスト (Phase 1 step 6 + 7) ────────
-    // PhotoBoard 経路のみで cell-bounded image に白塗りされ、 さらに overlay として
-    // 元の画像 slice が canvas 水平で被せられる (KeepUpright)。 PhotoBoard.Off 係数
-    // (jitter / rotation すべて 0) では overlay 位置が cell-local 位置と同じになるため、
-    // 「region 内は元画像の色が見える (overlay により復元)」 を検証できる。
-
-    [Fact]
-    public async Task PhotoBoard_OverlayRestoresRegionContent_FromUniformImage()
-    {
-        // 100×100 赤画像、 region = 中央 (0.4, 0.4, 0.2, 0.2)。
-        // step 6 で白塗りされ、 step 7 で元の赤 slice が被さる → 中央は赤に戻る。
-        // (overlay 経路が走っていなければ中央は白のまま — 回帰検出に効く)
-        var imagePath = WriteSolidColorPng(100, 100, SKColors.Red);
-        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
-        var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
-            regions: ImmutableArray.Create(MakeRegion(new RegionRectFraction(0.4, 0.4, 0.2, 0.2), 0)));
-        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
-
-        var result = await _renderer.RenderPngAsync(
-            grid, [new PlacementRenderItem(placement, copy, imagePath)],
-            new RenderOptions(
-                TrimMode: TrimMode.None,
-                OutputMode: OutputMode.PhotoBoard,
-                PhotoBoardCoefficients: PhotoBoardStyleCoefficients.Off,
-                PhotoBoardSeedOverride: 0));
-
-        result.IsError.Should().BeFalse();
-        using var rendered = SKBitmap.Decode(result.Value);
-        // region 中央 (50, 50) は overlay により赤に復元されている
-        rendered.GetPixel(50, 50).Should().Be(SKColors.Red);
-        // region 外も赤
-        rendered.GetPixel(10, 10).Should().Be(SKColors.Red);
-        rendered.GetPixel(90, 90).Should().Be(SKColors.Red);
-        // 出力に白ピクセルが残っていない (overlay で完全に被覆)
-        var hasWhite = false;
-        for (int y = 0; y < rendered.Height && !hasWhite; y++)
-            for (int x = 0; x < rendered.Width; x++)
-                if (rendered.GetPixel(x, y) == SKColors.White) { hasWhite = true; break; }
-        hasWhite.Should().BeFalse("overlay で region 全域が元画像で被覆されているはず");
-    }
-
-    [Fact]
-    public async Task PhotoBoard_OverlayShowsCorrectSlice_FromTwoColorImage()
-    {
-        // 左半分赤・右半分青の 100×100 画像、 region = 右側 (0.6, 0.4, 0.2, 0.2) → 青エリア。
-        // overlay は元画像の右側 slice (青) を持っているので、 region 内は青のはず。
-        var imagePath = WriteHalfSplitPng(100, 100, SKColors.Red, SKColors.Blue);
-        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
-        var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
-            regions: ImmutableArray.Create(MakeRegion(new RegionRectFraction(0.6, 0.4, 0.2, 0.2), 0)));
-        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
-
-        var result = await _renderer.RenderPngAsync(
-            grid, [new PlacementRenderItem(placement, copy, imagePath)],
-            new RenderOptions(
-                TrimMode: TrimMode.None,
-                OutputMode: OutputMode.PhotoBoard,
-                PhotoBoardCoefficients: PhotoBoardStyleCoefficients.Off,
-                PhotoBoardSeedOverride: 0));
-
-        result.IsError.Should().BeFalse();
-        using var rendered = SKBitmap.Decode(result.Value);
-        // region 中央 (70, 50) は青 (overlay により正しく復元)
-        rendered.GetPixel(70, 50).Should().Be(SKColors.Blue);
-        // region 外の左半分は赤、 右半分は青のまま
-        rendered.GetPixel(25, 50).Should().Be(SKColors.Red);
-        rendered.GetPixel(95, 50).Should().Be(SKColors.Blue);
-    }
-
-    [Fact]
-    public async Task PhotoBoard_OverlayWorksForMultipleRegions()
-    {
-        // 2 個の region (左上 + 右下) が両方とも overlay で復元される
-        var imagePath = WriteSolidColorPng(100, 100, SKColors.Red);
-        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
-        var copy = CreateCopyWithRegions(
-            scaling: ScalingMode.None,
-            regions: ImmutableArray.Create(
-                MakeRegion(new RegionRectFraction(0.0, 0.0, 0.2, 0.2), 0),
-                MakeRegion(new RegionRectFraction(0.7, 0.7, 0.2, 0.2), 1)));
-        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
-
-        var result = await _renderer.RenderPngAsync(
-            grid, [new PlacementRenderItem(placement, copy, imagePath)],
-            new RenderOptions(
-                TrimMode: TrimMode.None,
-                OutputMode: OutputMode.PhotoBoard,
-                PhotoBoardCoefficients: PhotoBoardStyleCoefficients.Off,
-                PhotoBoardSeedOverride: 0));
-
-        result.IsError.Should().BeFalse();
-        using var rendered = SKBitmap.Decode(result.Value);
-        // 両 region とも赤に復元
-        rendered.GetPixel(10, 10).Should().Be(SKColors.Red);
-        rendered.GetPixel(80, 80).Should().Be(SKColors.Red);
-        // 残った白ピクセルがないこと
-        var hasWhite = false;
-        for (int y = 0; y < rendered.Height && !hasWhite; y++)
-            for (int x = 0; x < rendered.Width; x++)
-                if (rendered.GetPixel(x, y) == SKColors.White) { hasWhite = true; break; }
-        hasWhite.Should().BeFalse();
-    }
+    // ─── ProtectedRegion 親側塗り (cell-bounded 画像) 統合テスト ────────────
+    // PhotoBoard 経路で cell-bounded image に保護領域を塗る (Phase B では FillMode=White 固定の
+    // 単純塗りのみ)。 region asset 描画は Phase C で再導入される予定。
 
     [Fact]
     public async Task PhotoBoard_NoWhitePaint_WhenRegionOutsideEffectiveCrop()
@@ -638,47 +539,6 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         // Normal モードでは region が完全無視され、 全面赤 (白塗りも overlay も走らない)
         rendered.GetPixel(50, 50).Should().Be(SKColors.Red);
         rendered.GetPixel(45, 45).Should().Be(SKColors.Red);
-    }
-
-    [Fact]
-    public async Task PhotoBoard_OverlayKeepsCanvasHorizontal_UnderParentRotation()
-    {
-        // 上半分赤・下半分青の縦方向に色分けされた 100x100 画像を、 PhotoBoard で
-        // 親回転を強くかけたスタイル (Scattered) でレンダリング。 region は中央付近。
-        // overlay が canvas 水平で描画されているなら、 「region 中心の上側 = 赤、 下側 = 青」 が
-        // 親回転にかかわらず成り立つ (canvas 水平の slice をそのまま貼っているため)。
-        var imagePath = WriteVerticalHalfSplitPng(100, 100, SKColors.Red, SKColors.Blue);
-        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
-        var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
-            regions: ImmutableArray.Create(MakeRegion(new RegionRectFraction(0.3, 0.3, 0.4, 0.4), 0)));
-        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
-
-        var result = await _renderer.RenderPngAsync(
-            grid, [new PlacementRenderItem(placement, copy, imagePath)],
-            new RenderOptions(
-                TrimMode: TrimMode.None,
-                OutputMode: OutputMode.PhotoBoard,
-                PhotoBoardCoefficients: PhotoBoardStyleCoefficients.For(PhotoBoardStyle.Scattered, 1.0),
-                PhotoBoardSeedOverride: 7));
-
-        result.IsError.Should().BeFalse();
-        using var rendered = SKBitmap.Decode(result.Value);
-        // overlay は canvas 水平 (axis-aligned) で描画されているため、 上下色分け slice の
-        // 「上半分 = 赤、 下半分 = 青」 が overlay の中で保たれている。 親が回転していても
-        // overlay 自体は回転を受けない。
-        // overlay 内のどこかに必ず純粋な赤と青のピクセルが存在することを確認する
-        // (axis-aligned で水平に slice を置いているため)。
-        var hasPureRed = false;
-        var hasPureBlue = false;
-        for (int y = 0; y < rendered.Height && !(hasPureRed && hasPureBlue); y++)
-            for (int x = 0; x < rendered.Width; x++)
-            {
-                var p = rendered.GetPixel(x, y);
-                if (p == SKColors.Red) hasPureRed = true;
-                if (p == SKColors.Blue) hasPureBlue = true;
-            }
-        hasPureRed.Should().BeTrue("overlay 内に純粋な赤ピクセル (= 元 slice の上半分) が残ること");
-        hasPureBlue.Should().BeTrue("overlay 内に純粋な青ピクセル (= 元 slice の下半分) が残ること");
     }
 
     private static ImageCopy CreateCopyWithRegions(
@@ -739,25 +599,6 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
             canvas.DrawRect(0, 0, w / 2, h, paint);
             paint.Color = rightColor;
             canvas.DrawRect(w / 2, 0, w / 2, h, paint);
-        }
-        using var image = SKImage.FromBitmap(bitmap);
-        using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
-        var path = Path.Combine(_tempDir.FullName, $"{Guid.NewGuid():N}.png");
-        File.WriteAllBytes(path, encoded.ToArray());
-        return path;
-    }
-
-    private string WriteVerticalHalfSplitPng(int w, int h, SKColor topColor, SKColor bottomColor)
-    {
-        using var bitmap = new SKBitmap(w, h);
-        using (var canvas = new SKCanvas(bitmap))
-        {
-            canvas.Clear(SKColors.Transparent);
-            using var paint = new SKPaint();
-            paint.Color = topColor;
-            canvas.DrawRect(0, 0, w, h / 2, paint);
-            paint.Color = bottomColor;
-            canvas.DrawRect(0, h / 2, w, h / 2, paint);
         }
         using var image = SKImage.FromBitmap(bitmap);
         using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
