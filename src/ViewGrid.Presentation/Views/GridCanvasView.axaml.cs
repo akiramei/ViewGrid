@@ -240,11 +240,16 @@ public partial class GridCanvasView : UserControl
         // OffsetXPx/Y → asset 位置のみ
         // Rect → asset 切り出し範囲 + 親側塗り両方
         // FillMode / FillColor → 親側塗りの色
+        // Rotation / FlipX / FlipY → asset の見た目 (visible bbox の axis swap + bitmap 再生成)、
+        //                            親側塗りには影響しない
         if (e.PropertyName is nameof(ProtectedRegionItemViewModel.OffsetXPx)
             or nameof(ProtectedRegionItemViewModel.OffsetYPx)
             or nameof(ProtectedRegionItemViewModel.Rect)
             or nameof(ProtectedRegionItemViewModel.FillMode)
-            or nameof(ProtectedRegionItemViewModel.FillColor))
+            or nameof(ProtectedRegionItemViewModel.FillColor)
+            or nameof(ProtectedRegionItemViewModel.Rotation)
+            or nameof(ProtectedRegionItemViewModel.FlipX)
+            or nameof(ProtectedRegionItemViewModel.FlipY))
         {
             UpdateRegionSelectionFrame();
         }
@@ -584,10 +589,17 @@ public partial class GridCanvasView : UserControl
     }
 
     /// <summary>
-    /// 選択中 region の asset preview 画像を更新する。 元画像 (Crop / Transform 適用前) から
-    /// region.Rect の領域を切り出した <see cref="Bitmap"/> を <see cref="RegionAssetPreview"/> の
-    /// Source にセットする。 サムネが存在しない場合は Source=null (Border の枠のみ表示)。
+    /// 選択中 region の asset preview 画像を更新する。 元画像 (Crop / 親 Transform 適用前) から
+    /// <see cref="ProtectedRegionItemViewModel.Rect"/> の領域を切り出し、 region 自身の
+    /// <see cref="ProtectedRegionItemViewModel.Rotation"/> / <see cref="ProtectedRegionItemViewModel.FlipX"/>
+    /// / <see cref="ProtectedRegionItemViewModel.FlipY"/> を bitmap に焼き込んで
+    /// <see cref="RegionAssetPreview"/> の Source にセットする。 サムネが存在しない場合は Source=null
+    /// (Border の枠のみ表示)。
     /// </summary>
+    /// <remarks>
+    /// 親 placement の rotation/flip は適用しない (region は親の rotation/flip からは独立)。
+    /// LRU キャッシュキーには region 側の rotation/flip も含まれるので、 placement 側と意図せず混ざらない。
+    /// </remarks>
     private void UpdateRegionAssetPreview(PlacementItemViewModel placement, ProtectedRegionItemViewModel region)
     {
         if (string.IsNullOrEmpty(placement.ThumbnailPath) || !File.Exists(placement.ThumbnailPath))
@@ -596,17 +608,16 @@ public partial class GridCanvasView : UserControl
             return;
         }
 
-        // region asset は 「回転 / 反転無視」 仕様なので Rotation=None / FlipX=false / FlipY=false で
-        // raw source thumbnail を切り出す (=  CropFraction として region.Rect を渡す)。
-        // 既存 LRU bitmap キャッシュを共有する。
+        // region.Rect で raw source thumbnail を切り出し、 region 自身の Rotation / FlipX / FlipY を
+        // bitmap に焼き込む。 既存 LRU bitmap キャッシュを共有する (キーに rotation/flip 込み)。
         var cropFraction = new CropFraction(
             region.Rect.X, region.Rect.Y, region.Rect.Width, region.Rect.Height);
         try
         {
             var bitmap = GetOrCreatePreRotatedBitmap(
                 placement.ThumbnailPath,
-                Rotation.None,
-                flipX: false, flipY: false,
+                region.Rotation,
+                region.FlipX, region.FlipY,
                 cropFraction);
             RegionAssetPreview.Source = bitmap;
         }
@@ -679,9 +690,15 @@ public partial class GridCanvasView : UserControl
         // 6. source 軸へ swap (Cw90 / Cw270 で X ↔ Y)
         var (sxSrc, sySrc) = rotateSwap ? (syTr, sxTr) : (sxTr, syTr);
 
-        // 7. asset bbox
-        var assetW = region.Rect.Width * srcW * sxSrc;
-        var assetH = region.Rect.Height * srcH * sySrc;
+        // 7. 回転前 cell-local pixel サイズ (region 自身の rotation 未適用)
+        var origW = region.Rect.Width * srcW * sxSrc;
+        var origH = region.Rect.Height * srcH * sySrc;
+
+        // 8. region 自身の rotation で軸 swap (renderer の DrawRegionAsset と同じ規則)。
+        //    Cw90 / Cw270 で visible bbox の W/H が入れ替わる。 Flip は magnitude 不変。
+        var regionRotateSwap = region.Rotation is Rotation.Cw90 or Rotation.Cw270;
+        var assetW = regionRotateSwap ? origH : origW;
+        var assetH = regionRotateSwap ? origW : origH;
         var assetX = cellRect.X + region.OffsetXPx;
         var assetY = cellRect.Y + region.OffsetYPx;
 
