@@ -484,46 +484,19 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         hasFramePixel.Should().BeTrue("ポラロイド風フレーム (#FAFAF8) のピクセルが出力に現れること");
     }
 
-    // ─── ProtectedRegion 親側塗り (cell-bounded 画像) 統合テスト ────────────
-    // PhotoBoard 経路で cell-bounded image に保護領域を塗る (Phase B では FillMode=White 固定の
-    // 単純塗りのみ)。 region asset 描画は Phase C で再導入される予定。
+    // ─── ProtectedRegion セル内ステッカー方式 統合テスト ─────────────────────
+    // 通常モード / PhotoBoard モード共通で、 1 region につき
+    //   (a) 親側塗り: region.Rect ∩ effective Crop の可視部分を FillMode の色で塗る
+    //   (b) asset 描画: 元画像 (Crop / Transform 適用前) から region.Rect を切り出し、
+    //       親と同じ source→cell スケールで cell-local (OffsetXPx, OffsetYPx) に左上揃えで描画
+    // を行う。 PhotoBoard 出力時は cell に焼き込んだ後にばらつき (回転 / オフセット) が適用される。
 
     [Fact]
-    public async Task PhotoBoard_NoWhitePaint_WhenRegionOutsideEffectiveCrop()
+    public async Task Normal_RegionFillMode_White_FillsParentWithWhiteAndDrawsAsset()
     {
-        // ManualCrop = 右半分 (0.5, 0, 0.5, 1) を Fill で 100×100 セル全面に拡大、
-        // region = 元画像の左上 (0, 0, 0.3, 0.3) → 完全に Crop 外。
-        // → 白塗りされず、 overlay も追加されない (= 出力全面が赤)
-        var imagePath = WriteSolidColorPng(100, 100, SKColors.Red);
-        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
-        var copy = CreateCopyWithRegions(
-            scaling: ScalingMode.Fill,
-            manualCrop: new ManualCropFraction(0.5, 0.0, 0.5, 1.0),
-            regions: ImmutableArray.Create(MakeRegion(new RegionRectFraction(0.0, 0.0, 0.3, 0.3), 0)));
-        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
-
-        var result = await _renderer.RenderPngAsync(
-            grid, [new PlacementRenderItem(placement, copy, imagePath)],
-            new RenderOptions(
-                TrimMode: TrimMode.None,
-                OutputMode: OutputMode.PhotoBoard,
-                PhotoBoardCoefficients: PhotoBoardStyleCoefficients.Off,
-                PhotoBoardSeedOverride: 0));
-
-        result.IsError.Should().BeFalse();
-        using var rendered = SKBitmap.Decode(result.Value);
-        // 出力全面に白ピクセルが存在しないこと (region は Crop 外なので白塗り / overlay なし)
-        var hasWhitePixel = false;
-        for (int y = 0; y < rendered.Height && !hasWhitePixel; y++)
-            for (int x = 0; x < rendered.Width; x++)
-                if (rendered.GetPixel(x, y) == SKColors.White) { hasWhitePixel = true; break; }
-        hasWhitePixel.Should().BeFalse("region が effective Crop の外なので白塗りも overlay もされないこと");
-    }
-
-    [Fact]
-    public async Task NormalMode_IgnoresRegions()
-    {
-        // OutputMode.Normal では Regions を完全無視 (Phase 1 は PhotoBoard 限定)
+        // 100×100 赤画像、 region = 中央 (0.4, 0.4, 0.2, 0.2) 源座標 = (40, 40, 20, 20) px、
+        // FillMode=White、 Offset=(0,0)、 Normal モード。
+        // → 親側 (40-60, 40-60) に白塗り、 asset (red 20x20) が cell TL (0-20, 0-20) に描画される。
         var imagePath = WriteSolidColorPng(100, 100, SKColors.Red);
         var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
         var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
@@ -536,9 +509,169 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
 
         result.IsError.Should().BeFalse();
         using var rendered = SKBitmap.Decode(result.Value);
-        // Normal モードでは region が完全無視され、 全面赤 (白塗りも overlay も走らない)
-        rendered.GetPixel(50, 50).Should().Be(SKColors.Red);
-        rendered.GetPixel(45, 45).Should().Be(SKColors.Red);
+        // 親側白塗り中央 (50, 50)
+        rendered.GetPixel(50, 50).Should().Be(SKColors.White);
+        // asset 領域 cell TL (10, 10) は asset (赤) で被覆されている
+        rendered.GetPixel(10, 10).Should().Be(SKColors.Red);
+        // 親領域 (asset 範囲外、 親白塗り範囲外) は赤のまま
+        rendered.GetPixel(80, 20).Should().Be(SKColors.Red);
+    }
+
+    [Fact]
+    public async Task Normal_RegionFillMode_Black_FillsParentWithBlack()
+    {
+        var imagePath = WriteSolidColorPng(100, 100, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.4, 0.4, 0.2, 0.2), 0,
+                fillMode: ProtectedRegionFillMode.Black)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        rendered.GetPixel(50, 50).Should().Be(SKColors.Black);
+    }
+
+    [Fact]
+    public async Task Normal_RegionFillMode_Transparent_PunchesAlphaHoleInParent()
+    {
+        // FillMode=Transparent は親側の region 領域の alpha を 0 にする (穴を開ける)。
+        // Normal モードのキャンバスは初期 Transparent なので、 出力 PNG の region 中央は透明になる。
+        // Offset を画像端に振って asset が中央を上書きしないようにする (検証は親側塗りに集中)。
+        var imagePath = WriteSolidColorPng(100, 100, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.4, 0.4, 0.2, 0.2), 0,
+                fillMode: ProtectedRegionFillMode.Transparent,
+                offsetXPx: 80, offsetYPx: 80)));  // asset を右下隅に追いやる
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        // 中央 (50, 50) は親側塗りで alpha=0 に punch されている
+        rendered.GetPixel(50, 50).Alpha.Should().Be(0);
+        // 親側塗り範囲外 (10, 10) は赤のまま
+        rendered.GetPixel(10, 10).Should().Be(SKColors.Red);
+    }
+
+    [Fact]
+    public async Task Normal_RegionFillMode_Custom_UsesProvidedColor()
+    {
+        // 0xFF008000 = 不透明の濃い緑
+        var customColor = 0xFF_00_80_00u;
+        var imagePath = WriteSolidColorPng(100, 100, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.4, 0.4, 0.2, 0.2), 0,
+                fillMode: ProtectedRegionFillMode.Custom,
+                fillColor: customColor)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        rendered.GetPixel(50, 50).Should().Be(new SKColor(customColor));
+    }
+
+    [Fact]
+    public async Task Normal_RegionOffset_PositionsAssetAtSpecifiedPixel()
+    {
+        // 左半分赤・右半分青の 100×100 画像、 region = 左上 (0.0, 0.0, 0.2, 0.2) 源座標 = (0,0,20,20) → 赤。
+        // Offset=(50, 60) → asset は cell の (50, 60) を左上として 20×20 の赤矩形が描かれる。
+        var imagePath = WriteHalfSplitPng(100, 100, SKColors.Red, SKColors.Blue);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.0, 0.0, 0.2, 0.2), 0,
+                offsetXPx: 50, offsetYPx: 60)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        // asset 中央 (60, 70) は赤 (元画像左半分の slice)
+        rendered.GetPixel(60, 70).Should().Be(SKColors.Red);
+        // asset 範囲外の右下 (80, 80) は元画像の右下 (青) のまま
+        rendered.GetPixel(80, 80).Should().Be(SKColors.Blue);
+    }
+
+    [Fact]
+    public async Task Region_AssetIsIndependentOfCrop()
+    {
+        // ManualCrop = 右半分のみ表示。 region.Rect = 元画像の左上 (Crop 外) を切り出して
+        // asset として描画。 Crop 非依存仕様により asset 自体は描画され、 親側塗りは Crop 外なので発生しない。
+        var imagePath = WriteHalfSplitPng(100, 100, SKColors.Red, SKColors.Blue);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(
+            scaling: ScalingMode.Fill,
+            manualCrop: new ManualCropFraction(0.5, 0.0, 0.5, 1.0),  // 右半分=青のみ表示
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.0, 0.0, 0.3, 0.3), 0,
+                offsetXPx: 0, offsetYPx: 0)));  // asset を cell TL に
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        // 親 (Crop 後右半分=青) が cell 全面に Fill で拡大 → 全面青 が前提
+        // asset (元画像左上=赤の 30x30 source pixel) が描画される (Crop 非依存)
+        // → cell TL 付近に赤ピクセルが存在 (asset)、 親側塗りは Crop 外なので白塗り無し
+        rendered.GetPixel(5, 5).Should().Be(SKColors.Red);    // asset
+        rendered.GetPixel(95, 95).Should().Be(SKColors.Blue); // 親 (Crop 内 = 青)
+        // 出力全面に白ピクセルが存在しないこと (region は Crop 外なので親側塗りされない)
+        var hasWhitePixel = false;
+        for (int y = 0; y < rendered.Height && !hasWhitePixel; y++)
+            for (int x = 0; x < rendered.Width; x++)
+                if (rendered.GetPixel(x, y) == SKColors.White) { hasWhitePixel = true; break; }
+        hasWhitePixel.Should().BeFalse("region が effective Crop の外なので親側塗りされないこと");
+    }
+
+    [Fact]
+    public async Task PhotoBoard_RegionAsset_IsBakedIntoCellAndFollowsParentRotation()
+    {
+        // PhotoBoard ばらつき (Off 係数で回転 0) では cell 内合成結果がそのまま canvas に焼かれる。
+        // → Normal と同じ位置 (cell TL) に asset が現れる。
+        var imagePath = WriteHalfSplitPng(100, 100, SKColors.Red, SKColors.Blue);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.0, 0.0, 0.2, 0.2), 0,
+                offsetXPx: 0, offsetYPx: 0)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(
+                TrimMode: TrimMode.None,
+                OutputMode: OutputMode.PhotoBoard,
+                PhotoBoardCoefficients: PhotoBoardStyleCoefficients.Off,
+                PhotoBoardSeedOverride: 0));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        // PhotoBoard.Off 係数では cell が canvas にそのまま貼られる (rotation=0, offset=0)。
+        // asset (左上 20x20 = 赤) が cell TL に焼き込まれて canvas 上にも赤として現れる。
+        rendered.GetPixel(5, 5).Should().Be(SKColors.Red);
     }
 
     private static ImageCopy CreateCopyWithRegions(
@@ -565,6 +698,9 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
                 ImageCopyId = copyId,  // Test ImageCopy.Id に紐付け直し
                 Rect = r.Rect,
                 FillMode = r.FillMode,
+                FillColor = r.FillColor,
+                OffsetXPx = r.OffsetXPx,
+                OffsetYPx = r.OffsetYPx,
                 SortOrder = r.SortOrder,
             }).ToImmutableArray(),
             CreatedAt = DateTimeOffset.UtcNow,
@@ -572,12 +708,20 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         };
     }
 
-    private static ProtectedRegion MakeRegion(RegionRectFraction rect, int sortOrder) => new()
+    private static ProtectedRegion MakeRegion(
+        RegionRectFraction rect, int sortOrder,
+        ProtectedRegionFillMode fillMode = ProtectedRegionFillMode.White,
+        uint? fillColor = null,
+        int offsetXPx = 0,
+        int offsetYPx = 0) => new()
     {
         Id = Guid.NewGuid(),
         ImageCopyId = Guid.Empty,  // CreateCopyWithRegions で copyId に差し替えられる
         Rect = rect,
-        FillMode = ProtectedRegionFillMode.White,
+        FillMode = fillMode,
+        FillColor = fillColor,
+        OffsetXPx = offsetXPx,
+        OffsetYPx = offsetYPx,
         SortOrder = sortOrder,
     };
 

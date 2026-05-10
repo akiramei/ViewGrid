@@ -387,17 +387,19 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         Math.Max(a.Bottom, b.Bottom));
 
     /// <summary>
-    /// <paramref name="paintRegions"/>=<c>true</c> のとき、 通常描画後に <see cref="ImageCopy.Regions"/>
-    /// に登録された保護領域を <see cref="ProtectedRegionFillMode"/> に従って塗りつぶす。 region asset の
-    /// 描画 (cell 内ステッカー) は Phase C で再導入されるまで保留中で、 ここでは親側塗りのみ実行する。
+    /// 親画像を cell に描画した後、 <see cref="ImageCopy.Regions"/> に登録された保護領域を処理する。
+    /// 1 region につき (a) <see cref="ProtectedRegionFillMode"/> に従って親側を塗りつぶし、
+    /// (b) 元画像 (Crop / Transform 適用前) の <see cref="ProtectedRegion.Rect"/> を切り出して
+    /// 親と同じ source→cell スケールで cell-local pixel <c>(OffsetXPx, OffsetYPx)</c> に左上揃えで
+    /// 描画する (回転・反転・アライメントは region に適用しない仕様)。 通常モード / PhotoBoard モード
+    /// 双方で実行される。
     /// </summary>
     private Error? DrawOne(
         SKCanvas canvas,
         GridCanvas grid,
         PlacementRenderItem item,
         SKSamplingOptions sampling,
-        SKPaint paint,
-        bool paintRegions = false)
+        SKPaint paint)
     {
         if (!File.Exists(item.SourceImageAbsolutePath))
             return Error.NotFound(
@@ -478,15 +480,16 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             canvas.ClipRect(SKRect.Create(cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height));
             canvas.DrawImage(transformedImage, srcRect, dstRect, sampling, paint);
 
-            // PhotoBoard 経路でのみ、 親画像描画直後に保護領域を塗りつぶす (cell 境界クリップ
-            // 状態を維持したまま canvas 上に直接描く。 既存の DrawImage と同じ canvas 状態で
-            // 行うため別途 Save/Restore は不要)。 region asset 自体の描画は Phase C で実装。
-            if (paintRegions && !item.Copy.Regions.IsDefaultOrEmpty)
+            // 親画像描画直後に保護領域を処理する (cell 境界クリップ状態を維持したまま canvas 上に
+            // 直接描く)。 PaintProtectedRegions は SortOrder 昇順で 1 region ずつ
+            // 「親側塗り → asset 描画」 を行う。
+            if (!item.Copy.Regions.IsDefaultOrEmpty)
             {
                 PaintProtectedRegions(
                     canvas,
+                    decoded,
                     item.Copy,
-                    sourceWidth: decoded.Width, sourceHeight: decoded.Height,
+                    sampling,
                     autoCropSourceRect: autoCropSourceRect,
                     srcRectInTransformed: srcRect,
                     dstRect: dstRect,
@@ -501,23 +504,27 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     }
 
     /// <summary>
-    /// <see cref="ImageCopy.Regions"/> を <see cref="ProtectedRegionFillMode"/> に従って塗りつぶす。
-    /// region asset 本体の描画は Phase C で別経路として実装される。
+    /// <see cref="ImageCopy.Regions"/> を SortOrder 昇順に処理し、 1 region ごとに
+    /// (a) 親側塗り (<see cref="ProtectedRegionFillMode"/> に従う) と
+    /// (b) 元画像 (Crop / Transform 適用前) からの asset 切り出し描画 を行う。
     /// </summary>
     /// <remarks>
-    /// 各 region の塗り矩形計算は <see cref="ComputeRegionWhitePaintRect"/> に分離してあり、
-    /// 本メソッドは guards / 共通設定 / 描画ループだけを持つ。 現状は <see cref="ProtectedRegionFillMode.White"/>
-    /// 固定で塗っており、 他のモードは Phase C で扱う。
+    /// 親側塗り矩形計算は <see cref="ComputeRegionParentFillRect"/> に分離してあり、
+    /// asset 描画は <see cref="DrawRegionAsset"/> に分離してある。
+    /// 本メソッドは guards と source→cell scale 算出と描画ループだけを持つ。
     /// </remarks>
     private static void PaintProtectedRegions(
         SKCanvas canvas,
+        SKBitmap source,
         ImageCopy copy,
-        int sourceWidth, int sourceHeight,
+        SKSamplingOptions sampling,
         PixelRect? autoCropSourceRect,
         SKRect srcRectInTransformed,
         SKRect dstRect,
         PixelRect cellRect)
     {
+        var sourceWidth = source.Width;
+        var sourceHeight = source.Height;
         if (sourceWidth <= 0 || sourceHeight <= 0) return;
         if (srcRectInTransformed.Width <= 0 || srcRectInTransformed.Height <= 0) return;
         if (dstRect.Width <= 0 || dstRect.Height <= 0) return;
@@ -525,23 +532,119 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         var effCrop = ComputeEffectiveCropFraction(autoCropSourceRect, sourceWidth, sourceHeight);
         var cellSkRect = SKRect.Create(cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height);
 
+        // 親と同じ source-pixel→cell-pixel スケール (Cw90/Cw270 では軸 swap)。
+        // region asset には回転・反転を適用しないので、 ここで得た (Sx, Sy) を asset の cell-pixel
+        // サイズに直接掛ける。
+        var (assetScaleX, assetScaleY) = RegionGeometry.ComputeSourceToCellScale(
+            copy.Transform,
+            srcRectInTransformed.Width, srcRectInTransformed.Height,
+            dstRect.Width, dstRect.Height);
+        if (assetScaleX <= 0 || assetScaleY <= 0) return;
+
+        using var sourceImage = SKImage.FromBitmap(source);
+        if (sourceImage is null) return;
+
+        // 親側塗り用 paint は region ごとに色 / blend mode を切り替えるため、 reuse 用に 1 つだけ確保
+        // して setter で詰め替える (毎 region ごとに new するより安い)。
         using var fillPaint = new SKPaint
         {
-            Color = SKColors.White,
             Style = SKPaintStyle.Fill,
-            // 矩形は整数境界で十分、 AA で半透明端が出ると overlay と重なって滲む
             IsAntialias = false,
+        };
+        using var assetPaint = new SKPaint
+        {
+            IsAntialias = true,
         };
 
         foreach (var region in copy.Regions)
         {
-            var paintRect = ComputeRegionWhitePaintRect(
+            // (a) 親側塗り (region.Rect ∩ effective Crop の可視部分のみ)
+            var fillRect = ComputeRegionParentFillRect(
                 region, effCrop, copy.Transform,
                 sourceWidth, sourceHeight,
                 srcRectInTransformed, dstRect, cellSkRect);
-            if (paintRect is { } rect)
-                canvas.DrawRect(rect, fillPaint);
+            if (fillRect is { } pr)
+                ApplyRegionFill(canvas, fillPaint, pr, region.FillMode, region.FillColor);
+
+            // (b) asset 描画 (Crop 非依存、 セル内 (OffsetXPx, OffsetYPx) に左上揃えで配置)
+            DrawRegionAsset(
+                canvas, sourceImage, region,
+                sourceWidth, sourceHeight,
+                cellRect,
+                assetScaleX, assetScaleY,
+                sampling, assetPaint);
         }
+    }
+
+    /// <summary>
+    /// 親側塗り矩形に <see cref="ProtectedRegionFillMode"/> に応じた色 / blend mode を適用する。
+    /// Transparent は <see cref="SKBlendMode.Clear"/> で alpha=0 に punch、 それ以外は SrcOver で
+    /// 色を上塗りする。 Custom 時に <see cref="ProtectedRegion.FillColor"/> が null なら描画を
+    /// スキップ (FillColor 未指定の Custom は VM 側で防ぐべきだが、 renderer は安全側に倒す)。
+    /// </summary>
+    private static void ApplyRegionFill(
+        SKCanvas canvas, SKPaint paint, SKRect rect,
+        ProtectedRegionFillMode fillMode, uint? fillColor)
+    {
+        switch (fillMode)
+        {
+            case ProtectedRegionFillMode.White:
+                paint.Color = SKColors.White;
+                paint.BlendMode = SKBlendMode.SrcOver;
+                canvas.DrawRect(rect, paint);
+                break;
+            case ProtectedRegionFillMode.Black:
+                paint.Color = SKColors.Black;
+                paint.BlendMode = SKBlendMode.SrcOver;
+                canvas.DrawRect(rect, paint);
+                break;
+            case ProtectedRegionFillMode.Transparent:
+                paint.Color = SKColors.Transparent;
+                paint.BlendMode = SKBlendMode.Clear;
+                canvas.DrawRect(rect, paint);
+                break;
+            case ProtectedRegionFillMode.Custom:
+                if (fillColor is { } argb)
+                {
+                    paint.Color = new SKColor(argb);
+                    paint.BlendMode = SKBlendMode.SrcOver;
+                    canvas.DrawRect(rect, paint);
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// region の元画像座標 <see cref="ProtectedRegion.Rect"/> を <paramref name="source"/> から切り出し、
+    /// 親と同じ <paramref name="assetScaleX"/> / <paramref name="assetScaleY"/> でリサイズして
+    /// cell-local pixel <c>(<see cref="ProtectedRegion.OffsetXPx"/>, <see cref="ProtectedRegion.OffsetYPx"/>)</c>
+    /// に左上揃えで描画する。 cell 矩形での clip は呼び出し元の <see cref="SKCanvas.ClipRect(SKRect, SKClipOperation, bool)"/>
+    /// に任せる (cell 外の pixel は ClipRect で潰れる)。
+    /// </summary>
+    /// <remarks>
+    /// region.Rect は Crop / Transform 非依存 (常に raw source 座標)。 そのため Crop 外に元位置がある
+    /// region でも asset 自体は描画される (= 「セル内ステッカー」 仕様)。
+    /// </remarks>
+    private static void DrawRegionAsset(
+        SKCanvas canvas, SKImage source, ProtectedRegion region,
+        int sourceWidth, int sourceHeight,
+        PixelRect cellRect,
+        double assetScaleX, double assetScaleY,
+        SKSamplingOptions sampling, SKPaint paint)
+    {
+        var (sx, sy, sw, sh) = region.Rect.ToPixelBbox(sourceWidth, sourceHeight);
+        if (sw <= 0 || sh <= 0) return;
+
+        var dstW = sw * assetScaleX;
+        var dstH = sh * assetScaleY;
+        if (dstW <= 0 || dstH <= 0) return;
+
+        var dstLeft = cellRect.X + region.OffsetXPx;
+        var dstTop = cellRect.Y + region.OffsetYPx;
+        var srcSk = SKRect.Create(sx, sy, sw, sh);
+        var dstSk = SKRect.Create((float)dstLeft, (float)dstTop, (float)dstW, (float)dstH);
+
+        canvas.DrawImage(source, srcSk, dstSk, sampling, paint);
     }
 
     /// <summary>
@@ -560,8 +663,9 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             : CropFraction.Full;
 
     /// <summary>
-    /// 1 件の <see cref="ProtectedRegion"/> を canvas 上の白塗り矩形に変換する。 描画対象なし
-    /// (effective Crop 外 / Transform 後 src rect 外 / cellRect 外) は <c>null</c>。
+    /// 1 件の <see cref="ProtectedRegion"/> の親側塗り矩形 (canvas 座標) を計算する。 描画対象なし
+    /// (effective Crop 外 / Transform 後 src rect 外 / cellRect 外) は <c>null</c>。 region asset
+    /// 自体の位置はこの結果と無関係 (asset は Crop 非依存のため別経路 = <see cref="DrawRegionAsset"/>)。
     /// </summary>
     /// <remarks>
     /// 座標変換パイプライン (各段で交差なしなら null 返却):
@@ -574,7 +678,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     ///   <item>cellRect で clip (PixelOffset で隣セルに飛び出した領域を除外)</item>
     /// </list>
     /// </remarks>
-    private static SKRect? ComputeRegionWhitePaintRect(
+    private static SKRect? ComputeRegionParentFillRect(
         ProtectedRegion region,
         CropFraction effCrop,
         ImageTransform transform,
@@ -888,11 +992,8 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 // surface 内に収まる。
                 cellCanvas.Translate(-cellRect.X, -cellRect.Y);
 
-                // PhotoBoard 経路では paintRegions=true で DrawOne を呼び、 cell-bounded 画像に
-                // 保護領域を塗りつぶす。 Flat / Normal 経路は paintRegions=false (default)。
-                var error = DrawOne(
-                    cellCanvas, grid, item, sampling, paint,
-                    paintRegions: true);
+                // DrawOne 内で親描画 + 保護領域 (親側塗り + asset 描画) が一括で行われる。
+                var error = DrawOne(cellCanvas, grid, item, sampling, paint);
                 if (error is not null)
                     return error.Value;
 
