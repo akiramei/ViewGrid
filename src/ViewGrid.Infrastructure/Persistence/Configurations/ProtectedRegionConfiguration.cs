@@ -50,6 +50,23 @@ internal sealed class ProtectedRegionConfiguration : IEntityTypeConfiguration<Pr
             .HasDefaultValue(0)
             .IsRequired();
 
+        // region 自身の回転 (90度刻み, 時計回り)。 既定 None=0。
+        builder.Property(x => x.Rotation)
+            .HasConversion<int>()
+            .HasColumnName("region_rotation")
+            .HasDefaultValue(Rotation.None)
+            .IsRequired();
+
+        // region 自身の水平 / 垂直反転。 既定 false。
+        builder.Property(x => x.FlipX)
+            .HasColumnName("region_flip_x")
+            .HasDefaultValue(false)
+            .IsRequired();
+        builder.Property(x => x.FlipY)
+            .HasColumnName("region_flip_y")
+            .HasDefaultValue(false)
+            .IsRequired();
+
         // ImageCopy 削除時にカスケード削除。 shadow-FK 規約に従い navigation は持たない。
         builder.HasOne<ImageCopy>()
             .WithMany()

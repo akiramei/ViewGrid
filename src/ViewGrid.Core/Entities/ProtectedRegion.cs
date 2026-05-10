@@ -4,17 +4,20 @@ namespace ViewGrid.Core.Entities;
 /// セル内画像の一部を独立したアセットとして分離した 「保護領域」。
 /// 元画像 (Crop / Transform 適用前) の <see cref="Rect"/> から切り出され、 セル内の任意位置
 /// (<see cref="OffsetXPx"/> / <see cref="OffsetYPx"/>) に再配置される。 親の共有特性のうち
-/// スケーリングだけ追従し、 回転・反転・アライメントは無視する。
+/// スケーリングだけ追従し、 アライメントは無視する。 region 自身の <see cref="Rotation"/> /
+/// <see cref="FlipX"/> / <see cref="FlipY"/> は asset 描画にのみ作用する (親側塗りには影響しない)。
 /// </summary>
 /// <remarks>
 /// <para>処理フロー:</para>
 /// <list type="number">
 ///   <item>元画像座標系 0–1 比率の <see cref="Rect"/> から asset を切り出し</item>
-///   <item>親の source→cell スケール係数で asset をリサイズ (回転・反転・アライメントは無視)</item>
+///   <item>親の source→cell スケール係数で asset をリサイズ (アライメント無視)</item>
+///   <item>region 自身の <see cref="Rotation"/> / <see cref="FlipX"/> / <see cref="FlipY"/> を適用
+///     (90度刻み、 0/180 は cell-local W/H 不変、 90/270 は axis swap)</item>
 ///   <item>cell-local pixel <c>(<see cref="OffsetXPx"/>, <see cref="OffsetYPx"/>)</c> に
-///     左上揃えで配置、 cell 矩形で clip</item>
+///     回転後 bbox の左上揃えで配置、 cell 矩形で clip</item>
 ///   <item>親側は <see cref="Rect"/> ∩ effective Crop の可視部分を <see cref="FillMode"/>
-///     (+ <see cref="FillColor"/>) で塗る</item>
+///     (+ <see cref="FillColor"/>) で塗る (region の <see cref="Rotation"/> / Flip は無視)</item>
 ///   <item>PhotoBoard 出力時はセル合成後の結果に対してばらつき (回転 / オフセット) を適用するため、
 ///     region は親画像と一緒に揺れる</item>
 /// </list>
@@ -48,6 +51,18 @@ public sealed class ProtectedRegion
     /// セル内 pixel 単位の Y オフセット (左上基準)。 既定 0。 負値も許可 (上にはみ出した分は cell 矩形で clip される)。
     /// </summary>
     public int OffsetYPx { get; init; }
+
+    /// <summary>
+    /// region 自身の回転 (90度刻み、 時計回り)。 既定 <see cref="Core.Entities.Rotation.None"/>。
+    /// 親 placement の回転とは独立に作用し、 asset 描画にのみ影響する (親側塗りには無関係)。
+    /// </summary>
+    public Rotation Rotation { get; init; } = Rotation.None;
+
+    /// <summary>region 自身の水平反転 (asset 描画時に左右ミラー)。 既定 <c>false</c>。</summary>
+    public bool FlipX { get; init; }
+
+    /// <summary>region 自身の垂直反転 (asset 描画時に上下ミラー)。 既定 <c>false</c>。</summary>
+    public bool FlipY { get; init; }
 
     /// <summary>
     /// 同一 <see cref="ImageCopy"/> 内での描画順 (小さい順に描画)。
