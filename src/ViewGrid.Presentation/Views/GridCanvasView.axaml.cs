@@ -343,11 +343,11 @@ public partial class GridCanvasView : UserControl
         }
 
         // canvas (作成キャンバス px) → display (CanvasGrid 論理 px) へのスケール
-        var dispScaleX_ = viewW / grid.CanvasWidth;
-        var dispScaleY_ = viewH / grid.CanvasHeight;
+        var dispScaleX = viewW / grid.CanvasWidth;
+        var dispScaleY = viewH / grid.CanvasHeight;
 
         // 親側塗り overlay を更新 (region と placement のジオメトリが揃っていれば配置)。
-        UpdateRegionParentFillOverlay(grid, placement, region, dispScaleX_, dispScaleY_);
+        UpdateRegionParentFillOverlay(grid, placement, region, dispScaleX, dispScaleY);
 
         var (assetX, assetY, assetW, assetH, cellRect) = ComputeRegionAssetCanvasRect(grid, placement, region);
         if (assetW <= 0 || assetH <= 0)
@@ -358,9 +358,6 @@ public partial class GridCanvasView : UserControl
 
         // asset preview 画像を更新 (region.Rect で thumbnail を切り出し、 回転 / 反転は適用しない)。
         UpdateRegionAssetPreview(placement, region);
-
-        var dispScaleX = dispScaleX_;
-        var dispScaleY = dispScaleY_;
 
         // Margin で位置決め、 Width / Height でサイズ決定。 CanvasGrid 全範囲を span する必要があるため
         // RowSpan / ColumnSpan に grid 全体を指定する (HorizontalAlignment=Left / VerticalAlignment=Top で
