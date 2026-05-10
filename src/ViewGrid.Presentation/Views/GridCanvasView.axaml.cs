@@ -558,11 +558,17 @@ public partial class GridCanvasView : UserControl
         // Placements コレクション変更、DataContext 変更）すべてで漏れなく解除される。
         UnsubscribePlacementChanges();
 
-        // SelectionOverlay は Adornment なので Layer 1/2 の再構築でも消さない（常駐）。
+        // SelectionOverlay / DragHighlightOverlay / RegionSelectionFrame は Adornment なので
+        // Layer 1/2 の再構築でも消さない（常駐）。
         for (int i = CanvasGrid.Children.Count - 1; i >= 0; i--)
         {
-            if (!ReferenceEquals(CanvasGrid.Children[i], SelectionOverlay))
+            var child = CanvasGrid.Children[i];
+            if (!ReferenceEquals(child, SelectionOverlay)
+                && !ReferenceEquals(child, DragHighlightOverlay)
+                && !ReferenceEquals(child, RegionSelectionFrame))
+            {
                 CanvasGrid.Children.RemoveAt(i);
+            }
         }
         CanvasGrid.RowDefinitions.Clear();
         CanvasGrid.ColumnDefinitions.Clear();
@@ -658,6 +664,8 @@ public partial class GridCanvasView : UserControl
         // SelectionOverlay は Layer 1/2 の再構築でも常駐させているが、
         // 新しい RowDefinitions/ColumnDefinitions に追従させるため Grid.Row/Column を再設定。
         UpdateSelectionOverlay();
+        // 同様に region 選択フレームも grid 形状変更後に再計算する。
+        UpdateRegionSelectionFrame();
     }
 
     /// <summary>
