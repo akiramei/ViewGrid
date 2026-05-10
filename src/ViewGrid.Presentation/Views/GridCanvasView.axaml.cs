@@ -14,6 +14,7 @@ using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.Geometry;
+using ViewGrid.Core.UseCases;
 
 namespace ViewGrid.Presentation.Views;
 
@@ -37,6 +38,20 @@ public partial class GridCanvasView : UserControl
     private int _pixelOffsetStartY;
     private PlacementItemViewModel? _pixelOffsetTarget;
     private Border? _pixelOffsetBorder;
+
+    // ---------- ProtectedRegion 選択フレーム ----------
+    // SelectedRegion (Inspector.CopyProperties.SelectedRegion) が非 null かつ SelectedPlacement の
+    // セル内に asset がある状態で、 RegionSelectionFrame を asset bbox に重ねる。
+    // 購読チェーン: Inspector → CopyProperties → SelectedRegion (Item の OffsetXPx/Y/Rect 変更)
+    private CopyPropertiesViewModel? _copyPropsSubscription;
+    private ProtectedRegionItemViewModel? _selectedRegionSubscription;
+
+    // Shift+ドラッグでの region offset 微調整モード状態
+    private bool _regionOffsetDragging;
+    private Point _regionOffsetStart;
+    private int _regionOffsetStartX;
+    private int _regionOffsetStartY;
+    private ProtectedRegionItemViewModel? _regionOffsetTarget;
 
     // セル位置 → セル Border 参照（範囲ハイライトの一括クリアに使う）
     private readonly Dictionary<CellPosition, Border> _cellBorders = new();
@@ -138,6 +153,11 @@ public partial class GridCanvasView : UserControl
         // Ctrl+Arrow（および Ctrl+Shift+Arrow）でアクティブ配置の PixelOffset を 1px / 10px 微調整。
         // UserControl 自体が Focusable のとき、placement クリック後にここでキーを受け取る。
         KeyDown += OnUserControlKeyDown;
+
+        // 保護領域選択フレームの Shift+ドラッグハンドラ
+        RegionSelectionFrame.PointerPressed += OnRegionFramePointerPressed;
+        RegionSelectionFrame.PointerMoved += OnRegionFramePointerMoved;
+        RegionSelectionFrame.PointerReleased += OnRegionFramePointerReleased;
     }
 
     private void OnCanvasGridSizeChanged(object? sender, SizeChangedEventArgs e)
@@ -145,6 +165,8 @@ public partial class GridCanvasView : UserControl
         // 表示サイズが変わったら全配置の PixelOffset 換算を再計算する。
         foreach (var (border, placement) in _placementBorders)
             ApplyPixelOffsetTransform(border, placement);
+        // region 選択フレームの位置 / サイズも view 倍率に依存するので追従させる。
+        UpdateRegionSelectionFrame();
     }
 
     /// <summary>
@@ -171,7 +193,55 @@ public partial class GridCanvasView : UserControl
         }
 
         SubscribeToCurrentGrid();
+        SubscribeToCopyProperties();
         Rebuild();
+    }
+
+    /// <summary>
+    /// <see cref="GridWorkspaceViewModel.Inspector"/> の <c>CopyProperties.SelectedRegion</c> 変更を
+    /// 検知できるよう購読を張り直す。 SelectedPlacement 切替で Inspector が re-attach される際にも
+    /// CopyProperties インスタンスは保持されるので、 ここで一度購読すれば足りる。
+    /// </summary>
+    private void SubscribeToCopyProperties()
+    {
+        if (_copyPropsSubscription is not null)
+            _copyPropsSubscription.PropertyChanged -= OnCopyPropertiesPropertyChanged;
+        _copyPropsSubscription = _vm?.Inspector?.CopyProperties;
+        if (_copyPropsSubscription is not null)
+            _copyPropsSubscription.PropertyChanged += OnCopyPropertiesPropertyChanged;
+        SubscribeToSelectedRegion();
+    }
+
+    private void OnCopyPropertiesPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CopyPropertiesViewModel.SelectedRegion))
+        {
+            SubscribeToSelectedRegion();
+            UpdateRegionSelectionFrame();
+        }
+    }
+
+    /// <summary>
+    /// 選択中 region 自身のプロパティ (OffsetXPx/Y, Rect) 変更を購読し、 フレーム位置 / サイズに
+    /// リアルタイム追従させる。
+    /// </summary>
+    private void SubscribeToSelectedRegion()
+    {
+        if (_selectedRegionSubscription is not null)
+            _selectedRegionSubscription.PropertyChanged -= OnSelectedRegionPropertyChanged;
+        _selectedRegionSubscription = _copyPropsSubscription?.SelectedRegion;
+        if (_selectedRegionSubscription is not null)
+            _selectedRegionSubscription.PropertyChanged += OnSelectedRegionPropertyChanged;
+    }
+
+    private void OnSelectedRegionPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ProtectedRegionItemViewModel.OffsetXPx)
+            or nameof(ProtectedRegionItemViewModel.OffsetYPx)
+            or nameof(ProtectedRegionItemViewModel.Rect))
+        {
+            UpdateRegionSelectionFrame();
+        }
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -187,6 +257,8 @@ public partial class GridCanvasView : UserControl
             // 選択変更は SelectionOverlay の位置更新のみで完結 (Border 自体は不変)。
             // 旧実装は Rebuild を呼んでいたが Layer 2 全 Border の再構築が無駄だった。
             UpdateSelectionOverlay();
+            // region フレームも SelectedPlacement に紐付くため更新。
+            UpdateRegionSelectionFrame();
         }
     }
 
@@ -233,6 +305,130 @@ public partial class GridCanvasView : UserControl
         Grid.SetRowSpan(SelectionOverlay, Math.Max(1, sel.OccupyHeight));
         Grid.SetColumnSpan(SelectionOverlay, Math.Max(1, sel.OccupyWidth));
         SelectionOverlay.IsVisible = true;
+    }
+
+    /// <summary>
+    /// SelectedRegion + SelectedPlacement の組合せに応じて、 RegionSelectionFrame の位置 / サイズ /
+    /// 表示状態を更新する。 親画像の source→cell スケールを反映するため、 ScalingMode / Crop /
+    /// Rotation 軸 swap を考慮した bbox 計算を行う。
+    /// </summary>
+    private void UpdateRegionSelectionFrame()
+    {
+        var region = _selectedRegionSubscription;
+        var placement = _vm?.SelectedPlacement;
+        var grid = _vm?.CurrentGrid;
+        if (region is null || placement is null || grid is null
+            || grid.CanvasWidth <= 0 || grid.CanvasHeight <= 0
+            || placement.SourceWidth <= 0 || placement.SourceHeight <= 0)
+        {
+            RegionSelectionFrame.IsVisible = false;
+            return;
+        }
+
+        var viewW = CanvasGrid.Bounds.Width;
+        var viewH = CanvasGrid.Bounds.Height;
+        if (viewW <= 0 || viewH <= 0)
+        {
+            // 表示サイズ未確定 (初期表示前)。 SizeChanged で再呼び出しされるので一旦隠す。
+            RegionSelectionFrame.IsVisible = false;
+            return;
+        }
+
+        var (assetX, assetY, assetW, assetH) = ComputeRegionAssetCanvasRect(grid, placement, region);
+        if (assetW <= 0 || assetH <= 0)
+        {
+            RegionSelectionFrame.IsVisible = false;
+            return;
+        }
+
+        // canvas (作成キャンバス px) → display (CanvasGrid 論理 px) へのスケール
+        var dispScaleX = viewW / grid.CanvasWidth;
+        var dispScaleY = viewH / grid.CanvasHeight;
+
+        // Margin で位置決め、 Width / Height でサイズ決定。 CanvasGrid 全範囲を span する必要があるため
+        // RowSpan / ColumnSpan に grid 全体を指定する (HorizontalAlignment=Left / VerticalAlignment=Top で
+        // 左上原点から Margin を効かせる)。
+        Grid.SetRow(RegionSelectionFrame, 0);
+        Grid.SetColumn(RegionSelectionFrame, 0);
+        Grid.SetRowSpan(RegionSelectionFrame, Math.Max(1, grid.Rows));
+        Grid.SetColumnSpan(RegionSelectionFrame, Math.Max(1, grid.Cols));
+        RegionSelectionFrame.Margin = new Thickness(
+            assetX * dispScaleX,
+            assetY * dispScaleY,
+            0, 0);
+        RegionSelectionFrame.Width = assetW * dispScaleX;
+        RegionSelectionFrame.Height = assetH * dispScaleY;
+        RegionSelectionFrame.IsVisible = true;
+    }
+
+    /// <summary>
+    /// region asset の bbox を作成キャンバス座標 (px) で計算する。 親画像の source→cell スケールを
+    /// 適用 (Cw90/Cw270 軸 swap、 Crop は EffectiveCropFraction で反映)。
+    /// </summary>
+    private static (double X, double Y, double W, double H) ComputeRegionAssetCanvasRect(
+        GridCanvasItemViewModel grid,
+        PlacementItemViewModel placement,
+        ProtectedRegionItemViewModel region)
+    {
+        // 1. PixelOffset 適用前の cellRect (= placement の本来の cell 領域)
+        var cellRect = PlacementGeometry.ComputeDestRect(
+            new ViewGrid.Core.Entities.PixelSize(grid.CanvasWidth, grid.CanvasHeight),
+            grid.Cols, grid.Rows,
+            grid.ColWeights, grid.RowWeights,
+            placement.Position, placement.OccupySize,
+            pixelOffsetX: 0, pixelOffsetY: 0);
+        if (cellRect.Width <= 0 || cellRect.Height <= 0) return (0, 0, 0, 0);
+
+        // 2. 回転で source 軸が swap されるか
+        var rotateSwap = placement.Rotation is Rotation.Cw90 or Rotation.Cw270;
+        int srcW = placement.SourceWidth;
+        int srcH = placement.SourceHeight;
+        double transW = rotateSwap ? srcH : srcW;
+        double transH = rotateSwap ? srcW : srcH;
+
+        // 3. Crop 適用後の transformed source 寸法 (parent の表示で実際に使われるサイズ)
+        var crop = placement.EffectiveCropFraction;
+        double cropTransW = crop is { } c1 ? Math.Max(1.0, c1.Width * transW) : transW;
+        double cropTransH = crop is { } c2 ? Math.Max(1.0, c2.Height * transH) : transH;
+
+        // 4. ScalingMode に従って parent の表示サイズを cell 内で計算
+        double dispW, dispH;
+        if (placement.ScalingMode == ScalingMode.Fill)
+        {
+            dispW = cellRect.Width;
+            dispH = cellRect.Height;
+        }
+        else
+        {
+            var fitContain = Math.Min(cellRect.Width / cropTransW, cellRect.Height / cropTransH);
+            var fitCover = Math.Max(cellRect.Width / cropTransW, cellRect.Height / cropTransH);
+            var scale = placement.ScalingMode switch
+            {
+                ScalingMode.None => 1.0,
+                ScalingMode.UniformContain => fitContain,
+                ScalingMode.UniformContainShrinkOnly => Math.Min(1.0, fitContain),
+                ScalingMode.UniformContainEnlargeOnly => Math.Max(1.0, fitContain),
+                ScalingMode.UniformCover => fitCover,
+                _ => 1.0,
+            };
+            dispW = cropTransW * scale;
+            dispH = cropTransH * scale;
+        }
+
+        // 5. transformed 軸での source→cell スケール
+        var sxTr = cropTransW > 0 ? dispW / cropTransW : 0;
+        var syTr = cropTransH > 0 ? dispH / cropTransH : 0;
+
+        // 6. source 軸へ swap (Cw90 / Cw270 で X ↔ Y)
+        var (sxSrc, sySrc) = rotateSwap ? (syTr, sxTr) : (sxTr, syTr);
+
+        // 7. asset bbox
+        var assetW = region.Rect.Width * srcW * sxSrc;
+        var assetH = region.Rect.Height * srcH * sySrc;
+        var assetX = cellRect.X + region.OffsetXPx;
+        var assetY = cellRect.Y + region.OffsetYPx;
+
+        return (assetX, assetY, assetW, assetH);
     }
 
     private void OnPlacementsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Rebuild();
@@ -1731,16 +1927,28 @@ public partial class GridCanvasView : UserControl
     /// </summary>
     private void OnUserControlKeyDown(object? sender, KeyEventArgs e)
     {
-        if (_vm?.SelectedPlacement is not { } placement)
+        // 保護領域選択中は region offset を優先で動かす (placement 編集とは独立)。
+        // SelectedRegion が非 null なら region 経路、 null なら placement 経路。
+        var region = _selectedRegionSubscription;
+
+        if (region is null && _vm?.SelectedPlacement is null)
             return;
 
-        // Esc で選択解除 (Photoshop / Figma 標準)。 修飾キー無し、 IsDirty 中でも単純に解除する
-        // (編集中の数値は IsDirty なので Inspector が再表示されると保存ボタンで救える)。
+        // Esc で選択解除 (region 優先 → placement の順に解除)。
         if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None)
         {
-            _vm.SelectedPlacement = null;
-            e.Handled = true;
-            return;
+            if (region is not null && _copyPropsSubscription is not null)
+            {
+                _copyPropsSubscription.SelectedRegion = null;
+                e.Handled = true;
+                return;
+            }
+            if (_vm?.SelectedPlacement is not null)
+            {
+                _vm.SelectedPlacement = null;
+                e.Handled = true;
+                return;
+            }
         }
 
         if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
@@ -1763,9 +1971,77 @@ public partial class GridCanvasView : UserControl
 
         e.Handled = true;
 
+        if (region is not null)
+        {
+            // region offset の clamp は placement と同じ MaxPixelOffset を流用 (極端値の暴走防止)。
+            var max = PlacementInspectorViewModel.MaxPixelOffset;
+            region.OffsetXPx = Math.Clamp(region.OffsetXPx + dx, -max, max);
+            region.OffsetYPx = Math.Clamp(region.OffsetYPx + dy, -max, max);
+            return;
+        }
+
+        var placement = _vm!.SelectedPlacement!;
+        var maxP = PlacementInspectorViewModel.MaxPixelOffset;
+        placement.PixelOffsetX = Math.Clamp(placement.PixelOffsetX + dx, -maxP, maxP);
+        placement.PixelOffsetY = Math.Clamp(placement.PixelOffsetY + dy, -maxP, maxP);
+    }
+
+    // ---------- 保護領域選択フレームの Shift+ドラッグ ----------
+
+    private void OnRegionFramePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_selectedRegionSubscription is not { } region) return;
+        if (!e.GetCurrentPoint(RegionSelectionFrame).Properties.IsLeftButtonPressed) return;
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Shift)) return;
+
+        // フォーカスを UserControl に移して、 ドラッグ後に Ctrl+矢印で続けて微調整できるようにする。
+        Focus();
+
+        _regionOffsetDragging = true;
+        _regionOffsetStart = e.GetPosition(CanvasGrid);
+        _regionOffsetStartX = region.OffsetXPx;
+        _regionOffsetStartY = region.OffsetYPx;
+        _regionOffsetTarget = region;
+        e.Pointer.Capture(RegionSelectionFrame);
+        e.Handled = true;
+    }
+
+    private void OnRegionFramePointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_regionOffsetDragging || _regionOffsetTarget is null) return;
+        UpdateRegionOffsetFromDrag(e);
+    }
+
+    private void OnRegionFramePointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_regionOffsetDragging) return;
+        _regionOffsetDragging = false;
+        _regionOffsetTarget = null;
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// region フレームの Shift+ドラッグ中、 マウスの delta を作成キャンバス座標系の px に換算して
+    /// <see cref="ProtectedRegionItemViewModel.OffsetXPx"/> / <c>OffsetYPx</c> に加算する。
+    /// </summary>
+    private void UpdateRegionOffsetFromDrag(PointerEventArgs e)
+    {
+        var grid = _vm?.CurrentGrid;
+        var target = _regionOffsetTarget;
+        if (grid is null || target is null) return;
+        if (grid.CanvasWidth <= 0 || grid.CanvasHeight <= 0) return;
+
+        var current = e.GetPosition(CanvasGrid);
+        var dx = current.X - _regionOffsetStart.X;
+        var dy = current.Y - _regionOffsetStart.Y;
+
+        var displayW = CanvasGrid.Bounds.Width > 0 ? CanvasGrid.Bounds.Width : CanvasFixedSize;
+        var displayH = CanvasGrid.Bounds.Height > 0 ? CanvasGrid.Bounds.Height : CanvasFixedSize;
+        var sx = grid.CanvasWidth / displayW;
+        var sy = grid.CanvasHeight / displayH;
         var max = PlacementInspectorViewModel.MaxPixelOffset;
-        placement.PixelOffsetX = Math.Clamp(placement.PixelOffsetX + dx, -max, max);
-        placement.PixelOffsetY = Math.Clamp(placement.PixelOffsetY + dy, -max, max);
+        target.OffsetXPx = Math.Clamp(_regionOffsetStartX + (int)Math.Round(dx * sx), -max, max);
+        target.OffsetYPx = Math.Clamp(_regionOffsetStartY + (int)Math.Round(dy * sy), -max, max);
     }
 
     private enum DragKind { Unknown, Copy, Placement }
