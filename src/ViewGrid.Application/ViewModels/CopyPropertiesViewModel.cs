@@ -498,6 +498,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 ImageCopyId = source.CopyId,
                 Rect = item.Rect,
                 FillMode = item.FillMode,
+                FillColor = item.FillMode == ProtectedRegionFillMode.Custom ? item.FillColor : null,
+                OffsetXPx = item.OffsetXPx,
+                OffsetYPx = item.OffsetYPx,
                 SortOrder = i,
             });
         }
@@ -822,11 +825,15 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         MarkRegionsDirty();
     }
 
-    /// <summary>Region item の <see cref="ProtectedRegionItemViewModel.Rect"/> 変更で IsDirty 連動。</summary>
+    /// <summary>Region item の編集対象プロパティ変更で IsDirty 連動。</summary>
     private void OnRegionItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_suppressDirty) return;
-        if (e.PropertyName == nameof(ProtectedRegionItemViewModel.Rect))
+        if (e.PropertyName is nameof(ProtectedRegionItemViewModel.Rect)
+            or nameof(ProtectedRegionItemViewModel.FillMode)
+            or nameof(ProtectedRegionItemViewModel.FillColor)
+            or nameof(ProtectedRegionItemViewModel.OffsetXPx)
+            or nameof(ProtectedRegionItemViewModel.OffsetYPx))
             MarkRegionsDirty();
     }
 

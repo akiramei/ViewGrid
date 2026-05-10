@@ -1,25 +1,24 @@
 namespace ViewGrid.Core.Entities;
 
 /// <summary>
-/// PhotoBoard 出力時に親写真の回転を受けず、 最終キャンバス水平で再描画される
-/// 「保護領域」。 セリフ・注釈・人物の顔など、 親画像の傾きに引っ張られて
-/// 読みにくくなる要素を元画像座標系の Rect で固定する。
+/// セル内画像の一部を独立したアセットとして分離した 「保護領域」。
+/// 元画像 (Crop / Transform 適用前) の <see cref="Rect"/> から切り出され、 セル内の任意位置
+/// (<see cref="OffsetXPx"/> / <see cref="OffsetYPx"/>) に再配置される。 親の共有特性のうち
+/// スケーリングだけ追従し、 回転・反転・アライメントは無視する。
 /// </summary>
 /// <remarks>
-/// <para>処理フロー (Phase 1):</para>
+/// <para>処理フロー:</para>
 /// <list type="number">
-///   <item>元画像座標系の <see cref="Rect"/> を保持</item>
-///   <item>RenderPhotoBoard で各 placement の cell-bounded 中間画像を生成</item>
-///   <item>ManualCrop / AutoCrop で決定した実効 Crop と交差判定</item>
-///   <item>交差すれば、 親画像側の該当領域を <see cref="FillMode"/> で塗りつぶす</item>
-///   <item>同じ領域を Overlay として切り出し、 PhotoBoard のランダム回転を打ち消した
-///     キャンバス水平向きで最終キャンバスに合成</item>
+///   <item>元画像座標系 0–1 比率の <see cref="Rect"/> から asset を切り出し</item>
+///   <item>親の source→cell スケール係数で asset をリサイズ (回転・反転・アライメントは無視)</item>
+///   <item>cell-local pixel <c>(<see cref="OffsetXPx"/>, <see cref="OffsetYPx"/>)</c> に
+///     左上揃えで配置、 cell 矩形で clip</item>
+///   <item>親側は <see cref="Rect"/> ∩ effective Crop の可視部分を <see cref="FillMode"/>
+///     (+ <see cref="FillColor"/>) で塗る</item>
+///   <item>PhotoBoard 出力時はセル合成後の結果に対してばらつき (回転 / オフセット) を適用するため、
+///     region は親画像と一緒に揺れる</item>
 /// </list>
-/// <para>「KeepUpright」 の意味は 「<see cref="ImageCopy.Transform"/> で指定された 90 度回転等は
-/// 尊重し、 PhotoBoard が遊びで傾けたランダム回転だけを打ち消す」。</para>
-/// <para>Phase 1 では <see cref="Rect"/> のみ・<see cref="FillMode"/> は
-/// <see cref="ProtectedRegionFillMode.White"/> 一択・PhotoBoard 出力のみ対応。
-/// Polygon / Snap90 / FollowParent / OCR / Inpaint は Phase 2 以降。</para>
+/// <para>通常モード / PhotoBoard モードの両方で有効。</para>
 /// </remarks>
 public sealed class ProtectedRegion
 {
@@ -28,15 +27,30 @@ public sealed class ProtectedRegion
     /// <summary>所属する <see cref="ImageCopy"/> の Id (FK)。</summary>
     public required Guid ImageCopyId { get; init; }
 
-    /// <summary>元画像座標系の bbox (0–1 比率)。</summary>
+    /// <summary>元画像座標系の bbox (0–1 比率)。 Crop / Transform 適用前の座標。</summary>
     public required RegionRectFraction Rect { get; init; }
 
     /// <summary>親画像側の元位置の塗りつぶし方法。</summary>
     public required ProtectedRegionFillMode FillMode { get; init; }
 
     /// <summary>
+    /// <see cref="FillMode"/> が <see cref="ProtectedRegionFillMode.Custom"/> のときに使う ARGB 色。
+    /// それ以外のプリセット (White / Black / Transparent) では <c>null</c> 推奨 (renderer 側で無視)。
+    /// </summary>
+    public uint? FillColor { get; init; }
+
+    /// <summary>
+    /// セル内 pixel 単位の X オフセット (左上基準)。 既定 0。 負値も許可 (左にはみ出した分は cell 矩形で clip される)。
+    /// </summary>
+    public int OffsetXPx { get; init; }
+
+    /// <summary>
+    /// セル内 pixel 単位の Y オフセット (左上基準)。 既定 0。 負値も許可 (上にはみ出した分は cell 矩形で clip される)。
+    /// </summary>
+    public int OffsetYPx { get; init; }
+
+    /// <summary>
     /// 同一 <see cref="ImageCopy"/> 内での描画順 (小さい順に描画)。
-    /// Phase 1 では追加順 = sort_order。 並べ替え UI は Phase 2 で検討。
     /// </summary>
     public required int SortOrder { get; init; }
 }

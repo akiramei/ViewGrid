@@ -29,11 +29,25 @@ internal sealed class ProtectedRegionConfiguration : IEntityTypeConfiguration<Pr
             rect.Property(p => p.Height).HasColumnName("rect_height").IsRequired();
         });
 
-        // FillMode は enum、 Phase 1 では値 White=0 のみ。 拡張余地のため文字列ではなく
+        // FillMode は enum {White=0, Black=1, Transparent=2, Custom=3}。 拡張余地のため文字列ではなく
         // INTEGER として保存 (将来の値追加で renumbering せずに済む)。
         builder.Property(x => x.FillMode)
             .HasConversion<int>()
             .HasColumnName("fill_mode")
+            .IsRequired();
+
+        // FillMode = Custom のときに使う ARGB 色 (uint, AARRGGBB)。 プリセット利用時は null。
+        builder.Property(x => x.FillColor)
+            .HasColumnName("fill_color");
+
+        // セル内 pixel オフセット。 既定 0 (左上)。 負値も許可。
+        builder.Property(x => x.OffsetXPx)
+            .HasColumnName("offset_x_px")
+            .HasDefaultValue(0)
+            .IsRequired();
+        builder.Property(x => x.OffsetYPx)
+            .HasColumnName("offset_y_px")
+            .HasDefaultValue(0)
             .IsRequired();
 
         // ImageCopy 削除時にカスケード削除。 shadow-FK 規約に従い navigation は持たない。
