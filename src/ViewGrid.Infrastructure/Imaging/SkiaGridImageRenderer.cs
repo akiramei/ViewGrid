@@ -641,8 +641,16 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
 
         var dstLeft = cellRect.X + region.OffsetXPx;
         var dstTop = cellRect.Y + region.OffsetYPx;
+        // 親側塗り (IsAntialias=false で pixel center 包含ルール) と pixel 単位で揃えるため、
+        // dst SKRect の右下を Math.Round で整数 pixel に snap する。 offset/cellRect は整数なので
+        // 左上は既に整数、 右下のみ snap すれば 「矩形 region で白塗りと asset が同じ pixel を占有」
+        // が保証される (offset が source 写像位置と一致するとき完全に重なる)。
+        var snapL = (float)dstLeft;
+        var snapT = (float)dstTop;
+        var snapR = (float)Math.Round(dstLeft + dstW);
+        var snapB = (float)Math.Round(dstTop + dstH);
         var srcSk = SKRect.Create(sx, sy, sw, sh);
-        var dstSk = SKRect.Create((float)dstLeft, (float)dstTop, (float)dstW, (float)dstH);
+        var dstSk = new SKRect(snapL, snapT, snapR, snapB);
 
         canvas.DrawImage(source, srcSk, dstSk, sampling, paint);
     }

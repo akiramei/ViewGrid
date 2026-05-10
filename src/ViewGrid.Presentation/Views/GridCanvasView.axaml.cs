@@ -359,6 +359,13 @@ public partial class GridCanvasView : UserControl
         // asset preview 画像を更新 (region.Rect で thumbnail を切り出し、 回転 / 反転は適用しない)。
         UpdateRegionAssetPreview(placement, region);
 
+        // 親側塗り (IsAntialias=false で pixel center 包含ルール) と pixel 単位で揃えるため、
+        // asset bbox の右下も Math.Round で整数 pixel に snap する。 左上は既に整数 (cellRect + 整数 offset)。
+        var snapAR = Math.Round(assetX + assetW);
+        var snapAB = Math.Round(assetY + assetH);
+        var snapAW = Math.Max(0, snapAR - assetX);
+        var snapAH = Math.Max(0, snapAB - assetY);
+
         // Margin で位置決め、 Width / Height でサイズ決定。 CanvasGrid 全範囲を span する必要があるため
         // RowSpan / ColumnSpan に grid 全体を指定する (HorizontalAlignment=Left / VerticalAlignment=Top で
         // 左上原点から Margin を効かせる)。
@@ -370,8 +377,8 @@ public partial class GridCanvasView : UserControl
             assetX * dispScaleX,
             assetY * dispScaleY,
             0, 0);
-        RegionSelectionFrame.Width = assetW * dispScaleX;
-        RegionSelectionFrame.Height = assetH * dispScaleY;
+        RegionSelectionFrame.Width = snapAW * dispScaleX;
+        RegionSelectionFrame.Height = snapAH * dispScaleY;
 
         // セル境界でクリップ (renderer の SKCanvas.ClipRect と整合)。 Frame ローカル座標 (= asset 左上が原点)
         // で cellRect をマップした矩形を Clip に設定する。 frame 全体が cell 内に収まるとき clip は no-op、
