@@ -68,23 +68,26 @@
 
                         <!--
                             保護領域選択フレーム。SelectedRegion が非 null かつ SelectedPlacement の
-                            セル内に asset が配置されているとき、 asset bbox にオレンジ枠で重ねる。
+                            セル内に asset が配置されているとき、 asset bbox にオレンジ枠 + asset preview を重ねる。
                             HorizontalAlignment / VerticalAlignment は Left / Top 固定で、 CodeBehind が
                             Margin / Width / Height を直接設定する (Grid のセルに依らず絶対座標で位置決め)。
                             IsHitTestVisible=True にして Shift+ドラッグの掴み代として使う。
+                            Background は透明: Border 内の Image (RegionAssetPreview) で source の region 切り出しを
+                            表示し、 オレンジ 2px 枠で 「選択中」 を示す。
                         -->
                         <Border x:Name="RegionSelectionFrame"
                                 BorderBrush="#FF8C42"
                                 BorderThickness="2"
+                                Background="Transparent"
                                 IsHitTestVisible="True"
                                 IsVisible="False"
                                 ZIndex="102"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Top"
                                 Cursor="SizeAll">
-                            <Border.Background>
-                                <SolidColorBrush Color="#FF8C42" Opacity="0.18" />
-                            </Border.Background>
+                            <Image x:Name="RegionAssetPreview"
+                                   Stretch="Fill"
+                                   IsHitTestVisible="False" />
                         </Border>
                     </Grid>
                     <!-- 境界ドラッグ用ハンドル（A2）。Canvas 上に絶対配置。

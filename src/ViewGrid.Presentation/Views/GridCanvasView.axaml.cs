@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.IO;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -341,6 +342,9 @@ public partial class GridCanvasView : UserControl
             return;
         }
 
+        // asset preview 画像を更新 (region.Rect で thumbnail を切り出し、 回転 / 反転は適用しない)。
+        UpdateRegionAssetPreview(placement, region);
+
         // canvas (作成キャンバス px) → display (CanvasGrid 論理 px) へのスケール
         var dispScaleX = viewW / grid.CanvasWidth;
         var dispScaleY = viewH / grid.CanvasHeight;
@@ -359,6 +363,40 @@ public partial class GridCanvasView : UserControl
         RegionSelectionFrame.Width = assetW * dispScaleX;
         RegionSelectionFrame.Height = assetH * dispScaleY;
         RegionSelectionFrame.IsVisible = true;
+    }
+
+    /// <summary>
+    /// 選択中 region の asset preview 画像を更新する。 元画像 (Crop / Transform 適用前) から
+    /// region.Rect の領域を切り出した <see cref="Bitmap"/> を <see cref="RegionAssetPreview"/> の
+    /// Source にセットする。 サムネが存在しない場合は Source=null (Border の枠のみ表示)。
+    /// </summary>
+    private void UpdateRegionAssetPreview(PlacementItemViewModel placement, ProtectedRegionItemViewModel region)
+    {
+        if (string.IsNullOrEmpty(placement.ThumbnailPath) || !File.Exists(placement.ThumbnailPath))
+        {
+            RegionAssetPreview.Source = null;
+            return;
+        }
+
+        // region asset は 「回転 / 反転無視」 仕様なので Rotation=None / FlipX=false / FlipY=false で
+        // raw source thumbnail を切り出す (=  CropFraction として region.Rect を渡す)。
+        // 既存 LRU bitmap キャッシュを共有する。
+        var cropFraction = new CropFraction(
+            region.Rect.X, region.Rect.Y, region.Rect.Width, region.Rect.Height);
+        try
+        {
+            var bitmap = GetOrCreatePreRotatedBitmap(
+                placement.ThumbnailPath,
+                Rotation.None,
+                flipX: false, flipY: false,
+                cropFraction);
+            RegionAssetPreview.Source = bitmap;
+        }
+        catch
+        {
+            // 画像読み込み失敗は静かに諦める (オレンジ枠だけが表示される状態)
+            RegionAssetPreview.Source = null;
+        }
     }
 
     /// <summary>
