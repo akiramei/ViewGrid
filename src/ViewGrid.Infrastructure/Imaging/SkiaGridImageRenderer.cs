@@ -634,14 +634,20 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
 
     /// <summary>
     /// region の元画像座標 <see cref="ProtectedRegion.Rect"/> を <paramref name="source"/> から切り出し、
-    /// 親と同じ <paramref name="assetScaleX"/> / <paramref name="assetScaleY"/> でリサイズして
-    /// cell-local pixel <c>(<see cref="ProtectedRegion.OffsetXPx"/>, <see cref="ProtectedRegion.OffsetYPx"/>)</c>
-    /// に左上揃えで描画する。 cell 矩形での clip は呼び出し元の <see cref="SKCanvas.ClipRect(SKRect, SKClipOperation, bool)"/>
-    /// に任せる (cell 外の pixel は ClipRect で潰れる)。
+    /// 親と同じ <paramref name="assetScaleX"/> / <paramref name="assetScaleY"/> でリサイズし、
+    /// region 自身の <see cref="ProtectedRegion.Rotation"/> / <see cref="ProtectedRegion.FlipX"/>
+    /// / <see cref="ProtectedRegion.FlipY"/> を適用してから cell-local pixel
+    /// <c>(<see cref="ProtectedRegion.OffsetXPx"/>, <see cref="ProtectedRegion.OffsetYPx"/>)</c>
+    /// に visible bbox の左上揃えで描画する。 cell 矩形での clip は呼び出し元の
+    /// <see cref="SKCanvas.ClipRect(SKRect, SKClipOperation, bool)"/> に任せる (cell 外の pixel は
+    /// ClipRect で潰れる)。
     /// </summary>
     /// <remarks>
-    /// region.Rect は Crop / Transform 非依存 (常に raw source 座標)。 そのため Crop 外に元位置がある
-    /// region でも asset 自体は描画される (= 「セル内ステッカー」 仕様)。
+    /// <para>region.Rect は Crop / Transform 非依存 (常に raw source 座標)。 そのため Crop 外に元位置がある
+    /// region でも asset 自体は描画される (= 「セル内ステッカー」 仕様)。</para>
+    /// <para>変換順序は <see cref="AutoCropCalculator.TransformRect"/> と同じく <c>Flip → Rotate</c>。
+    /// region 自身の rotation/flip は親 placement の transform とは独立で、 親側塗り
+    /// (<see cref="ComputeRegionParentFillRect"/>) は影響を受けない。</para>
     /// </remarks>
     private static void DrawRegionAsset(
         SKCanvas canvas, SKImage source, ProtectedRegion region,
@@ -653,20 +659,56 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         var (sx, sy, sw, sh) = region.Rect.ToPixelBbox(sourceWidth, sourceHeight);
         if (sw <= 0 || sh <= 0) return;
 
-        var dstW = sw * assetScaleX;
-        var dstH = sh * assetScaleY;
-        if (dstW <= 0 || dstH <= 0) return;
+        // 回転前 (region 自身の Rotation 適用前) の cell-local pixel サイズ。
+        var origW = sw * assetScaleX;
+        var origH = sh * assetScaleY;
+        if (origW <= 0 || origH <= 0) return;
+
+        // 回転後の visible bbox (Cw90/Cw270 で W/H が swap)。
+        var axisSwap = region.Rotation is Rotation.Cw90 or Rotation.Cw270;
+        var visW = axisSwap ? origH : origW;
+        var visH = axisSwap ? origW : origH;
 
         var dstLeft = cellRect.X + region.OffsetXPx;
         var dstTop = cellRect.Y + region.OffsetYPx;
-        // 親側塗りと同じ snap rule で整数 pixel に揃える (corner round + dimensions round)。
-        // offset/cellRect は整数で dstLeft/dstTop も整数だが、 dstW/dstH は scale 由来の float なので
-        // round(W)/round(H) で整数化する。 これで親側塗りと asset が 「同じ source bbox から同じ
-        // 整数 pixel coverage」 になり、 offset が source 写像位置と一致したとき完全に重なる。
-        var snapped = SnapRectToIntegerPixels(SKRect.Create((float)dstLeft, (float)dstTop, (float)dstW, (float)dstH));
+        // 親側塗りと同じ snap rule で visible bbox を整数 pixel に揃える (corner round + dimensions round)。
+        // offset/cellRect は整数で dstLeft/dstTop も整数だが、 visW/visH は scale 由来の float なので
+        // round で整数化する。 これで親側塗りと asset が 「同じ source bbox から同じ整数 pixel coverage」
+        // になり、 offset が source 写像位置と一致したとき完全に重なる。
+        var snappedVis = SnapRectToIntegerPixels(SKRect.Create((float)dstLeft, (float)dstTop, (float)visW, (float)visH));
+        if (snappedVis.Width <= 0 || snappedVis.Height <= 0) return;
+
         var srcSk = SKRect.Create(sx, sy, sw, sh);
 
-        canvas.DrawImage(source, srcSk, snapped, sampling, paint);
+        // 無変換は fast path。 既存挙動と同じ DrawImage を直接コール (matrix push なし)。
+        if (region.Rotation == Rotation.None && !region.FlipX && !region.FlipY)
+        {
+            canvas.DrawImage(source, srcSk, snappedVis, sampling, paint);
+            return;
+        }
+
+        // axis swap 時は visible bbox の (W, H) を swap して 「回転前」 サイズを得る。
+        // これで「回転前のローカル座標で snappedVis にぴったり収まる矩形」 を取り出せる。
+        var snappedOrigW = axisSwap ? snappedVis.Height : snappedVis.Width;
+        var snappedOrigH = axisSwap ? snappedVis.Width : snappedVis.Height;
+        var dstLocal = SKRect.Create(0, 0, snappedOrigW, snappedOrigH);
+
+        // Skia の matrix は描画時に逆順で適用されるため、 コード上の順序は逆。
+        // 概念順序: Translate(-w/2, -h/2) → Scale(Flip) → Rotate → Translate(canvas center)
+        // = Flip を先 (image local 中心) → Rotate → canvas に配置。
+        canvas.Save();
+        try
+        {
+            canvas.Translate(snappedVis.MidX, snappedVis.MidY);
+            canvas.RotateDegrees((int)region.Rotation);
+            canvas.Scale(region.FlipX ? -1f : 1f, region.FlipY ? -1f : 1f);
+            canvas.Translate(-snappedOrigW / 2f, -snappedOrigH / 2f);
+            canvas.DrawImage(source, srcSk, dstLocal, sampling, paint);
+        }
+        finally
+        {
+            canvas.Restore();
+        }
     }
 
     /// <summary>
