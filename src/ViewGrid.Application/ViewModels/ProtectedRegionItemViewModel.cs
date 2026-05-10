@@ -68,6 +68,18 @@ public sealed partial class ProtectedRegionItemViewModel : ObservableObject
     [ObservableProperty]
     public partial int OffsetYPx { get; set; }
 
+    /// <summary>region 自身の回転 (90度刻み、 時計回り、 既定 None)。 親 placement とは独立。</summary>
+    [ObservableProperty]
+    public partial Rotation Rotation { get; set; }
+
+    /// <summary>region 自身の水平反転 (既定 false)。 親 placement とは独立。</summary>
+    [ObservableProperty]
+    public partial bool FlipX { get; set; }
+
+    /// <summary>region 自身の垂直反転 (既定 false)。 親 placement とは独立。</summary>
+    [ObservableProperty]
+    public partial bool FlipY { get; set; }
+
     /// <summary>表示用ラベル。 fraction を %、 W/H を 2 桁の小数点以下まで表示する。</summary>
     public string LabelText =>
         $"X {Rect.X * 100:F1}% / Y {Rect.Y * 100:F1}% / W {Rect.Width * 100:F1}% / H {Rect.Height * 100:F1}%";
@@ -78,7 +90,10 @@ public sealed partial class ProtectedRegionItemViewModel : ObservableObject
         ProtectedRegionFillMode fillMode,
         uint? fillColor = null,
         int offsetXPx = 0,
-        int offsetYPx = 0)
+        int offsetYPx = 0,
+        Rotation rotation = Rotation.None,
+        bool flipX = false,
+        bool flipY = false)
     {
         Id = id;
         Rect = rect;
@@ -86,6 +101,9 @@ public sealed partial class ProtectedRegionItemViewModel : ObservableObject
         FillColor = fillColor;
         OffsetXPx = offsetXPx;
         OffsetYPx = offsetYPx;
+        Rotation = rotation;
+        FlipX = flipX;
+        FlipY = flipY;
     }
 
     /// <summary>既存 <see cref="ProtectedRegion"/> から VM を作る。 Id を引き継ぐので Undo の参照キーとして安定。</summary>
@@ -98,7 +116,10 @@ public sealed partial class ProtectedRegionItemViewModel : ObservableObject
             region.FillMode,
             region.FillColor,
             region.OffsetXPx,
-            region.OffsetYPx);
+            region.OffsetYPx,
+            region.Rotation,
+            region.FlipX,
+            region.FlipY);
     }
 
     /// <summary>新規 region 用のデフォルト矩形 (画像中央 20%)。 Editor 起動前のプレースホルダ値。</summary>

@@ -537,6 +537,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 FillColor = item.FillMode == ProtectedRegionFillMode.Custom ? item.FillColor : null,
                 OffsetXPx = item.OffsetXPx,
                 OffsetYPx = item.OffsetYPx,
+                Rotation = item.Rotation,
+                FlipX = item.FlipX,
+                FlipY = item.FlipY,
                 SortOrder = i,
             });
         }
@@ -869,7 +872,10 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
             or nameof(ProtectedRegionItemViewModel.FillMode)
             or nameof(ProtectedRegionItemViewModel.FillColor)
             or nameof(ProtectedRegionItemViewModel.OffsetXPx)
-            or nameof(ProtectedRegionItemViewModel.OffsetYPx))
+            or nameof(ProtectedRegionItemViewModel.OffsetYPx)
+            or nameof(ProtectedRegionItemViewModel.Rotation)
+            or nameof(ProtectedRegionItemViewModel.FlipX)
+            or nameof(ProtectedRegionItemViewModel.FlipY))
             MarkRegionsDirty();
     }
 

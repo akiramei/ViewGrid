@@ -671,4 +671,76 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         reloaded!.Regions[0].FillMode.Should().Be(ProtectedRegionFillMode.White);
         reloaded.Regions[0].FillColor.Should().BeNull("Custom 以外の FillMode では FillColor は永続化しない");
     }
+
+    // ─── ProtectedRegion 独立 transform (Rotation / FlipX / FlipY) ────────────
+
+    [Fact]
+    public async Task RegionRotation_Change_Marks_Dirty()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.RegionItems[0].Rotation = Rotation.Cw90;
+
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RegionFlip_Change_Marks_Dirty()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.RegionItems[0].FlipX = true;
+        _vm.IsDirty.Should().BeTrue();
+
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.RegionItems[0].FlipY = true;
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SaveAsync_Persists_Region_Transform_Fields_And_Reload_Restores_Them()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+
+        var item = _vm.RegionItems[0];
+        item.Rotation = Rotation.Cw270;
+        item.FlipX = true;
+        item.FlipY = true;
+
+        await _vm.SaveAsync();
+
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        reloaded!.Regions.Should().HaveCount(1);
+        reloaded.Regions[0].Rotation.Should().Be(Rotation.Cw270);
+        reloaded.Regions[0].FlipX.Should().BeTrue();
+        reloaded.Regions[0].FlipY.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SaveAsync_DefaultRegion_Persists_Identity_Transform()
+    {
+        // 既定で AddRegion した region は Rotation=None / FlipX=false / FlipY=false で永続化される。
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+
+        await _vm.SaveAsync();
+
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        reloaded!.Regions[0].Rotation.Should().Be(Rotation.None);
+        reloaded.Regions[0].FlipX.Should().BeFalse();
+        reloaded.Regions[0].FlipY.Should().BeFalse();
+    }
 }
