@@ -493,6 +493,17 @@
                                 </StackPanel>
                             </Grid>
 
+                            <TextBlock Classes="FieldLabel" Text="回転 (region 単独)" Margin="0,6,0,0" />
+                            <ComboBox ItemsSource="{Binding #CopyPropertiesRoot.DataContext.RotationOptions}"
+                                      SelectedItem="{Binding Rotation}"
+                                      HorizontalAlignment="Stretch" />
+
+                            <TextBlock Classes="FieldLabel" Text="反転 (region 単独)" Margin="0,6,0,0" />
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <CheckBox Content="水平 (H)" IsChecked="{Binding FlipX}" />
+                                <CheckBox Content="垂直 (V)" IsChecked="{Binding FlipY}" />
+                            </StackPanel>
+
                             <TextBlock Classes="FieldLabel" Text="塗りモード (親側)" Margin="0,6,0,0" />
                             <ComboBox ItemsSource="{Binding #CopyPropertiesRoot.DataContext.RegionFillModeOptions}"
                                       SelectedItem="{Binding FillMode}"
