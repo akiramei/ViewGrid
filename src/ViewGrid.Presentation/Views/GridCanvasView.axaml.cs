@@ -335,7 +335,7 @@ public partial class GridCanvasView : UserControl
             return;
         }
 
-        var (assetX, assetY, assetW, assetH) = ComputeRegionAssetCanvasRect(grid, placement, region);
+        var (assetX, assetY, assetW, assetH, cellRect) = ComputeRegionAssetCanvasRect(grid, placement, region);
         if (assetW <= 0 || assetH <= 0)
         {
             RegionSelectionFrame.IsVisible = false;
@@ -362,6 +362,17 @@ public partial class GridCanvasView : UserControl
             0, 0);
         RegionSelectionFrame.Width = assetW * dispScaleX;
         RegionSelectionFrame.Height = assetH * dispScaleY;
+
+        // セル境界でクリップ (renderer の SKCanvas.ClipRect と整合)。 Frame ローカル座標 (= asset 左上が原点)
+        // で cellRect をマップした矩形を Clip に設定する。 frame 全体が cell 内に収まるとき clip は no-op、
+        // はみ出すときは cell 範囲だけ描画される (枠線も同様に切られる)。
+        var cellLeftInFrame = (cellRect.X - assetX) * dispScaleX;
+        var cellTopInFrame = (cellRect.Y - assetY) * dispScaleY;
+        var cellWidthInFrame = cellRect.Width * dispScaleX;
+        var cellHeightInFrame = cellRect.Height * dispScaleY;
+        RegionSelectionFrame.Clip = new RectangleGeometry(new Rect(
+            cellLeftInFrame, cellTopInFrame, cellWidthInFrame, cellHeightInFrame));
+
         RegionSelectionFrame.IsVisible = true;
     }
 
@@ -401,9 +412,10 @@ public partial class GridCanvasView : UserControl
 
     /// <summary>
     /// region asset の bbox を作成キャンバス座標 (px) で計算する。 親画像の source→cell スケールを
-    /// 適用 (Cw90/Cw270 軸 swap、 Crop は EffectiveCropFraction で反映)。
+    /// 適用 (Cw90/Cw270 軸 swap、 Crop は EffectiveCropFraction で反映)。 戻り値の最後の要素は
+    /// cellRect (cell 境界での clip 計算に使う)。
     /// </summary>
-    private static (double X, double Y, double W, double H) ComputeRegionAssetCanvasRect(
+    private static (double X, double Y, double W, double H, ViewGrid.Core.UseCases.PixelRect CellRect) ComputeRegionAssetCanvasRect(
         GridCanvasItemViewModel grid,
         PlacementItemViewModel placement,
         ProtectedRegionItemViewModel region)
@@ -415,7 +427,7 @@ public partial class GridCanvasView : UserControl
             grid.ColWeights, grid.RowWeights,
             placement.Position, placement.OccupySize,
             pixelOffsetX: 0, pixelOffsetY: 0);
-        if (cellRect.Width <= 0 || cellRect.Height <= 0) return (0, 0, 0, 0);
+        if (cellRect.Width <= 0 || cellRect.Height <= 0) return (0, 0, 0, 0, cellRect);
 
         // 2. 回転で source 軸が swap されるか
         var rotateSwap = placement.Rotation is Rotation.Cw90 or Rotation.Cw270;
@@ -466,7 +478,7 @@ public partial class GridCanvasView : UserControl
         var assetX = cellRect.X + region.OffsetXPx;
         var assetY = cellRect.Y + region.OffsetYPx;
 
-        return (assetX, assetY, assetW, assetH);
+        return (assetX, assetY, assetW, assetH, cellRect);
     }
 
     private void OnPlacementsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Rebuild();
