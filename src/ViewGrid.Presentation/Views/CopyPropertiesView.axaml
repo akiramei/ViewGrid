@@ -402,16 +402,15 @@
                 </StackPanel>
 
                 <!--
-                    保護領域タブ本文。 Phase 1 PhotoBoard 出力のみ有効。
-                    一覧 ListBox + 追加 / 編集 / 削除 ボタン。 並べ替えは Phase 2 で検討。
+                    保護領域タブ本文。 通常 / PhotoBoard 出力両対応 (セル内ステッカー方式)。
+                    一覧 ListBox + 追加 / 編集 / 削除 ボタン + 選択行の詳細 (Offset / 塗りモード / 色採取)。
                 -->
                 <StackPanel Grid.Row="1"
                             Classes="FormGroup"
                             IsVisible="{Binding #CopyPropertiesRoot.IsRegionsTabSelected}">
                     <StackPanel Classes="FormSection">
-                        <TextBlock Classes="FieldLabel"
-                                   Text="保護領域 (PhotoBoard 出力時のみ有効)" />
-                        <TextBlock Text="親写真の回転に巻き込まれずキャンバス水平で再描画したい領域 (セリフ・注釈など) を矩形で登録します。"
+                        <TextBlock Classes="FieldLabel" Text="保護領域" />
+                        <TextBlock Text="セル内画像の一部を独立アセットとして分離し、 cell 内任意位置に配置します。 親の回転 / 反転 / アライメントは適用されず、 スケールのみ追従します。"
                                    FontSize="11"
                                    Opacity="0.65"
                                    TextWrapping="Wrap"
@@ -463,6 +462,71 @@
                                    TextWrapping="Wrap"
                                    Margin="0,8,0,0"
                                    IsVisible="{Binding HasNoRegions}" />
+
+                        <!--
+                            選択中の region の詳細。 SelectedRegion=null では非表示。
+                            Offset (px、 負値可) + 塗りモード (4 プリセット) + Custom 時の HEX 入力 + 画像クリック採取。
+                            VM レベルのプロパティ (RegionFillModeOptions, ThumbnailPath, HasThumbnail) は
+                            #CopyPropertiesRoot.DataContext 経由で参照する (内側 DataContext は SelectedRegion)。
+                        -->
+                        <StackPanel x:Name="RegionDetailPanel"
+                                    Spacing="6"
+                                    Margin="0,12,0,0"
+                                    DataContext="{Binding SelectedRegion}"
+                                    IsVisible="{Binding #CopyPropertiesRoot.DataContext.SelectedRegion, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <TextBlock Classes="FieldLabel" Text="選択中の保護領域" />
+
+                            <Grid ColumnDefinitions="*,8,*" RowDefinitions="Auto">
+                                <StackPanel Grid.Column="0" Grid.Row="0" Spacing="2">
+                                    <TextBlock Classes="FieldLabel" Text="Offset X (px)" />
+                                    <NumericUpDown Value="{Binding OffsetXPx}"
+                                                   FormatString="0"
+                                                   Increment="1"
+                                                   LostFocus="OnNumericUpDownLostFocus" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Grid.Row="0" Spacing="2">
+                                    <TextBlock Classes="FieldLabel" Text="Offset Y (px)" />
+                                    <NumericUpDown Value="{Binding OffsetYPx}"
+                                                   FormatString="0"
+                                                   Increment="1"
+                                                   LostFocus="OnNumericUpDownLostFocus" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Classes="FieldLabel" Text="塗りモード (親側)" Margin="0,6,0,0" />
+                            <ComboBox ItemsSource="{Binding #CopyPropertiesRoot.DataContext.RegionFillModeOptions}"
+                                      SelectedItem="{Binding FillMode}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={x:Static conv:ProtectedRegionFillModeLabelConverter.Instance}}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+
+                            <!-- Custom 時のみ HEX 入力 -->
+                            <StackPanel Spacing="4" Margin="0,4,0,0" IsVisible="{Binding IsFillCustom}">
+                                <TextBlock Classes="FieldLabel" Text="HEX (#AARRGGBB)" />
+                                <TextBox Text="{Binding FillColorHex}"
+                                         PlaceholderText="#FFFFFFFF" />
+                                <TextBlock Classes="HintText"
+                                           Text="下のサムネ画像をクリックすると元画像 (Crop 適用前) から色を採取できます (FillMode は自動的に Custom に切り替わります)。" />
+                            </StackPanel>
+
+                            <!-- 元画像サムネ + クリック採取。 Custom でなくても表示 (採取で自動的に Custom になる)。 -->
+                            <Border BorderBrush="{DynamicResource SystemBaseLowColor}"
+                                    BorderThickness="1"
+                                    Background="{DynamicResource SystemAltMediumLowColor}"
+                                    Margin="0,4,0,0"
+                                    IsVisible="{Binding #CopyPropertiesRoot.DataContext.HasThumbnail}">
+                                <Image x:Name="RegionColorPickerImage"
+                                       Source="{Binding #CopyPropertiesRoot.DataContext.ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
+                                       MaxHeight="180"
+                                       Stretch="Uniform"
+                                       Cursor="Cross"
+                                       PointerPressed="OnRegionColorPickerPointerPressed" />
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
             </Grid>

@@ -136,6 +136,42 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// <summary>RegionItems が空のとき true。 「未登録です」 メッセージの表示用。</summary>
     public bool HasNoRegions => RegionItems.Count == 0;
 
+    /// <summary>「塗りモード」 ComboBox の選択肢 (4 値)。 ItemTemplate で日本語ラベル化。</summary>
+    public IReadOnlyList<ProtectedRegionFillMode> RegionFillModeOptions { get; } = new[]
+    {
+        ProtectedRegionFillMode.White,
+        ProtectedRegionFillMode.Black,
+        ProtectedRegionFillMode.Transparent,
+        ProtectedRegionFillMode.Custom,
+    };
+
+    /// <summary>
+    /// 選択中の region 用のサムネ画像クリックピッカー。 サムネ表示 (Stretch.Uniform) 上の
+    /// クリック座標を原画像座標に換算し、 採取した ARGB を <see cref="ProtectedRegionItemViewModel.FillColor"/>
+    /// に書き戻す。 同時に <see cref="ProtectedRegionItemViewModel.FillMode"/> を Custom に切り替える。
+    /// AutoCrop 側の <see cref="PickColorFromThumbnailAsync"/> と同じパターン。
+    /// </summary>
+    public async Task PickColorForSelectedRegionAsync(
+        int thumbX, int thumbY, int thumbWidth, int thumbHeight, CancellationToken ct = default)
+    {
+        if (SelectedRegion is not { } region) return;
+        var path = SourceImagePath;
+        if (string.IsNullOrEmpty(path)) return;
+        if (SourceWidth <= 0 || SourceHeight <= 0) return;
+        if (thumbWidth <= 0 || thumbHeight <= 0) return;
+
+        var srcX = (int)Math.Clamp((double)thumbX / thumbWidth * SourceWidth, 0, SourceWidth - 1);
+        var srcY = (int)Math.Clamp((double)thumbY / thumbHeight * SourceHeight, 0, SourceHeight - 1);
+
+        var argb = await _colorPicker.PickColorAsync(path, srcX, srcY, ct);
+        if (argb is not { } color) return;
+
+        // 採取した色を FillColor に格納し、 FillMode を Custom に揃える
+        // (採取直後にプリセットへ戻された場合の挙動はユーザー操作に委ねる)。
+        region.FillColor = color;
+        region.FillMode = ProtectedRegionFillMode.Custom;
+    }
+
     /// <summary>矩形が確定しているか（W&gt;0 かつ H&gt;0）。「手動」ラジオ ON 直後でドラッグ前は false。
     /// 数値入力フィールドや矩形ハンドルの IsEnabled、Save 時の永続化判定に使う。</summary>
     public bool IsManualCropDefined =>

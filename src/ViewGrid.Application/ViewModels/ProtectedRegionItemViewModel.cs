@@ -1,3 +1,4 @@
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ViewGrid.Core.Entities;
 
@@ -20,11 +21,44 @@ public sealed partial class ProtectedRegionItemViewModel : ObservableObject
 
     /// <summary>親側塗りつぶしの方法。 White / Black / Transparent / Custom。</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFillCustom))]
     public partial ProtectedRegionFillMode FillMode { get; set; }
 
     /// <summary><see cref="FillMode"/>=Custom のときに使う ARGB 色。 それ以外では無視。</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FillColorHex))]
     public partial uint? FillColor { get; set; }
+
+    /// <summary>UI 制御用: <see cref="FillMode"/> が Custom のときだけ HEX 入力 / 画像ピッカー UI を出す。</summary>
+    public bool IsFillCustom => FillMode == ProtectedRegionFillMode.Custom;
+
+    /// <summary>
+    /// <see cref="FillColor"/> の <c>#AARRGGBB</c> 形式 HEX 表現。 双方向バインド向けで、 setter は
+    /// 「<c>#</c> 省略可」「6 桁 (RGB) は AA=FF として補完」 を許容する。 解析失敗時は値を変更しない。
+    /// </summary>
+    public string FillColorHex
+    {
+        get => FillColor is { } argb
+            ? "#" + argb.ToString("X8", CultureInfo.InvariantCulture)
+            : string.Empty;
+        set
+        {
+            if (TryParseArgbHex(value, out var parsed))
+                FillColor = parsed;
+            // パース失敗時は黙って無視 (TextBox のフォーカスアウト時に最終 Get で正しい値に戻る)
+        }
+    }
+
+    private static bool TryParseArgbHex(string? text, out uint argb)
+    {
+        argb = 0;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var t = text.Trim();
+        if (t.StartsWith('#')) t = t[1..];
+        if (t.Length == 6) t = "FF" + t;  // RGB → AARRGGBB (alpha は不透明)
+        if (t.Length != 8) return false;
+        return uint.TryParse(t, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out argb);
+    }
 
     /// <summary>セル内 pixel 単位の X オフセット (左上基準、 既定 0、 負値可)。</summary>
     [ObservableProperty]

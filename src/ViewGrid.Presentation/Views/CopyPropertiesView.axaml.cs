@@ -263,6 +263,50 @@ public partial class CopyPropertiesView : UserControl
         }
     }
 
+    /// <summary>
+    /// 保護領域の 「画像クリックピッカー」 用ハンドラ。 <see cref="OnColorPickerPointerPressed"/> と
+    /// 同じ座標換算を行い、 採取した色を <see cref="CopyPropertiesViewModel.PickColorForSelectedRegionAsync"/>
+    /// に渡す。 SelectedRegion=null / Source 未設定時は黙ってスキップ。
+    /// FillMode は採取後に自動的に Custom に切り替わる仕様 (VM 側で実施)。
+    /// </summary>
+    private async void OnRegionColorPickerPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Image image) return;
+        if (DataContext is not CopyPropertiesViewModel vm) return;
+        if (vm.SelectedRegion is null) return;
+        if (image.Source is not Bitmap bitmap) return;
+        if (!e.GetCurrentPoint(image).Properties.IsLeftButtonPressed) return;
+
+        var pos = e.GetPosition(image);
+        var imgW = image.Bounds.Width;
+        var imgH = image.Bounds.Height;
+        var bmpW = bitmap.PixelSize.Width;
+        var bmpH = bitmap.PixelSize.Height;
+        if (imgW <= 0 || imgH <= 0 || bmpW <= 0 || bmpH <= 0) return;
+
+        var scale = Math.Min(imgW / bmpW, imgH / bmpH);
+        var displayW = bmpW * scale;
+        var displayH = bmpH * scale;
+        var padX = (imgW - displayW) / 2.0;
+        var padY = (imgH - displayH) / 2.0;
+
+        var localX = pos.X - padX;
+        var localY = pos.Y - padY;
+        if (localX < 0 || localX >= displayW || localY < 0 || localY >= displayH) return;
+
+        var px = (int)(localX / scale);
+        var py = (int)(localY / scale);
+
+        try
+        {
+            await vm.PickColorForSelectedRegionAsync(px, py, bmpW, bmpH);
+        }
+        catch
+        {
+            // ユーザー操作起点の例外は握りつぶす
+        }
+    }
+
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
         if (_vm is not null)
