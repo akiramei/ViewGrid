@@ -582,4 +582,93 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         redone.Regions[0].Id.Should().Be(originalId, "Redo で Region.Id が安定している");
         redone.Regions[0].Rect.Width.Should().BeApproximately(0.2, 1e-9);
     }
+
+    // ─── ProtectedRegion 新仕様フィールド (FillMode / FillColor / Offset*) ──────
+
+    [Fact]
+    public async Task RegionFillMode_Change_Marks_Dirty()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.RegionItems[0].FillMode = ProtectedRegionFillMode.Black;
+
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RegionFillColor_Change_Marks_Dirty()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.RegionItems[0].FillColor = 0xFF_AB_CD_EFu;
+
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RegionOffset_Change_Marks_Dirty()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.RegionItems[0].OffsetXPx = 25;
+
+        _vm.IsDirty.Should().BeTrue();
+
+        _vm.RegionItems[0].OffsetYPx = -10;
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SaveAsync_Persists_New_Region_Fields_And_Reload_Restores_Them()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+
+        var item = _vm.RegionItems[0];
+        item.FillMode = ProtectedRegionFillMode.Custom;
+        item.FillColor = 0xFF_12_34_56u;
+        item.OffsetXPx = 42;
+        item.OffsetYPx = -13;
+
+        await _vm.SaveAsync();
+
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        reloaded!.Regions.Should().HaveCount(1);
+        reloaded.Regions[0].FillMode.Should().Be(ProtectedRegionFillMode.Custom);
+        reloaded.Regions[0].FillColor.Should().Be(0xFF_12_34_56u);
+        reloaded.Regions[0].OffsetXPx.Should().Be(42);
+        reloaded.Regions[0].OffsetYPx.Should().Be(-13);
+    }
+
+    [Fact]
+    public async Task SaveAsync_NonCustomFillMode_NullsOutFillColorOnPersist()
+    {
+        // 仕様: VM が FillColor=非 null + FillMode=White のとき、
+        // 永続化時には FillColor を null にして保存する (Custom 以外で値が残ると意味が混線する)。
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        var item = _vm.RegionItems[0];
+        item.FillMode = ProtectedRegionFillMode.White;
+        item.FillColor = 0xFF_12_34_56u;  // 「過去の Custom 設定の残骸」 を模擬
+
+        await _vm.SaveAsync();
+
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        reloaded!.Regions[0].FillMode.Should().Be(ProtectedRegionFillMode.White);
+        reloaded.Regions[0].FillColor.Should().BeNull("Custom 以外の FillMode では FillColor は永続化しない");
+    }
 }
