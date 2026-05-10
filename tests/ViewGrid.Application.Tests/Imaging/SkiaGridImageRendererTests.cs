@@ -674,6 +674,137 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         rendered.GetPixel(5, 5).Should().Be(SKColors.Red);
     }
 
+    // ─── ProtectedRegion 独立 transform (Rotation / FlipX / FlipY) 統合テスト ───
+    // 100x100 4 象限画像 (TL=Red, TR=Lime, BL=Blue, BR=Yellow) を全域 region で配置し、
+    // ScalingMode=Fill / 親 Transform=Identity / cell=100x100 で source→cell が 1:1。
+    // region 自身の Rotation/Flip を変えたとき、 各象限の色が正しく入れ替わることを検証。
+
+    [Fact]
+    public async Task Region_Rotation_Cw90_RotatesAssetClockwise()
+    {
+        var imagePath = WriteQuadrantPng(100, 100, SKColors.Red, SKColors.Lime, SKColors.Blue, SKColors.Yellow);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.Fill,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.0, 0.0, 1.0, 1.0), 0,
+                rotation: Rotation.Cw90)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        // Cw90 では元 TL→canvas TR、 元 TR→canvas BR、 元 BR→canvas BL、 元 BL→canvas TL。
+        rendered.GetPixel(75, 25).Should().Be(SKColors.Red);    // 元 TL → canvas TR
+        rendered.GetPixel(75, 75).Should().Be(SKColors.Lime);   // 元 TR → canvas BR
+        rendered.GetPixel(25, 75).Should().Be(SKColors.Yellow); // 元 BR → canvas BL
+        rendered.GetPixel(25, 25).Should().Be(SKColors.Blue);   // 元 BL → canvas TL
+    }
+
+    [Fact]
+    public async Task Region_Rotation_Cw180_RotatesAssetHalfTurn()
+    {
+        var imagePath = WriteQuadrantPng(100, 100, SKColors.Red, SKColors.Lime, SKColors.Blue, SKColors.Yellow);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.Fill,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.0, 0.0, 1.0, 1.0), 0,
+                rotation: Rotation.Cw180)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        // Cw180 で対角入れ替え: TL ↔ BR、 TR ↔ BL
+        rendered.GetPixel(75, 75).Should().Be(SKColors.Red);    // 元 TL → canvas BR
+        rendered.GetPixel(25, 75).Should().Be(SKColors.Lime);   // 元 TR → canvas BL
+        rendered.GetPixel(75, 25).Should().Be(SKColors.Blue);   // 元 BL → canvas TR
+        rendered.GetPixel(25, 25).Should().Be(SKColors.Yellow); // 元 BR → canvas TL
+    }
+
+    [Fact]
+    public async Task Region_FlipX_MirrorsAssetHorizontally()
+    {
+        var imagePath = WriteQuadrantPng(100, 100, SKColors.Red, SKColors.Lime, SKColors.Blue, SKColors.Yellow);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.Fill,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.0, 0.0, 1.0, 1.0), 0,
+                flipX: true)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        // FlipX で左右入れ替え: TL ↔ TR、 BL ↔ BR
+        rendered.GetPixel(75, 25).Should().Be(SKColors.Red);    // 元 TL → canvas TR
+        rendered.GetPixel(25, 25).Should().Be(SKColors.Lime);   // 元 TR → canvas TL
+        rendered.GetPixel(75, 75).Should().Be(SKColors.Blue);   // 元 BL → canvas BR
+        rendered.GetPixel(25, 75).Should().Be(SKColors.Yellow); // 元 BR → canvas BL
+    }
+
+    [Fact]
+    public async Task Region_FlipY_MirrorsAssetVertically()
+    {
+        var imagePath = WriteQuadrantPng(100, 100, SKColors.Red, SKColors.Lime, SKColors.Blue, SKColors.Yellow);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.Fill,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.0, 0.0, 1.0, 1.0), 0,
+                flipY: true)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        // FlipY で上下入れ替え: TL ↔ BL、 TR ↔ BR
+        rendered.GetPixel(25, 75).Should().Be(SKColors.Red);    // 元 TL → canvas BL
+        rendered.GetPixel(75, 75).Should().Be(SKColors.Lime);   // 元 TR → canvas BR
+        rendered.GetPixel(25, 25).Should().Be(SKColors.Blue);   // 元 BL → canvas TL
+        rendered.GetPixel(75, 25).Should().Be(SKColors.Yellow); // 元 BR → canvas TR
+    }
+
+    [Fact]
+    public async Task Region_Rotation_DoesNotAffectParentFillRectangle()
+    {
+        // region.Rotation は asset 描画にのみ作用し、 親側塗り (region.Rect ベース) には無関係。
+        // 100x100 赤画像、 region = (0.4, 0.4, 0.2, 0.2)、 FillMode=White、 Cw90 + FlipX。
+        // 親側塗りは元の rect (40-60, 40-60) のまま、 asset は rotation/flip 後の位置に描画される。
+        // Offset=(80, 80) で asset を右下に追いやり、 親側塗り判定だけを中央で確認する。
+        var imagePath = WriteSolidColorPng(100, 100, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.4, 0.4, 0.2, 0.2), 0,
+                fillMode: ProtectedRegionFillMode.White,
+                offsetXPx: 80, offsetYPx: 80,
+                rotation: Rotation.Cw90,
+                flipX: true)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        // 中央 (50, 50) は親側塗りで白 (region.Rotation/Flip は影響しない)
+        rendered.GetPixel(50, 50).Should().Be(SKColors.White);
+        // 親領域外 (10, 10) は赤のまま
+        rendered.GetPixel(10, 10).Should().Be(SKColors.Red);
+    }
+
     private static ImageCopy CreateCopyWithRegions(
         ScalingMode scaling = ScalingMode.UniformContain,
         Alignment? alignment = null,
@@ -701,6 +832,9 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
                 FillColor = r.FillColor,
                 OffsetXPx = r.OffsetXPx,
                 OffsetYPx = r.OffsetYPx,
+                Rotation = r.Rotation,
+                FlipX = r.FlipX,
+                FlipY = r.FlipY,
                 SortOrder = r.SortOrder,
             }).ToImmutableArray(),
             CreatedAt = DateTimeOffset.UtcNow,
@@ -713,7 +847,10 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         ProtectedRegionFillMode fillMode = ProtectedRegionFillMode.White,
         uint? fillColor = null,
         int offsetXPx = 0,
-        int offsetYPx = 0) => new()
+        int offsetYPx = 0,
+        Rotation rotation = Rotation.None,
+        bool flipX = false,
+        bool flipY = false) => new()
     {
         Id = Guid.NewGuid(),
         ImageCopyId = Guid.Empty,  // CreateCopyWithRegions で copyId に差し替えられる
@@ -722,6 +859,9 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         FillColor = fillColor,
         OffsetXPx = offsetXPx,
         OffsetYPx = offsetYPx,
+        Rotation = rotation,
+        FlipX = flipX,
+        FlipY = flipY,
         SortOrder = sortOrder,
     };
 
@@ -743,6 +883,33 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
             canvas.DrawRect(0, 0, w / 2, h, paint);
             paint.Color = rightColor;
             canvas.DrawRect(w / 2, 0, w / 2, h, paint);
+        }
+        using var image = SKImage.FromBitmap(bitmap);
+        using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+        var path = Path.Combine(_tempDir.FullName, $"{Guid.NewGuid():N}.png");
+        File.WriteAllBytes(path, encoded.ToArray());
+        return path;
+    }
+
+    /// <summary>
+    /// 4 象限を異なる単色で塗った PNG を生成する。 region の rotation/flip 効果検証用。
+    /// 象限: TL=topLeft, TR=topRight, BL=bottomLeft, BR=bottomRight。
+    /// </summary>
+    private string WriteQuadrantPng(int w, int h, SKColor tl, SKColor tr, SKColor bl, SKColor br)
+    {
+        using var bitmap = new SKBitmap(w, h);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.Transparent);
+            using var paint = new SKPaint { IsAntialias = false };
+            paint.Color = tl;
+            canvas.DrawRect(0, 0, w / 2, h / 2, paint);
+            paint.Color = tr;
+            canvas.DrawRect(w / 2, 0, w / 2, h / 2, paint);
+            paint.Color = bl;
+            canvas.DrawRect(0, h / 2, w / 2, h / 2, paint);
+            paint.Color = br;
+            canvas.DrawRect(w / 2, h / 2, w / 2, h / 2, paint);
         }
         using var image = SKImage.FromBitmap(bitmap);
         using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
