@@ -67,6 +67,19 @@
                                 ZIndex="101" />
 
                         <!--
+                            保護領域の親側塗り overlay。 region.Rect ∩ effective Crop の可視部分を
+                            FillMode に応じた色 (White / Black / Custom = 指定色 / Transparent = 半透明グレー)
+                            で塗り、 PNG 出力時の親側塗りを live preview する。 ZIndex=99 (placement 画像より
+                            上、 RegionSelectionFrame=102 より下) で asset preview の下に位置する。
+                        -->
+                        <Border x:Name="RegionParentFillOverlay"
+                                IsHitTestVisible="False"
+                                IsVisible="False"
+                                ZIndex="99"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Top" />
+
+                        <!--
                             保護領域選択フレーム。SelectedRegion が非 null かつ SelectedPlacement の
                             セル内に asset が配置されているとき、 asset bbox にオレンジ枠 + asset preview を重ねる。
                             HorizontalAlignment / VerticalAlignment は Left / Top 固定で、 CodeBehind が

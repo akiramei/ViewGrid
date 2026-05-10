@@ -237,9 +237,14 @@ public partial class GridCanvasView : UserControl
 
     private void OnSelectedRegionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // OffsetXPx/Y → asset 位置のみ
+        // Rect → asset 切り出し範囲 + 親側塗り両方
+        // FillMode / FillColor → 親側塗りの色
         if (e.PropertyName is nameof(ProtectedRegionItemViewModel.OffsetXPx)
             or nameof(ProtectedRegionItemViewModel.OffsetYPx)
-            or nameof(ProtectedRegionItemViewModel.Rect))
+            or nameof(ProtectedRegionItemViewModel.Rect)
+            or nameof(ProtectedRegionItemViewModel.FillMode)
+            or nameof(ProtectedRegionItemViewModel.FillColor))
         {
             UpdateRegionSelectionFrame();
         }
@@ -323,6 +328,7 @@ public partial class GridCanvasView : UserControl
             || placement.SourceWidth <= 0 || placement.SourceHeight <= 0)
         {
             RegionSelectionFrame.IsVisible = false;
+            RegionParentFillOverlay.IsVisible = false;
             return;
         }
 
@@ -332,8 +338,16 @@ public partial class GridCanvasView : UserControl
         {
             // 表示サイズ未確定 (初期表示前)。 SizeChanged で再呼び出しされるので一旦隠す。
             RegionSelectionFrame.IsVisible = false;
+            RegionParentFillOverlay.IsVisible = false;
             return;
         }
+
+        // canvas (作成キャンバス px) → display (CanvasGrid 論理 px) へのスケール
+        var dispScaleX_ = viewW / grid.CanvasWidth;
+        var dispScaleY_ = viewH / grid.CanvasHeight;
+
+        // 親側塗り overlay を更新 (region と placement のジオメトリが揃っていれば配置)。
+        UpdateRegionParentFillOverlay(grid, placement, region, dispScaleX_, dispScaleY_);
 
         var (assetX, assetY, assetW, assetH, cellRect) = ComputeRegionAssetCanvasRect(grid, placement, region);
         if (assetW <= 0 || assetH <= 0)
@@ -345,9 +359,8 @@ public partial class GridCanvasView : UserControl
         // asset preview 画像を更新 (region.Rect で thumbnail を切り出し、 回転 / 反転は適用しない)。
         UpdateRegionAssetPreview(placement, region);
 
-        // canvas (作成キャンバス px) → display (CanvasGrid 論理 px) へのスケール
-        var dispScaleX = viewW / grid.CanvasWidth;
-        var dispScaleY = viewH / grid.CanvasHeight;
+        var dispScaleX = dispScaleX_;
+        var dispScaleY = dispScaleY_;
 
         // Margin で位置決め、 Width / Height でサイズ決定。 CanvasGrid 全範囲を span する必要があるため
         // RowSpan / ColumnSpan に grid 全体を指定する (HorizontalAlignment=Left / VerticalAlignment=Top で
@@ -374,6 +387,180 @@ public partial class GridCanvasView : UserControl
             cellLeftInFrame, cellTopInFrame, cellWidthInFrame, cellHeightInFrame));
 
         RegionSelectionFrame.IsVisible = true;
+    }
+
+    /// <summary>
+    /// 選択中 region の親側塗り overlay (canvas に被せる Border) の位置 / サイズ / 色を更新する。
+    /// renderer の <c>ComputeRegionParentFillRect</c> + <c>ApplyRegionFill</c> と同じ計算で、
+    /// PNG 出力時の親側塗りを live preview に反映する。 計算結果が null (region が effective Crop の
+    /// 外、 Transform 後 src 矩形外、 cell 外) のときは overlay を非表示にする。
+    /// </summary>
+    private void UpdateRegionParentFillOverlay(
+        GridCanvasItemViewModel grid,
+        PlacementItemViewModel placement,
+        ProtectedRegionItemViewModel region,
+        double dispScaleX, double dispScaleY)
+    {
+        var fillRect = ComputeRegionParentFillCanvasRect(grid, placement, region);
+        if (fillRect is not { } rect)
+        {
+            RegionParentFillOverlay.IsVisible = false;
+            return;
+        }
+
+        Grid.SetRow(RegionParentFillOverlay, 0);
+        Grid.SetColumn(RegionParentFillOverlay, 0);
+        Grid.SetRowSpan(RegionParentFillOverlay, Math.Max(1, grid.Rows));
+        Grid.SetColumnSpan(RegionParentFillOverlay, Math.Max(1, grid.Cols));
+        RegionParentFillOverlay.Margin = new Thickness(
+            rect.X * dispScaleX,
+            rect.Y * dispScaleY,
+            0, 0);
+        RegionParentFillOverlay.Width = rect.W * dispScaleX;
+        RegionParentFillOverlay.Height = rect.H * dispScaleY;
+
+        // FillMode に応じた Background。 Transparent は半透明グレーで 「ここが alpha=0 になる」 を示す。
+        IBrush brush = region.FillMode switch
+        {
+            ProtectedRegionFillMode.White => Brushes.White,
+            ProtectedRegionFillMode.Black => Brushes.Black,
+            ProtectedRegionFillMode.Custom => region.FillColor is { } argb
+                ? new SolidColorBrush(Color.FromUInt32(argb))
+                : Brushes.Transparent,
+            ProtectedRegionFillMode.Transparent => new SolidColorBrush(Color.FromArgb(96, 128, 128, 128)),
+            _ => Brushes.Transparent,
+        };
+        RegionParentFillOverlay.Background = brush;
+        RegionParentFillOverlay.IsVisible = true;
+    }
+
+    /// <summary>
+    /// renderer の <c>ComputeRegionParentFillRect</c> を canvas (作成キャンバス px) で再現する純粋計算。
+    /// region.Rect ∩ effective Crop → Transform → 線形写像 → cell clip。
+    /// </summary>
+    private static (double X, double Y, double W, double H)? ComputeRegionParentFillCanvasRect(
+        GridCanvasItemViewModel grid,
+        PlacementItemViewModel placement,
+        ProtectedRegionItemViewModel region)
+    {
+        var cellRect = PlacementGeometry.ComputeDestRect(
+            new ViewGrid.Core.Entities.PixelSize(grid.CanvasWidth, grid.CanvasHeight),
+            grid.Cols, grid.Rows,
+            grid.ColWeights, grid.RowWeights,
+            placement.Position, placement.OccupySize,
+            pixelOffsetX: 0, pixelOffsetY: 0);
+        if (cellRect.Width <= 0 || cellRect.Height <= 0) return null;
+        if (placement.SourceWidth <= 0 || placement.SourceHeight <= 0) return null;
+
+        // 1. region ∩ effectiveCrop (source 0-1)
+        var crop = placement.EffectiveCropFraction ?? new CropFraction(0, 0, 1, 1);
+        var intersect = RegionGeometry.Intersect(region.Rect, crop);
+        if (intersect is null) return null;
+
+        // 2. Source pixel bbox
+        int srcW = placement.SourceWidth, srcH = placement.SourceHeight;
+        var (sx, sy, sw, sh) = intersect.Value.SourceRect.ToPixelBbox(srcW, srcH);
+        if (sw <= 0 || sh <= 0) return null;
+
+        // 3. Transform (Flip + 回転) → transformed coords
+        var transform = new ImageTransform(placement.Rotation, placement.FlipX, placement.FlipY);
+        var transformedBbox = AutoCropCalculator.TransformRect(
+            new ViewGrid.Core.UseCases.PixelRect(sx, sy, sw, sh), srcW, srcH, transform);
+
+        // 4. srcRectInTransformed (= 表示される transformed image 領域 = autoCropTransformedRect)
+        var (cx, cy, cw, ch) = crop.ToPixelBbox(srcW, srcH);
+        var srcRectInTransformed = AutoCropCalculator.TransformRect(
+            new ViewGrid.Core.UseCases.PixelRect(cx, cy, cw, ch), srcW, srcH, transform);
+        if (srcRectInTransformed.Width <= 0 || srcRectInTransformed.Height <= 0) return null;
+
+        // 5. dstRect (cell 内の描画矩形) を ScalingMode + Alignment で計算
+        var dst = ComputeDstRectForFill(
+            srcRectInTransformed.Width, srcRectInTransformed.Height,
+            cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height,
+            placement.ScalingMode, placement.Alignment);
+        if (dst.W <= 0 || dst.H <= 0) return null;
+
+        // 6. transformedBbox ∩ srcRectInTransformed (可視部分)
+        var visLeft = Math.Max(transformedBbox.X, srcRectInTransformed.X);
+        var visTop = Math.Max(transformedBbox.Y, srcRectInTransformed.Y);
+        var visRight = Math.Min(transformedBbox.X + transformedBbox.Width,
+                                srcRectInTransformed.X + srcRectInTransformed.Width);
+        var visBottom = Math.Min(transformedBbox.Y + transformedBbox.Height,
+                                 srcRectInTransformed.Y + srcRectInTransformed.Height);
+        if (visRight <= visLeft || visBottom <= visTop) return null;
+
+        // 7. 線形写像 srcRect → dstRect で canvas 座標へ
+        var localFx = (visLeft - srcRectInTransformed.X) / (double)srcRectInTransformed.Width;
+        var localFy = (visTop - srcRectInTransformed.Y) / (double)srcRectInTransformed.Height;
+        var localFw = (visRight - visLeft) / (double)srcRectInTransformed.Width;
+        var localFh = (visBottom - visTop) / (double)srcRectInTransformed.Height;
+        var canvasX = dst.X + localFx * dst.W;
+        var canvasY = dst.Y + localFy * dst.H;
+        var canvasW = localFw * dst.W;
+        var canvasH = localFh * dst.H;
+
+        // 8. cell でクリップ
+        var clipL = Math.Max(canvasX, cellRect.X);
+        var clipT = Math.Max(canvasY, cellRect.Y);
+        var clipR = Math.Min(canvasX + canvasW, cellRect.X + cellRect.Width);
+        var clipB = Math.Min(canvasY + canvasH, cellRect.Y + cellRect.Height);
+        if (clipR <= clipL || clipB <= clipT) return null;
+
+        return (clipL, clipT, clipR - clipL, clipB - clipT);
+    }
+
+    /// <summary>
+    /// renderer の <c>ComputeSrcDstRects</c> + <c>ComputeAxis</c> 相当: dst 矩形だけを返す純粋計算。
+    /// src は常に 「cropped transformed 全体」 なので canvas 座標への線形写像で完結する。
+    /// </summary>
+    private static (double X, double Y, double W, double H) ComputeDstRectForFill(
+        double sw, double sh,
+        double destX, double destY, double destW, double destH,
+        ScalingMode mode, Alignment alignment)
+    {
+        if (mode == ScalingMode.Fill)
+            return (destX, destY, destW, destH);
+
+        var fitContain = Math.Min(destW / sw, destH / sh);
+        var fitCover = Math.Max(destW / sw, destH / sh);
+        var scale = mode switch
+        {
+            ScalingMode.None => 1.0,
+            ScalingMode.UniformContain => fitContain,
+            ScalingMode.UniformContainShrinkOnly => Math.Min(1.0, fitContain),
+            ScalingMode.UniformContainEnlargeOnly => Math.Max(1.0, fitContain),
+            ScalingMode.UniformCover => fitCover,
+            _ => 1.0,
+        };
+
+        var (dx, dw) = ComputeAxisDst(sw, destX, destW, scale, alignment.X switch
+        {
+            AnchorX.Left => 0,
+            AnchorX.Right => 2,
+            _ => 1,
+        });
+        var (dy, dh) = ComputeAxisDst(sh, destY, destH, scale, alignment.Y switch
+        {
+            AnchorY.Top => 0,
+            AnchorY.Bottom => 2,
+            _ => 1,
+        });
+        return (dx, dy, dw, dh);
+    }
+
+    /// <summary>0=Start / 1=Center / 2=End。 ComputeAxis の anchor 引数を共通化するため整数で受ける。</summary>
+    private static (double DstStart, double DstLen) ComputeAxisDst(
+        double srcSize, double dstStart, double dstSize, double scale, int anchor)
+    {
+        var drawSize = srcSize * scale;
+        var pad = dstSize - drawSize;
+        var dstOffset = anchor switch
+        {
+            0 => 0.0,        // Start
+            2 => pad,        // End
+            _ => pad / 2.0,  // Center
+        };
+        return (dstStart + dstOffset, drawSize);
     }
 
     /// <summary>
@@ -510,6 +697,23 @@ public partial class GridCanvasView : UserControl
             return;
         }
 
+        // 共有特性 (Rotation / Flip / ScalingMode / Alignment / EffectiveCropFraction) の変更で
+        // 親側塗り overlay の位置 / サイズが変わるため、 region 選択中に該当 placement を編集すると
+        // 追従させる必要がある。 asset bbox も同じ計算に依存するので Update を一括で呼ぶ。
+        if (ReferenceEquals(placement, _vm?.SelectedPlacement)
+            && e.PropertyName is nameof(PlacementItemViewModel.Rotation)
+                or nameof(PlacementItemViewModel.FlipX)
+                or nameof(PlacementItemViewModel.FlipY)
+                or nameof(PlacementItemViewModel.ScalingMode)
+                or nameof(PlacementItemViewModel.Alignment)
+                or nameof(PlacementItemViewModel.EffectiveCropFraction))
+        {
+            UpdateRegionSelectionFrame();
+            // return しない: ここで処理を終わらせず後段の特性別ハンドラに任せる (Position 等の
+            // 副次変更は別 case に降りる)。 ただし上記プロパティはどのケースにも該当しないので
+            // 実質的にここで終了する。
+        }
+
         if (e.PropertyName == nameof(PlacementItemViewModel.Position))
         {
             // Move/Swap で Position が変わった: 占有サイズ・回転・サムネは不変なので
@@ -608,14 +812,15 @@ public partial class GridCanvasView : UserControl
         // Placements コレクション変更、DataContext 変更）すべてで漏れなく解除される。
         UnsubscribePlacementChanges();
 
-        // SelectionOverlay / DragHighlightOverlay / RegionSelectionFrame は Adornment なので
-        // Layer 1/2 の再構築でも消さない（常駐）。
+        // SelectionOverlay / DragHighlightOverlay / RegionSelectionFrame / RegionParentFillOverlay は
+        // Adornment なので Layer 1/2 の再構築でも消さない（常駐）。
         for (int i = CanvasGrid.Children.Count - 1; i >= 0; i--)
         {
             var child = CanvasGrid.Children[i];
             if (!ReferenceEquals(child, SelectionOverlay)
                 && !ReferenceEquals(child, DragHighlightOverlay)
-                && !ReferenceEquals(child, RegionSelectionFrame))
+                && !ReferenceEquals(child, RegionSelectionFrame)
+                && !ReferenceEquals(child, RegionParentFillOverlay))
             {
                 CanvasGrid.Children.RemoveAt(i);
             }
