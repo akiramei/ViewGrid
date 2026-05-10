@@ -359,12 +359,11 @@ public partial class GridCanvasView : UserControl
         // asset preview 画像を更新 (region.Rect で thumbnail を切り出し、 回転 / 反転は適用しない)。
         UpdateRegionAssetPreview(placement, region);
 
-        // 親側塗り (IsAntialias=false で pixel center 包含ルール) と pixel 単位で揃えるため、
-        // asset bbox の右下も Math.Round で整数 pixel に snap する。 左上は既に整数 (cellRect + 整数 offset)。
-        var snapAR = Math.Round(assetX + assetW);
-        var snapAB = Math.Round(assetY + assetH);
-        var snapAW = Math.Max(0, snapAR - assetX);
-        var snapAH = Math.Max(0, snapAB - assetY);
+        // renderer の SnapRectToIntegerPixels と同じ rule (corner round + dimensions round) で
+        // 整数 pixel に snap。 親側塗りも同 rule なので、 offset が source 写像位置と一致したとき
+        // 両者が同じ pixel を占有して完全に重なる。
+        var snapAW = Math.Max(0, Math.Round(assetW));
+        var snapAH = Math.Max(0, Math.Round(assetH));
 
         // Margin で位置決め、 Width / Height でサイズ決定。 CanvasGrid 全範囲を span する必要があるため
         // RowSpan / ColumnSpan に grid 全体を指定する (HorizontalAlignment=Left / VerticalAlignment=Top で
@@ -412,15 +411,12 @@ public partial class GridCanvasView : UserControl
             return;
         }
 
-        // renderer は IsAntialias=false で SKCanvas.DrawRect する (pixel center 包含ルール)。
-        // ここでも canvas 座標を整数 pixel に snap してから display 倍率変換することで、
-        // PNG 出力との 1px ズレ (sub-pixel anti-alias 起因) を抑える。
+        // renderer の SnapRectToIntegerPixels と同じ rule (corner round + dimensions round) で
+        // 整数 pixel に snap。 矩形 region では asset と同じ pixel coverage になり 1px ズレが消える。
         var snapL = Math.Round(rect.X);
         var snapT = Math.Round(rect.Y);
-        var snapR = Math.Round(rect.X + rect.W);
-        var snapB = Math.Round(rect.Y + rect.H);
-        var snapW = Math.Max(0, snapR - snapL);
-        var snapH = Math.Max(0, snapB - snapT);
+        var snapW = Math.Max(0, Math.Round(rect.W));
+        var snapH = Math.Max(0, Math.Round(rect.H));
 
         Grid.SetRow(RegionParentFillOverlay, 0);
         Grid.SetColumn(RegionParentFillOverlay, 0);

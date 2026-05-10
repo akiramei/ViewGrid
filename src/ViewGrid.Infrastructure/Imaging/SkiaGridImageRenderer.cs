@@ -586,32 +586,50 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         SKCanvas canvas, SKPaint paint, SKRect rect,
         ProtectedRegionFillMode fillMode, uint? fillColor)
     {
+        // 矩形 region で asset と同じ pixel coverage を保証するため、 corner と dimensions を
+        // 個別に Math.Round して snap する (top に round(H) を足す方式)。 Skia の IsAntialias=false
+        // 既定 coverage rule (pixel center 包含) では top の sub-pixel 値で last row が 1 つ
+        // ズレるため、 ここで明示的に整数 SKRect に変換して asset と一致させる。
+        var snapped = SnapRectToIntegerPixels(rect);
         switch (fillMode)
         {
             case ProtectedRegionFillMode.White:
                 paint.Color = SKColors.White;
                 paint.BlendMode = SKBlendMode.SrcOver;
-                canvas.DrawRect(rect, paint);
+                canvas.DrawRect(snapped, paint);
                 break;
             case ProtectedRegionFillMode.Black:
                 paint.Color = SKColors.Black;
                 paint.BlendMode = SKBlendMode.SrcOver;
-                canvas.DrawRect(rect, paint);
+                canvas.DrawRect(snapped, paint);
                 break;
             case ProtectedRegionFillMode.Transparent:
                 paint.Color = SKColors.Transparent;
                 paint.BlendMode = SKBlendMode.Clear;
-                canvas.DrawRect(rect, paint);
+                canvas.DrawRect(snapped, paint);
                 break;
             case ProtectedRegionFillMode.Custom:
                 if (fillColor is { } argb)
                 {
                     paint.Color = new SKColor(argb);
                     paint.BlendMode = SKBlendMode.SrcOver;
-                    canvas.DrawRect(rect, paint);
+                    canvas.DrawRect(snapped, paint);
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// SKRect を 「左上を round + W/H を round → 右下 = 左上 + 整数 W/H」 で整数 pixel に snap する。
+    /// 親側塗りと asset 描画で同じ rule を使うことで、 矩形 region の 1px ズレを消す。
+    /// </summary>
+    private static SKRect SnapRectToIntegerPixels(SKRect rect)
+    {
+        var snapL = (float)Math.Round(rect.Left);
+        var snapT = (float)Math.Round(rect.Top);
+        var intW = (float)Math.Round(rect.Width);
+        var intH = (float)Math.Round(rect.Height);
+        return new SKRect(snapL, snapT, snapL + intW, snapT + intH);
     }
 
     /// <summary>
@@ -641,18 +659,14 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
 
         var dstLeft = cellRect.X + region.OffsetXPx;
         var dstTop = cellRect.Y + region.OffsetYPx;
-        // 親側塗り (IsAntialias=false で pixel center 包含ルール) と pixel 単位で揃えるため、
-        // dst SKRect の右下を Math.Round で整数 pixel に snap する。 offset/cellRect は整数なので
-        // 左上は既に整数、 右下のみ snap すれば 「矩形 region で白塗りと asset が同じ pixel を占有」
-        // が保証される (offset が source 写像位置と一致するとき完全に重なる)。
-        var snapL = (float)dstLeft;
-        var snapT = (float)dstTop;
-        var snapR = (float)Math.Round(dstLeft + dstW);
-        var snapB = (float)Math.Round(dstTop + dstH);
+        // 親側塗りと同じ snap rule で整数 pixel に揃える (corner round + dimensions round)。
+        // offset/cellRect は整数で dstLeft/dstTop も整数だが、 dstW/dstH は scale 由来の float なので
+        // round(W)/round(H) で整数化する。 これで親側塗りと asset が 「同じ source bbox から同じ
+        // 整数 pixel coverage」 になり、 offset が source 写像位置と一致したとき完全に重なる。
+        var snapped = SnapRectToIntegerPixels(SKRect.Create((float)dstLeft, (float)dstTop, (float)dstW, (float)dstH));
         var srcSk = SKRect.Create(sx, sy, sw, sh);
-        var dstSk = new SKRect(snapL, snapT, snapR, snapB);
 
-        canvas.DrawImage(source, srcSk, dstSk, sampling, paint);
+        canvas.DrawImage(source, srcSk, snapped, sampling, paint);
     }
 
     /// <summary>
