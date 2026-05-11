@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="780" d:DesignHeight="600"
+        x:Class="ViewGrid.Presentation.Views.LicenseNoticesWindow"
+        Title="ライセンス情報"
+        Width="820" Height="640"
+        MinWidth="520" MinHeight="360"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="20">
+        <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,12">
+            <TextBlock Text="ViewGrid が利用させていただいている OSS"
+                       FontWeight="SemiBold"
+                       FontSize="16" />
+            <TextBlock Text="このアプリは以下のオープンソースソフトウェアの上に成り立っています。 開発者・コミュニティの皆様に深く感謝いたします。"
+                       TextWrapping="Wrap"
+                       FontSize="12"
+                       Opacity="0.75" />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                BorderBrush="{DynamicResource SystemBaseLowColor}"
+                BorderThickness="1"
+                CornerRadius="2"
+                Background="{DynamicResource SystemChromeMediumLowColor}">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto">
+                <SelectableTextBlock x:Name="NoticesText"
+                                     Padding="16"
+                                     FontFamily="Consolas, Menlo, monospace"
+                                     FontSize="12"
+                                     TextWrapping="NoWrap" />
+            </ScrollViewer>
+        </Border>
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,12,0,0"
+                    Spacing="8">
+            <Button Content="閉じる"
+                    MinWidth="100"
+                    HorizontalContentAlignment="Center"
+                    IsCancel="True"
+                    Click="OnCloseClicked" />
+        </StackPanel>
+    </Grid>
+</Window>

@@ -12,6 +12,15 @@
     <AvaloniaResource Include="Assets\icon-256.png" />
   </ItemGroup>
 
+  <!--
+    リポジトリ root の THIRD-PARTY-NOTICES.md をアプリ内ダイアログから読めるように
+    Embedded Resource として埋め込む。 アクセスは GetManifestResourceStream 経由。
+    LogicalName を固定して file system path に依存しない名前で取り出せるようにする。
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\THIRD-PARTY-NOTICES.md" LogicalName="ViewGrid.ThirdPartyNotices.md" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.0.0" />

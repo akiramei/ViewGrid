@@ -84,26 +84,55 @@ public partial class MainWindow : Window
     /// <summary>「ヘルプ → ViewGrid について」: 簡易な情報ダイアログ。</summary>
     private async void OnAboutClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
+        var licenseButton = new Avalonia.Controls.Button
+        {
+            Content = "ライセンス情報を表示...",
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            Margin = new Avalonia.Thickness(0, 8, 0, 0),
+        };
         var dialog = new Window
         {
             Title = "ViewGrid について",
-            Width = 360,
-            Height = 220,
+            Width = 400,
+            Height = 280,
             CanResize = false,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Content = new Avalonia.Controls.StackPanel
             {
                 Margin = new Avalonia.Thickness(24),
-                Spacing = 12,
+                Spacing = 8,
                 Children =
                 {
                     new Avalonia.Controls.TextBlock { Text = "ViewGrid", FontSize = 22, FontWeight = Avalonia.Media.FontWeight.SemiBold },
                     new Avalonia.Controls.TextBlock { Text = "画像をグリッドに配置するシンプルなツール。", Opacity = 0.75 },
+                    new Avalonia.Controls.TextBlock
+                    {
+                        Text = "多数のオープンソースソフトウェアの上に成り立っています。 開発者の皆様に感謝。",
+                        FontSize = 12,
+                        Opacity = 0.75,
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        Margin = new Avalonia.Thickness(0, 4, 0, 0),
+                    },
+                    licenseButton,
                     new Avalonia.Controls.TextBlock { Text = "© 2026 ViewGrid", FontSize = 11, Opacity = 0.55, Margin = new Avalonia.Thickness(0, 8, 0, 0) },
                 },
             },
         };
+        licenseButton.Click += async (_, _) =>
+        {
+            await new LicenseNoticesWindow().ShowDialog(dialog);
+        };
         await dialog.ShowDialog(this);
+    }
+
+    /// <summary>
+    /// 「ヘルプ → ライセンス情報...」 メニューハンドラ。 LicenseNoticesWindow を MainWindow を
+    /// owner として開き、 THIRD-PARTY-NOTICES.md の内容を表示する。
+    /// </summary>
+    private async void OnLicenseNoticesClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        await new LicenseNoticesWindow().ShowDialog(this);
     }
 
     /// <summary>

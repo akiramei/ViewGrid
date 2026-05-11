@@ -132,6 +132,9 @@
                               InputGesture="Ctrl+Y" />
                 </MenuItem>
                 <MenuItem Header="ヘルプ">
+                    <MenuItem Header="ライセンス情報..."
+                              Click="OnLicenseNoticesClicked"
+                              ToolTip.Tip="ViewGrid が利用させていただいている OSS の一覧とライセンス全文を表示します。" />
                     <MenuItem Header="ViewGrid について"
                               Click="OnAboutClicked" />
                 </MenuItem>
