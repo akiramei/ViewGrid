@@ -213,6 +213,104 @@ public sealed class RegionGeometryTests
         sy.Should().Be(0.0);
     }
 
+    // ─── ComputeOffsetMatchingParentFill: 新規 region 初期 offset 計算 ───
+    // 100x100 canvas / 100x100 source / 単一セル grid を基本セットアップとし、
+    // DefaultRect (0.4, 0.4, 0.2, 0.2) を入力として与える。
+
+    [Fact]
+    public void ComputeOffsetMatchingParentFill_FillIdentityNoCrop_PlacesAssetAtRegionMapped()
+    {
+        // ScalingMode=Fill / Transform=Identity / Crop=null。 source 100x100 ↔ cell 100x100 が 1:1。
+        // region.Rect=(0.4, 0.4, ...) → 親側塗りは cell の (40, 40) から始まる → offset=(40, 40)。
+        var result = RegionGeometry.ComputeOffsetMatchingParentFill(
+            canvasSize: new PixelSize(100, 100),
+            cols: 1, rows: 1,
+            colWeights: [1], rowWeights: [1],
+            position: new CellPosition(0, 0),
+            occupySize: new OccupySize(1, 1),
+            pixelOffsetX: 0, pixelOffsetY: 0,
+            transform: ImageTransform.Identity,
+            scalingMode: ScalingMode.Fill,
+            alignment: Alignment.Center,
+            effectiveCrop: null,
+            sourceWidth: 100, sourceHeight: 100,
+            regionRect: new RegionRectFraction(0.4, 0.4, 0.2, 0.2));
+
+        result.Should().NotBeNull();
+        result!.Value.OffsetX.Should().Be(40);
+        result.Value.OffsetY.Should().Be(40);
+    }
+
+    [Fact]
+    public void ComputeOffsetMatchingParentFill_WithPixelOffset_OffsetIsRelativeToCellRect()
+    {
+        // PixelOffset を加えても、 cell-local offset (= dst.X - cellRect.X = pixelOffsetX + 40) になる。
+        // cellRect は PixelOffset 非適用なので (0, 0) スタート、 親側塗りは (5+40, 7+40) = (45, 47)。
+        var result = RegionGeometry.ComputeOffsetMatchingParentFill(
+            canvasSize: new PixelSize(100, 100),
+            cols: 1, rows: 1,
+            colWeights: [1], rowWeights: [1],
+            position: new CellPosition(0, 0),
+            occupySize: new OccupySize(1, 1),
+            pixelOffsetX: 5, pixelOffsetY: 7,
+            transform: ImageTransform.Identity,
+            scalingMode: ScalingMode.Fill,
+            alignment: Alignment.Center,
+            effectiveCrop: null,
+            sourceWidth: 100, sourceHeight: 100,
+            regionRect: new RegionRectFraction(0.4, 0.4, 0.2, 0.2));
+
+        result.Should().NotBeNull();
+        result!.Value.OffsetX.Should().Be(45);
+        result.Value.OffsetY.Should().Be(47);
+    }
+
+    [Fact]
+    public void ComputeOffsetMatchingParentFill_ScalingNoneCenter_CentersInCell()
+    {
+        // ScalingMode=None + Center alignment + source 60x60 + cell 100x100 →
+        // dest は (20, 20, 60, 60) (cell 中央)。 region (0.4, 0.4, 0.2, 0.2) は source の (24, 24, 12, 12)
+        // → 親側塗りは dest.X + 24 = 44, dest.Y + 24 = 44 から始まる → offset = (44, 44)。
+        var result = RegionGeometry.ComputeOffsetMatchingParentFill(
+            canvasSize: new PixelSize(100, 100),
+            cols: 1, rows: 1,
+            colWeights: [1], rowWeights: [1],
+            position: new CellPosition(0, 0),
+            occupySize: new OccupySize(1, 1),
+            pixelOffsetX: 0, pixelOffsetY: 0,
+            transform: ImageTransform.Identity,
+            scalingMode: ScalingMode.None,
+            alignment: Alignment.Center,
+            effectiveCrop: null,
+            sourceWidth: 60, sourceHeight: 60,
+            regionRect: new RegionRectFraction(0.4, 0.4, 0.2, 0.2));
+
+        result.Should().NotBeNull();
+        result!.Value.OffsetX.Should().Be(44);
+        result.Value.OffsetY.Should().Be(44);
+    }
+
+    [Fact]
+    public void ComputeOffsetMatchingParentFill_RegionOutsideCrop_ReturnsNull()
+    {
+        // region (0.0, 0.0, 0.2, 0.2) は crop (0.5, 0.5, 0.5, 0.5) と交差なし → null。
+        var result = RegionGeometry.ComputeOffsetMatchingParentFill(
+            canvasSize: new PixelSize(100, 100),
+            cols: 1, rows: 1,
+            colWeights: [1], rowWeights: [1],
+            position: new CellPosition(0, 0),
+            occupySize: new OccupySize(1, 1),
+            pixelOffsetX: 0, pixelOffsetY: 0,
+            transform: ImageTransform.Identity,
+            scalingMode: ScalingMode.Fill,
+            alignment: Alignment.Center,
+            effectiveCrop: new CropFraction(0.5, 0.5, 0.5, 0.5),
+            sourceWidth: 100, sourceHeight: 100,
+            regionRect: new RegionRectFraction(0.0, 0.0, 0.2, 0.2));
+
+        result.Should().BeNull();
+    }
+
     // ─── ヘルパ ────────────────────────────────────────────────
 
     private static void AssertRectsApproximatelyEqual(

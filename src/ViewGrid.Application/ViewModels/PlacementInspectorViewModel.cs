@@ -148,6 +148,38 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         // 共有特性側の IsDirty 変化を統一バーの CanExecute / 未保存マーカーへ転送
         CopyProperties.PropertyChanged += OnCopyPropertiesPropertyChanged;
         _appSettings.Changed += OnAppSettingsChanged;
+
+        // 新規 region 追加時の初期 OffsetXPx/Y を 「親側塗り位置と一致」 にするための closure。
+        // _source / _grid は attach のたびに更新されるが、 Func は invocation 時に this 経由で
+        // 最新値を読むので 1 回登録すれば足りる。 attach なし / 不足データなら null 返却で
+        // CopyProperties 側が (0, 0) フォールバックする。
+        CopyProperties.DefaultRegionOffsetResolver = ResolveDefaultRegionOffset;
+    }
+
+    /// <summary>
+    /// 新規 region の初期 cell-local オフセットを 「親側塗り矩形の左上に重なる」 値として返す。
+    /// 現在 attach 中の placement / grid 情報がない、 または source / canvas / 交差が退化のときは
+    /// <c>null</c> を返して caller の (0, 0) フォールバックに任せる。
+    /// </summary>
+    private (int OffsetX, int OffsetY)? ResolveDefaultRegionOffset(RegionRectFraction regionRect)
+    {
+        var source = _source;
+        var grid = _grid;
+        if (source is null || grid is null) return null;
+        if (grid.CanvasWidth <= 0 || grid.CanvasHeight <= 0) return null;
+        if (source.SourceWidth <= 0 || source.SourceHeight <= 0) return null;
+
+        return Core.Geometry.RegionGeometry.ComputeOffsetMatchingParentFill(
+            new PixelSize(grid.CanvasWidth, grid.CanvasHeight),
+            grid.Cols, grid.Rows,
+            grid.ColWeights, grid.RowWeights,
+            source.Position, source.OccupySize,
+            source.PixelOffsetX, source.PixelOffsetY,
+            new ImageTransform(source.Rotation, source.FlipX, source.FlipY),
+            source.ScalingMode, source.Alignment,
+            source.EffectiveCropFraction,
+            source.SourceWidth, source.SourceHeight,
+            regionRect);
     }
 
     private void OnAppSettingsChanged(object? sender, Core.Settings.AppSettings settings)

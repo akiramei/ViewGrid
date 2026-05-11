@@ -146,6 +146,18 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     };
 
     /// <summary>
+    /// 新規 region 追加時に「親側塗りと同じ位置に asset を初期配置する」 ための offset 計算 callback。
+    /// <see cref="PlacementInspectorViewModel"/> が attach 時にセットし、 placement / grid 情報を
+    /// 使って <see cref="RegionGeometry.ComputeOffsetMatchingParentFill"/> を呼び出す。 callback が
+    /// <c>null</c> または計算不可 (戻り値 null) のときは (0, 0) フォールバックする。
+    /// </summary>
+    /// <remarks>
+    /// CopyPropertiesViewModel 自体は placement / grid を知らないため、 Inspector が外から注入する。
+    /// テストではセットしないことで従来の (0, 0) 既定挙動を維持できる。
+    /// </remarks>
+    public Func<RegionRectFraction, (int OffsetX, int OffsetY)?>? DefaultRegionOffsetResolver { get; set; }
+
+    /// <summary>
     /// 選択中の region 用のサムネ画像クリックピッカー。 サムネ表示 (Stretch.Uniform) 上の
     /// クリック座標を原画像座標に換算し、 採取した ARGB を <see cref="ProtectedRegionItemViewModel.FillColor"/>
     /// に書き戻す。 同時に <see cref="ProtectedRegionItemViewModel.FillMode"/> を Custom に切り替える。
@@ -778,14 +790,23 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// 新規 region を追加する。 矩形は <see cref="ProtectedRegionItemViewModel.DefaultRect"/>
     /// (画像中央 20%) で初期化され、 直後に Editor (Task 9) で形を整える運用。
+    /// <para>
+    /// 初期 <c>OffsetXPx</c> / <c>OffsetYPx</c> は <see cref="DefaultRegionOffsetResolver"/> で
+    /// 算出する (親側塗り位置と一致するように)。 resolver 未設定 / 計算不可なら (0, 0)。
+    /// </para>
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanAddRegion))]
     private void AddRegion()
     {
+        var defaultRect = ProtectedRegionItemViewModel.DefaultRect;
+        var (offsetX, offsetY) = DefaultRegionOffsetResolver?.Invoke(defaultRect) ?? (0, 0);
         var item = new ProtectedRegionItemViewModel(
             Guid.NewGuid(),
-            ProtectedRegionItemViewModel.DefaultRect,
-            ProtectedRegionFillMode.White);
+            defaultRect,
+            ProtectedRegionFillMode.White,
+            fillColor: null,
+            offsetXPx: offsetX,
+            offsetYPx: offsetY);
         RegionItems.Add(item);
         SelectedRegion = item;
     }

@@ -818,6 +818,61 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         _vm.MoveSelectedRegionDownCommand.CanExecute(null).Should().BeTrue();
     }
 
+    // ─── DefaultRegionOffsetResolver ──────────────────────────────────────
+
+    [Fact]
+    public async Task AddRegion_WithoutResolver_DefaultsOffsetToZero()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.DefaultRegionOffsetResolver.Should().BeNull("既定では resolver は未設定 (Inspector 経由 attach なし)");
+
+        _vm.AddRegionCommand.Execute(null);
+
+        _vm.RegionItems[0].OffsetXPx.Should().Be(0);
+        _vm.RegionItems[0].OffsetYPx.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task AddRegion_WithResolver_UsesResolvedOffset()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.DefaultRegionOffsetResolver = _ => (42, 84);
+
+        _vm.AddRegionCommand.Execute(null);
+
+        _vm.RegionItems[0].OffsetXPx.Should().Be(42);
+        _vm.RegionItems[0].OffsetYPx.Should().Be(84);
+    }
+
+    [Fact]
+    public async Task AddRegion_WithResolverReturningNull_FallsBackToZero()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.DefaultRegionOffsetResolver = _ => null;
+
+        _vm.AddRegionCommand.Execute(null);
+
+        _vm.RegionItems[0].OffsetXPx.Should().Be(0);
+        _vm.RegionItems[0].OffsetYPx.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task AddRegion_PassesDefaultRectToResolver()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        RegionRectFraction? receivedRect = null;
+        _vm.DefaultRegionOffsetResolver = rect => { receivedRect = rect; return (0, 0); };
+
+        _vm.AddRegionCommand.Execute(null);
+
+        receivedRect.Should().NotBeNull();
+        receivedRect!.Value.Should().Be(ProtectedRegionItemViewModel.DefaultRect);
+    }
+
     [Fact]
     public async Task MoveSelectedRegion_Then_Save_Persists_NewSortOrder()
     {

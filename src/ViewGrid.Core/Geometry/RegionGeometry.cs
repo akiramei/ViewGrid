@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.UseCases;
 
@@ -90,5 +91,188 @@ public static class RegionGeometry
         return transform.Rotation is Rotation.Cw90 or Rotation.Cw270
             ? (syTransformed, sxTransformed)
             : (sxTransformed, syTransformed);
+    }
+
+    /// <summary>
+    /// 親側塗り矩形 (cell-local 表示座標、 作成キャンバス px、 cell でクリップ済み) を計算する。
+    /// renderer の <c>SkiaGridImageRenderer.ComputeRegionParentFillRect</c> と同じ式の純粋関数版。
+    /// region が effective Crop の外、 Transform 後 src 矩形外、 cell の外のいずれかなら <c>null</c>。
+    /// </summary>
+    /// <remarks>
+    /// 用途:
+    /// <list type="bullet">
+    ///   <item>live preview overlay の位置決め (GridCanvasView)</item>
+    ///   <item>新規 region 追加時の「親側塗りと同じ位置に asset を初期配置」 用に <c>OffsetXPx/Y</c>
+    ///     を逆算 (Inspector → CopyProperties)</item>
+    /// </list>
+    /// </remarks>
+    public static (double X, double Y, double W, double H)? ComputeParentFillCanvasRect(
+        PixelSize canvasSize, int cols, int rows,
+        IReadOnlyList<int> colWeights, IReadOnlyList<int> rowWeights,
+        CellPosition position, OccupySize occupySize,
+        int pixelOffsetX, int pixelOffsetY,
+        ImageTransform transform,
+        ScalingMode scalingMode, Alignment alignment,
+        CropFraction? effectiveCrop,
+        int sourceWidth, int sourceHeight,
+        RegionRectFraction regionRect)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0) return null;
+
+        // 1. cellRect (PixelOffset 非適用 = cell 境界クリップ用)
+        var cellRect = PlacementGeometry.ComputeDestRect(
+            canvasSize, cols, rows, colWeights, rowWeights,
+            position, occupySize, 0, 0);
+        if (cellRect.Width <= 0 || cellRect.Height <= 0) return null;
+
+        // 2. dest (PixelOffset 適用 = ScalingMode + Alignment 計算用)
+        var dest = PlacementGeometry.ComputeDestRect(
+            canvasSize, cols, rows, colWeights, rowWeights,
+            position, occupySize, pixelOffsetX, pixelOffsetY);
+        if (dest.Width <= 0 || dest.Height <= 0) return null;
+
+        // 3. region ∩ effectiveCrop (元画像 0–1)
+        var crop = effectiveCrop ?? new CropFraction(0, 0, 1, 1);
+        var intersect = Intersect(regionRect, crop);
+        if (intersect is null) return null;
+
+        // 4. 元画像 pixel 矩形に展開
+        var (sx, sy, sw, sh) = intersect.Value.SourceRect.ToPixelBbox(sourceWidth, sourceHeight);
+        if (sw <= 0 || sh <= 0) return null;
+
+        // 5. Transform 適用 → transformed coords
+        var transformedBbox = AutoCropCalculator.TransformRect(
+            new PixelRect(sx, sy, sw, sh), sourceWidth, sourceHeight, transform);
+
+        // 6. srcRectInTransformed (= cropped transformed area)
+        var (cx, cy, cw, ch) = crop.ToPixelBbox(sourceWidth, sourceHeight);
+        var srcRectInTransformed = AutoCropCalculator.TransformRect(
+            new PixelRect(cx, cy, cw, ch), sourceWidth, sourceHeight, transform);
+        if (srcRectInTransformed.Width <= 0 || srcRectInTransformed.Height <= 0) return null;
+
+        // 7. dstRect (cell 内の描画矩形) = ScalingMode + Alignment + dest
+        var dst = ComputeDstRectForFill(
+            srcRectInTransformed.Width, srcRectInTransformed.Height,
+            dest.X, dest.Y, dest.Width, dest.Height,
+            scalingMode, alignment);
+        if (dst.W <= 0 || dst.H <= 0) return null;
+
+        // 8. transformedBbox ∩ srcRectInTransformed (可視部分)
+        var visLeft = Math.Max((double)transformedBbox.X, srcRectInTransformed.X);
+        var visTop = Math.Max((double)transformedBbox.Y, srcRectInTransformed.Y);
+        var visRight = Math.Min((double)transformedBbox.X + transformedBbox.Width,
+                                (double)srcRectInTransformed.X + srcRectInTransformed.Width);
+        var visBottom = Math.Min((double)transformedBbox.Y + transformedBbox.Height,
+                                 (double)srcRectInTransformed.Y + srcRectInTransformed.Height);
+        if (visRight <= visLeft || visBottom <= visTop) return null;
+
+        // 9. 線形写像 srcRect → dstRect で canvas 座標へ
+        var localFx = (visLeft - srcRectInTransformed.X) / srcRectInTransformed.Width;
+        var localFy = (visTop - srcRectInTransformed.Y) / srcRectInTransformed.Height;
+        var localFw = (visRight - visLeft) / srcRectInTransformed.Width;
+        var localFh = (visBottom - visTop) / srcRectInTransformed.Height;
+        var canvasX = dst.X + localFx * dst.W;
+        var canvasY = dst.Y + localFy * dst.H;
+        var canvasW = localFw * dst.W;
+        var canvasH = localFh * dst.H;
+
+        // 10. cellRect で clip (PixelOffset で隣セルに飛び出した領域を除外)
+        var clipL = Math.Max(canvasX, cellRect.X);
+        var clipT = Math.Max(canvasY, cellRect.Y);
+        var clipR = Math.Min(canvasX + canvasW, cellRect.X + cellRect.Width);
+        var clipB = Math.Min(canvasY + canvasH, cellRect.Y + cellRect.Height);
+        if (clipR <= clipL || clipB <= clipT) return null;
+
+        return (clipL, clipT, clipR - clipL, clipB - clipT);
+    }
+
+    /// <summary>
+    /// 新規 region 追加時に、 asset の初期 cell-local オフセット <c>(OffsetXPx, OffsetYPx)</c> を
+    /// 「親側塗りと同じ位置に重なる」 値として逆算する。 親側塗りが計算不可 (visible 部分なし等)
+    /// の場合は <c>null</c> を返し、 caller は (0, 0) フォールバックする。
+    /// </summary>
+    /// <remarks>
+    /// renderer の <c>DrawRegionAsset</c> の流儀: asset の cell-local 左上 = (cellRect.X + OffsetXPx,
+    /// cellRect.Y + OffsetYPx)。 これを親側塗りの canvas 左上 (visible bbox の左上、 clip 後) に合わせる。
+    /// 整数 px に四捨五入してから返す。
+    /// </remarks>
+    public static (int OffsetX, int OffsetY)? ComputeOffsetMatchingParentFill(
+        PixelSize canvasSize, int cols, int rows,
+        IReadOnlyList<int> colWeights, IReadOnlyList<int> rowWeights,
+        CellPosition position, OccupySize occupySize,
+        int pixelOffsetX, int pixelOffsetY,
+        ImageTransform transform,
+        ScalingMode scalingMode, Alignment alignment,
+        CropFraction? effectiveCrop,
+        int sourceWidth, int sourceHeight,
+        RegionRectFraction regionRect)
+    {
+        var fill = ComputeParentFillCanvasRect(
+            canvasSize, cols, rows, colWeights, rowWeights,
+            position, occupySize, pixelOffsetX, pixelOffsetY,
+            transform, scalingMode, alignment, effectiveCrop,
+            sourceWidth, sourceHeight, regionRect);
+        if (fill is not { } r) return null;
+
+        var cellRect = PlacementGeometry.ComputeDestRect(
+            canvasSize, cols, rows, colWeights, rowWeights,
+            position, occupySize, 0, 0);
+        return (
+            (int)Math.Round(r.X - cellRect.X),
+            (int)Math.Round(r.Y - cellRect.Y));
+    }
+
+    /// <summary>
+    /// <c>ScalingMode</c> + <c>Alignment</c> で dst 矩形 (cell-local pixel) を計算する。 親側塗り計算で
+    /// 「cell 内のどこに source 全体が描画されるか」 を決める純粋関数。 cell クリップは行わない。
+    /// </summary>
+    private static (double X, double Y, double W, double H) ComputeDstRectForFill(
+        double sw, double sh,
+        double destX, double destY, double destW, double destH,
+        ScalingMode mode, Alignment alignment)
+    {
+        if (mode == ScalingMode.Fill)
+            return (destX, destY, destW, destH);
+
+        var fitContain = Math.Min(destW / sw, destH / sh);
+        var fitCover = Math.Max(destW / sw, destH / sh);
+        var scale = mode switch
+        {
+            ScalingMode.None => 1.0,
+            ScalingMode.UniformContain => fitContain,
+            ScalingMode.UniformContainShrinkOnly => Math.Min(1.0, fitContain),
+            ScalingMode.UniformContainEnlargeOnly => Math.Max(1.0, fitContain),
+            ScalingMode.UniformCover => fitCover,
+            _ => 1.0,
+        };
+
+        var (dx, dw) = ComputeAxis1D(sw, destX, destW, scale, alignment.X switch
+        {
+            AnchorX.Left => 0,
+            AnchorX.Right => 2,
+            _ => 1,
+        });
+        var (dy, dh) = ComputeAxis1D(sh, destY, destH, scale, alignment.Y switch
+        {
+            AnchorY.Top => 0,
+            AnchorY.Bottom => 2,
+            _ => 1,
+        });
+        return (dx, dy, dw, dh);
+    }
+
+    /// <summary>0=Start / 1=Center / 2=End。 <c>PlacementGeometry.ComputeAxisDst</c> と同仕様の 1 軸計算。</summary>
+    private static (double DstStart, double DstLen) ComputeAxis1D(
+        double srcSize, double dstStart, double dstSize, double scale, int anchor)
+    {
+        var drawSize = srcSize * scale;
+        var pad = dstSize - drawSize;
+        var dstOffset = anchor switch
+        {
+            0 => 0.0,        // Start
+            2 => pad,        // End
+            _ => pad / 2.0,  // Center
+        };
+        return (dstStart + dstOffset, drawSize);
     }
 }
