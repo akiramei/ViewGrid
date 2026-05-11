@@ -972,10 +972,13 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         // メタ状態の変化はダーティ化しない（編集バッファ以外の表示用プロパティ）。
         // AutoCropPreview* は Attach 直後の TriggerAutoCropPreviewUpdate (非同期) で更新されるため、
         // ここを除外しないと「セル選択しただけで未保存」になる回帰が出る。
+        // SelectedRegion は ListBox の選択状態のみで永続化対象ではないので、 単なるリスト選択で
+        // dirty が立って auto-save が走らないよう除外する。
         if (e.PropertyName is nameof(IsDirty) or nameof(HasCopy)
             or nameof(StatusMessage) or nameof(MultiSelectMessage)
             or nameof(AutoCropPreviewFraction) or nameof(AutoCropPreviewMessage)
-            or nameof(HasAutoCropPreview))
+            or nameof(HasAutoCropPreview)
+            or nameof(SelectedRegion))
             return;
 
         if (!IsDirty)

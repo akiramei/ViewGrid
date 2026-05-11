@@ -874,6 +874,29 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ChangingSelectedRegion_DoesNot_MarkDirty()
+    {
+        // 単なるリスト選択 (永続化対象なし) で IsDirty が立つと auto-save が走って no-op 履歴が
+        // 残ってしまう。 SelectedRegion 変更は OnAnyPropertyChanged の除外リストに入っている必要がある。
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        _vm.AddRegionCommand.Execute(null);
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        // 異なる region を選択 → IsDirty は立たない
+        _vm.SelectedRegion = _vm.RegionItems[0];
+        _vm.IsDirty.Should().BeFalse("region 選択は編集ではないので dirty にしない");
+
+        _vm.SelectedRegion = _vm.RegionItems[1];
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.SelectedRegion = null;
+        _vm.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task MoveSelectedRegion_Then_Save_Persists_NewSortOrder()
     {
         // 並べ替え結果は SortOrder = 配列 index として永続化される (BuildAfterRegions の規約)。
