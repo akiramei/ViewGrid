@@ -136,12 +136,13 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// <summary>RegionItems が空のとき true。 「未登録です」 メッセージの表示用。</summary>
     public bool HasNoRegions => RegionItems.Count == 0;
 
-    /// <summary>「塗りモード」 ComboBox の選択肢 (4 値)。 ItemTemplate で日本語ラベル化。</summary>
+    /// <summary>「塗りモード」 ComboBox の選択肢 (5 値)。 ItemTemplate で日本語ラベル化。</summary>
     public IReadOnlyList<ProtectedRegionFillMode> RegionFillModeOptions { get; } = new[]
     {
         ProtectedRegionFillMode.White,
         ProtectedRegionFillMode.Black,
         ProtectedRegionFillMode.Transparent,
+        ProtectedRegionFillMode.None,
         ProtectedRegionFillMode.Custom,
     };
 

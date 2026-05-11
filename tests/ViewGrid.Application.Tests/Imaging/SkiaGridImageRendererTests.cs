@@ -538,6 +538,68 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Normal_RegionFillMode_None_LeavesParentImageUntouched()
+    {
+        // FillMode=None は親側を塗らない (元画像のまま)。 region asset は上に重ねて描画される。
+        // 親領域の中央 (50, 50) は塗られず元の赤、 asset 領域 (cell TL 0-20) は asset (= 中央 20% を
+        // 切り出した赤) で被覆される。 100% 赤画像なのでどちらも結果は赤になるが、 検証ポイントは
+        // 「中央 (50, 50) が変化しない (穴あけ / 白塗り / 黒塗りされない)」 こと。
+        var imagePath = WriteSolidColorPng(100, 100, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(scaling: ScalingMode.None,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.4, 0.4, 0.2, 0.2), 0,
+                fillMode: ProtectedRegionFillMode.None,
+                offsetXPx: 80, offsetYPx: 80)));  // asset を右下隅に追いやって親側塗り判定を中央で見る
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var result = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        result.IsError.Should().BeFalse();
+        using var rendered = SKBitmap.Decode(result.Value);
+        // 中央 (50, 50) は親画像のまま赤 (穴あけも白塗りもされない)、 alpha=255
+        rendered.GetPixel(50, 50).Should().Be(SKColors.Red);
+        rendered.GetPixel(50, 50).Alpha.Should().Be(255);
+    }
+
+    [Fact]
+    public async Task Normal_RegionFillMode_None_VsTransparent_HasDifferentAlpha()
+    {
+        // None と Transparent の決定的な違いを直接比較。 同じ region.Rect / Offset で、
+        // None は親が残る (alpha=255)、 Transparent は穴があく (alpha=0)。
+        var imagePath = WriteSolidColorPng(100, 100, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+
+        var copyNone = CreateCopyWithRegions(scaling: ScalingMode.None,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.4, 0.4, 0.2, 0.2), 0,
+                fillMode: ProtectedRegionFillMode.None,
+                offsetXPx: 80, offsetYPx: 80)));
+        var copyTrans = CreateCopyWithRegions(scaling: ScalingMode.None,
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0.4, 0.4, 0.2, 0.2), 0,
+                fillMode: ProtectedRegionFillMode.Transparent,
+                offsetXPx: 80, offsetYPx: 80)));
+
+        var placementNone = CreatePlacement(grid.Id, copyNone.Id, new CellPosition(0, 0));
+        var placementTrans = CreatePlacement(grid.Id, copyTrans.Id, new CellPosition(0, 0));
+
+        var resultNone = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placementNone, copyNone, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+        var resultTrans = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placementTrans, copyTrans, imagePath)],
+            new RenderOptions(TrimMode: TrimMode.None, OutputMode: OutputMode.Normal));
+
+        using var renderedNone = SKBitmap.Decode(resultNone.Value);
+        using var renderedTrans = SKBitmap.Decode(resultTrans.Value);
+        renderedNone.GetPixel(50, 50).Alpha.Should().Be(255, "None は親画像が残る");
+        renderedTrans.GetPixel(50, 50).Alpha.Should().Be(0, "Transparent は穴があく");
+    }
+
+    [Fact]
     public async Task Normal_RegionFillMode_Transparent_PunchesAlphaHoleInParent()
     {
         // FillMode=Transparent は親側の region 領域の alpha を 0 にする (穴を開ける)。

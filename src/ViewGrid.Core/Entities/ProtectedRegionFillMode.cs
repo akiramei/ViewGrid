@@ -21,4 +21,10 @@ public enum ProtectedRegionFillMode
     /// <summary><see cref="ProtectedRegion.FillColor"/> で指定された ARGB 色で塗りつぶす。
     /// 通常はエディタ上で元画像をクリックして取得した色 (eyedropper)。</summary>
     Custom = 3,
+
+    /// <summary>
+    /// 親画像をそのまま残す (塗りつぶさない)。 asset を上に重ねるだけで、 親画像の region 領域は
+    /// 変化しない。 <see cref="Transparent"/> が穴をあけるのに対し、 こちらは穴をあけずに親画像を保持する。
+    /// </summary>
+    None = 4,
 }

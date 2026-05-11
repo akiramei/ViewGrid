@@ -586,6 +586,9 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         SKCanvas canvas, SKPaint paint, SKRect rect,
         ProtectedRegionFillMode fillMode, uint? fillColor)
     {
+        // None は何もしない (親画像をそのまま残す)。 snap / draw もスキップ。
+        if (fillMode == ProtectedRegionFillMode.None) return;
+
         // 矩形 region で asset と同じ pixel coverage を保証するため、 corner と dimensions を
         // 個別に Math.Round して snap する (top に round(H) を足す方式)。 Skia の IsAntialias=false
         // 既定 coverage rule (pixel center 包含) では top の sub-pixel 値で last row が 1 つ

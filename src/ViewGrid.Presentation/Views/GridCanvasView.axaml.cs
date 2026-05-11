@@ -516,6 +516,13 @@ public partial class GridCanvasView : UserControl
         ProtectedRegionItemViewModel region,
         double dispScaleX, double dispScaleY)
     {
+        // FillMode=None は親画像をそのまま残す = overlay 不要。 renderer の ApplyRegionFill と整合。
+        if (region.FillMode == ProtectedRegionFillMode.None)
+        {
+            RegionParentFillOverlay.IsVisible = false;
+            return;
+        }
+
         var fillRect = ComputeRegionParentFillCanvasRect(grid, placement, region);
         if (fillRect is not { } rect)
         {

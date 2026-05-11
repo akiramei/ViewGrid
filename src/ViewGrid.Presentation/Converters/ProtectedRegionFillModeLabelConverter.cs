@@ -22,6 +22,7 @@ public sealed class ProtectedRegionFillModeLabelConverter : IValueConverter
         ProtectedRegionFillMode.White => "白 #FFFFFF",
         ProtectedRegionFillMode.Black => "黒 #000000",
         ProtectedRegionFillMode.Transparent => "透明 (α=0)",
+        ProtectedRegionFillMode.None => "そのまま (親画像を残す)",
         ProtectedRegionFillMode.Custom => "カスタム",
         _ => mode.ToString(),
     };
