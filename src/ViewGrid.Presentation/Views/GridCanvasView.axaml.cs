@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
@@ -53,6 +54,15 @@ public partial class GridCanvasView : UserControl
     private int _regionOffsetStartX;
     private int _regionOffsetStartY;
     private ProtectedRegionItemViewModel? _regionOffsetTarget;
+
+    // 未選択 region 用 overlay Border (region item → グレー枠 + asset preview を持つ Border)。
+    // SelectedRegion 以外の全 region に対して 1 つずつ生成し、 UnselectedRegionOverlays Panel に
+    // 追加する。 collection / per-item の購読は SubscribeToRegionItems で管理。
+    private readonly Dictionary<ProtectedRegionItemViewModel, Border> _unselectedRegionBorders = new();
+    // RegionItems 内で per-item PropertyChanged を購読している項目集合。 重複購読防止用。
+    private readonly HashSet<ProtectedRegionItemViewModel> _subscribedRegionItems = new();
+    // RegionItems collection 自身の購読参照 (CollectionChanged の attach/detach 用)。
+    private ObservableCollection<ProtectedRegionItemViewModel>? _regionItemsSubscription;
 
     // セル位置 → セル Border 参照（範囲ハイライトの一括クリアに使う）
     private readonly Dictionary<CellPosition, Border> _cellBorders = new();
@@ -211,6 +221,7 @@ public partial class GridCanvasView : UserControl
         if (_copyPropsSubscription is not null)
             _copyPropsSubscription.PropertyChanged += OnCopyPropertiesPropertyChanged;
         SubscribeToSelectedRegion();
+        SubscribeToRegionItems();
     }
 
     private void OnCopyPropertiesPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -219,6 +230,8 @@ public partial class GridCanvasView : UserControl
         {
             SubscribeToSelectedRegion();
             UpdateRegionSelectionFrame();
+            // SelectedRegion 切替で 「未選択集合」 の構成が変わる (旧選択は表示対象に、 新選択は除外)
+            UpdateUnselectedRegionOverlays();
         }
     }
 
@@ -233,6 +246,96 @@ public partial class GridCanvasView : UserControl
         _selectedRegionSubscription = _copyPropsSubscription?.SelectedRegion;
         if (_selectedRegionSubscription is not null)
             _selectedRegionSubscription.PropertyChanged += OnSelectedRegionPropertyChanged;
+    }
+
+    /// <summary>
+    /// <see cref="CopyPropertiesViewModel.RegionItems"/> の Add/Remove/Move + 各 item の
+    /// PropertyChanged を購読する。 未選択 region overlay の動的構築 / 追従に使う。
+    /// </summary>
+    private void SubscribeToRegionItems()
+    {
+        // 旧コレクションの購読解除 (collection + 各 item)
+        if (_regionItemsSubscription is not null)
+            _regionItemsSubscription.CollectionChanged -= OnRegionItemsCollectionChanged;
+        foreach (var item in _subscribedRegionItems)
+            item.PropertyChanged -= OnRegionItemPropertyChanged;
+        _subscribedRegionItems.Clear();
+
+        _regionItemsSubscription = _copyPropsSubscription?.RegionItems;
+        if (_regionItemsSubscription is null) return;
+
+        _regionItemsSubscription.CollectionChanged += OnRegionItemsCollectionChanged;
+        foreach (var item in _regionItemsSubscription)
+        {
+            item.PropertyChanged += OnRegionItemPropertyChanged;
+            _subscribedRegionItems.Add(item);
+        }
+    }
+
+    private void OnRegionItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        // Reset (= Clear()) は OldItems / NewItems がともに null。 既存購読を全解除して
+        // 現在の collection から再構築する (CopyProperties.LoadRegionItemsFromSource の Clear 経路)。
+        if (e.Action == NotifyCollectionChangedAction.Reset)
+        {
+            foreach (var item in _subscribedRegionItems)
+                item.PropertyChanged -= OnRegionItemPropertyChanged;
+            _subscribedRegionItems.Clear();
+            if (sender is ObservableCollection<ProtectedRegionItemViewModel> collection)
+            {
+                foreach (var item in collection)
+                {
+                    item.PropertyChanged += OnRegionItemPropertyChanged;
+                    _subscribedRegionItems.Add(item);
+                }
+            }
+            UpdateUnselectedRegionOverlays();
+            return;
+        }
+
+        // 新規 item は購読開始、 削除 item は購読解除 (Move 時は両方含むが net で正味の購読数は不変)
+        if (e.NewItems is not null)
+        {
+            foreach (ProtectedRegionItemViewModel item in e.NewItems)
+            {
+                if (_subscribedRegionItems.Add(item))
+                    item.PropertyChanged += OnRegionItemPropertyChanged;
+            }
+        }
+        if (e.OldItems is not null
+            && (e.Action == NotifyCollectionChangedAction.Remove
+                || e.Action == NotifyCollectionChangedAction.Replace))
+        {
+            foreach (ProtectedRegionItemViewModel item in e.OldItems)
+            {
+                item.PropertyChanged -= OnRegionItemPropertyChanged;
+                _subscribedRegionItems.Remove(item);
+            }
+        }
+        UpdateUnselectedRegionOverlays();
+    }
+
+    /// <summary>
+    /// 未選択 region item のプロパティ変更で overlay の位置 / サイズ / preview bitmap を再計算。
+    /// 選択中 region は <see cref="OnSelectedRegionPropertyChanged"/> 側で処理されるが、 区別せず
+    /// 全 item を購読しているので、 selected の変更もここに来る。 selected の見た目は
+    /// RegionSelectionFrame が担うため、 selected はスキップする。
+    /// </summary>
+    private void OnRegionItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not ProtectedRegionItemViewModel item) return;
+        // selected は RegionSelectionFrame 側で処理されるので何もしない
+        if (ReferenceEquals(item, _selectedRegionSubscription)) return;
+
+        if (e.PropertyName is nameof(ProtectedRegionItemViewModel.OffsetXPx)
+            or nameof(ProtectedRegionItemViewModel.OffsetYPx)
+            or nameof(ProtectedRegionItemViewModel.Rect)
+            or nameof(ProtectedRegionItemViewModel.Rotation)
+            or nameof(ProtectedRegionItemViewModel.FlipX)
+            or nameof(ProtectedRegionItemViewModel.FlipY))
+        {
+            UpdateUnselectedRegionOverlays();
+        }
     }
 
     private void OnSelectedRegionPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -325,6 +428,10 @@ public partial class GridCanvasView : UserControl
     /// </summary>
     private void UpdateRegionSelectionFrame()
     {
+        // 未選択 region overlay は selected と独立で全 trigger に追従させたいので、 先に呼ぶ。
+        // 内部で validity を判定して空表示 / 全表示を切り替える。
+        UpdateUnselectedRegionOverlays();
+
         var region = _selectedRegionSubscription;
         var placement = _vm?.SelectedPlacement;
         var grid = _vm?.CurrentGrid;
@@ -586,6 +693,153 @@ public partial class GridCanvasView : UserControl
         return (assetX, assetY, assetW, assetH, cellRect);
     }
 
+    /// <summary>
+    /// SelectedPlacement の copy.Regions のうち SelectedRegion 以外を canvas 上にグレー枠 + asset preview
+    /// で同時表示する。 placement / grid 不在、 表示サイズ未確定、 region collection 空のいずれかなら
+    /// 全 Border を撤去する。 各 region の Border は <see cref="_unselectedRegionBorders"/> で参照保持し、
+    /// 必要な分だけ新規生成 / 不要な分だけ撤去する (差分更新)。
+    /// </summary>
+    /// <remarks>
+    /// 選択中 region は除外する (オレンジ枠の RegionSelectionFrame と二重表示を避ける)。 cell 外への
+    /// はみ出しは renderer の SKCanvas.ClipRect と整合させて Border の Clip でクリップする。
+    /// </remarks>
+    private void UpdateUnselectedRegionOverlays()
+    {
+        var placement = _vm?.SelectedPlacement;
+        var grid = _vm?.CurrentGrid;
+        var copyProps = _copyPropsSubscription;
+        var viewW = CanvasGrid.Bounds.Width;
+        var viewH = CanvasGrid.Bounds.Height;
+
+        if (placement is null || grid is null || copyProps is null
+            || grid.CanvasWidth <= 0 || grid.CanvasHeight <= 0
+            || placement.SourceWidth <= 0 || placement.SourceHeight <= 0
+            || viewW <= 0 || viewH <= 0)
+        {
+            ClearAllUnselectedRegionBorders();
+            return;
+        }
+
+        var dispScaleX = viewW / grid.CanvasWidth;
+        var dispScaleY = viewH / grid.CanvasHeight;
+        var selected = _selectedRegionSubscription;
+
+        // 現在のフレーム時点で 「表示すべき」 region 集合を構築。 selected は除外。
+        var wanted = new HashSet<ProtectedRegionItemViewModel>();
+        foreach (var region in copyProps.RegionItems)
+        {
+            if (ReferenceEquals(region, selected)) continue;
+            wanted.Add(region);
+        }
+
+        // wanted から外れた既存 Border を撤去 (削除された region、 選択に昇格した region)
+        var toRemove = new List<ProtectedRegionItemViewModel>();
+        foreach (var key in _unselectedRegionBorders.Keys)
+            if (!wanted.Contains(key)) toRemove.Add(key);
+        foreach (var key in toRemove)
+        {
+            if (_unselectedRegionBorders.TryGetValue(key, out var border))
+            {
+                UnselectedRegionOverlays.Children.Remove(border);
+                _unselectedRegionBorders.Remove(key);
+            }
+        }
+
+        // 各 wanted region の Border を構築 or 更新
+        foreach (var region in wanted)
+        {
+            var (assetX, assetY, assetW, assetH, cellRect) = ComputeRegionAssetCanvasRect(grid, placement, region);
+            if (assetW <= 0 || assetH <= 0)
+            {
+                // 計算不可は表示せず、 既存 Border があれば撤去
+                if (_unselectedRegionBorders.TryGetValue(region, out var stale))
+                {
+                    UnselectedRegionOverlays.Children.Remove(stale);
+                    _unselectedRegionBorders.Remove(region);
+                }
+                continue;
+            }
+
+            // 整数 pixel snap (renderer と同 rule、 corner round + dimensions round)
+            var snapAW = Math.Max(0, Math.Round(assetW));
+            var snapAH = Math.Max(0, Math.Round(assetH));
+
+            // Border を取得 or 新規生成
+            if (!_unselectedRegionBorders.TryGetValue(region, out var border))
+            {
+                border = BuildUnselectedRegionBorder();
+                _unselectedRegionBorders[region] = border;
+                UnselectedRegionOverlays.Children.Add(border);
+            }
+
+            border.Margin = new Thickness(assetX * dispScaleX, assetY * dispScaleY, 0, 0);
+            border.Width = snapAW * dispScaleX;
+            border.Height = snapAH * dispScaleY;
+
+            // セル境界クリップ (Border ローカル座標 = asset 左上が原点)
+            var cellLeftInFrame = (cellRect.X - assetX) * dispScaleX;
+            var cellTopInFrame = (cellRect.Y - assetY) * dispScaleY;
+            var cellWidthInFrame = cellRect.Width * dispScaleX;
+            var cellHeightInFrame = cellRect.Height * dispScaleY;
+            border.Clip = new RectangleGeometry(new Rect(
+                cellLeftInFrame, cellTopInFrame, cellWidthInFrame, cellHeightInFrame));
+
+            // Image preview の Source 更新 (region.Rect で切り出し + region 自身の rotation/flip 焼き込み)
+            if (border.Child is Image image)
+            {
+                try
+                {
+                    if (!string.IsNullOrEmpty(placement.ThumbnailPath) && File.Exists(placement.ThumbnailPath))
+                    {
+                        var cropFraction = new CropFraction(
+                            region.Rect.X, region.Rect.Y, region.Rect.Width, region.Rect.Height);
+                        image.Source = GetOrCreatePreRotatedBitmap(
+                            placement.ThumbnailPath,
+                            region.Rotation,
+                            region.FlipX, region.FlipY,
+                            cropFraction);
+                    }
+                    else
+                    {
+                        image.Source = null;
+                    }
+                }
+                catch
+                {
+                    image.Source = null;
+                }
+            }
+        }
+    }
+
+    /// <summary>未選択 region 用の Border テンプレート。 グレー細枠 + 透過背景 + Image 子要素。</summary>
+    private static Border BuildUnselectedRegionBorder()
+    {
+        return new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromArgb(180, 128, 128, 128)),
+            BorderThickness = new Thickness(1),
+            Background = Brushes.Transparent,
+            IsHitTestVisible = false,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Opacity = 0.7,  // 選択中 (Opacity=1, 不透明) との差別化
+            Child = new Image
+            {
+                Stretch = Stretch.Fill,
+                IsHitTestVisible = false,
+            },
+        };
+    }
+
+    /// <summary>未選択 region overlay を全撤去する。 placement 切替や grid 不在のときに呼ぶ。</summary>
+    private void ClearAllUnselectedRegionBorders()
+    {
+        if (_unselectedRegionBorders.Count == 0) return;
+        UnselectedRegionOverlays.Children.Clear();
+        _unselectedRegionBorders.Clear();
+    }
+
     private void OnPlacementsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Rebuild();
 
     /// <summary>
@@ -738,7 +992,8 @@ public partial class GridCanvasView : UserControl
             if (!ReferenceEquals(child, SelectionOverlay)
                 && !ReferenceEquals(child, DragHighlightOverlay)
                 && !ReferenceEquals(child, RegionSelectionFrame)
-                && !ReferenceEquals(child, RegionParentFillOverlay))
+                && !ReferenceEquals(child, RegionParentFillOverlay)
+                && !ReferenceEquals(child, UnselectedRegionOverlays))
             {
                 CanvasGrid.Children.RemoveAt(i);
             }

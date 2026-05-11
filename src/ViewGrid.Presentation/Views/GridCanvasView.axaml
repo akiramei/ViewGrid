@@ -80,6 +80,18 @@
                                 VerticalAlignment="Top" />
 
                         <!--
+                            未選択 region の asset preview overlay コンテナ。 選択中 placement の
+                            copy.Regions のうち SelectedRegion 以外を、 グレー枠 + asset preview の
+                            Border として一覧表示する (動的生成・破棄)。 ZIndex=98 (RegionParentFillOverlay=99 と
+                            RegionSelectionFrame=102 の中間より下) で選択中の overlay は常に手前。
+                            IsHitTestVisible=False: 未選択 region のクリックは現状 ListBox 経由のみ
+                            (canvas 上での選択切替は別タスク)。
+                        -->
+                        <Panel x:Name="UnselectedRegionOverlays"
+                               IsHitTestVisible="False"
+                               ZIndex="98" />
+
+                        <!--
                             保護領域選択フレーム。SelectedRegion が非 null かつ SelectedPlacement の
                             セル内に asset が配置されているとき、 asset bbox にオレンジ枠 + asset preview を重ねる。
                             HorizontalAlignment / VerticalAlignment は Left / Top 固定で、 CodeBehind が
