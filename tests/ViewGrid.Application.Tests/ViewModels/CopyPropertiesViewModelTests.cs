@@ -743,4 +743,102 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         reloaded.Regions[0].FlipX.Should().BeFalse();
         reloaded.Regions[0].FlipY.Should().BeFalse();
     }
+
+    // ─── ProtectedRegion 並べ替え (Move Up / Down) ─────────────────────────
+
+    [Fact]
+    public async Task MoveSelectedRegionUp_Swaps_With_Previous_Item_And_Marks_Dirty()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        _vm.AddRegionCommand.Execute(null);
+        var first = _vm.RegionItems[0];
+        var second = _vm.RegionItems[1];
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.SelectedRegion = second;
+        _vm.MoveSelectedRegionUpCommand.Execute(null);
+
+        _vm.RegionItems[0].Should().BeSameAs(second);
+        _vm.RegionItems[1].Should().BeSameAs(first);
+        _vm.SelectedRegion.Should().BeSameAs(second, "並べ替え後も選択は同じインスタンスを指す");
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MoveSelectedRegionDown_Swaps_With_Next_Item_And_Marks_Dirty()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        _vm.AddRegionCommand.Execute(null);
+        var first = _vm.RegionItems[0];
+        var second = _vm.RegionItems[1];
+        await _vm.SaveAsync();
+        _vm.IsDirty.Should().BeFalse();
+
+        _vm.SelectedRegion = first;
+        _vm.MoveSelectedRegionDownCommand.Execute(null);
+
+        _vm.RegionItems[0].Should().BeSameAs(second);
+        _vm.RegionItems[1].Should().BeSameAs(first);
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MoveSelectedRegionUp_CanExecute_False_At_Top_And_When_Nothing_Selected()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.MoveSelectedRegionUpCommand.CanExecute(null).Should().BeFalse("未選択");
+
+        _vm.AddRegionCommand.Execute(null);
+        _vm.AddRegionCommand.Execute(null);
+        _vm.SelectedRegion = _vm.RegionItems[0];
+        _vm.MoveSelectedRegionUpCommand.CanExecute(null).Should().BeFalse("先頭で上移動はできない");
+
+        _vm.SelectedRegion = _vm.RegionItems[1];
+        _vm.MoveSelectedRegionUpCommand.CanExecute(null).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MoveSelectedRegionDown_CanExecute_False_At_Bottom()
+    {
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        _vm.AddRegionCommand.Execute(null);
+
+        _vm.SelectedRegion = _vm.RegionItems[1];
+        _vm.MoveSelectedRegionDownCommand.CanExecute(null).Should().BeFalse("末尾で下移動はできない");
+
+        _vm.SelectedRegion = _vm.RegionItems[0];
+        _vm.MoveSelectedRegionDownCommand.CanExecute(null).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MoveSelectedRegion_Then_Save_Persists_NewSortOrder()
+    {
+        // 並べ替え結果は SortOrder = 配列 index として永続化される (BuildAfterRegions の規約)。
+        // reload 後の Regions 配列は SortOrder 順なので、 並べ替え後の順序がそのまま現れる。
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.AddRegionCommand.Execute(null);
+        _vm.AddRegionCommand.Execute(null);
+        var firstId = _vm.RegionItems[0].Id;
+        var secondId = _vm.RegionItems[1].Id;
+
+        _vm.SelectedRegion = _vm.RegionItems[1];
+        _vm.MoveSelectedRegionUpCommand.Execute(null);
+        await _vm.SaveAsync();
+
+        var reloaded = await _fx.CopyRepository.FindByIdAsync(source.CopyId);
+        reloaded!.Regions.Should().HaveCount(2);
+        reloaded.Regions[0].Id.Should().Be(secondId, "上に移動した region が SortOrder=0 になる");
+        reloaded.Regions[1].Id.Should().Be(firstId);
+        reloaded.Regions[0].SortOrder.Should().Be(0);
+        reloaded.Regions[1].SortOrder.Should().Be(1);
+    }
 }

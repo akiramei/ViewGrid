@@ -804,6 +804,43 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     private bool CanRemoveRegion() => SelectedRegion is not null;
 
     /// <summary>
+    /// 選択中の region を 1 つ上に移動する (= SortOrder を 1 つ下げる)。 リスト先頭ならば何もしない。
+    /// </summary>
+    /// <remarks>
+    /// 永続化時の <see cref="ProtectedRegion.SortOrder"/> は <see cref="BuildAfterRegions"/> で
+    /// 配列 index = SortOrder として再採番されるため、 ここでは <see cref="ObservableCollection{T}.Move"/>
+    /// で配列順を入れ替えるだけで十分。 同 SelectedRegion は参照同一のまま保持される。
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanMoveSelectedRegionUp))]
+    private void MoveSelectedRegionUp()
+    {
+        if (SelectedRegion is not { } target) return;
+        var index = RegionItems.IndexOf(target);
+        if (index <= 0) return;
+        RegionItems.Move(index, index - 1);
+    }
+
+    private bool CanMoveSelectedRegionUp() =>
+        SelectedRegion is not null && RegionItems.IndexOf(SelectedRegion) > 0;
+
+    /// <summary>選択中の region を 1 つ下に移動する (= SortOrder を 1 つ上げる)。 リスト末尾ならば何もしない。</summary>
+    [RelayCommand(CanExecute = nameof(CanMoveSelectedRegionDown))]
+    private void MoveSelectedRegionDown()
+    {
+        if (SelectedRegion is not { } target) return;
+        var index = RegionItems.IndexOf(target);
+        if (index < 0 || index >= RegionItems.Count - 1) return;
+        RegionItems.Move(index, index + 1);
+    }
+
+    private bool CanMoveSelectedRegionDown()
+    {
+        if (SelectedRegion is null) return false;
+        var index = RegionItems.IndexOf(SelectedRegion);
+        return index >= 0 && index < RegionItems.Count - 1;
+    }
+
+    /// <summary>
     /// View 側の Editor (Task 9) が rect 編集を完了したときに呼ぶ。 <paramref name="item"/> の
     /// <see cref="ProtectedRegionItemViewModel.Rect"/> を更新し、 IsDirty 連動も自動で発火する
     /// (item 自身の PropertyChanged → <see cref="OnRegionItemPropertyChanged"/>)。
@@ -860,6 +897,11 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         // HasNoRegions は collection サイズに依存する派生プロパティ。 コレクション変更で必ず通知。
         OnPropertyChanged(nameof(HasNoRegions));
 
+        // Add / Remove / Move いずれでも SelectedRegion の index が変わり得るので、
+        // 上下移動コマンドの CanExecute を再評価する (リスト端での灰色化を即時反映)。
+        MoveSelectedRegionUpCommand.NotifyCanExecuteChanged();
+        MoveSelectedRegionDownCommand.NotifyCanExecuteChanged();
+
         if (_suppressDirty) return;
         MarkRegionsDirty();
     }
@@ -886,10 +928,12 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         RevertCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>SelectedRegion 変動で削除コマンドの CanExecute を再評価。</summary>
+    /// <summary>SelectedRegion 変動で削除 / 上下移動コマンドの CanExecute を再評価。</summary>
     partial void OnSelectedRegionChanged(ProtectedRegionItemViewModel? value)
     {
         RemoveRegionCommand.NotifyCanExecuteChanged();
+        MoveSelectedRegionUpCommand.NotifyCanExecuteChanged();
+        MoveSelectedRegionDownCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>HasCopy 変動で AddRegion コマンドの CanExecute を再評価。</summary>

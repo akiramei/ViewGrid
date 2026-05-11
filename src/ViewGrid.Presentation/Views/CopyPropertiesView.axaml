@@ -446,6 +446,12 @@
                                     Content="編集..."
                                     IsEnabled="{Binding SelectedRegion, Converter={x:Static ObjectConverters.IsNotNull}}"
                                     ToolTip.Tip="選択中の保護領域の矩形を編集します" />
+                            <Button Command="{Binding MoveSelectedRegionUpCommand}"
+                                    Content="↑"
+                                    ToolTip.Tip="選択中の保護領域を 1 つ上に移動します (描画順が 1 つ前になります)" />
+                            <Button Command="{Binding MoveSelectedRegionDownCommand}"
+                                    Content="↓"
+                                    ToolTip.Tip="選択中の保護領域を 1 つ下に移動します (描画順が 1 つ後ろになります)" />
                             <Button Command="{Binding RemoveRegionCommand}"
                                     Classes="iconDanger"
                                     ToolTip.Tip="選択中の保護領域を削除します">
