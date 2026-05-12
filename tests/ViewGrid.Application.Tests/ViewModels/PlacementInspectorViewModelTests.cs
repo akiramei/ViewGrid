@@ -277,7 +277,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
 
         await _vm.AttachAsync(item, gridVm);
 
-        _vm.ImageDrawSizeLabel.Should().Contain("200×200");
+        _vm.ImageDrawSizeLabel.Should().Contain("Inspector_DrawnAreaFmt").And.Contain("200,200");
     }
 
     [Fact]

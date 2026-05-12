@@ -740,7 +740,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             IsBusy = true;
             var candidate = Candidates.FirstOrDefault(c => c.CopyId == copyId);
             var copyLabel = candidate?.CopyDisplayName ?? _loc[Terminology.VariantUnknownKey];
-            var description = $"配置: 「{copyLabel}」→ ({position.X},{position.Y})";
+            var description = _loc.Format("History_PlacementPlacedFmt", copyLabel, position.X, position.Y);
             var command = new PlaceCommand(
                 _placeUseCase, _removeUseCase, _placementRepository,
                 grid.GridId, copyId, position, description);
@@ -780,7 +780,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 return;
             }
 
-            var description = $"配置: 「{candidate.CopyDisplayName}」→ ({position.Value.X},{position.Value.Y})";
+            var description = _loc.Format("History_PlacementPlacedFmt", candidate.CopyDisplayName, position.Value.X, position.Value.Y);
             var command = new PlaceCommand(
                 _placeUseCase, _removeUseCase, _placementRepository,
                 grid.GridId, candidate.CopyId, position.Value, description);
@@ -818,7 +818,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 return;
             }
 
-            var description = $"削除: 「{target.Label}」 ({target.GridX},{target.GridY})";
+            var description = _loc.Format("History_PlacementRemovedFmt", target.Label, target.GridX, target.GridY);
             var command = new RemovePlacementCommand(
                 _removeUseCase, _placementRepository, snapshot, description);
             var result = await _history.ExecuteAsync(command, ct);
@@ -1017,7 +1017,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         var rowChanged = !afterRow.SequenceEqual(beforeRow);
         if (!colChanged && !rowChanged) return true; // 値変化なし — 履歴に積まない
 
-        var description = $"{ResolveWeightsChangeLabel(colChanged, rowChanged)}変更: グリッド「{grid.Name}」";
+        var description = _loc.Format(ResolveWeightsChangeFormatKey(colChanged, rowChanged), grid.Name);
         var command = new UpdateGridWeightsCommand(
             _updateWeightsUseCase, grid.GridId, beforeCol, beforeRow, afterCol, afterRow, description);
         var result = await _history.ExecuteAsync(command, ct);
@@ -1047,10 +1047,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         after is null ? before : [.. after];
 
     /// <summary>
-    /// 履歴 description 用ラベルを決める。 両軸変化時は「比率」、 片軸のみ変化時は「列幅」/「行高」。
+    /// 履歴 description 用の resx format key を決める。 両軸変化時は「比率」、 片軸のみ変化時は「列幅」/「行高」 系。
     /// </summary>
-    private static string ResolveWeightsChangeLabel(bool colChanged, bool rowChanged) =>
-        colChanged && rowChanged ? "比率" : (colChanged ? "列幅" : "行高");
+    private static string ResolveWeightsChangeFormatKey(bool colChanged, bool rowChanged) =>
+        colChanged && rowChanged ? "History_WeightsChangedRatiosFmt"
+            : (colChanged ? "History_WeightsChangedColFmt" : "History_WeightsChangedRowFmt");
 
     /// <summary>
     /// Shift+ドラッグ等のキャンバス操作で配置の <see cref="GridPlacement.PixelOffsetX"/> /
@@ -1086,8 +1087,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         }
 
         var item = Placements.FirstOrDefault(p => p.PlacementId == placementId);
-        var label = item?.Label ?? "(不明な配置)";
-        var description = $"ピクセル微調整: 「{label}」 ΔX={clampedX}, ΔY={clampedY}";
+        var label = item?.Label ?? _loc["History_UnknownPlacement"];
+        var description = _loc.Format("History_PixelOffsetFmt", label, clampedX, clampedY);
         var command = new UpdatePlacementOffsetCommand(
             _updateOffsetUseCase, grid.GridId, placementId,
             beforeX, beforeY, clampedX, clampedY, description);
@@ -1124,7 +1125,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         var beforeCol = grid.ColWeights;
         var beforeRow = grid.RowWeights;
 
-        var description = $"フィット ({(axis == FitAxis.Column ? "列幅" : "行高")}): グリッド「{grid.Name}」";
+        var description = _loc.Format(
+            axis == FitAxis.Column ? "History_FitGridColFmt" : "History_FitGridRowFmt",
+            grid.Name);
         var command = new FitGridWeightCommand(
             _fitWeightUseCase, _updateWeightsUseCase,
             grid.GridId, placementId, axis,
@@ -1192,9 +1195,15 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             ? (beforeAxis, beforeOther, afterAxis, beforeOther)
             : (beforeOther, beforeAxis, beforeOther, afterAxis);
 
-        var axisLabel = axis == FitAxis.Column ? "列" : "行";
-        var lockState = afterAxis[index] ? "ロック" : "解除";
-        var description = $"{axisLabel} {index} {lockState}: グリッド「{grid.Name}」";
+        var isLocked = afterAxis[index];
+        var formatKey = (axis, isLocked) switch
+        {
+            (FitAxis.Column, true) => "History_ColLockedFmt",
+            (FitAxis.Column, false) => "History_ColUnlockedFmt",
+            (FitAxis.Row, true) => "History_RowLockedFmt",
+            _ => "History_RowUnlockedFmt",
+        };
+        var description = _loc.Format(formatKey, index, grid.Name);
 
         var command = new UpdateGridLocksCommand(
             _updateLocksUseCase, grid.GridId,
@@ -1418,7 +1427,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         };
         var beforeLabel = string.IsNullOrWhiteSpace(beforeName) ? _loc[Terminology.VariantUnnamedKey] : beforeName;
         var afterLabel = string.IsNullOrWhiteSpace(trimmed) ? _loc[Terminology.VariantUnnamedKey] : trimmed;
-        var description = $"{_loc[Terminology.VariantKey]}名変更: 「{beforeLabel}」→「{afterLabel}」";
+        var description = _loc.Format("History_VariantRenameFmt", _loc[Terminology.VariantKey], beforeLabel, afterLabel);
         var command = new UpdateImageCopyCommand(_updateCopyUseCase, candidate.CopyId, before, after, description);
 
         var result = await _history.ExecuteAsync(command, ct);

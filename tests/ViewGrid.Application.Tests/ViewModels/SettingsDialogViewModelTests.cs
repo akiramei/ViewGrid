@@ -161,7 +161,7 @@ public sealed class SettingsDialogViewModelTests
             vm.DefaultScalingMode.Should().Be(ScalingMode.Fill);
             vm.DefaultAutoCropPreset.Should().Be(AutoCropPreset.Black);
             vm.ThumbnailMaxEdgePixels.Should().Be(2048);
-            vm.IoStatus.Should().Contain("インポートしました");
+            vm.IoStatus.Should().Contain("Settings_Import_SuccessFmt");
             fake.LastSaved!.AccentColor.Should().Be("Rose");
         }
         finally { if (File.Exists(tempPath)) File.Delete(tempPath); }
@@ -180,7 +180,7 @@ public sealed class SettingsDialogViewModelTests
 
             await vm.ImportSettingsCommand.ExecuteAsync(null);
 
-            vm.IoStatus.Should().StartWith("インポートに失敗しました");
+            vm.IoStatus.Should().StartWith("Settings_Import_FailFmt");
             vm.AccentColor.Should().Be("Sky"); // 失敗時は現状維持
         }
         finally { if (File.Exists(tempPath)) File.Delete(tempPath); }
@@ -206,7 +206,7 @@ public sealed class SettingsDialogViewModelTests
             var written = await File.ReadAllTextAsync(tempPath);
             written.Should().Contain("\"Theme\": \"Dark\"");
             written.Should().Contain("\"AccentColor\": \"Violet\"");
-            vm.IoStatus.Should().Contain("エクスポートしました");
+            vm.IoStatus.Should().Contain("Settings_Export_SuccessFmt");
         }
         finally { if (File.Exists(tempPath)) File.Delete(tempPath); }
     }

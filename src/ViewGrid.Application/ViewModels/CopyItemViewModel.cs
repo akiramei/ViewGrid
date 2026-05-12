@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
+using ViewGrid.Application.Localization;
 using ViewGrid.Core.Entities;
 
 namespace ViewGrid.Application.ViewModels;
@@ -105,7 +106,7 @@ public sealed partial class CopyItemViewModel : ObservableObject
     }
 
     public string DisplayName =>
-        string.IsNullOrWhiteSpace(CopyName) ? "既定" : CopyName!;
+        string.IsNullOrWhiteSpace(CopyName) ? LocAccessor.Current[Terminology.VariantUnnamedKey] : CopyName!;
 
     public string SummaryLine =>
         $"{(int)Rotation}°{(FlipX ? " H" : "")}{(FlipY ? " V" : "")}";

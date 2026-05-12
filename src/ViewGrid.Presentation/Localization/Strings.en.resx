@@ -207,6 +207,9 @@
   <data name="Output_Intensity_Slider_Tooltip" xml:space="preserve"><value>Adjust the chosen style from subtle ↔ bold.</value></data>
   <data name="Output_Trim" xml:space="preserve"><value>Trim</value></data>
   <data name="Output_Trim_Tooltip" xml:space="preserve"><value>Trim range applied to the exported PNG. Same semantics in PhotoBoard mode.</value></data>
+  <data name="Output_Trim_None" xml:space="preserve"><value>Full canvas</value></data>
+  <data name="Output_Trim_OccupiedCells" xml:space="preserve"><value>Occupied cells</value></data>
+  <data name="Output_Trim_DrawnPixels" xml:space="preserve"><value>Drawn pixels</value></data>
 
   <!-- Inspector (placement editor) -->
   <data name="Inspector_SaveAll_Tooltip" xml:space="preserve"><value>Save placement-specific and shared properties together</value></data>
@@ -218,6 +221,8 @@
   <data name="Inspector_PixelOffset" xml:space="preserve"><value>Pixel offset (ΔX/ΔY)</value></data>
   <data name="Inspector_PixelOffset_ResetButton" xml:space="preserve"><value>Reset to 0</value></data>
   <data name="Inspector_PixelOffset_Hint" xml:space="preserve"><value>Tip: Shift+drag or Ctrl+arrow keys also adjust the offset.</value></data>
+  <data name="Inspector_PositionAndOccupyFmt" xml:space="preserve"><value>Position: ({0},{1}) / Occupy: {2}×{3}</value></data>
+  <data name="Inspector_DrawnAreaFmt" xml:space="preserve"><value>Drawn area: {0}×{1} px</value></data>
   <data name="Inspector_SharedProperties" xml:space="preserve"><value>Shared properties (apply to all placements of this variant)</value></data>
   <data name="Inspector_ForkVariant" xml:space="preserve"><value>Fork this placement into its own variant</value></data>
   <data name="Inspector_ForkVariant_Tooltip" xml:space="preserve"><value>Switch this placement to a new variant cloned from the current one. Other placements are unaffected.</value></data>
@@ -234,6 +239,12 @@
   <data name="CopyProps_FlipH" xml:space="preserve"><value>Horizontal (H)</value></data>
   <data name="CopyProps_FlipV" xml:space="preserve"><value>Vertical (V)</value></data>
   <data name="CopyProps_Scaling" xml:space="preserve"><value>Scaling</value></data>
+  <data name="Scaling_None" xml:space="preserve"><value>Original size</value></data>
+  <data name="Scaling_UniformContain" xml:space="preserve"><value>Contain (preserve aspect)</value></data>
+  <data name="Scaling_UniformContainShrinkOnly" xml:space="preserve"><value>Shrink only</value></data>
+  <data name="Scaling_UniformContainEnlargeOnly" xml:space="preserve"><value>Enlarge only</value></data>
+  <data name="Scaling_UniformCover" xml:space="preserve"><value>Cover (preserve aspect, crop)</value></data>
+  <data name="Scaling_Fill" xml:space="preserve"><value>Stretch (independent W/H)</value></data>
   <data name="CopyProps_Alignment" xml:space="preserve"><value>Alignment</value></data>
   <data name="CopyProps_TrimMode" xml:space="preserve"><value>Trim mode</value></data>
   <data name="CopyProps_TrimMode_Off" xml:space="preserve"><value>OFF</value></data>
@@ -266,12 +277,41 @@
   <data name="CopyProps_Regions_FillMode" xml:space="preserve"><value>Fill mode (parent side)</value></data>
   <data name="CopyProps_Regions_HexLabel" xml:space="preserve"><value>HEX (#AARRGGBB)</value></data>
   <data name="CopyProps_Regions_HexHint" xml:space="preserve"><value>Click on the thumbnail below to pick a color from the source image (before crop). FillMode switches to Custom automatically.</value></data>
+  <data name="CopyProps_Regions_EditorTitle" xml:space="preserve"><value>Protected Region — Detail Edit</value></data>
+
+  <!-- Color preset labels shared by AutoCrop and ProtectedRegion -->
+  <data name="ColorPreset_White" xml:space="preserve"><value>White #FFFFFF</value></data>
+  <data name="ColorPreset_Black" xml:space="preserve"><value>Black #000000</value></data>
+  <data name="ColorPreset_Transparent" xml:space="preserve"><value>Transparent (α=0)</value></data>
+  <data name="ColorPreset_Custom" xml:space="preserve"><value>Custom</value></data>
+  <!-- ProtectedRegion-only: keep parent image as-is (no fill) -->
+  <data name="RegionFillMode_None" xml:space="preserve"><value>None (keep parent image)</value></data>
 
   <!-- MainWindow status bar / history flyout -->
   <data name="History_Tooltip" xml:space="preserve"><value>Operation history</value></data>
   <data name="History_Header" xml:space="preserve"><value>Operation history (latest 50)</value></data>
   <data name="History_Empty" xml:space="preserve"><value>No history yet</value></data>
   <data name="StatusBar_Unsaved_Tooltip" xml:space="preserve"><value>You have unsaved edits in the Inspector. Press "Save" on each tab to persist them.</value></data>
+
+  <!-- Undo/Redo history descriptions (stored in each command at creation time via _loc.Format) -->
+  <data name="History_ColLockedFmt" xml:space="preserve"><value>Column {0} locked: grid "{1}"</value></data>
+  <data name="History_ColUnlockedFmt" xml:space="preserve"><value>Column {0} unlocked: grid "{1}"</value></data>
+  <data name="History_RowLockedFmt" xml:space="preserve"><value>Row {0} locked: grid "{1}"</value></data>
+  <data name="History_RowUnlockedFmt" xml:space="preserve"><value>Row {0} unlocked: grid "{1}"</value></data>
+  <data name="History_PlacementPlacedFmt" xml:space="preserve"><value>Placed: "{0}" → ({1},{2})</value></data>
+  <data name="History_PlacementRemovedFmt" xml:space="preserve"><value>Removed: "{0}" ({1},{2})</value></data>
+  <data name="History_WeightsChangedRatiosFmt" xml:space="preserve"><value>Ratios changed: grid "{0}"</value></data>
+  <data name="History_WeightsChangedColFmt" xml:space="preserve"><value>Column widths changed: grid "{0}"</value></data>
+  <data name="History_WeightsChangedRowFmt" xml:space="preserve"><value>Row heights changed: grid "{0}"</value></data>
+  <data name="History_PixelOffsetFmt" xml:space="preserve"><value>Pixel offset: "{0}" ΔX={1}, ΔY={2}</value></data>
+  <data name="History_FitGridColFmt" xml:space="preserve"><value>Fit (column width): grid "{0}"</value></data>
+  <data name="History_FitGridRowFmt" xml:space="preserve"><value>Fit (row height): grid "{0}"</value></data>
+  <data name="History_VariantRenameFmt" xml:space="preserve"><value>{0} renamed: "{1}" → "{2}"</value></data>
+  <data name="History_VariantForkFmt" xml:space="preserve"><value>Fork {0}: "{1}" → derived</value></data>
+  <data name="History_GridRenamedFmt" xml:space="preserve"><value>Renamed: "{0}" → "{1}"</value></data>
+  <data name="History_CanvasResizedFmt" xml:space="preserve"><value>Canvas size: {0}×{1} → {2}×{3} px</value></data>
+  <data name="History_CopyPropsEditedFmt" xml:space="preserve"><value>Properties edited: "{0}"</value></data>
+  <data name="History_UnknownPlacement" xml:space="preserve"><value>(unknown placement)</value></data>
 
   <!-- Grid properties (right pane) -->
   <data name="GridProps_Save_Tooltip" xml:space="preserve"><value>Save the name and canvas size changes together</value></data>
@@ -287,6 +327,8 @@
   <data name="GridProps_Locks" xml:space="preserve"><value>Locks</value></data>
   <data name="GridProps_ColLocks_Prefix" xml:space="preserve"><value>Cols: </value></data>
   <data name="GridProps_RowLocks_Prefix" xml:space="preserve"><value>  /  Rows: </value></data>
+  <data name="GridProps_LockedCountFmt" xml:space="preserve"><value>{0}/{1} locked</value></data>
+  <data name="GridProps_LockedNoneFmt" xml:space="preserve"><value>None (of {0})</value></data>
   <data name="GridProps_Hint" xml:space="preserve"><value>Name / canvas size require pressing "Save" to commit (Esc / Reset to undo). Ratios are adjusted by dragging boundaries; 🔒 toggles via header click.</value></data>
 
   <!-- Manual crop editor -->
@@ -394,11 +436,30 @@
   <data name="Workspace_CreateConfirm_Import" xml:space="preserve"><value>Import</value></data>
   <data name="Workspace_DisplayName_CopySuffixFmt" xml:space="preserve"><value>{0} (Copy)</value></data>
 
-  <!-- Terminology (Phase 3+: variant labels) -->
+  <!-- Terminology (Phase 3+: variant labels / Phase 4: other UI nouns) -->
   <data name="Term_Variant" xml:space="preserve"><value>Variant</value></data>
   <data name="Term_VariantPrefix" xml:space="preserve"><value>Variant</value></data>
   <data name="Term_VariantUnnamed" xml:space="preserve"><value>(Unnamed)</value></data>
   <data name="Term_VariantUnknown" xml:space="preserve"><value>(Unknown variant)</value></data>
+  <data name="Term_Cells" xml:space="preserve"><value>cells</value></data>
+  <data name="Term_GridPrefix" xml:space="preserve"><value>Grid</value></data>
+  <data name="Term_NewGrid" xml:space="preserve"><value>New grid</value></data>
+
+  <!-- File picker dialog titles and file-type filter names (OS-native picker) -->
+  <data name="FilePicker_SelectImages_Title" xml:space="preserve"><value>Select images</value></data>
+  <data name="FilePicker_SavePng_Title" xml:space="preserve"><value>Save as PNG</value></data>
+  <data name="FilePicker_ExportSettings_Title" xml:space="preserve"><value>Export settings</value></data>
+  <data name="FilePicker_ImportSettings_Title" xml:space="preserve"><value>Import settings</value></data>
+  <data name="FilePicker_Images_TypeName" xml:space="preserve"><value>Images</value></data>
+  <data name="FilePicker_PngImage_TypeName" xml:space="preserve"><value>PNG image</value></data>
+  <data name="FilePicker_JsonFile_TypeName" xml:space="preserve"><value>JSON file</value></data>
+
+  <!-- Settings export/import IoStatus messages -->
+  <data name="Settings_Export_SuccessFmt" xml:space="preserve"><value>Exported: {0}</value></data>
+  <data name="Settings_Export_FailFmt" xml:space="preserve"><value>Export failed: {0}</value></data>
+  <data name="Settings_Import_SuccessFmt" xml:space="preserve"><value>Imported: {0}</value></data>
+  <data name="Settings_Import_FailFmt" xml:space="preserve"><value>Import failed: {0}</value></data>
+  <data name="Settings_Import_InvalidJson" xml:space="preserve"><value>Import failed: JSON is empty or invalid.</value></data>
 
   <!-- Status bar hints (Phase 3+: MainWindowViewModel.CurrentHints / UnsavedSummary) -->
   <data name="Hint_NoAssets" xml:space="preserve"><value>Drag &amp; drop images, or click "+ Add images" to start importing</value></data>

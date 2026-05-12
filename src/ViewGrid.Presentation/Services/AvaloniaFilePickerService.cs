@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using ViewGrid.Application.Localization;
 using ViewGrid.Core.Services;
 
 namespace ViewGrid.Presentation.Services;
@@ -21,11 +22,11 @@ internal sealed class AvaloniaFilePickerService : IFilePickerService
 
         var options = new FilePickerOpenOptions
         {
-            Title = "画像を選択",
+            Title = LocAccessor.Current["FilePicker_SelectImages_Title"],
             AllowMultiple = true,
             FileTypeFilter =
             [
-                new FilePickerFileType("画像")
+                new FilePickerFileType(LocAccessor.Current["FilePicker_Images_TypeName"])
                 {
                     Patterns = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.bmp"],
                     MimeTypes = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"],
@@ -52,13 +53,13 @@ internal sealed class AvaloniaFilePickerService : IFilePickerService
 
         var options = new FilePickerSaveOptions
         {
-            Title = "PNG として保存",
+            Title = LocAccessor.Current["FilePicker_SavePng_Title"],
             SuggestedFileName = suggestedFileName,
             DefaultExtension = "png",
             ShowOverwritePrompt = true,
             FileTypeChoices =
             [
-                new FilePickerFileType("PNG 画像")
+                new FilePickerFileType(LocAccessor.Current["FilePicker_PngImage_TypeName"])
                 {
                     Patterns = ["*.png"],
                     MimeTypes = ["image/png"],
@@ -83,7 +84,7 @@ internal sealed class AvaloniaFilePickerService : IFilePickerService
             ShowOverwritePrompt = true,
             FileTypeChoices =
             [
-                new FilePickerFileType("JSON ファイル")
+                new FilePickerFileType(LocAccessor.Current["FilePicker_JsonFile_TypeName"])
                 {
                     Patterns = ["*.json"],
                     MimeTypes = ["application/json"],
@@ -106,7 +107,7 @@ internal sealed class AvaloniaFilePickerService : IFilePickerService
             AllowMultiple = false,
             FileTypeFilter =
             [
-                new FilePickerFileType("JSON ファイル")
+                new FilePickerFileType(LocAccessor.Current["FilePicker_JsonFile_TypeName"])
                 {
                     Patterns = ["*.json"],
                     MimeTypes = ["application/json"],

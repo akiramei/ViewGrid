@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ViewGrid.Application.Localization;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.Services;
 using ViewGrid.Core.Settings;
@@ -186,7 +187,7 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
     [RelayCommand]
     private async Task ExportSettingsAsync()
     {
-        var path = await _filePicker.PickSaveJsonPathAsync("viewgrid-settings.json", "設定をエクスポート");
+        var path = await _filePicker.PickSaveJsonPathAsync("viewgrid-settings.json", LocAccessor.Current["FilePicker_ExportSettings_Title"]);
         if (string.IsNullOrEmpty(path))
         {
             IoStatus = string.Empty;
@@ -196,11 +197,11 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
         {
             var json = JsonSerializer.Serialize(_settings.Current, JsonOptions);
             await File.WriteAllTextAsync(path, json);
-            IoStatus = $"エクスポートしました: {Path.GetFileName(path)}";
+            IoStatus = LocAccessor.Current.Format("Settings_Export_SuccessFmt", Path.GetFileName(path));
         }
         catch (Exception ex)
         {
-            IoStatus = $"エクスポートに失敗しました: {ex.Message}";
+            IoStatus = LocAccessor.Current.Format("Settings_Export_FailFmt", ex.Message);
         }
     }
 
@@ -212,7 +213,7 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
     [RelayCommand]
     private async Task ImportSettingsAsync()
     {
-        var path = await _filePicker.PickOpenJsonPathAsync("設定をインポート");
+        var path = await _filePicker.PickOpenJsonPathAsync(LocAccessor.Current["FilePicker_ImportSettings_Title"]);
         if (string.IsNullOrEmpty(path))
         {
             IoStatus = string.Empty;
@@ -224,16 +225,16 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
             var imported = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
             if (imported is null)
             {
-                IoStatus = "インポートに失敗しました: JSON が空または不正です。";
+                IoStatus = LocAccessor.Current["Settings_Import_InvalidJson"];
                 return;
             }
             await _settings.SaveAsync(imported);
             ReloadFromCurrent();
-            IoStatus = $"インポートしました: {Path.GetFileName(path)}";
+            IoStatus = LocAccessor.Current.Format("Settings_Import_SuccessFmt", Path.GetFileName(path));
         }
         catch (Exception ex)
         {
-            IoStatus = $"インポートに失敗しました: {ex.Message}";
+            IoStatus = LocAccessor.Current.Format("Settings_Import_FailFmt", ex.Message);
         }
     }
 

@@ -184,7 +184,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         await _gridList.RenameSelectedAsync("renamed");
 
         _vm.HistoryEntries.Should().ContainSingle();
-        _vm.HistoryEntries[0].Description.Should().Contain("リネーム");
+        _vm.HistoryEntries[0].Description.Should().Contain("History_GridRenamedFmt");
         _vm.CurrentHistoryIndex.Should().Be(0);
         _vm.HasHistory.Should().BeTrue();
     }

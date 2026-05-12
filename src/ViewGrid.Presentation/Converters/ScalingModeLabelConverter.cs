@@ -1,11 +1,12 @@
 using System.Globalization;
 using Avalonia.Data.Converters;
+using ViewGrid.Application.Localization;
 using ViewGrid.Core.Entities;
 
 namespace ViewGrid.Presentation.Converters;
 
 /// <summary>
-/// <see cref="ScalingMode"/> を ComboBox 表示用の日本語ラベルに変換する。
+/// <see cref="ScalingMode"/> を ComboBox 表示用ラベルに変換する。 現在 culture の resx から引く。
 /// </summary>
 public sealed class ScalingModeLabelConverter : IValueConverter
 {
@@ -19,14 +20,14 @@ public sealed class ScalingModeLabelConverter : IValueConverter
 
     public static string Label(ScalingMode mode) => mode switch
     {
-        ScalingMode.None => "原寸固定",
-        ScalingMode.UniformContain => "アスペクト維持（収める）",
-        ScalingMode.UniformContainShrinkOnly => "縮小のみ",
-        ScalingMode.UniformContainEnlargeOnly => "拡大のみ",
+        ScalingMode.None => LocAccessor.Current["Scaling_None"],
+        ScalingMode.UniformContain => LocAccessor.Current["Scaling_UniformContain"],
+        ScalingMode.UniformContainShrinkOnly => LocAccessor.Current["Scaling_UniformContainShrinkOnly"],
+        ScalingMode.UniformContainEnlargeOnly => LocAccessor.Current["Scaling_UniformContainEnlargeOnly"],
         // 旧表記「アスペクト維持（埋める）」はユーザー認識（=収まる）と挙動（=見切れる）が乖離していた。
         // 「覆う・切り取り」で「全面を覆うため画像の一部が切れる」ことを明示する。
-        ScalingMode.UniformCover => "アスペクト維持（覆う・切り取り）",
-        ScalingMode.Fill => "完全充填（縦横独立）",
+        ScalingMode.UniformCover => LocAccessor.Current["Scaling_UniformCover"],
+        ScalingMode.Fill => LocAccessor.Current["Scaling_Fill"],
         _ => mode.ToString(),
     };
 }

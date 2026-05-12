@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Immutable;
 using System.Globalization;
 using Avalonia.Data.Converters;
+using ViewGrid.Application.Localization;
 
 namespace ViewGrid.Presentation.Converters;
 
@@ -26,9 +27,9 @@ public sealed class ImmutableArrayJoinConverter : IValueConverter
 }
 
 /// <summary>
-/// <see cref="ImmutableArray{Boolean}"/> 内の <c>true</c> 件数を「N/M ロック中」の形式で表示する。
-/// グリッドプロパティで列・行のロック状態を要約するために使う。
-/// 全アンロック時は「なし」を返してノイズを減らす。
+/// <see cref="ImmutableArray{Boolean}"/> 内の <c>true</c> 件数を「N/M ロック中」の形式で表示する
+/// (現在 culture の resx から format を引く)。 グリッドプロパティで列・行のロック状態を要約する。
+/// 全アンロック時は「なし」フォーマットを返してノイズを減らす。
 /// </summary>
 public sealed class LockedCountConverter : IValueConverter
 {
@@ -40,8 +41,9 @@ public sealed class LockedCountConverter : IValueConverter
         {
             var items = enumerable.Cast<bool>().ToArray();
             var locked = items.Count(b => b);
-            if (locked == 0) return $"なし ({items.Length} 件中)";
-            return $"{locked}/{items.Length} ロック中";
+            return locked == 0
+                ? LocAccessor.Current.Format("GridProps_LockedNoneFmt", items.Length)
+                : LocAccessor.Current.Format("GridProps_LockedCountFmt", locked, items.Length);
         }
         return string.Empty;
     }

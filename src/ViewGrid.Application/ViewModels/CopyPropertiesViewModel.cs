@@ -467,8 +467,8 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
 
         // Description は Save 時点での名前を表示用に使う（リネーム結果の追跡は UpdateImageCopyCommand
         // のリネーム経路が別に表示するため、こちらは固定の「特性編集: 「{name}」」だけで良い）。
-        var nameLabel = string.IsNullOrWhiteSpace(source.CopyName) ? "(無名)" : source.CopyName!;
-        var description = $"特性編集: 「{nameLabel}」";
+        var nameLabel = string.IsNullOrWhiteSpace(source.CopyName) ? _loc[Terminology.VariantUnnamedKey] : source.CopyName!;
+        var description = _loc.Format("History_CopyPropsEditedFmt", nameLabel);
         var command = new UpdateImageCopyCommand(_updateUseCase, source.CopyId, before, after, description);
         var execResult = await _history.ExecuteAsync(command, ct);
         if (execResult.IsError)

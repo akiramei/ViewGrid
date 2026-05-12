@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.ViewModels;
 using ViewGrid.Core.Entities;
 
@@ -188,7 +189,7 @@ public partial class CopyPropertiesView : UserControl
         RegionRectFraction initialRect, string imagePath, int sourceWidth, int sourceHeight)
     {
         var (initX, initY, initW, initH) = RegionFractionToPixelRect(initialRect, sourceWidth, sourceHeight);
-        var window = new ManualCropEditorWindow { Title = "保護領域 詳細編集" };
+        var window = new ManualCropEditorWindow { Title = LocAccessor.Current["CopyProps_Regions_EditorTitle"] };
         try
         {
             window.Initialize(imagePath, sourceWidth, sourceHeight, initX, initY, initW, initH);

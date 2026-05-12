@@ -1,11 +1,12 @@
 using System.Globalization;
 using Avalonia.Data.Converters;
+using ViewGrid.Application.Localization;
 using ViewGrid.Core.Entities;
 
 namespace ViewGrid.Presentation.Converters;
 
 /// <summary>
-/// <see cref="AutoCropPreset"/> を ComboBox 表示用の日本語ラベルに変換する。
+/// <see cref="AutoCropPreset"/> を ComboBox 表示用ラベルに変換する。 現在 culture の resx から引く。
 /// </summary>
 public sealed class AutoCropPresetLabelConverter : IValueConverter
 {
@@ -19,10 +20,10 @@ public sealed class AutoCropPresetLabelConverter : IValueConverter
 
     public static string Label(AutoCropPreset preset) => preset switch
     {
-        AutoCropPreset.White => "白 #FFFFFF",
-        AutoCropPreset.Black => "黒 #000000",
-        AutoCropPreset.Transparent => "透明 (α=0)",
-        AutoCropPreset.Custom => "カスタム",
+        AutoCropPreset.White => LocAccessor.Current["ColorPreset_White"],
+        AutoCropPreset.Black => LocAccessor.Current["ColorPreset_Black"],
+        AutoCropPreset.Transparent => LocAccessor.Current["ColorPreset_Transparent"],
+        AutoCropPreset.Custom => LocAccessor.Current["ColorPreset_Custom"],
         _ => preset.ToString(),
     };
 }

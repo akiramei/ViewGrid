@@ -1,12 +1,13 @@
 using System.Globalization;
 using Avalonia.Data.Converters;
+using ViewGrid.Application.Localization;
 using ViewGrid.Core.Entities;
 
 namespace ViewGrid.Presentation.Converters;
 
 /// <summary>
-/// <see cref="OutputMode"/> を出力設定 Expander のヘッダー表示用日本語ラベルに変換する。
-/// 「通常」「写真ボード」のように短く、現在状態が一目で分かるラベル。
+/// <see cref="OutputMode"/> を出力設定 Expander のヘッダー表示用ラベルに変換する。
+/// 現在 culture の resx から短く現在状態を示すラベルを引く。
 /// </summary>
 public sealed class OutputModeLabelConverter : IValueConverter
 {
@@ -20,8 +21,8 @@ public sealed class OutputModeLabelConverter : IValueConverter
 
     public static string Label(OutputMode mode) => mode switch
     {
-        OutputMode.Normal => "通常",
-        OutputMode.PhotoBoard => "写真ボード",
+        OutputMode.Normal => LocAccessor.Current["Output_Mode_Normal"],
+        OutputMode.PhotoBoard => LocAccessor.Current["Output_Mode_PhotoBoard"],
         _ => mode.ToString(),
     };
 }

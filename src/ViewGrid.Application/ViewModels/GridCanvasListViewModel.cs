@@ -101,7 +101,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
 
     // 新規作成ドラフト
     [ObservableProperty] public partial bool IsCreating { get; set; }
-    [ObservableProperty] public partial string DraftName { get; set; } = "新規グリッド";
+    [ObservableProperty] public partial string DraftName { get; set; } = string.Empty;
     [ObservableProperty] public partial int DraftRows { get; set; } = 3;
     [ObservableProperty] public partial int DraftCols { get; set; } = 3;
     [ObservableProperty] public partial int DraftCanvasWidth { get; set; } = 1200;
@@ -305,7 +305,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public void BeginCreate()
     {
-        DraftName = $"グリッド {Grids.Count + 1}";
+        DraftName = $"{_loc["Term_GridPrefix"]} {Grids.Count + 1}";
         DraftRows = 3;
         DraftCols = 3;
         DraftCanvasWidth = 1200;
@@ -518,7 +518,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
     private async Task<bool> RenameInternalAsync(
         GridCanvasItemViewModel selected, string newName, CancellationToken ct)
     {
-        var description = $"リネーム: 「{selected.Name}」→「{newName}」";
+        var description = _loc.Format("History_GridRenamedFmt", selected.Name, newName);
         var command = new RenameGridCanvasCommand(
             _renameUseCase, selected.GridId, selected.Name, newName, description);
         var result = await _history.ExecuteAsync(command, ct);
@@ -538,7 +538,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
     private async Task<bool> UpdateCanvasSizeInternalAsync(
         GridCanvasItemViewModel selected, PixelSize before, PixelSize after, CancellationToken ct)
     {
-        var description = $"キャンバスサイズ: {before.Width}×{before.Height} → {after.Width}×{after.Height} px";
+        var description = _loc.Format("History_CanvasResizedFmt", before.Width, before.Height, after.Width, after.Height);
         var command = new UpdateGridCanvasSizeCommand(
             _updateCanvasSizeUseCase, selected.GridId, before, after, description);
         var result = await _history.ExecuteAsync(command, ct);

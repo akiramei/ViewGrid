@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
+using ViewGrid.Application.Localization;
 using ViewGrid.Core.Entities;
 
 namespace ViewGrid.Application.ViewModels;
@@ -48,7 +49,7 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
     [ObservableProperty]
     public partial ImmutableArray<bool> RowLocked { get; set; }
 
-    public string GridSizeLabel => $"{Cols}×{Rows} セル";
+    public string GridSizeLabel => $"{Cols}×{Rows} {LocAccessor.Current["Term_Cells"]}";
     public string CanvasSizeLabel => $"{CanvasWidth}×{CanvasHeight} px";
 
     // ─── 右ペイン GridPropertiesView 用の編集ドラフト ───

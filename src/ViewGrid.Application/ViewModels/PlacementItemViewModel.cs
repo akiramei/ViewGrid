@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using ViewGrid.Application.Localization;
 using ViewGrid.Core.Entities;
 
 namespace ViewGrid.Application.ViewModels;
@@ -109,7 +110,7 @@ public sealed partial class PlacementItemViewModel : ObservableObject
         SourceWidth = asset.Size.Width;
         SourceHeight = asset.Size.Height;
         var assetLabel = asset.OriginalFilename ?? asset.FileHash[..8];
-        var copyLabel = string.IsNullOrWhiteSpace(copy.CopyName) ? "既定" : copy.CopyName!;
+        var copyLabel = string.IsNullOrWhiteSpace(copy.CopyName) ? LocAccessor.Current[Terminology.VariantUnnamedKey] : copy.CopyName!;
         Label = $"{assetLabel} / {copyLabel}";
     }
 

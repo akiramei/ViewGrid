@@ -332,7 +332,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
             {
                 HasPlacement = true;
                 HeaderLabel = source.Label;
-                PositionLabel = $"位置: ({source.GridX},{source.GridY}) / 占有: {source.OccupyWidth}×{source.OccupyHeight}";
+                PositionLabel = _loc.Format("Inspector_PositionAndOccupyFmt", source.GridX, source.GridY, source.OccupyWidth, source.OccupyHeight);
                 ImageDrawSizeLabel = ComputeImageDrawSizeLabel(source, grid);
                 PixelOffsetX = source.PixelOffsetX;
                 PixelOffsetY = source.PixelOffsetY;
@@ -390,7 +390,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
     /// ピクセル寸法ラベルを生成する。<paramref name="grid"/> が <c>null</c>、または計算に必要な
     /// 寸法情報が欠けている場合は空文字列を返す。
     /// </summary>
-    private static string ComputeImageDrawSizeLabel(PlacementItemViewModel source, GridCanvasItemViewModel? grid)
+    private string ComputeImageDrawSizeLabel(PlacementItemViewModel source, GridCanvasItemViewModel? grid)
     {
         if (grid is null) return string.Empty;
         if (grid.CanvasWidth <= 0 || grid.CanvasHeight <= 0 || grid.Cols <= 0 || grid.Rows <= 0)
@@ -402,7 +402,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
             grid.ColWeights, grid.RowWeights,
             new CellPosition(source.GridX, source.GridY),
             new OccupySize(Math.Max(1, source.OccupyWidth), Math.Max(1, source.OccupyHeight)));
-        return $"画像描画域: {rect.Width}×{rect.Height} px";
+        return _loc.Format("Inspector_DrawnAreaFmt", rect.Width, rect.Height);
     }
 
     /// <summary>
@@ -498,7 +498,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         PlacementItemViewModel source, GridCanvasItemViewModel grid,
         GridPlacement current, int clampedX, int clampedY, CancellationToken ct)
     {
-        var description = $"ピクセル微調整: 「{source.Label}」 ΔX={clampedX}, ΔY={clampedY}";
+        var description = _loc.Format("History_PixelOffsetFmt", source.Label, clampedX, clampedY);
         var command = new UpdatePlacementOffsetCommand(
             _offsetUseCase, grid.GridId, source.PlacementId,
             current.PixelOffsetX, current.PixelOffsetY, clampedX, clampedY, description);
@@ -533,7 +533,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
             {
                 source.OccupySize = newOccupy;
                 // PositionLabel は占有も含むので再計算
-                PositionLabel = $"位置: ({source.GridX},{source.GridY}) / 占有: {source.OccupyWidth}×{source.OccupyHeight}";
+                PositionLabel = _loc.Format("Inspector_PositionAndOccupyFmt", source.GridX, source.GridY, source.OccupyWidth, source.OccupyHeight);
                 ImageDrawSizeLabel = ComputeImageDrawSizeLabel(source, grid);
             }
             IsDirty = false;
@@ -647,7 +647,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         var sourceLabel = string.IsNullOrWhiteSpace(sourceCopy.CopyName)
             ? _loc[Localization.Terminology.VariantUnnamedKey]
             : sourceCopy.CopyName!;
-        var description = $"バリアントを分岐: 「{sourceLabel}」 → 派生";
+        var description = _loc.Format("History_VariantForkFmt", _loc[Localization.Terminology.VariantKey], sourceLabel);
 
         var command = new ForkPlacementVariantCommand(
             _forkUseCase, _copyRepository, _placementRepository,

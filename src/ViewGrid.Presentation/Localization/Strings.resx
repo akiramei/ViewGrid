@@ -207,6 +207,9 @@
   <data name="Output_Intensity_Slider_Tooltip" xml:space="preserve"><value>選んだスタイルの強度を控えめ ↔ 大胆 で調整します</value></data>
   <data name="Output_Trim" xml:space="preserve"><value>切り出し</value></data>
   <data name="Output_Trim_Tooltip" xml:space="preserve"><value>出力 PNG の切り出し範囲。 PhotoBoard 時も合成後の画像に同じセマンティクスで適用されます。</value></data>
+  <data name="Output_Trim_None" xml:space="preserve"><value>全面</value></data>
+  <data name="Output_Trim_OccupiedCells" xml:space="preserve"><value>占有セル</value></data>
+  <data name="Output_Trim_DrawnPixels" xml:space="preserve"><value>描画ピクセル</value></data>
 
   <!-- Inspector (配置編集) -->
   <data name="Inspector_SaveAll_Tooltip" xml:space="preserve"><value>配置固有 + 共有特性 をまとめて保存</value></data>
@@ -218,6 +221,8 @@
   <data name="Inspector_PixelOffset" xml:space="preserve"><value>ピクセル微調整 (ΔX/ΔY)</value></data>
   <data name="Inspector_PixelOffset_ResetButton" xml:space="preserve"><value>0 にリセット</value></data>
   <data name="Inspector_PixelOffset_Hint" xml:space="preserve"><value>ヒント: Shift+ドラッグ / Ctrl+矢印でも微調整可</value></data>
+  <data name="Inspector_PositionAndOccupyFmt" xml:space="preserve"><value>位置: ({0},{1}) / 占有: {2}×{3}</value></data>
+  <data name="Inspector_DrawnAreaFmt" xml:space="preserve"><value>画像描画域: {0}×{1} px</value></data>
   <data name="Inspector_SharedProperties" xml:space="preserve"><value>共有特性（同バリアントを参照する全配置に反映）</value></data>
   <data name="Inspector_ForkVariant" xml:space="preserve"><value>この配置だけ別バリアントに分岐</value></data>
   <data name="Inspector_ForkVariant_Tooltip" xml:space="preserve"><value>元バリアントを複製した独立バリアントに切替えます。他の配置には影響しません。</value></data>
@@ -234,6 +239,12 @@
   <data name="CopyProps_FlipH" xml:space="preserve"><value>水平 (H)</value></data>
   <data name="CopyProps_FlipV" xml:space="preserve"><value>垂直 (V)</value></data>
   <data name="CopyProps_Scaling" xml:space="preserve"><value>スケーリング</value></data>
+  <data name="Scaling_None" xml:space="preserve"><value>原寸固定</value></data>
+  <data name="Scaling_UniformContain" xml:space="preserve"><value>アスペクト維持（収める）</value></data>
+  <data name="Scaling_UniformContainShrinkOnly" xml:space="preserve"><value>縮小のみ</value></data>
+  <data name="Scaling_UniformContainEnlargeOnly" xml:space="preserve"><value>拡大のみ</value></data>
+  <data name="Scaling_UniformCover" xml:space="preserve"><value>アスペクト維持（覆う・切り取り）</value></data>
+  <data name="Scaling_Fill" xml:space="preserve"><value>完全充填（縦横独立）</value></data>
   <data name="CopyProps_Alignment" xml:space="preserve"><value>アライメント</value></data>
   <data name="CopyProps_TrimMode" xml:space="preserve"><value>トリミング方式</value></data>
   <data name="CopyProps_TrimMode_Off" xml:space="preserve"><value>OFF</value></data>
@@ -265,6 +276,15 @@
   <data name="CopyProps_Regions_FlipLabel" xml:space="preserve"><value>反転 (region 単独)</value></data>
   <data name="CopyProps_Regions_FillMode" xml:space="preserve"><value>塗りモード (親側)</value></data>
   <data name="CopyProps_Regions_HexLabel" xml:space="preserve"><value>HEX (#AARRGGBB)</value></data>
+  <data name="CopyProps_Regions_EditorTitle" xml:space="preserve"><value>保護領域 詳細編集</value></data>
+
+  <!-- AutoCrop / ProtectedRegion 共通の色プリセットラベル -->
+  <data name="ColorPreset_White" xml:space="preserve"><value>白 #FFFFFF</value></data>
+  <data name="ColorPreset_Black" xml:space="preserve"><value>黒 #000000</value></data>
+  <data name="ColorPreset_Transparent" xml:space="preserve"><value>透明 (α=0)</value></data>
+  <data name="ColorPreset_Custom" xml:space="preserve"><value>カスタム</value></data>
+  <!-- ProtectedRegion 固有: 親画像をそのまま残す = 塗りなしモード -->
+  <data name="RegionFillMode_None" xml:space="preserve"><value>そのまま (親画像を残す)</value></data>
   <data name="CopyProps_Regions_HexHint" xml:space="preserve"><value>下のサムネ画像をクリックすると元画像 (Crop 適用前) から色を採取できます (FillMode は自動的に Custom に切り替わります)。</value></data>
 
   <!-- MainWindow ステータスバー / 履歴 Flyout -->
@@ -272,6 +292,26 @@
   <data name="History_Header" xml:space="preserve"><value>操作履歴（最新 50 件）</value></data>
   <data name="History_Empty" xml:space="preserve"><value>操作履歴はありません</value></data>
   <data name="StatusBar_Unsaved_Tooltip" xml:space="preserve"><value>特性編集 / Inspector に未保存の編集があります。各タブの「保存」ボタンで永続化してください。</value></data>
+
+  <!-- Undo/Redo 履歴の説明文 (各操作で _loc.Format(...) して履歴 entry に格納) -->
+  <data name="History_ColLockedFmt" xml:space="preserve"><value>列 {0} ロック: グリッド「{1}」</value></data>
+  <data name="History_ColUnlockedFmt" xml:space="preserve"><value>列 {0} 解除: グリッド「{1}」</value></data>
+  <data name="History_RowLockedFmt" xml:space="preserve"><value>行 {0} ロック: グリッド「{1}」</value></data>
+  <data name="History_RowUnlockedFmt" xml:space="preserve"><value>行 {0} 解除: グリッド「{1}」</value></data>
+  <data name="History_PlacementPlacedFmt" xml:space="preserve"><value>配置: 「{0}」→ ({1},{2})</value></data>
+  <data name="History_PlacementRemovedFmt" xml:space="preserve"><value>削除: 「{0}」 ({1},{2})</value></data>
+  <data name="History_WeightsChangedRatiosFmt" xml:space="preserve"><value>比率変更: グリッド「{0}」</value></data>
+  <data name="History_WeightsChangedColFmt" xml:space="preserve"><value>列幅変更: グリッド「{0}」</value></data>
+  <data name="History_WeightsChangedRowFmt" xml:space="preserve"><value>行高変更: グリッド「{0}」</value></data>
+  <data name="History_PixelOffsetFmt" xml:space="preserve"><value>ピクセル微調整: 「{0}」 ΔX={1}, ΔY={2}</value></data>
+  <data name="History_FitGridColFmt" xml:space="preserve"><value>フィット (列幅): グリッド「{0}」</value></data>
+  <data name="History_FitGridRowFmt" xml:space="preserve"><value>フィット (行高): グリッド「{0}」</value></data>
+  <data name="History_VariantRenameFmt" xml:space="preserve"><value>{0}名変更: 「{1}」→「{2}」</value></data>
+  <data name="History_VariantForkFmt" xml:space="preserve"><value>{0}を分岐: 「{1}」 → 派生</value></data>
+  <data name="History_GridRenamedFmt" xml:space="preserve"><value>リネーム: 「{0}」→「{1}」</value></data>
+  <data name="History_CanvasResizedFmt" xml:space="preserve"><value>キャンバスサイズ: {0}×{1} → {2}×{3} px</value></data>
+  <data name="History_CopyPropsEditedFmt" xml:space="preserve"><value>特性編集: 「{0}」</value></data>
+  <data name="History_UnknownPlacement" xml:space="preserve"><value>(不明な配置)</value></data>
 
   <!-- グリッドプロパティ (右ペイン) -->
   <data name="GridProps_Save_Tooltip" xml:space="preserve"><value>名前 + キャンバスサイズの変更をまとめて保存</value></data>
@@ -287,6 +327,8 @@
   <data name="GridProps_Locks" xml:space="preserve"><value>ロック</value></data>
   <data name="GridProps_ColLocks_Prefix" xml:space="preserve"><value>列: </value></data>
   <data name="GridProps_RowLocks_Prefix" xml:space="preserve"><value>  /  行: </value></data>
+  <data name="GridProps_LockedCountFmt" xml:space="preserve"><value>{0}/{1} ロック中</value></data>
+  <data name="GridProps_LockedNoneFmt" xml:space="preserve"><value>なし ({0} 件中)</value></data>
   <data name="GridProps_Hint" xml:space="preserve"><value>名前 / キャンバスサイズは編集後 「保存」 で確定 (Esc / リセットで取り消し)。比率調整は境界ドラッグ、🔒 はヘッダクリック。</value></data>
 
   <!-- ManualCrop エディタ -->
@@ -394,11 +436,30 @@
   <data name="Workspace_CreateConfirm_Import" xml:space="preserve"><value>インポート</value></data>
   <data name="Workspace_DisplayName_CopySuffixFmt" xml:space="preserve"><value>{0} (コピー)</value></data>
 
-  <!-- Terminology (Phase 3+: バリアント呼称) -->
+  <!-- Terminology (Phase 3+: バリアント呼称 / Phase 4: その他 UI 用語) -->
   <data name="Term_Variant" xml:space="preserve"><value>バリアント</value></data>
   <data name="Term_VariantPrefix" xml:space="preserve"><value>バリアント</value></data>
   <data name="Term_VariantUnnamed" xml:space="preserve"><value>(無名)</value></data>
   <data name="Term_VariantUnknown" xml:space="preserve"><value>(不明なバリアント)</value></data>
+  <data name="Term_Cells" xml:space="preserve"><value>セル</value></data>
+  <data name="Term_GridPrefix" xml:space="preserve"><value>グリッド</value></data>
+  <data name="Term_NewGrid" xml:space="preserve"><value>新規グリッド</value></data>
+
+  <!-- File picker dialog titles and file-type filter names (OS-native picker) -->
+  <data name="FilePicker_SelectImages_Title" xml:space="preserve"><value>画像を選択</value></data>
+  <data name="FilePicker_SavePng_Title" xml:space="preserve"><value>PNG として保存</value></data>
+  <data name="FilePicker_ExportSettings_Title" xml:space="preserve"><value>設定をエクスポート</value></data>
+  <data name="FilePicker_ImportSettings_Title" xml:space="preserve"><value>設定をインポート</value></data>
+  <data name="FilePicker_Images_TypeName" xml:space="preserve"><value>画像</value></data>
+  <data name="FilePicker_PngImage_TypeName" xml:space="preserve"><value>PNG 画像</value></data>
+  <data name="FilePicker_JsonFile_TypeName" xml:space="preserve"><value>JSON ファイル</value></data>
+
+  <!-- 設定 export/import の IoStatus メッセージ -->
+  <data name="Settings_Export_SuccessFmt" xml:space="preserve"><value>エクスポートしました: {0}</value></data>
+  <data name="Settings_Export_FailFmt" xml:space="preserve"><value>エクスポートに失敗しました: {0}</value></data>
+  <data name="Settings_Import_SuccessFmt" xml:space="preserve"><value>インポートしました: {0}</value></data>
+  <data name="Settings_Import_FailFmt" xml:space="preserve"><value>インポートに失敗しました: {0}</value></data>
+  <data name="Settings_Import_InvalidJson" xml:space="preserve"><value>インポートに失敗しました: JSON が空または不正です。</value></data>
 
   <!-- ステータスバー ヒント (Phase 3+: MainWindowViewModel.CurrentHints / UnsavedSummary) -->
   <data name="Hint_NoAssets" xml:space="preserve"><value>画像をドラッグ&amp;ドロップ または「+ 画像を追加」ボタンから取り込みを開始します</value></data>
