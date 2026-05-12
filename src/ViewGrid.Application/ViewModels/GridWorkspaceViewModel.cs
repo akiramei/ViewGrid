@@ -1008,24 +1008,16 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         var grid = CurrentGrid;
         if (grid is null) return false;
 
-        // Undo に備えて before/after の完全な配列を保持。null（変更なし）は現在値で埋める。
         var beforeCol = grid.ColWeights;
         var beforeRow = grid.RowWeights;
-        var afterCol = colWeights is null
-            ? beforeCol
-            : [.. colWeights];
-        var afterRow = rowWeights is null
-            ? beforeRow
-            : [.. rowWeights];
+        var afterCol = BuildAfterWeights(beforeCol, colWeights);
+        var afterRow = BuildAfterWeights(beforeRow, rowWeights);
 
-        if (afterCol.SequenceEqual(beforeCol) && afterRow.SequenceEqual(beforeRow))
-            return true; // 値変化なし — 履歴に積まない
-
-        // どちらが変わったかでラベルを切り替え（両方変わったら「比率」とまとめる）
         var colChanged = !afterCol.SequenceEqual(beforeCol);
         var rowChanged = !afterRow.SequenceEqual(beforeRow);
-        var axisLabel = colChanged && rowChanged ? "比率" : (colChanged ? "列幅" : "行高");
-        var description = $"{axisLabel}変更: グリッド「{grid.Name}」";
+        if (!colChanged && !rowChanged) return true; // 値変化なし — 履歴に積まない
+
+        var description = $"{ResolveWeightsChangeLabel(colChanged, rowChanged)}変更: グリッド「{grid.Name}」";
         var command = new UpdateGridWeightsCommand(
             _updateWeightsUseCase, grid.GridId, beforeCol, beforeRow, afterCol, afterRow, description);
         var result = await _history.ExecuteAsync(command, ct);
@@ -1046,6 +1038,19 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         StatusMessage = _loc["Status_GridWeightsUpdated"];
         return true;
     }
+
+    /// <summary>
+    /// 重み更新の after 配列を構築する。 <paramref name="after"/> が <c>null</c>
+    /// (= その軸は変更なし) なら <paramref name="before"/> をそのまま返す。
+    /// </summary>
+    private static ImmutableArray<int> BuildAfterWeights(ImmutableArray<int> before, IReadOnlyList<int>? after) =>
+        after is null ? before : [.. after];
+
+    /// <summary>
+    /// 履歴 description 用ラベルを決める。 両軸変化時は「比率」、 片軸のみ変化時は「列幅」/「行高」。
+    /// </summary>
+    private static string ResolveWeightsChangeLabel(bool colChanged, bool rowChanged) =>
+        colChanged && rowChanged ? "比率" : (colChanged ? "列幅" : "行高");
 
     /// <summary>
     /// Shift+ドラッグ等のキャンバス操作で配置の <see cref="GridPlacement.PixelOffsetX"/> /

@@ -224,41 +224,18 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanDeleteSelected))]
     public async Task DeleteSelectedAsync(CancellationToken ct = default)
     {
-        // SelectedAssets が空のときは SelectedAsset 単独でも削除できるよう fallback
-        var targets = SelectedAssets.Count > 0
-            ? SelectedAssets.ToList()
-            : SelectedAsset is { } single ? [single] : new List<AssetItemViewModel>();
-        if (targets.Count == 0 || IsBusy)
-            return;
+        var targets = ResolveDeleteTargets();
+        if (targets.Count == 0 || IsBusy) return;
 
         try
         {
             IsBusy = true;
-            var success = 0;
-            var failed = 0;
-            var errors = new List<string>();
-            foreach (var target in targets)
-            {
-                if (ct.IsCancellationRequested) break;
-                var result = await _deleteUseCase.ExecuteAsync(target.AssetId, ct);
-                if (result.IsError)
-                {
-                    failed++;
-                    errors.AddRange(result.Errors.Select(e => e.Description));
-                    continue;
-                }
-                Assets.Remove(target);
-                success++;
-            }
+            var (success, failed, errors) = await DeleteAssetsInternalAsync(targets, ct);
 
             SelectedAssets.Clear();
             SelectedAsset = null;
 
-            StatusMessage = failed == 0
-                ? (success == 1
-                    ? _loc.Format("Status_AssetDeletedSingleFmt", targets[0].DisplayName)
-                    : _loc.Format("Status_AssetDeletedCountFmt", success))
-                : _loc.Format("Status_AssetDeletedMixedFmt", success, failed, string.Join(", ", errors.Distinct()));
+            StatusMessage = BuildDeleteStatusMessage(success, failed, targets, errors);
 
             // Asset 削除は cascade で関連 ImageCopy も削除されるため候補にも反映。
             // 履歴に該当 Copy を参照する Command が残ると Undo で NotFound になるので全消去。
@@ -272,6 +249,56 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// 削除対象を解決する。 SelectedAssets が空のときは SelectedAsset 単独でも削除できるよう fallback。
+    /// </summary>
+    private List<AssetItemViewModel> ResolveDeleteTargets() =>
+        SelectedAssets.Count > 0
+            ? SelectedAssets.ToList()
+            : SelectedAsset is { } single ? [single] : [];
+
+    /// <summary>
+    /// 各 target を順次削除し、 成功/失敗カウントとエラー一覧を返す。 cancel 検知で foreach を抜ける。
+    /// 失敗 target は <see cref="Assets"/> から消さず残す (UI で再試行できるように)。
+    /// </summary>
+    private async Task<(int Success, int Failed, List<string> Errors)> DeleteAssetsInternalAsync(
+        List<AssetItemViewModel> targets, CancellationToken ct)
+    {
+        var success = 0;
+        var failed = 0;
+        var errors = new List<string>();
+        foreach (var target in targets)
+        {
+            if (ct.IsCancellationRequested) break;
+            var result = await _deleteUseCase.ExecuteAsync(target.AssetId, ct);
+            if (result.IsError)
+            {
+                failed++;
+                errors.AddRange(result.Errors.Select(e => e.Description));
+                continue;
+            }
+            Assets.Remove(target);
+            success++;
+        }
+        return (success, failed, errors);
+    }
+
+    /// <summary>
+    /// 削除結果からステータスメッセージを組み立てる。 全成功 (failed=0) は単数/複数で文言切替、
+    /// 部分失敗時は混合フォーマット (件数 + 失敗内訳)。
+    /// </summary>
+    private string BuildDeleteStatusMessage(
+        int success, int failed, List<AssetItemViewModel> targets, List<string> errors)
+    {
+        if (failed == 0)
+        {
+            return success == 1
+                ? _loc.Format("Status_AssetDeletedSingleFmt", targets[0].DisplayName)
+                : _loc.Format("Status_AssetDeletedCountFmt", success);
+        }
+        return _loc.Format("Status_AssetDeletedMixedFmt", success, failed, string.Join(", ", errors.Distinct()));
     }
 
     private bool CanDeleteSelected() => !IsBusy && (SelectedAssets.Count > 0 || SelectedAsset is not null);
