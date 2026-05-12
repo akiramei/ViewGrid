@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -1152,26 +1153,48 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// <summary>
     /// 指定列のロック状態を反転する（true ↔ false）。
     /// 成功時は <see cref="CurrentGrid"/> の <see cref="GridCanvasItemViewModel.ColLocked"/>
-    /// も更新して View を再構築させる。
+    /// も更新して View を再構築させる。 実体は <see cref="ToggleAxisLockAsync"/> に委譲。
     /// </summary>
-    public async Task<bool> ToggleColLockAsync(int colIndex, CancellationToken ct = default)
+    public Task<bool> ToggleColLockAsync(int colIndex, CancellationToken ct = default) =>
+        ToggleAxisLockAsync(FitAxis.Column, colIndex, ct);
+
+    /// <summary>指定行のロック状態を反転する。 実体は <see cref="ToggleAxisLockAsync"/> に委譲。</summary>
+    public Task<bool> ToggleRowLockAsync(int rowIndex, CancellationToken ct = default) =>
+        ToggleAxisLockAsync(FitAxis.Row, rowIndex, ct);
+
+    /// <summary>
+    /// 列 / 行のロック状態を反転する共通実装。 列・行の対称性を <see cref="FitAxis"/> 引数で吸収し、
+    /// Toggle{Col,Row}LockAsync 双子メソッドの重複を排した。 axis 側の locked 配列を反転し、
+    /// もう一方の axis の値はそのまま <see cref="UpdateGridLocksCommand"/> に渡す。
+    /// </summary>
+    private async Task<bool> ToggleAxisLockAsync(FitAxis axis, int index, CancellationToken ct)
     {
         var grid = CurrentGrid;
         if (grid is null) return false;
-        if (colIndex < 0 || colIndex >= grid.Cols) return false;
 
-        var beforeCol = grid.ColLocked.Length == grid.Cols
-            ? grid.ColLocked
-            : [.. Enumerable.Range(0, grid.Cols).Select(_ => false)];
-        var afterCol = beforeCol.SetItem(colIndex, !beforeCol[colIndex]);
-        var beforeRow = grid.RowLocked.Length == grid.Rows
-            ? grid.RowLocked
-            : [.. Enumerable.Range(0, grid.Rows).Select(_ => false)];
+        var axisCount = axis == FitAxis.Column ? grid.Cols : grid.Rows;
+        if (index < 0 || index >= axisCount) return false;
 
-        var lockState = afterCol[colIndex] ? "ロック" : "解除";
-        var description = $"列 {colIndex} {lockState}: グリッド「{grid.Name}」";
+        // axis 側 (反転対象) ともう一方 (other、 そのまま渡す) を正規化して取得。
+        var beforeAxis = NormalizeLocks(axis == FitAxis.Column ? grid.ColLocked : grid.RowLocked, axisCount);
+        var afterAxis = beforeAxis.SetItem(index, !beforeAxis[index]);
+        var otherCount = axis == FitAxis.Column ? grid.Rows : grid.Cols;
+        var beforeOther = NormalizeLocks(axis == FitAxis.Column ? grid.RowLocked : grid.ColLocked, otherCount);
+
+        // UpdateGridLocksCommand は (beforeCol, beforeRow, afterCol, afterRow) を取るので、
+        // axis に応じて引数の Col/Row 側を組み立てる。
+        var (commandBeforeCol, commandBeforeRow, commandAfterCol, commandAfterRow) = axis == FitAxis.Column
+            ? (beforeAxis, beforeOther, afterAxis, beforeOther)
+            : (beforeOther, beforeAxis, beforeOther, afterAxis);
+
+        var axisLabel = axis == FitAxis.Column ? "列" : "行";
+        var lockState = afterAxis[index] ? "ロック" : "解除";
+        var description = $"{axisLabel} {index} {lockState}: グリッド「{grid.Name}」";
+
         var command = new UpdateGridLocksCommand(
-            _updateLocksUseCase, grid.GridId, beforeCol, beforeRow, afterCol, beforeRow, description);
+            _updateLocksUseCase, grid.GridId,
+            commandBeforeCol, commandBeforeRow, commandAfterCol, commandAfterRow,
+            description);
         var result = await _history.ExecuteAsync(command, ct);
         if (result.IsError)
         {
@@ -1179,55 +1202,29 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             return false;
         }
 
+        // 永続化後の最新値で grid の axis 側だけを更新 (other は変えていない)。
         var reloaded = await _gridRepository.FindByIdAsync(grid.GridId, ct);
         if (reloaded is not null)
         {
-            grid.ColLocked = reloaded.ColLocked;
+            if (axis == FitAxis.Column) grid.ColLocked = reloaded.ColLocked;
+            else grid.RowLocked = reloaded.RowLocked;
             OnPropertyChanged(nameof(CurrentGrid));
         }
-        StatusMessage = _loc.Format(
-            afterCol[colIndex] ? "Status_ColLockedFmt" : "Status_ColUnlockedFmt",
-            colIndex);
+
+        var statusKeyOn = axis == FitAxis.Column ? "Status_ColLockedFmt" : "Status_RowLockedFmt";
+        var statusKeyOff = axis == FitAxis.Column ? "Status_ColUnlockedFmt" : "Status_RowUnlockedFmt";
+        StatusMessage = _loc.Format(afterAxis[index] ? statusKeyOn : statusKeyOff, index);
         return true;
     }
 
-    /// <summary>指定行のロック状態を反転する。</summary>
-    public async Task<bool> ToggleRowLockAsync(int rowIndex, CancellationToken ct = default)
-    {
-        var grid = CurrentGrid;
-        if (grid is null) return false;
-        if (rowIndex < 0 || rowIndex >= grid.Rows) return false;
-
-        var beforeRow = grid.RowLocked.Length == grid.Rows
-            ? grid.RowLocked
-            : [.. Enumerable.Range(0, grid.Rows).Select(_ => false)];
-        var afterRow = beforeRow.SetItem(rowIndex, !beforeRow[rowIndex]);
-        var beforeCol = grid.ColLocked.Length == grid.Cols
-            ? grid.ColLocked
-            : [.. Enumerable.Range(0, grid.Cols).Select(_ => false)];
-
-        var lockState = afterRow[rowIndex] ? "ロック" : "解除";
-        var description = $"行 {rowIndex} {lockState}: グリッド「{grid.Name}」";
-        var command = new UpdateGridLocksCommand(
-            _updateLocksUseCase, grid.GridId, beforeCol, beforeRow, beforeCol, afterRow, description);
-        var result = await _history.ExecuteAsync(command, ct);
-        if (result.IsError)
-        {
-            StatusMessage = string.Join(", ", result.Errors);
-            return false;
-        }
-
-        var reloaded = await _gridRepository.FindByIdAsync(grid.GridId, ct);
-        if (reloaded is not null)
-        {
-            grid.RowLocked = reloaded.RowLocked;
-            OnPropertyChanged(nameof(CurrentGrid));
-        }
-        StatusMessage = _loc.Format(
-            afterRow[rowIndex] ? "Status_RowLockedFmt" : "Status_RowUnlockedFmt",
-            rowIndex);
-        return true;
-    }
+    /// <summary>
+    /// 期待長と一致する <see cref="ImmutableArray{T}"/> をそのまま返す。 不一致 (旧データ等で
+    /// length が ColLocked.Length != Cols 等) の場合は全 false の配列で正規化する。
+    /// </summary>
+    private static ImmutableArray<bool> NormalizeLocks(ImmutableArray<bool> source, int expectedLength) =>
+        source.Length == expectedLength
+            ? source
+            : [.. Enumerable.Range(0, expectedLength).Select(_ => false)];
 
     // ─── 配置ファースト UI 第 2 段階 (Stage 2): バリアント新規作成 / インラインリネーム / 削除 ───
     //
