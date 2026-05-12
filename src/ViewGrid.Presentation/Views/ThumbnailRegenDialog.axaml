@@ -3,10 +3,11 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:ViewGrid.Application.ViewModels"
+        xmlns:loc="using:ViewGrid.Presentation.Localization"
         mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="320"
         x:Class="ViewGrid.Presentation.Views.ThumbnailRegenDialog"
         x:DataType="vm:ThumbnailRegenDialogViewModel"
-        Title="サムネを再生成"
+        Title="{loc:Tr ThumbRegen_Title}"
         Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
         Width="520" Height="320"
         MinWidth="480" MinHeight="280"
@@ -18,9 +19,9 @@
         <!-- タイトル / 説明 -->
         <StackPanel Grid.Row="0" Spacing="6">
             <TextBlock FontWeight="SemiBold" FontSize="14"
-                       Text="全サムネを再生成" />
+                       Text="{loc:Tr ThumbRegen_Header}" />
             <TextBlock Opacity="0.75" FontSize="12" TextWrapping="Wrap"
-                       Text="設定の「サムネ最大エッジ」 を全アセットに反映します。 完了するまでアプリの操作はお控えください。 元画像が見つからないアセットはスキップされます。" />
+                       Text="{loc:Tr ThumbRegen_Hint}" />
         </StackPanel>
 
         <!-- 進捗バー -->
@@ -35,7 +36,7 @@
                    FontSize="12" Opacity="0.75"
                    TextTrimming="CharacterEllipsis"
                    Margin="0,0,0,8">
-            <Run Text="処理中: " />
+            <Run Text="{loc:Tr ThumbRegen_Processing}" />
             <Run Text="{Binding CurrentAssetName}" />
             <Run Text="  (" /><Run Text="{Binding Completed}" /><Run Text=" / " /><Run Text="{Binding Total}" /><Run Text=")" />
         </TextBlock>
@@ -43,9 +44,9 @@
         <!-- 集計 + 完了メッセージ -->
         <StackPanel Grid.Row="3" Spacing="8">
             <TextBlock FontSize="12">
-                <Run Text="成功: " /><Run Text="{Binding Successful}" />
-                <Run Text="    スキップ: " /><Run Text="{Binding Skipped}" />
-                <Run Text="    失敗: " /><Run Text="{Binding Failed}" />
+                <Run Text="{loc:Tr ThumbRegen_Success}" /><Run Text="{Binding Successful}" />
+                <Run Text="{loc:Tr ThumbRegen_Skipped}" /><Run Text="{Binding Skipped}" />
+                <Run Text="{loc:Tr ThumbRegen_Failed}" /><Run Text="{Binding Failed}" />
             </TextBlock>
 
             <Border IsVisible="{Binding IsCompleted}"
@@ -65,17 +66,17 @@
                     HorizontalAlignment="Right"
                     Margin="0,16,0,0"
                     Spacing="8">
-            <Button Content="開始"
+            <Button Content="{loc:Tr Common_Start}"
                     Classes="accent"
                     MinWidth="80"
                     HorizontalContentAlignment="Center"
                     IsDefault="True"
                     Command="{Binding StartCommand}" />
-            <Button Content="キャンセル"
+            <Button Content="{loc:Tr Common_Cancel}"
                     MinWidth="80"
                     HorizontalContentAlignment="Center"
                     Command="{Binding CancelCommand}" />
-            <Button Content="閉じる"
+            <Button Content="{loc:Tr Common_Close}"
                     MinWidth="80"
                     HorizontalContentAlignment="Center"
                     IsCancel="True"

@@ -3,10 +3,11 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:ViewGrid.Application.ViewModels"
+        xmlns:loc="using:ViewGrid.Presentation.Localization"
         mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="520"
         x:Class="ViewGrid.Presentation.Views.WorkspaceSwitchDialog"
         x:DataType="vm:WorkspaceSwitchDialogViewModel"
-        Title="ワークスペース"
+        Title="{loc:Tr Workspace_Title}"
         Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
         Width="520" Height="520"
         MinWidth="480" MinHeight="420"
@@ -16,12 +17,12 @@
         <TextBlock Grid.Row="0"
                    FontWeight="SemiBold"
                    FontSize="14"
-                   Text="ワークスペース" />
+                   Text="{loc:Tr Workspace_Title}" />
 
         <TextBlock Grid.Row="1"
                    Classes="HintText"
                    TextWrapping="Wrap"
-                   Text="作業対象のワークスペースを選択して切替えると、 アプリが再起動して別のデータセットで開きます。 仕事用 / 趣味用などアセット混在を物理的に分離する用途を想定しています。" />
+                   Text="{loc:Tr Workspace_Hint}" />
 
         <!-- ワークスペース一覧 -->
         <Border Grid.Row="2"
@@ -49,7 +50,7 @@
                                            FontSize="11" />
                             </StackPanel>
                             <TextBlock Grid.Column="2"
-                                       Text="現在使用中"
+                                       Text="{loc:Tr Workspace_CurrentlyInUse}"
                                        Opacity="0.7"
                                        FontSize="11"
                                        VerticalAlignment="Center"
@@ -67,15 +68,15 @@
                 IsVisible="{Binding ShowSelectedEditor}">
             <StackPanel Spacing="6">
                 <TextBlock Classes="SectionHeader">
-                    <Run Text="選択中: " /><Run Text="{Binding SelectedWorkspace.DisplayName, FallbackValue=''}" FontWeight="SemiBold" />
+                    <Run Text="{loc:Tr Workspace_SelectedPrefix}" /><Run Text="{Binding SelectedWorkspace.DisplayName, FallbackValue=''}" FontWeight="SemiBold" />
                 </TextBlock>
-                <TextBlock Text="表示名を変更" Classes="FieldLabel" />
+                <TextBlock Text="{loc:Tr Workspace_RenameDisplayName}" Classes="FieldLabel" />
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
                     <TextBox Grid.Column="0"
                              Text="{Binding EditingDisplayName}"
-                             PlaceholderText="表示名を入力" />
+                             PlaceholderText="{loc:Tr Workspace_DisplayName_Placeholder}" />
                     <Button Grid.Column="1"
-                            Content="保存"
+                            Content="{loc:Tr Common_Save}"
                             MinWidth="64"
                             HorizontalContentAlignment="Center"
                             Click="OnRenameClicked" />
@@ -84,27 +85,27 @@
                             HorizontalAlignment="Right"
                             Spacing="6">
                     <Button Click="OnDuplicateClicked"
-                            ToolTip.Tip="このワークスペースの DB / 画像 / サムネを丸ごとコピーした派生を作成します。">
+                            ToolTip.Tip="{loc:Tr Workspace_Duplicate_Tooltip}">
                         <StackPanel Classes="IconButtonContent">
                             <PathIcon Data="{StaticResource AddGeometry}" Width="14" Height="14" />
-                            <TextBlock Text="複製..." />
+                            <TextBlock Text="{loc:Tr Workspace_Duplicate}" />
                         </StackPanel>
                     </Button>
                     <Button IsEnabled="{Binding CanExportSelected}"
                             Click="OnExportClicked"
-                            ToolTip.Tip="このワークスペース全体を 1 つの zip にまとめて書き出します (DB / 画像 / サムネを含む)。 別マシンへの移送やバックアップに使えます。">
+                            ToolTip.Tip="{loc:Tr Workspace_Export_Tooltip}">
                         <StackPanel Classes="IconButtonContent">
                             <PathIcon Data="{StaticResource ExportGeometry}" Width="14" Height="14" />
-                            <TextBlock Text="エクスポート..." />
+                            <TextBlock Text="{loc:Tr Workspace_Export}" />
                         </StackPanel>
                     </Button>
                     <Button Classes="iconDanger"
                             IsEnabled="{Binding CanDeleteSelected}"
                             Click="OnDeleteClicked"
-                            ToolTip.Tip="ワークスペース データは workspaces/.trash/ に移動されます (即削除ではないため誤操作リスクが小さい)。 現在使用中のワークスペースは削除できません。">
+                            ToolTip.Tip="{loc:Tr Workspace_Delete_Tooltip}">
                         <StackPanel Classes="IconButtonContent">
                             <PathIcon Data="{StaticResource DeleteGeometry}" Width="14" Height="14" />
-                            <TextBlock Text="削除" />
+                            <TextBlock Text="{loc:Tr Common_Delete}" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -120,24 +121,24 @@
                 <TextBlock Classes="HintText"
                            TextWrapping="Wrap"
                            IsVisible="{Binding !IsDuplicateMode}"
-                           Text="新しい空のワークスペースを追加します。 作成後はこのダイアログから「再起動して切替」 で開けます。" />
+                           Text="{loc:Tr Workspace_Create_Hint}" />
                 <TextBlock Classes="HintText"
                            TextWrapping="Wrap"
                            IsVisible="{Binding IsDuplicateMode}"
-                           Text="複製元の DB / 画像 / サムネを丸ごとコピーします。 ワークスペースのサイズによっては時間がかかります。" />
-                <TextBlock Text="内部名 (英数 / ハイフン / アンダースコア)"
+                           Text="{loc:Tr Workspace_Duplicate_Hint}" />
+                <TextBlock Text="{loc:Tr Workspace_InternalName_Label}"
                            Classes="FieldLabel"
                            Margin="0,4,0,0" />
                 <TextBox Text="{Binding DraftName}"
-                         PlaceholderText="例: work" />
-                <TextBlock Text="表示名 (UI で表示される名前、 日本語可)" Classes="FieldLabel" />
+                         PlaceholderText="{loc:Tr Workspace_InternalName_Placeholder}" />
+                <TextBlock Text="{loc:Tr Workspace_DisplayName_Label}" Classes="FieldLabel" />
                 <TextBox Text="{Binding DraftDisplayName}"
-                         PlaceholderText="例: 仕事用" />
+                         PlaceholderText="{loc:Tr Workspace_DisplayName_CreatePlaceholder}" />
                 <StackPanel Orientation="Horizontal"
                             HorizontalAlignment="Right"
                             Spacing="6"
                             Margin="0,4,0,0">
-                    <Button Content="キャンセル"
+                    <Button Content="{loc:Tr Common_Cancel}"
                             MinWidth="80"
                             HorizontalContentAlignment="Center"
                             Click="OnCancelCreateClicked" />
@@ -159,27 +160,27 @@
                        Foreground="{DynamicResource SystemErrorTextColor}" />
             <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
                 <Button Grid.Column="0"
-                        Content="新規作成..."
+                        Content="{loc:Tr Workspace_New}"
                         IsEnabled="{Binding !IsCreating}"
                         Click="OnBeginCreateClicked" />
                 <Button Grid.Column="1"
                         IsEnabled="{Binding CanImport}"
                         Click="OnImportClicked"
-                        ToolTip.Tip="エクスポート済の zip からワークスペースを取り込みます。 取り込み先名は zip 内のメタデータから提案されます。">
+                        ToolTip.Tip="{loc:Tr Workspace_Import_Tooltip}">
                     <StackPanel Classes="IconButtonContent">
                         <PathIcon Data="{StaticResource ImportGeometry}" Width="14" Height="14" />
-                        <TextBlock Text="インポート..." />
+                        <TextBlock Text="{loc:Tr Workspace_Import}" />
                     </StackPanel>
                 </Button>
                 <Button Grid.Column="3"
-                        Content="閉じる"
+                        Content="{loc:Tr Common_Close}"
                         MinWidth="80"
                         HorizontalContentAlignment="Center"
                         IsCancel="True"
                         Click="OnCancelClicked" />
                 <Button Grid.Column="4"
                         x:Name="ApplyButton"
-                        Content="再起動して切替"
+                        Content="{loc:Tr Workspace_RestartAndSwitch}"
                         Classes="accent"
                         MinWidth="120"
                         HorizontalContentAlignment="Center"

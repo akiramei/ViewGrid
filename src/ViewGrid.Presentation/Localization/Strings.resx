@@ -93,9 +93,182 @@
   <data name="Common_Close" xml:space="preserve"><value>閉じる</value></data>
 
   <!-- 設定ダイアログ -->
+  <data name="Settings_Title" xml:space="preserve"><value>設定</value></data>
   <data name="Settings_Language" xml:space="preserve"><value>言語</value></data>
   <data name="Settings_Language_Hint" xml:space="preserve"><value>UI 表示言語を切り替えます。 「システムに従う」 では OS のロケール設定に従います。</value></data>
   <data name="Settings_Language_System" xml:space="preserve"><value>システムに従う (Default)</value></data>
   <data name="Settings_Language_Japanese" xml:space="preserve"><value>日本語</value></data>
   <data name="Settings_Language_English" xml:space="preserve"><value>English</value></data>
+  <data name="Settings_Display" xml:space="preserve"><value>表示</value></data>
+  <data name="Settings_Display_Hint" xml:space="preserve"><value>即時反映されます。</value></data>
+  <data name="Settings_Theme_System" xml:space="preserve"><value>システムに従う (Default)</value></data>
+  <data name="Settings_Theme_Light" xml:space="preserve"><value>ライト (Light)</value></data>
+  <data name="Settings_Theme_Dark" xml:space="preserve"><value>ダーク (Dark)</value></data>
+  <data name="Settings_AccentColor" xml:space="preserve"><value>アクセント色</value></data>
+  <data name="Settings_Defaults" xml:space="preserve"><value>既定値</value></data>
+  <data name="Settings_Defaults_Hint" xml:space="preserve"><value>変更後の取り込み・新規論理コピーから反映されます。 既存データには影響しません。</value></data>
+  <data name="Settings_DefaultScaling" xml:space="preserve"><value>既定スケーリング</value></data>
+  <data name="Settings_DefaultAutoCrop" xml:space="preserve"><value>既定 AutoCrop プリセット</value></data>
+  <data name="Settings_Save" xml:space="preserve"><value>保存動作</value></data>
+  <data name="Settings_AutoSave_Hint" xml:space="preserve"><value>自動保存 ON のとき、 Inspector / グリッドプロパティでの値編集は 1 秒静止後に「保存」ボタンを押さなくても自動的に永続化されます。</value></data>
+  <data name="Settings_AutoSave_Toggle" xml:space="preserve"><value>変更を自動的に保存する (実験的)</value></data>
+  <data name="Settings_Advanced" xml:space="preserve"><value>詳細</value></data>
+  <data name="Settings_ThumbMaxEdge" xml:space="preserve"><value>サムネイルの最大エッジ (px)</value></data>
+  <data name="Settings_ThumbMaxEdge_Hint" xml:space="preserve"><value>変更後の取り込みから反映され、 既存サムネは残ります。 大きいほど画質は上がるがディスク使用量が増えます。</value></data>
+  <data name="Settings_RegenThumbs" xml:space="preserve"><value>既存サムネを再生成</value></data>
+  <data name="Settings_RegenThumbs_Hint" xml:space="preserve"><value>設定変更後の MaxEdge を全アセットに反映します。 反映にはアプリ再起動が必要です。</value></data>
+  <data name="Settings_RegenThumbs_Button" xml:space="preserve"><value>全サムネを再生成...</value></data>
+  <data name="Settings_ImportExport" xml:space="preserve"><value>設定の入出力</value></data>
+  <data name="Settings_ImportExport_Hint" xml:space="preserve"><value>settings.json をファイルに書き出し / 読み込みます。 別 PC や別ユーザー間での共有に。</value></data>
+  <data name="Settings_Export" xml:space="preserve"><value>エクスポート...</value></data>
+  <data name="Settings_Import" xml:space="preserve"><value>インポート...</value></data>
+
+  <!-- 共通 -->
+  <data name="Common_Cancel" xml:space="preserve"><value>キャンセル</value></data>
+  <data name="Common_Save" xml:space="preserve"><value>保存</value></data>
+  <data name="Common_Delete" xml:space="preserve"><value>削除</value></data>
+  <data name="Common_Start" xml:space="preserve"><value>開始</value></data>
+  <data name="Common_Ok" xml:space="preserve"><value>OK</value></data>
+  <data name="Common_Add" xml:space="preserve"><value>追加</value></data>
+  <data name="Common_Edit" xml:space="preserve"><value>編集...</value></data>
+  <data name="Common_Reset" xml:space="preserve"><value>リセット</value></data>
+
+  <!-- プレビュー ウィンドウ -->
+  <data name="Preview_Title" xml:space="preserve"><value>出力プレビュー</value></data>
+  <data name="Preview_Zoom" xml:space="preserve"><value>ズーム:</value></data>
+  <data name="Preview_ZoomOut_Tooltip" xml:space="preserve"><value>縮小 (Ctrl + ホイール下)</value></data>
+  <data name="Preview_ZoomFit" xml:space="preserve"><value>フィット</value></data>
+  <data name="Preview_ZoomFit_Tooltip" xml:space="preserve"><value>ウィンドウに収める</value></data>
+  <data name="Preview_Zoom100_Tooltip" xml:space="preserve"><value>物理ピクセル等倍 (出力ファイルと同じサイズ)</value></data>
+  <data name="Preview_ZoomIn_Tooltip" xml:space="preserve"><value>拡大 (Ctrl + ホイール上)</value></data>
+  <data name="Preview_SaveAsPng" xml:space="preserve"><value>PNG として保存</value></data>
+
+  <!-- グリッド一覧バー -->
+  <data name="GridList_Grid_Label" xml:space="preserve"><value>グリッド:</value></data>
+  <data name="GridList_NoSelection" xml:space="preserve"><value>（グリッド未選択）</value></data>
+  <data name="GridList_Selector_Tooltip" xml:space="preserve"><value>作業対象のグリッドを切替（次回起動時はここで最後に選んだグリッドが開きます）</value></data>
+  <data name="GridList_NewButton" xml:space="preserve"><value>+ 新規</value></data>
+  <data name="GridList_NewButton_Tooltip" xml:space="preserve"><value>新しいグリッドを作成</value></data>
+  <data name="GridList_Delete_Tooltip" xml:space="preserve"><value>選択中のグリッドを削除</value></data>
+  <data name="GridList_NewGrid" xml:space="preserve"><value>新規グリッド</value></data>
+  <data name="GridList_Name" xml:space="preserve"><value>名前</value></data>
+  <data name="GridList_Rows" xml:space="preserve"><value>行</value></data>
+  <data name="GridList_Cols" xml:space="preserve"><value>列</value></data>
+  <data name="GridList_WidthPx" xml:space="preserve"><value>幅 (px)</value></data>
+  <data name="GridList_HeightPx" xml:space="preserve"><value>高さ (px)</value></data>
+  <data name="GridList_ColWeights" xml:space="preserve"><value>列比率（任意・カンマ区切り）</value></data>
+  <data name="GridList_RowWeights" xml:space="preserve"><value>行比率（任意・カンマ区切り）</value></data>
+  <data name="GridList_Weights_Placeholder" xml:space="preserve"><value>例: 2,1,1（空=均等）</value></data>
+  <data name="GridList_Create" xml:space="preserve"><value>作成</value></data>
+
+  <!-- ワークスペース ビュー -->
+  <data name="Workspace_AddImagesButton" xml:space="preserve"><value>+ 画像を追加</value></data>
+  <data name="Workspace_AddImagesButton_Tooltip" xml:space="preserve"><value>ファイルから画像を取り込みます（ドラッグ&amp;ドロップでも追加可）</value></data>
+  <data name="Workspace_PlacementSource" xml:space="preserve"><value>配置元（バリアント）</value></data>
+  <data name="Workspace_Place" xml:space="preserve"><value>配置</value></data>
+  <data name="Workspace_Place_Tooltip" xml:space="preserve"><value>選択中のバリアントを最初の空きセルに配置します</value></data>
+  <data name="Workspace_NewVariant" xml:space="preserve"><value>新規バリアント</value></data>
+  <data name="Workspace_NewVariant_Tooltip" xml:space="preserve"><value>選択中バリアントと同じアセットから新規バリアントを作成</value></data>
+  <data name="Workspace_NewVariant_Placeholder" xml:space="preserve"><value>名前（空欄で「バリアント N」自動採番）</value></data>
+  <data name="Workspace_DeleteVariant_Tooltip" xml:space="preserve"><value>選択中バリアントを削除（関連配置も削除されます）</value></data>
+  <data name="Workspace_VariantName_Placeholder" xml:space="preserve"><value>（空欄で「既定」表示）</value></data>
+  <data name="Workspace_DeleteAsset" xml:space="preserve"><value>アセットを削除...</value></data>
+  <data name="Workspace_PreviewButton" xml:space="preserve"><value>プレビュー</value></data>
+  <data name="Workspace_ExportPng" xml:space="preserve"><value>PNG 出力</value></data>
+  <data name="Workspace_NoGridSelected" xml:space="preserve"><value>グリッドが選択されていません</value></data>
+  <data name="Workspace_NoGridSelected_Hint" xml:space="preserve"><value>左側の一覧から作成・選択してください</value></data>
+  <data name="Workspace_PlacedCount_Prefix" xml:space="preserve"><value>配置済み:</value></data>
+  <data name="Workspace_PlacedCount_Suffix" xml:space="preserve"><value>件</value></data>
+  <data name="Workspace_SelectGridPrompt" xml:space="preserve"><value>グリッドを選択してください</value></data>
+  <data name="Workspace_SelectGridHint" xml:space="preserve"><value>上のグリッド切替バーから作成・選択するとプロパティが表示されます</value></data>
+
+  <!-- 出力設定パネル -->
+  <data name="Output_Settings" xml:space="preserve"><value>出力設定</value></data>
+  <data name="Output_Mode" xml:space="preserve"><value>出力モード</value></data>
+  <data name="Output_Mode_Normal" xml:space="preserve"><value>通常</value></data>
+  <data name="Output_Mode_Normal_Tooltip" xml:space="preserve"><value>グリッドのセル配置をそのままレンダリングします</value></data>
+  <data name="Output_Mode_PhotoBoard" xml:space="preserve"><value>写真ボード</value></data>
+  <data name="Output_Mode_PhotoBoard_Tooltip" xml:space="preserve"><value>フレーム + 影 + ジッターで写真ボード風に再合成します</value></data>
+  <data name="Output_Style" xml:space="preserve"><value>スタイル</value></data>
+  <data name="Output_Style_Natural" xml:space="preserve"><value>ナチュラル</value></data>
+  <data name="Output_Style_Natural_Desc" xml:space="preserve"><value>軽い揺らぎ・整然</value></data>
+  <data name="Output_Style_Natural_Tooltip" xml:space="preserve"><value>軽い揺らぎ・整然とした配置 (写真アルバム風)</value></data>
+  <data name="Output_Style_Rough" xml:space="preserve"><value>ラフ</value></data>
+  <data name="Output_Style_Rough_Desc" xml:space="preserve"><value>中程度の傾き・少しの重なり</value></data>
+  <data name="Output_Style_Rough_Tooltip" xml:space="preserve"><value>中程度の回転・たまの重なり (ノートに貼った写真風)</value></data>
+  <data name="Output_Style_Scattered" xml:space="preserve"><value>バラ撒き</value></data>
+  <data name="Output_Style_Scattered_Desc" xml:space="preserve"><value>大胆な傾き・複数の重なり</value></data>
+  <data name="Output_Style_Scattered_Tooltip" xml:space="preserve"><value>大胆な回転・頻繁な重なり (机にぶちまけた写真風)</value></data>
+  <data name="Output_Intensity" xml:space="preserve"><value>調整</value></data>
+  <data name="Output_Intensity_Reset_Tooltip" xml:space="preserve"><value>配置の乱れを既定値 (中央) に戻します</value></data>
+  <data name="Output_Intensity_ResetButton" xml:space="preserve"><value>既定に戻す</value></data>
+  <data name="Output_Intensity_Low" xml:space="preserve"><value>控えめ</value></data>
+  <data name="Output_Intensity_High" xml:space="preserve"><value>大胆</value></data>
+  <data name="Output_Intensity_Slider_Tooltip" xml:space="preserve"><value>選んだスタイルの強度を控えめ ↔ 大胆 で調整します</value></data>
+  <data name="Output_Trim" xml:space="preserve"><value>切り出し</value></data>
+  <data name="Output_Trim_Tooltip" xml:space="preserve"><value>出力 PNG の切り出し範囲。 PhotoBoard 時も合成後の画像に同じセマンティクスで適用されます。</value></data>
+
+  <!-- グリッドプロパティ (右ペイン) -->
+  <data name="GridProps_Save_Tooltip" xml:space="preserve"><value>名前 + キャンバスサイズの変更をまとめて保存</value></data>
+  <data name="GridProps_Reset_Tooltip" xml:space="preserve"><value>編集前の値に戻す</value></data>
+  <data name="Common_UnsavedTooltip" xml:space="preserve"><value>未保存の変更があります</value></data>
+  <data name="GridProps_GridName" xml:space="preserve"><value>グリッド名</value></data>
+  <data name="GridProps_CellCount" xml:space="preserve"><value>セル数</value></data>
+  <data name="GridProps_CanvasSize" xml:space="preserve"><value>キャンバスサイズ (px)</value></data>
+  <data name="GridProps_Width" xml:space="preserve"><value>幅</value></data>
+  <data name="GridProps_Height" xml:space="preserve"><value>高さ</value></data>
+  <data name="GridProps_ColRatios" xml:space="preserve"><value>列比率</value></data>
+  <data name="GridProps_RowRatios" xml:space="preserve"><value>行比率</value></data>
+  <data name="GridProps_Locks" xml:space="preserve"><value>ロック</value></data>
+  <data name="GridProps_ColLocks_Prefix" xml:space="preserve"><value>列: </value></data>
+  <data name="GridProps_RowLocks_Prefix" xml:space="preserve"><value>  /  行: </value></data>
+  <data name="GridProps_Hint" xml:space="preserve"><value>名前 / キャンバスサイズは編集後 「保存」 で確定 (Esc / リセットで取り消し)。比率調整は境界ドラッグ、🔒 はヘッダクリック。</value></data>
+
+  <!-- ManualCrop エディタ -->
+  <data name="CropEditor_Title" xml:space="preserve"><value>任意矩形トリミング</value></data>
+  <data name="CropEditor_ZoomOut_Tooltip" xml:space="preserve"><value>縮小</value></data>
+  <data name="CropEditor_ZoomFit_Tooltip" xml:space="preserve"><value>ウィンドウに収める</value></data>
+  <data name="CropEditor_Zoom100_Tooltip" xml:space="preserve"><value>物理ピクセル等倍</value></data>
+  <data name="CropEditor_ZoomIn_Tooltip" xml:space="preserve"><value>拡大</value></data>
+  <data name="CropEditor_Hint" xml:space="preserve"><value>画像上をドラッグで矩形作成 / 中ボタン or Space+ドラッグでパン</value></data>
+  <data name="CropEditor_Hint_Tooltip" xml:space="preserve"><value>画像上をドラッグで矩形作成 / 8 ハンドルで端 / 隅をリサイズ / 矩形内部ドラッグで移動 / ドラッグ中に画像端へ近づくと自動スクロール / 中ボタンドラッグ または Space + 左ドラッグでパン / 矢印キーで 1px 移動、 Shift + 矢印で 10px 移動</value></data>
+  <data name="CropEditor_Width" xml:space="preserve"><value>幅:</value></data>
+  <data name="CropEditor_Height" xml:space="preserve"><value>高さ:</value></data>
+
+  <!-- ワークスペース ロックダイアログ -->
+  <data name="WorkspaceLocked_Title" xml:space="preserve"><value>ワークスペースが使用中</value></data>
+  <data name="WorkspaceLocked_Header" xml:space="preserve"><value>ワークスペースが使用中です</value></data>
+  <data name="WorkspaceLocked_Hint" xml:space="preserve"><value>同じワークスペースを 2 つ以上のプロセスから同時に開くと、 SQLite データベースの整合性が壊れる可能性があります。 既に開いているウィンドウを使うか、 別のワークスペースに切替えてから起動してください。</value></data>
+
+  <!-- サムネ再生成ダイアログ -->
+  <data name="ThumbRegen_Title" xml:space="preserve"><value>サムネを再生成</value></data>
+  <data name="ThumbRegen_Header" xml:space="preserve"><value>全サムネを再生成</value></data>
+  <data name="ThumbRegen_Hint" xml:space="preserve"><value>設定の「サムネ最大エッジ」 を全アセットに反映します。 完了するまでアプリの操作はお控えください。 元画像が見つからないアセットはスキップされます。</value></data>
+  <data name="ThumbRegen_Processing" xml:space="preserve"><value>処理中: </value></data>
+  <data name="ThumbRegen_Success" xml:space="preserve"><value>成功: </value></data>
+  <data name="ThumbRegen_Skipped" xml:space="preserve"><value>    スキップ: </value></data>
+  <data name="ThumbRegen_Failed" xml:space="preserve"><value>    失敗: </value></data>
+
+  <!-- ワークスペース切替ダイアログ -->
+  <data name="Workspace_Title" xml:space="preserve"><value>ワークスペース</value></data>
+  <data name="Workspace_Hint" xml:space="preserve"><value>作業対象のワークスペースを選択して切替えると、 アプリが再起動して別のデータセットで開きます。 仕事用 / 趣味用などアセット混在を物理的に分離する用途を想定しています。</value></data>
+  <data name="Workspace_CurrentlyInUse" xml:space="preserve"><value>現在使用中</value></data>
+  <data name="Workspace_SelectedPrefix" xml:space="preserve"><value>選択中: </value></data>
+  <data name="Workspace_RenameDisplayName" xml:space="preserve"><value>表示名を変更</value></data>
+  <data name="Workspace_DisplayName_Placeholder" xml:space="preserve"><value>表示名を入力</value></data>
+  <data name="Workspace_Duplicate" xml:space="preserve"><value>複製...</value></data>
+  <data name="Workspace_Duplicate_Tooltip" xml:space="preserve"><value>このワークスペースの DB / 画像 / サムネを丸ごとコピーした派生を作成します。</value></data>
+  <data name="Workspace_Export" xml:space="preserve"><value>エクスポート...</value></data>
+  <data name="Workspace_Export_Tooltip" xml:space="preserve"><value>このワークスペース全体を 1 つの zip にまとめて書き出します (DB / 画像 / サムネを含む)。 別マシンへの移送やバックアップに使えます。</value></data>
+  <data name="Workspace_Delete_Tooltip" xml:space="preserve"><value>ワークスペース データは workspaces/.trash/ に移動されます (即削除ではないため誤操作リスクが小さい)。 現在使用中のワークスペースは削除できません。</value></data>
+  <data name="Workspace_Create_Hint" xml:space="preserve"><value>新しい空のワークスペースを追加します。 作成後はこのダイアログから「再起動して切替」 で開けます。</value></data>
+  <data name="Workspace_Duplicate_Hint" xml:space="preserve"><value>複製元の DB / 画像 / サムネを丸ごとコピーします。 ワークスペースのサイズによっては時間がかかります。</value></data>
+  <data name="Workspace_InternalName_Label" xml:space="preserve"><value>内部名 (英数 / ハイフン / アンダースコア)</value></data>
+  <data name="Workspace_InternalName_Placeholder" xml:space="preserve"><value>例: work</value></data>
+  <data name="Workspace_DisplayName_Label" xml:space="preserve"><value>表示名 (UI で表示される名前、 日本語可)</value></data>
+  <data name="Workspace_DisplayName_CreatePlaceholder" xml:space="preserve"><value>例: 仕事用</value></data>
+  <data name="Workspace_New" xml:space="preserve"><value>新規作成...</value></data>
+  <data name="Workspace_Import" xml:space="preserve"><value>インポート...</value></data>
+  <data name="Workspace_Import_Tooltip" xml:space="preserve"><value>エクスポート済の zip からワークスペースを取り込みます。 取り込み先名は zip 内のメタデータから提案されます。</value></data>
+  <data name="Workspace_RestartAndSwitch" xml:space="preserve"><value>再起動して切替</value></data>
 </root>

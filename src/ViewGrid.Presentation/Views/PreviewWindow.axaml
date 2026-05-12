@@ -2,9 +2,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:loc="using:ViewGrid.Presentation.Localization"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
         x:Class="ViewGrid.Presentation.Views.PreviewWindow"
-        Title="出力プレビュー"
+        Title="{loc:Tr Preview_Title}"
         Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
         Width="900" Height="680"
         MinWidth="480" MinHeight="360"
@@ -21,15 +22,15 @@
         -->
         <Grid Grid.Row="0" Margin="12,12,12,6" ColumnDefinitions="Auto,*">
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <TextBlock Text="ズーム:" VerticalAlignment="Center" />
+                <TextBlock Text="{loc:Tr Preview_Zoom}" VerticalAlignment="Center" />
                 <Button x:Name="ZoomOutButton" Content="−" MinWidth="32"
-                        Click="OnZoomOutClicked" ToolTip.Tip="縮小 (Ctrl + ホイール下)" />
-                <ToggleButton x:Name="ZoomFitButton" Content="フィット"
-                              Click="OnZoomFitClicked" ToolTip.Tip="ウィンドウに収める" />
+                        Click="OnZoomOutClicked" ToolTip.Tip="{loc:Tr Preview_ZoomOut_Tooltip}" />
+                <ToggleButton x:Name="ZoomFitButton" Content="{loc:Tr Preview_ZoomFit}"
+                              Click="OnZoomFitClicked" ToolTip.Tip="{loc:Tr Preview_ZoomFit_Tooltip}" />
                 <ToggleButton x:Name="Zoom100Button" Content="100%"
-                              Click="OnZoom100Clicked" ToolTip.Tip="物理ピクセル等倍 (出力ファイルと同じサイズ)" />
+                              Click="OnZoom100Clicked" ToolTip.Tip="{loc:Tr Preview_Zoom100_Tooltip}" />
                 <Button x:Name="ZoomInButton" Content="＋" MinWidth="32"
-                        Click="OnZoomInClicked" ToolTip.Tip="拡大 (Ctrl + ホイール上)" />
+                        Click="OnZoomInClicked" ToolTip.Tip="{loc:Tr Preview_ZoomIn_Tooltip}" />
                 <TextBlock x:Name="ZoomLabel" Text="100%"
                            VerticalAlignment="Center" MinWidth="56" Margin="8,0,0,0"
                            FontFamily="Consolas,monospace" />
@@ -73,12 +74,12 @@
             <!-- 左側はスペーサー (情報は上部に移動済み) -->
             <Button x:Name="SaveButton"
                     Grid.Column="1"
-                    Content="PNG として保存"
+                    Content="{loc:Tr Preview_SaveAsPng}"
                     Classes="accent"
                     Margin="0,0,8,0"
                     Click="OnSaveClicked" />
             <Button Grid.Column="2"
-                    Content="閉じる"
+                    Content="{loc:Tr Common_Close}"
                     Click="OnCloseClicked" />
         </Grid>
     </Grid>

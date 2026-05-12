@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
+             xmlns:loc="using:ViewGrid.Presentation.Localization"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="60"
              x:Class="ViewGrid.Presentation.Views.GridCanvasListView"
              x:DataType="vm:GridCanvasListViewModel">
@@ -37,7 +38,7 @@
                     Background="{DynamicResource SystemChromeLowColor}"
                     IsVisible="{Binding IsCreating}">
                 <StackPanel Spacing="6">
-                    <TextBlock Classes="SectionHeader" Text="新規グリッド" />
+                    <TextBlock Classes="SectionHeader" Text="{loc:Tr GridList_NewGrid}" />
 
                     <!--
                         名前 + 行 + 列 + 幅 + 高さ を 1 行に詰める。各フィールドは固定幅で
@@ -51,23 +52,23 @@
                     -->
                     <Grid ColumnDefinitions="240,110,110,150,150,*" ColumnSpacing="8">
                         <StackPanel Grid.Column="0" Classes="FormSection">
-                            <TextBlock Classes="FieldLabel" Text="名前" />
+                            <TextBlock Classes="FieldLabel" Text="{loc:Tr GridList_Name}" />
                             <TextBox Text="{Binding DraftName}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Classes="FormSection">
-                            <TextBlock Classes="FieldLabel" Text="行" />
+                            <TextBlock Classes="FieldLabel" Text="{loc:Tr GridList_Rows}" />
                             <NumericUpDown Value="{Binding DraftRows}" Minimum="1" Maximum="20" FormatString="0" />
                         </StackPanel>
                         <StackPanel Grid.Column="2" Classes="FormSection">
-                            <TextBlock Classes="FieldLabel" Text="列" />
+                            <TextBlock Classes="FieldLabel" Text="{loc:Tr GridList_Cols}" />
                             <NumericUpDown Value="{Binding DraftCols}" Minimum="1" Maximum="20" FormatString="0" />
                         </StackPanel>
                         <StackPanel Grid.Column="3" Classes="FormSection">
-                            <TextBlock Classes="FieldLabel" Text="幅 (px)" />
+                            <TextBlock Classes="FieldLabel" Text="{loc:Tr GridList_WidthPx}" />
                             <NumericUpDown Value="{Binding DraftCanvasWidth}" Minimum="1" Maximum="8192" FormatString="0" />
                         </StackPanel>
                         <StackPanel Grid.Column="4" Classes="FormSection">
-                            <TextBlock Classes="FieldLabel" Text="高さ (px)" />
+                            <TextBlock Classes="FieldLabel" Text="{loc:Tr GridList_HeightPx}" />
                             <NumericUpDown Value="{Binding DraftCanvasHeight}" Minimum="1" Maximum="8192" FormatString="0" />
                         </StackPanel>
                     </Grid>
@@ -78,20 +79,20 @@
                     -->
                     <Grid ColumnDefinitions="200,200,*" ColumnSpacing="8">
                         <StackPanel Grid.Column="0" Classes="FormSection">
-                            <TextBlock Classes="FieldLabel" Text="列比率（任意・カンマ区切り）" />
-                            <TextBox Text="{Binding DraftColWeights}" PlaceholderText="例: 2,1,1（空=均等）" />
+                            <TextBlock Classes="FieldLabel" Text="{loc:Tr GridList_ColWeights}" />
+                            <TextBox Text="{Binding DraftColWeights}" PlaceholderText="{loc:Tr GridList_Weights_Placeholder}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Classes="FormSection">
-                            <TextBlock Classes="FieldLabel" Text="行比率（任意・カンマ区切り）" />
-                            <TextBox Text="{Binding DraftRowWeights}" PlaceholderText="例: 2,1,1（空=均等）" />
+                            <TextBlock Classes="FieldLabel" Text="{loc:Tr GridList_RowWeights}" />
+                            <TextBox Text="{Binding DraftRowWeights}" PlaceholderText="{loc:Tr GridList_Weights_Placeholder}" />
                         </StackPanel>
                     </Grid>
 
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
-                        <Button Content="作成"
+                        <Button Content="{loc:Tr GridList_Create}"
                                 Command="{Binding ConfirmCreateCommand}"
                                 Classes="accent" />
-                        <Button Content="キャンセル"
+                        <Button Content="{loc:Tr Common_Cancel}"
                                 Command="{Binding CancelCreateCommand}" />
                     </StackPanel>
                 </StackPanel>
@@ -103,14 +104,14 @@
                 ComboBox では選択中のものが SelectedItem ハイライトでそのまま分かる。
             -->
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <TextBlock Text="グリッド:"
+                <TextBlock Text="{loc:Tr GridList_Grid_Label}"
                            VerticalAlignment="Center"
                            FontWeight="SemiBold" />
                 <ComboBox ItemsSource="{Binding Grids}"
                           SelectedItem="{Binding SelectedGrid}"
                           MinWidth="320"
-                          PlaceholderText="（グリッド未選択）"
-                          ToolTip.Tip="作業対象のグリッドを切替（次回起動時はここで最後に選んだグリッドが開きます）">
+                          PlaceholderText="{loc:Tr GridList_NoSelection}"
+                          ToolTip.Tip="{loc:Tr GridList_Selector_Tooltip}">
                     <ComboBox.ItemTemplate>
                         <DataTemplate DataType="vm:GridCanvasItemViewModel">
                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -132,16 +133,16 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
-                <Button Content="+ 新規"
+                <Button Content="{loc:Tr GridList_NewButton}"
                         Classes="accent"
                         Command="{Binding BeginCreateCommand}"
                         IsEnabled="{Binding !IsCreating}"
-                        ToolTip.Tip="新しいグリッドを作成" />
-                <Button Content="削除"
+                        ToolTip.Tip="{loc:Tr GridList_NewButton_Tooltip}" />
+                <Button Content="{loc:Tr Common_Delete}"
                         Classes="iconDanger"
                         Command="{Binding DeleteSelectedCommand}"
                         IsEnabled="{Binding SelectedGrid, Converter={x:Static ObjectConverters.IsNotNull}}"
-                        ToolTip.Tip="選択中のグリッドを削除" />
+                        ToolTip.Tip="{loc:Tr GridList_Delete_Tooltip}" />
                 <ProgressBar IsIndeterminate="True"
                              IsVisible="{Binding IsBusy}"
                              Width="80"

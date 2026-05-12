@@ -6,6 +6,7 @@
              xmlns:views="clr-namespace:ViewGrid.Presentation.Views"
              xmlns:controls="clr-namespace:ViewGrid.Presentation.Controls"
              xmlns:conv="clr-namespace:ViewGrid.Presentation.Converters"
+             xmlns:loc="using:ViewGrid.Presentation.Localization"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="ViewGrid.Presentation.Views.GridWorkspaceView"
              x:Name="GridWorkspaceRoot"
@@ -147,13 +148,13 @@
                         D&D は MainWindow 全体で受けて AssetLibrary.AddFilesAsync に流れるので
                         既に動作中（タブ非依存）。
                     -->
-                    <Button Content="+ 画像を追加"
+                    <Button Content="{loc:Tr Workspace_AddImagesButton}"
                             HorizontalAlignment="Stretch"
                             Classes="accent"
                             Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).AssetLibrary.PickFilesAndImportCommand}"
-                            ToolTip.Tip="ファイルから画像を取り込みます（ドラッグ&amp;ドロップでも追加可）" />
+                            ToolTip.Tip="{loc:Tr Workspace_AddImagesButton_Tooltip}" />
                     <TextBlock Classes="SectionHeader"
-                               Text="配置元（バリアント）" />
+                               Text="{loc:Tr Workspace_PlacementSource}" />
 
                     <!--
                         操作対象（バリアント / グリッド）でグループ分けする原則に従い、
@@ -164,25 +165,25 @@
                     -->
                     <StackPanel Orientation="Horizontal" Spacing="8"
                                 IsVisible="{Binding !IsCreatingVariant}">
-                        <Button Content="配置"
+                        <Button Content="{loc:Tr Workspace_Place}"
                                 Command="{Binding PlaceSelectedToFirstFreeCellCommand}"
                                 IsEnabled="{Binding SelectedCandidate, Converter={x:Static ObjectConverters.IsNotNull}}"
                                 Classes="accent"
-                                ToolTip.Tip="選択中のバリアントを最初の空きセルに配置します" />
+                                ToolTip.Tip="{loc:Tr Workspace_Place_Tooltip}" />
                         <Button Command="{Binding BeginCreateVariantCommand}"
                                 Classes="iconAccent"
-                                ToolTip.Tip="選択中バリアントと同じアセットから新規バリアントを作成">
+                                ToolTip.Tip="{loc:Tr Workspace_NewVariant_Tooltip}">
                             <StackPanel Classes="IconButtonContent">
                                 <PathIcon Data="{StaticResource AddGeometry}" Width="14" Height="14" />
-                                <TextBlock Text="新規バリアント" />
+                                <TextBlock Text="{loc:Tr Workspace_NewVariant}" />
                             </StackPanel>
                         </Button>
                         <Button Command="{Binding DeleteSelectedCandidateCommand}"
                                 Classes="iconDanger"
-                                ToolTip.Tip="選択中バリアントを削除（関連配置も削除されます）">
+                                ToolTip.Tip="{loc:Tr Workspace_DeleteVariant_Tooltip}">
                             <StackPanel Classes="IconButtonContent">
                                 <PathIcon Data="{StaticResource DeleteGeometry}" Width="14" Height="14" />
-                                <TextBlock Text="削除" />
+                                <TextBlock Text="{loc:Tr Common_Delete}" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -193,10 +194,10 @@
                             Background="{DynamicResource SystemAltMediumLowColor}"
                             CornerRadius="4">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="新規バリアント" FontWeight="SemiBold" />
+                            <TextBlock Text="{loc:Tr Workspace_NewVariant}" FontWeight="SemiBold" />
                             <TextBox x:Name="DraftVariantNameBox"
                                      Text="{Binding DraftVariantName, Mode=TwoWay}"
-                                     PlaceholderText="名前（空欄で「バリアント N」自動採番）"
+                                     PlaceholderText="{loc:Tr Workspace_NewVariant_Placeholder}"
                                      IsVisible="{Binding IsCreatingVariant}"
                                      controls:FocusOnVisible.IsEnabled="True">
                                 <TextBox.KeyBindings>
@@ -205,11 +206,11 @@
                                 </TextBox.KeyBindings>
                             </TextBox>
                             <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
-                                <Button Content="作成"
+                                <Button Content="{loc:Tr GridList_Create}"
                                         Classes="accent"
                                         Command="{Binding CommitCreateVariantCommand}"
                                         IsDefault="True" />
-                                <Button Content="キャンセル"
+                                <Button Content="{loc:Tr Common_Cancel}"
                                         Command="{Binding CancelCreateVariantCommand}" />
                             </StackPanel>
                         </StackPanel>
@@ -258,7 +259,7 @@
                             <Grid ColumnDefinitions="*,Auto" Margin="0,2" ColumnSpacing="6">
                                 <Grid.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="アセットを削除..."
+                                        <MenuItem Header="{loc:Tr Workspace_DeleteAsset}"
                                                   Click="OnDeleteAssetClicked" />
                                     </ContextMenu>
                                 </Grid.ContextMenu>
@@ -301,7 +302,7 @@
                                     <TextBox Text="{Binding EditingName, Mode=TwoWay}"
                                              FontSize="12"
                                              IsVisible="{Binding IsEditing}"
-                                             PlaceholderText="（空欄で「既定」表示）"
+                                             PlaceholderText="{loc:Tr Workspace_VariantName_Placeholder}"
                                              controls:FocusOnVisible.IsEnabled="True"
                                              KeyDown="OnEditingCandidateKeyDown"
                                              LostFocus="OnEditingCandidateLostFocus" />
@@ -369,10 +370,10 @@
                                 VerticalAlignment="Center"
                                 HorizontalAlignment="Right">
                         <Button x:Name="PreviewButton"
-                                Content="プレビュー"
+                                Content="{loc:Tr Workspace_PreviewButton}"
                                 Click="OnPreviewClicked"
                                 IsEnabled="{Binding HasGrid}" />
-                        <Button Content="PNG 出力"
+                        <Button Content="{loc:Tr Workspace_ExportPng}"
                                 Classes="accent"
                                 Command="{Binding ExportToPngCommand}"
                                 IsEnabled="{Binding HasGrid}" />
@@ -392,11 +393,11 @@
                               Width="48" Height="48"
                               Opacity="0.4"
                               HorizontalAlignment="Center" />
-                    <TextBlock Text="グリッドが選択されていません"
+                    <TextBlock Text="{loc:Tr Workspace_NoGridSelected}"
                                FontSize="16"
                                Opacity="0.7"
                                HorizontalAlignment="Center" />
-                    <TextBlock Text="左側の一覧から作成・選択してください"
+                    <TextBlock Text="{loc:Tr Workspace_NoGridSelected_Hint}"
                                FontSize="12"
                                Opacity="0.5"
                                HorizontalAlignment="Center" />
@@ -448,9 +449,9 @@
                         <TextBlock FontSize="11"
                                    Opacity="0.75"
                                    IsVisible="{Binding HasGrid}">
-                            <Run Text="配置済み:" />
+                            <Run Text="{loc:Tr Workspace_PlacedCount_Prefix}" />
                             <Run Text="{Binding Placements.Count}" />
-                            <Run Text="件" />
+                            <Run Text="{loc:Tr Workspace_PlacedCount_Suffix}" />
                         </TextBlock>
 
                 <!--
@@ -469,7 +470,7 @@
                           HorizontalContentAlignment="Stretch">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <TextBlock Text="出力設定"
+                            <TextBlock Text="{loc:Tr Output_Settings}"
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center" />
                             <TextBlock Opacity="0.6"
@@ -484,32 +485,32 @@
                     <StackPanel Spacing="10">
                         <!-- ─── 出力モード: 横幅いっぱいの segmented control ─── -->
                         <StackPanel Spacing="4">
-                            <TextBlock Text="出力モード" Classes="SectionHeader" />
+                            <TextBlock Text="{loc:Tr Output_Mode}" Classes="SectionHeader" />
                             <Grid ColumnDefinitions="*,*">
                                 <ToggleButton Grid.Column="0"
                                               Classes="Segment"
-                                              Content="通常"
+                                              Content="{loc:Tr Output_Mode_Normal}"
                                               IsChecked="{Binding IsNormalMode, Mode=OneWay}"
                                               Command="{Binding SelectOutputModeNormalCommand}"
-                                              ToolTip.Tip="グリッドのセル配置をそのままレンダリングします" />
+                                              ToolTip.Tip="{loc:Tr Output_Mode_Normal_Tooltip}" />
                                 <ToggleButton Grid.Column="1"
                                               Classes="Segment"
-                                              Content="写真ボード"
+                                              Content="{loc:Tr Output_Mode_PhotoBoard}"
                                               IsChecked="{Binding IsPhotoBoardMode, Mode=OneWay}"
                                               Command="{Binding SelectOutputModePhotoBoardCommand}"
-                                              ToolTip.Tip="フレーム + 影 + ジッターで写真ボード風に再合成します" />
+                                              ToolTip.Tip="{loc:Tr Output_Mode_PhotoBoard_Tooltip}" />
                             </Grid>
                         </StackPanel>
 
                         <!-- ─── スタイル (PhotoBoard 時のみ) ─── -->
                         <StackPanel Spacing="6" IsVisible="{Binding IsPhotoBoardMode}">
-                            <TextBlock Text="スタイル" Classes="SectionHeader" />
+                            <TextBlock Text="{loc:Tr Output_Style}" Classes="SectionHeader" />
                             <StackPanel Spacing="4">
                                 <!-- ナチュラル -->
                                 <ToggleButton Classes="StyleCard"
                                               IsChecked="{Binding IsStyleNatural, Mode=OneWay}"
                                               Command="{Binding ApplyPhotoBoardStyleNaturalCommand}"
-                                              ToolTip.Tip="軽い揺らぎ・整然とした配置 (写真アルバム風)">
+                                              ToolTip.Tip="{loc:Tr Output_Style_Natural_Tooltip}">
                                     <Grid ColumnDefinitions="64,*" ColumnSpacing="10">
                                         <!-- フォントの SemiBold 文字は視覚重心が下寄りになるため、
                                              サンプル Canvas を 1px だけ下げて視覚中心を文字側と揃える。 -->
@@ -542,9 +543,9 @@
                                             </Border>
                                         </Canvas>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                            <TextBlock Text="ナチュラル" FontWeight="SemiBold" FontSize="12"
+                                            <TextBlock Text="{loc:Tr Output_Style_Natural}" FontWeight="SemiBold" FontSize="12"
                                                        Foreground="{DynamicResource SystemBaseHighColor}" />
-                                            <TextBlock Text="軽い揺らぎ・整然" Classes="HintText" FontSize="10"
+                                            <TextBlock Text="{loc:Tr Output_Style_Natural_Desc}" Classes="HintText" FontSize="10"
                                                        Foreground="{DynamicResource SystemBaseHighColor}" />
                                         </StackPanel>
                                     </Grid>
@@ -554,7 +555,7 @@
                                 <ToggleButton Classes="StyleCard"
                                               IsChecked="{Binding IsStyleRough, Mode=OneWay}"
                                               Command="{Binding ApplyPhotoBoardStyleRoughCommand}"
-                                              ToolTip.Tip="中程度の回転・たまの重なり (ノートに貼った写真風)">
+                                              ToolTip.Tip="{loc:Tr Output_Style_Rough_Tooltip}">
                                     <Grid ColumnDefinitions="64,*" ColumnSpacing="10">
                                         <!-- フォントの SemiBold 文字は視覚重心が下寄りになるため、
                                              サンプル Canvas を 1px だけ下げて視覚中心を文字側と揃える。 -->
@@ -587,9 +588,9 @@
                                             </Border>
                                         </Canvas>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                            <TextBlock Text="ラフ" FontWeight="SemiBold" FontSize="12"
+                                            <TextBlock Text="{loc:Tr Output_Style_Rough}" FontWeight="SemiBold" FontSize="12"
                                                        Foreground="{DynamicResource SystemBaseHighColor}" />
-                                            <TextBlock Text="中程度の傾き・少しの重なり" Classes="HintText" FontSize="10"
+                                            <TextBlock Text="{loc:Tr Output_Style_Rough_Desc}" Classes="HintText" FontSize="10"
                                                        Foreground="{DynamicResource SystemBaseHighColor}" />
                                         </StackPanel>
                                     </Grid>
@@ -599,7 +600,7 @@
                                 <ToggleButton Classes="StyleCard"
                                               IsChecked="{Binding IsStyleScattered, Mode=OneWay}"
                                               Command="{Binding ApplyPhotoBoardStyleScatteredCommand}"
-                                              ToolTip.Tip="大胆な回転・頻繁な重なり (机にぶちまけた写真風)">
+                                              ToolTip.Tip="{loc:Tr Output_Style_Scattered_Tooltip}">
                                     <Grid ColumnDefinitions="64,*" ColumnSpacing="10">
                                         <!-- フォントの SemiBold 文字は視覚重心が下寄りになるため、
                                              サンプル Canvas を 1px だけ下げて視覚中心を文字側と揃える。 -->
@@ -638,9 +639,9 @@
                                             </Border>
                                         </Canvas>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                            <TextBlock Text="バラ撒き" FontWeight="SemiBold" FontSize="12"
+                                            <TextBlock Text="{loc:Tr Output_Style_Scattered}" FontWeight="SemiBold" FontSize="12"
                                                        Foreground="{DynamicResource SystemBaseHighColor}" />
-                                            <TextBlock Text="大胆な傾き・複数の重なり" Classes="HintText" FontSize="10"
+                                            <TextBlock Text="{loc:Tr Output_Style_Scattered_Desc}" Classes="HintText" FontSize="10"
                                                        Foreground="{DynamicResource SystemBaseHighColor}" />
                                         </StackPanel>
                                     </Grid>
@@ -652,48 +653,40 @@
                         <!-- ─── 調整: 配置の乱れスライダー (PhotoBoard 時のみ) ─── -->
                         <StackPanel Spacing="4" IsVisible="{Binding IsPhotoBoardMode}">
                             <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="調整" Classes="SectionHeader" />
-                                <!-- スライダーは正確に中央 (既定値) へ戻すのが難しいので
-                                     明示的なリセット手段。 ↺ アイコンで「ボタンである」操作可能性を
-                                     強調し、 既定位置 (intensity=0.5) のときは CanExecute=false で
-                                     自動的に dim される (resetIntensity スタイルの :disabled で
-                                     Opacity=0.55、 toolbar の 0.4 より少し濃く読みやすく)。 -->
+                                <TextBlock Grid.Column="0" Text="{loc:Tr Output_Intensity}" Classes="SectionHeader" />
                                 <Button Grid.Column="1"
                                         Classes="resetIntensity"
                                         Command="{Binding ResetPhotoBoardIntensityCommand}"
-                                        ToolTip.Tip="配置の乱れを既定値 (中央) に戻します">
-                                    <!-- アイコン + 文字を同じ行内ベースラインで揃えると ↺ Unicode は
-                                         日本語より高く見えがち。 PathIcon (RefreshGeometry) で
-                                         pixel-perfect な高さ + VerticalAlignment=Center で揃える。 -->
+                                        ToolTip.Tip="{loc:Tr Output_Intensity_Reset_Tooltip}">
                                     <StackPanel Orientation="Horizontal" Spacing="4"
                                                 VerticalAlignment="Center">
                                         <PathIcon Data="{StaticResource RefreshGeometry}"
                                                   Width="11" Height="11"
                                                   VerticalAlignment="Center" />
-                                        <TextBlock Text="既定に戻す"
+                                        <TextBlock Text="{loc:Tr Output_Intensity_ResetButton}"
                                                    VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
                             </Grid>
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-                                <TextBlock Grid.Column="0" Text="控えめ" Classes="HintText"
+                                <TextBlock Grid.Column="0" Text="{loc:Tr Output_Intensity_Low}" Classes="HintText"
                                            FontSize="11" VerticalAlignment="Center" />
                                 <Slider Grid.Column="1" Minimum="0" Maximum="1"
                                         TickFrequency="0.1"
                                         Value="{Binding SelectedPhotoBoardIntensity}"
-                                        ToolTip.Tip="選んだスタイルの強度を控えめ ↔ 大胆 で調整します" />
-                                <TextBlock Grid.Column="2" Text="大胆" Classes="HintText"
+                                        ToolTip.Tip="{loc:Tr Output_Intensity_Slider_Tooltip}" />
+                                <TextBlock Grid.Column="2" Text="{loc:Tr Output_Intensity_High}" Classes="HintText"
                                            FontSize="11" VerticalAlignment="Center" />
                             </Grid>
                         </StackPanel>
 
                         <!-- ─── 切り出し: 通常モードでも PhotoBoard モードでも常に表示 ─── -->
                         <StackPanel Spacing="4">
-                            <TextBlock Text="切り出し" Classes="SectionHeader" />
+                            <TextBlock Text="{loc:Tr Output_Trim}" Classes="SectionHeader" />
                             <ComboBox ItemsSource="{Binding TrimModeOptions}"
                                       SelectedItem="{Binding SelectedTrimMode}"
                                       HorizontalAlignment="Stretch"
-                                      ToolTip.Tip="出力 PNG の切り出し範囲。 PhotoBoard 時も合成後の画像に同じセマンティクスで適用されます。">
+                                      ToolTip.Tip="{loc:Tr Output_Trim_Tooltip}">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding Converter={StaticResource TrimModeLabel}}" />
@@ -732,10 +725,10 @@
                         <StackPanel Spacing="6"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center">
-                            <TextBlock Text="グリッドを選択してください"
+                            <TextBlock Text="{loc:Tr Workspace_SelectGridPrompt}"
                                        Opacity="0.7"
                                        HorizontalAlignment="Center" />
-                            <TextBlock Text="上のグリッド切替バーから作成・選択するとプロパティが表示されます"
+                            <TextBlock Text="{loc:Tr Workspace_SelectGridHint}"
                                        Opacity="0.5"
                                        FontSize="11"
                                        HorizontalAlignment="Center"

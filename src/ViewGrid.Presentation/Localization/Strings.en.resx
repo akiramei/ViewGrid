@@ -93,9 +93,182 @@
   <data name="Common_Close" xml:space="preserve"><value>Close</value></data>
 
   <!-- Settings dialog -->
+  <data name="Settings_Title" xml:space="preserve"><value>Settings</value></data>
   <data name="Settings_Language" xml:space="preserve"><value>Language</value></data>
   <data name="Settings_Language_Hint" xml:space="preserve"><value>Switch the UI display language. "Follow system" uses the OS locale setting.</value></data>
   <data name="Settings_Language_System" xml:space="preserve"><value>Follow system (Default)</value></data>
   <data name="Settings_Language_Japanese" xml:space="preserve"><value>日本語 (Japanese)</value></data>
   <data name="Settings_Language_English" xml:space="preserve"><value>English</value></data>
+  <data name="Settings_Display" xml:space="preserve"><value>Display</value></data>
+  <data name="Settings_Display_Hint" xml:space="preserve"><value>Changes apply immediately.</value></data>
+  <data name="Settings_Theme_System" xml:space="preserve"><value>Follow system (Default)</value></data>
+  <data name="Settings_Theme_Light" xml:space="preserve"><value>Light</value></data>
+  <data name="Settings_Theme_Dark" xml:space="preserve"><value>Dark</value></data>
+  <data name="Settings_AccentColor" xml:space="preserve"><value>Accent color</value></data>
+  <data name="Settings_Defaults" xml:space="preserve"><value>Defaults</value></data>
+  <data name="Settings_Defaults_Hint" xml:space="preserve"><value>Applies to imports and new variants created after the change. Existing data is unaffected.</value></data>
+  <data name="Settings_DefaultScaling" xml:space="preserve"><value>Default scaling</value></data>
+  <data name="Settings_DefaultAutoCrop" xml:space="preserve"><value>Default AutoCrop preset</value></data>
+  <data name="Settings_Save" xml:space="preserve"><value>Save behavior</value></data>
+  <data name="Settings_AutoSave_Hint" xml:space="preserve"><value>When auto-save is on, edits in the Inspector / grid properties are persisted automatically after 1 second of inactivity without pressing "Save".</value></data>
+  <data name="Settings_AutoSave_Toggle" xml:space="preserve"><value>Save changes automatically (experimental)</value></data>
+  <data name="Settings_Advanced" xml:space="preserve"><value>Advanced</value></data>
+  <data name="Settings_ThumbMaxEdge" xml:space="preserve"><value>Thumbnail max edge (px)</value></data>
+  <data name="Settings_ThumbMaxEdge_Hint" xml:space="preserve"><value>Applies to imports after the change; existing thumbnails are kept. Larger size yields better quality but more disk usage.</value></data>
+  <data name="Settings_RegenThumbs" xml:space="preserve"><value>Regenerate existing thumbnails</value></data>
+  <data name="Settings_RegenThumbs_Hint" xml:space="preserve"><value>Apply the new MaxEdge setting to all assets. A restart is required for the change to take effect.</value></data>
+  <data name="Settings_RegenThumbs_Button" xml:space="preserve"><value>Regenerate all thumbnails...</value></data>
+  <data name="Settings_ImportExport" xml:space="preserve"><value>Settings import / export</value></data>
+  <data name="Settings_ImportExport_Hint" xml:space="preserve"><value>Export / import settings.json. Useful for sharing across machines or users.</value></data>
+  <data name="Settings_Export" xml:space="preserve"><value>Export...</value></data>
+  <data name="Settings_Import" xml:space="preserve"><value>Import...</value></data>
+
+  <!-- Common -->
+  <data name="Common_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Common_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="Common_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Common_Start" xml:space="preserve"><value>Start</value></data>
+  <data name="Common_Ok" xml:space="preserve"><value>OK</value></data>
+  <data name="Common_Add" xml:space="preserve"><value>Add</value></data>
+  <data name="Common_Edit" xml:space="preserve"><value>Edit...</value></data>
+  <data name="Common_Reset" xml:space="preserve"><value>Reset</value></data>
+
+  <!-- Preview window -->
+  <data name="Preview_Title" xml:space="preserve"><value>Output Preview</value></data>
+  <data name="Preview_Zoom" xml:space="preserve"><value>Zoom:</value></data>
+  <data name="Preview_ZoomOut_Tooltip" xml:space="preserve"><value>Zoom out (Ctrl + scroll down)</value></data>
+  <data name="Preview_ZoomFit" xml:space="preserve"><value>Fit</value></data>
+  <data name="Preview_ZoomFit_Tooltip" xml:space="preserve"><value>Fit to window</value></data>
+  <data name="Preview_Zoom100_Tooltip" xml:space="preserve"><value>1:1 pixel (same size as the output file)</value></data>
+  <data name="Preview_ZoomIn_Tooltip" xml:space="preserve"><value>Zoom in (Ctrl + scroll up)</value></data>
+  <data name="Preview_SaveAsPng" xml:space="preserve"><value>Save as PNG</value></data>
+
+  <!-- Grid list bar -->
+  <data name="GridList_Grid_Label" xml:space="preserve"><value>Grid:</value></data>
+  <data name="GridList_NoSelection" xml:space="preserve"><value>(no grid selected)</value></data>
+  <data name="GridList_Selector_Tooltip" xml:space="preserve"><value>Switch the working grid (the last selected grid will be opened on next launch).</value></data>
+  <data name="GridList_NewButton" xml:space="preserve"><value>+ New</value></data>
+  <data name="GridList_NewButton_Tooltip" xml:space="preserve"><value>Create a new grid</value></data>
+  <data name="GridList_Delete_Tooltip" xml:space="preserve"><value>Delete the selected grid</value></data>
+  <data name="GridList_NewGrid" xml:space="preserve"><value>New grid</value></data>
+  <data name="GridList_Name" xml:space="preserve"><value>Name</value></data>
+  <data name="GridList_Rows" xml:space="preserve"><value>Rows</value></data>
+  <data name="GridList_Cols" xml:space="preserve"><value>Cols</value></data>
+  <data name="GridList_WidthPx" xml:space="preserve"><value>Width (px)</value></data>
+  <data name="GridList_HeightPx" xml:space="preserve"><value>Height (px)</value></data>
+  <data name="GridList_ColWeights" xml:space="preserve"><value>Column weights (optional, comma-separated)</value></data>
+  <data name="GridList_RowWeights" xml:space="preserve"><value>Row weights (optional, comma-separated)</value></data>
+  <data name="GridList_Weights_Placeholder" xml:space="preserve"><value>e.g. 2,1,1 (empty = uniform)</value></data>
+  <data name="GridList_Create" xml:space="preserve"><value>Create</value></data>
+
+  <!-- Workspace view -->
+  <data name="Workspace_AddImagesButton" xml:space="preserve"><value>+ Add images</value></data>
+  <data name="Workspace_AddImagesButton_Tooltip" xml:space="preserve"><value>Import images from files (drag &amp; drop also works).</value></data>
+  <data name="Workspace_PlacementSource" xml:space="preserve"><value>Source variants</value></data>
+  <data name="Workspace_Place" xml:space="preserve"><value>Place</value></data>
+  <data name="Workspace_Place_Tooltip" xml:space="preserve"><value>Place the selected variant into the first empty cell.</value></data>
+  <data name="Workspace_NewVariant" xml:space="preserve"><value>New variant</value></data>
+  <data name="Workspace_NewVariant_Tooltip" xml:space="preserve"><value>Create a new variant from the same asset as the selected one.</value></data>
+  <data name="Workspace_NewVariant_Placeholder" xml:space="preserve"><value>Name (empty = auto "Variant N")</value></data>
+  <data name="Workspace_DeleteVariant_Tooltip" xml:space="preserve"><value>Delete the selected variant (related placements are also removed).</value></data>
+  <data name="Workspace_VariantName_Placeholder" xml:space="preserve"><value>(empty shows "Default")</value></data>
+  <data name="Workspace_DeleteAsset" xml:space="preserve"><value>Delete asset...</value></data>
+  <data name="Workspace_PreviewButton" xml:space="preserve"><value>Preview</value></data>
+  <data name="Workspace_ExportPng" xml:space="preserve"><value>Export PNG</value></data>
+  <data name="Workspace_NoGridSelected" xml:space="preserve"><value>No grid is selected</value></data>
+  <data name="Workspace_NoGridSelected_Hint" xml:space="preserve"><value>Create or pick a grid from the list on the left.</value></data>
+  <data name="Workspace_PlacedCount_Prefix" xml:space="preserve"><value>Placed:</value></data>
+  <data name="Workspace_PlacedCount_Suffix" xml:space="preserve"><value> items</value></data>
+  <data name="Workspace_SelectGridPrompt" xml:space="preserve"><value>Please select a grid</value></data>
+  <data name="Workspace_SelectGridHint" xml:space="preserve"><value>Create or pick a grid from the grid selector above to show its properties.</value></data>
+
+  <!-- Output settings panel -->
+  <data name="Output_Settings" xml:space="preserve"><value>Output settings</value></data>
+  <data name="Output_Mode" xml:space="preserve"><value>Output mode</value></data>
+  <data name="Output_Mode_Normal" xml:space="preserve"><value>Normal</value></data>
+  <data name="Output_Mode_Normal_Tooltip" xml:space="preserve"><value>Render the grid cells as-is.</value></data>
+  <data name="Output_Mode_PhotoBoard" xml:space="preserve"><value>Photo board</value></data>
+  <data name="Output_Mode_PhotoBoard_Tooltip" xml:space="preserve"><value>Recompose with frame + shadow + jitter for a photo-board look.</value></data>
+  <data name="Output_Style" xml:space="preserve"><value>Style</value></data>
+  <data name="Output_Style_Natural" xml:space="preserve"><value>Natural</value></data>
+  <data name="Output_Style_Natural_Desc" xml:space="preserve"><value>Light wobble · orderly</value></data>
+  <data name="Output_Style_Natural_Tooltip" xml:space="preserve"><value>Light wobble · orderly arrangement (photo-album look).</value></data>
+  <data name="Output_Style_Rough" xml:space="preserve"><value>Rough</value></data>
+  <data name="Output_Style_Rough_Desc" xml:space="preserve"><value>Moderate tilt · slight overlap</value></data>
+  <data name="Output_Style_Rough_Tooltip" xml:space="preserve"><value>Moderate rotation · occasional overlap (photos pinned to a notebook).</value></data>
+  <data name="Output_Style_Scattered" xml:space="preserve"><value>Scattered</value></data>
+  <data name="Output_Style_Scattered_Desc" xml:space="preserve"><value>Bold tilt · multiple overlaps</value></data>
+  <data name="Output_Style_Scattered_Tooltip" xml:space="preserve"><value>Bold rotation · frequent overlap (photos spread on a desk).</value></data>
+  <data name="Output_Intensity" xml:space="preserve"><value>Intensity</value></data>
+  <data name="Output_Intensity_Reset_Tooltip" xml:space="preserve"><value>Reset the variation to the default (center).</value></data>
+  <data name="Output_Intensity_ResetButton" xml:space="preserve"><value>Reset to default</value></data>
+  <data name="Output_Intensity_Low" xml:space="preserve"><value>Subtle</value></data>
+  <data name="Output_Intensity_High" xml:space="preserve"><value>Bold</value></data>
+  <data name="Output_Intensity_Slider_Tooltip" xml:space="preserve"><value>Adjust the chosen style from subtle ↔ bold.</value></data>
+  <data name="Output_Trim" xml:space="preserve"><value>Trim</value></data>
+  <data name="Output_Trim_Tooltip" xml:space="preserve"><value>Trim range applied to the exported PNG. Same semantics in PhotoBoard mode.</value></data>
+
+  <!-- Grid properties (right pane) -->
+  <data name="GridProps_Save_Tooltip" xml:space="preserve"><value>Save the name and canvas size changes together</value></data>
+  <data name="GridProps_Reset_Tooltip" xml:space="preserve"><value>Revert to values before editing</value></data>
+  <data name="Common_UnsavedTooltip" xml:space="preserve"><value>There are unsaved changes</value></data>
+  <data name="GridProps_GridName" xml:space="preserve"><value>Grid name</value></data>
+  <data name="GridProps_CellCount" xml:space="preserve"><value>Cell count</value></data>
+  <data name="GridProps_CanvasSize" xml:space="preserve"><value>Canvas size (px)</value></data>
+  <data name="GridProps_Width" xml:space="preserve"><value>Width</value></data>
+  <data name="GridProps_Height" xml:space="preserve"><value>Height</value></data>
+  <data name="GridProps_ColRatios" xml:space="preserve"><value>Column ratios</value></data>
+  <data name="GridProps_RowRatios" xml:space="preserve"><value>Row ratios</value></data>
+  <data name="GridProps_Locks" xml:space="preserve"><value>Locks</value></data>
+  <data name="GridProps_ColLocks_Prefix" xml:space="preserve"><value>Cols: </value></data>
+  <data name="GridProps_RowLocks_Prefix" xml:space="preserve"><value>  /  Rows: </value></data>
+  <data name="GridProps_Hint" xml:space="preserve"><value>Name / canvas size require pressing "Save" to commit (Esc / Reset to undo). Ratios are adjusted by dragging boundaries; 🔒 toggles via header click.</value></data>
+
+  <!-- Manual crop editor -->
+  <data name="CropEditor_Title" xml:space="preserve"><value>Manual Crop</value></data>
+  <data name="CropEditor_ZoomOut_Tooltip" xml:space="preserve"><value>Zoom out</value></data>
+  <data name="CropEditor_ZoomFit_Tooltip" xml:space="preserve"><value>Fit to window</value></data>
+  <data name="CropEditor_Zoom100_Tooltip" xml:space="preserve"><value>1:1 pixel</value></data>
+  <data name="CropEditor_ZoomIn_Tooltip" xml:space="preserve"><value>Zoom in</value></data>
+  <data name="CropEditor_Hint" xml:space="preserve"><value>Drag on the image to create a rectangle / Middle-button or Space+drag to pan</value></data>
+  <data name="CropEditor_Hint_Tooltip" xml:space="preserve"><value>Drag on the image to create a rectangle / 8 handles to resize edges/corners / Drag inside the rectangle to move / Auto-scroll near image edges / Middle-button drag or Space + left-drag to pan / Arrow keys move by 1px, Shift+Arrow by 10px</value></data>
+  <data name="CropEditor_Width" xml:space="preserve"><value>W:</value></data>
+  <data name="CropEditor_Height" xml:space="preserve"><value>H:</value></data>
+
+  <!-- Workspace locked dialog -->
+  <data name="WorkspaceLocked_Title" xml:space="preserve"><value>Workspace in Use</value></data>
+  <data name="WorkspaceLocked_Header" xml:space="preserve"><value>This workspace is currently in use</value></data>
+  <data name="WorkspaceLocked_Hint" xml:space="preserve"><value>Opening the same workspace from two or more processes may corrupt the SQLite database. Use the existing window or switch to a different workspace before launching.</value></data>
+
+  <!-- Thumbnail regeneration dialog -->
+  <data name="ThumbRegen_Title" xml:space="preserve"><value>Regenerate Thumbnails</value></data>
+  <data name="ThumbRegen_Header" xml:space="preserve"><value>Regenerate all thumbnails</value></data>
+  <data name="ThumbRegen_Hint" xml:space="preserve"><value>Applies the "Thumbnail max edge" setting to all assets. Please avoid using the app until completion. Assets whose source image cannot be found are skipped.</value></data>
+  <data name="ThumbRegen_Processing" xml:space="preserve"><value>Processing: </value></data>
+  <data name="ThumbRegen_Success" xml:space="preserve"><value>Success: </value></data>
+  <data name="ThumbRegen_Skipped" xml:space="preserve"><value>    Skipped: </value></data>
+  <data name="ThumbRegen_Failed" xml:space="preserve"><value>    Failed: </value></data>
+
+  <!-- Workspace switch dialog -->
+  <data name="Workspace_Title" xml:space="preserve"><value>Workspace</value></data>
+  <data name="Workspace_Hint" xml:space="preserve"><value>Selecting a workspace and switching will restart the app with a different dataset. Designed for keeping work and personal asset libraries physically separate.</value></data>
+  <data name="Workspace_CurrentlyInUse" xml:space="preserve"><value>currently in use</value></data>
+  <data name="Workspace_SelectedPrefix" xml:space="preserve"><value>Selected: </value></data>
+  <data name="Workspace_RenameDisplayName" xml:space="preserve"><value>Change display name</value></data>
+  <data name="Workspace_DisplayName_Placeholder" xml:space="preserve"><value>Enter a display name</value></data>
+  <data name="Workspace_Duplicate" xml:space="preserve"><value>Duplicate...</value></data>
+  <data name="Workspace_Duplicate_Tooltip" xml:space="preserve"><value>Create a copy of this workspace's DB / images / thumbnails as a derivative.</value></data>
+  <data name="Workspace_Export" xml:space="preserve"><value>Export...</value></data>
+  <data name="Workspace_Export_Tooltip" xml:space="preserve"><value>Bundle this entire workspace into a single zip file (DB / images / thumbnails). Useful for moving across machines or backups.</value></data>
+  <data name="Workspace_Delete_Tooltip" xml:space="preserve"><value>The workspace data is moved to workspaces/.trash/ (not immediately deleted, so accidents are recoverable). The workspace in use cannot be deleted.</value></data>
+  <data name="Workspace_Create_Hint" xml:space="preserve"><value>Add a new empty workspace. After creation, you can switch to it via "Restart and switch" in this dialog.</value></data>
+  <data name="Workspace_Duplicate_Hint" xml:space="preserve"><value>Copies the source workspace's DB / images / thumbnails. May take a while depending on the workspace size.</value></data>
+  <data name="Workspace_InternalName_Label" xml:space="preserve"><value>Internal name (alphanumeric / hyphen / underscore)</value></data>
+  <data name="Workspace_InternalName_Placeholder" xml:space="preserve"><value>e.g. work</value></data>
+  <data name="Workspace_DisplayName_Label" xml:space="preserve"><value>Display name (shown in the UI; non-ASCII allowed)</value></data>
+  <data name="Workspace_DisplayName_CreatePlaceholder" xml:space="preserve"><value>e.g. Work</value></data>
+  <data name="Workspace_New" xml:space="preserve"><value>New...</value></data>
+  <data name="Workspace_Import" xml:space="preserve"><value>Import...</value></data>
+  <data name="Workspace_Import_Tooltip" xml:space="preserve"><value>Import a workspace from an exported zip file. The destination name is suggested from the zip's metadata.</value></data>
+  <data name="Workspace_RestartAndSwitch" xml:space="preserve"><value>Restart and switch</value></data>
 </root>

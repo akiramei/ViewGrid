@@ -9,7 +9,7 @@
         mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="560"
         x:Class="ViewGrid.Presentation.Views.SettingsDialog"
         x:DataType="vm:SettingsDialogViewModel"
-        Title="設定"
+        Title="{loc:Tr Settings_Title}"
         Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
         Width="520" Height="560"
         MinWidth="480" MinHeight="420"
@@ -42,22 +42,22 @@
                 <!-- 表示 (テーマ) -->
                 <Border Classes="Card">
                     <StackPanel Classes="FormSection">
-                        <TextBlock Classes="SectionHeader" Text="表示" />
+                        <TextBlock Classes="SectionHeader" Text="{loc:Tr Settings_Display}" />
                         <TextBlock Classes="HintText"
-                                   Text="即時反映されます。"
+                                   Text="{loc:Tr Settings_Display_Hint}"
                                    Margin="0,0,0,4" />
 
                         <RadioButton GroupName="Theme"
-                                     Content="システムに従う (Default)"
+                                     Content="{loc:Tr Settings_Theme_System}"
                                      IsChecked="{Binding IsThemeDefault}" />
                         <RadioButton GroupName="Theme"
-                                     Content="ライト (Light)"
+                                     Content="{loc:Tr Settings_Theme_Light}"
                                      IsChecked="{Binding IsThemeLight}" />
                         <RadioButton GroupName="Theme"
-                                     Content="ダーク (Dark)"
+                                     Content="{loc:Tr Settings_Theme_Dark}"
                                      IsChecked="{Binding IsThemeDark}" />
 
-                        <TextBlock Classes="FieldLabel" Text="アクセント色" Margin="0,12,0,0" />
+                        <TextBlock Classes="FieldLabel" Text="{loc:Tr Settings_AccentColor}" Margin="0,12,0,0" />
                         <ItemsControl x:Name="AccentPresetItems"
                                       ItemsSource="{Binding AccentColorPresetOptions}">
                             <ItemsControl.ItemsPanel>
@@ -99,17 +99,17 @@
                 <!-- 既定値 -->
                 <Border Classes="Card">
                     <StackPanel Classes="FormSection">
-                        <TextBlock Classes="SectionHeader" Text="既定値" />
+                        <TextBlock Classes="SectionHeader" Text="{loc:Tr Settings_Defaults}" />
                         <TextBlock Classes="HintText"
-                                   Text="変更後の取り込み・新規論理コピーから反映されます。 既存データには影響しません。"
+                                   Text="{loc:Tr Settings_Defaults_Hint}"
                                    Margin="0,0,0,4" />
 
-                        <TextBlock Classes="FieldLabel" Text="既定スケーリング" />
+                        <TextBlock Classes="FieldLabel" Text="{loc:Tr Settings_DefaultScaling}" />
                         <ComboBox ItemsSource="{Binding ScalingModeOptions}"
                                   SelectedItem="{Binding DefaultScalingMode}"
                                   HorizontalAlignment="Stretch" />
 
-                        <TextBlock Classes="FieldLabel" Text="既定 AutoCrop プリセット" Margin="0,8,0,0" />
+                        <TextBlock Classes="FieldLabel" Text="{loc:Tr Settings_DefaultAutoCrop}" Margin="0,8,0,0" />
                         <ComboBox ItemsSource="{Binding AutoCropPresetOptions}"
                                   SelectedItem="{Binding DefaultAutoCropPreset}"
                                   HorizontalAlignment="Stretch" />
@@ -119,11 +119,11 @@
                 <!-- 保存動作 -->
                 <Border Classes="Card">
                     <StackPanel Classes="FormSection">
-                        <TextBlock Classes="SectionHeader" Text="保存動作" />
+                        <TextBlock Classes="SectionHeader" Text="{loc:Tr Settings_Save}" />
                         <TextBlock Classes="HintText"
-                                   Text="自動保存 ON のとき、 Inspector / グリッドプロパティでの値編集は 1 秒静止後に「保存」ボタンを押さなくても自動的に永続化されます。"
+                                   Text="{loc:Tr Settings_AutoSave_Hint}"
                                    Margin="0,0,0,4" />
-                        <CheckBox Content="変更を自動的に保存する (実験的)"
+                        <CheckBox Content="{loc:Tr Settings_AutoSave_Toggle}"
                                   IsChecked="{Binding EnableAutoSave}" />
                     </StackPanel>
                 </Border>
@@ -131,10 +131,10 @@
                 <!-- 詳細 (サムネ) -->
                 <Border Classes="Card">
                     <StackPanel Classes="FormSection">
-                        <TextBlock Classes="SectionHeader" Text="詳細" />
-                        <TextBlock Classes="FieldLabel" Text="サムネイルの最大エッジ (px)" />
+                        <TextBlock Classes="SectionHeader" Text="{loc:Tr Settings_Advanced}" />
+                        <TextBlock Classes="FieldLabel" Text="{loc:Tr Settings_ThumbMaxEdge}" />
                         <TextBlock Classes="HintText"
-                                   Text="変更後の取り込みから反映され、 既存サムネは残ります。 大きいほど画質は上がるがディスク使用量が増えます。"
+                                   Text="{loc:Tr Settings_ThumbMaxEdge_Hint}"
                                    Margin="0,0,0,4" />
 
                         <StackPanel Orientation="Horizontal" Spacing="12">
@@ -147,24 +147,24 @@
                         <!-- 既存サムネ全件再生成 -->
                         <Border Background="{DynamicResource ViewGridCardBorder}"
                                 Height="1" Margin="0,12,0,12" />
-                        <TextBlock Classes="FieldLabel" Text="既存サムネを再生成" />
+                        <TextBlock Classes="FieldLabel" Text="{loc:Tr Settings_RegenThumbs}" />
                         <TextBlock Classes="HintText"
-                                   Text="設定変更後の MaxEdge を全アセットに反映します。 反映にはアプリ再起動が必要です。"
+                                   Text="{loc:Tr Settings_RegenThumbs_Hint}"
                                    Margin="0,0,0,4" />
-                        <Button Content="全サムネを再生成..."
+                        <Button Content="{loc:Tr Settings_RegenThumbs_Button}"
                                 HorizontalAlignment="Left"
                                 Click="OnRegenerateThumbnailsClicked" />
 
                         <!-- 設定の入出力 (JSON エクスポート / インポート) -->
                         <Border Background="{DynamicResource ViewGridCardBorder}"
                                 Height="1" Margin="0,12,0,12" />
-                        <TextBlock Classes="FieldLabel" Text="設定の入出力" />
+                        <TextBlock Classes="FieldLabel" Text="{loc:Tr Settings_ImportExport}" />
                         <TextBlock Classes="HintText"
-                                   Text="settings.json をファイルに書き出し / 読み込みます。 別 PC や別ユーザー間での共有に。"
+                                   Text="{loc:Tr Settings_ImportExport_Hint}"
                                    Margin="0,0,0,4" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Content="エクスポート..." Command="{Binding ExportSettingsCommand}" />
-                            <Button Content="インポート..." Command="{Binding ImportSettingsCommand}" />
+                            <Button Content="{loc:Tr Settings_Export}" Command="{Binding ExportSettingsCommand}" />
+                            <Button Content="{loc:Tr Settings_Import}" Command="{Binding ImportSettingsCommand}" />
                         </StackPanel>
                         <TextBlock Classes="HintText"
                                    Text="{Binding IoStatus}"
@@ -182,7 +182,7 @@
                     HorizontalAlignment="Right"
                     Margin="0,12,0,0"
                     Spacing="8">
-            <Button Content="閉じる"
+            <Button Content="{loc:Tr Common_Close}"
                     MinWidth="80"
                     HorizontalContentAlignment="Center"
                     IsDefault="True"

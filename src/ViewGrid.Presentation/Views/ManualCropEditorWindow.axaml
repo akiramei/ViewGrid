@@ -2,9 +2,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:loc="using:ViewGrid.Presentation.Localization"
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="720"
         x:Class="ViewGrid.Presentation.Views.ManualCropEditorWindow"
-        Title="任意矩形トリミング"
+        Title="{loc:Tr CropEditor_Title}"
         Icon="avares://ViewGrid.Presentation/Assets/icon-256.png"
         Width="1000" Height="720"
         MinWidth="640" MinHeight="480"
@@ -14,31 +15,21 @@
         <!-- 上部: ズームコントロール + ヒント -->
         <Grid Grid.Row="0" Margin="12,12,12,6" ColumnDefinitions="Auto,*">
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <TextBlock Text="ズーム:" VerticalAlignment="Center" />
-                <Button x:Name="ZoomOutButton" Content="−" MinWidth="32" Click="OnZoomOutClicked" ToolTip.Tip="縮小" />
-                <Button x:Name="ZoomFitButton" Content="フィット" Click="OnZoomFitClicked" ToolTip.Tip="ウィンドウに収める" />
-                <Button x:Name="Zoom100Button" Content="100%" Click="OnZoom100Clicked" ToolTip.Tip="物理ピクセル等倍" />
-                <Button x:Name="ZoomInButton" Content="＋" MinWidth="32" Click="OnZoomInClicked" ToolTip.Tip="拡大" />
+                <TextBlock Text="{loc:Tr Preview_Zoom}" VerticalAlignment="Center" />
+                <Button x:Name="ZoomOutButton" Content="−" MinWidth="32" Click="OnZoomOutClicked" ToolTip.Tip="{loc:Tr CropEditor_ZoomOut_Tooltip}" />
+                <Button x:Name="ZoomFitButton" Content="{loc:Tr Preview_ZoomFit}" Click="OnZoomFitClicked" ToolTip.Tip="{loc:Tr CropEditor_ZoomFit_Tooltip}" />
+                <Button x:Name="Zoom100Button" Content="100%" Click="OnZoom100Clicked" ToolTip.Tip="{loc:Tr CropEditor_Zoom100_Tooltip}" />
+                <Button x:Name="ZoomInButton" Content="＋" MinWidth="32" Click="OnZoomInClicked" ToolTip.Tip="{loc:Tr CropEditor_ZoomIn_Tooltip}" />
                 <TextBlock x:Name="ZoomLabel" Text="100%" VerticalAlignment="Center" MinWidth="56" Margin="8,0,0,0" />
             </StackPanel>
             <TextBlock Grid.Column="1"
-                       Text="画像上をドラッグで矩形作成 / 中ボタン or Space+ドラッグでパン"
+                       Text="{loc:Tr CropEditor_Hint}"
                        Opacity="0.7"
                        FontSize="11"
                        VerticalAlignment="Center"
                        HorizontalAlignment="Right"
-                       TextWrapping="Wrap">
-                <ToolTip.Tip>
-                    <TextBlock>
-                        <Run Text="画像上をドラッグで矩形作成" /><LineBreak />
-                        <Run Text="8 ハンドルで端 / 隅をリサイズ" /><LineBreak />
-                        <Run Text="矩形内部ドラッグで移動" /><LineBreak />
-                        <Run Text="ドラッグ中に画像端へ近づくと自動スクロール" /><LineBreak />
-                        <Run Text="中ボタンドラッグ または Space + 左ドラッグでパン" /><LineBreak />
-                        <Run Text="矢印キーで 1px 移動、 Shift + 矢印で 10px 移動" />
-                    </TextBlock>
-                </ToolTip.Tip>
-            </TextBlock>
+                       TextWrapping="Wrap"
+                       ToolTip.Tip="{loc:Tr CropEditor_Hint_Tooltip}" />
         </Grid>
 
         <!-- メイン: ScrollViewer + 画像 + Canvas オーバーレイ -->
@@ -76,20 +67,20 @@
                 <NumericUpDown x:Name="XInput" MinWidth="140" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
                 <TextBlock Text="Y:" VerticalAlignment="Center" Margin="8,0,0,0" />
                 <NumericUpDown x:Name="YInput" MinWidth="140" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
-                <TextBlock Text="幅:" VerticalAlignment="Center" Margin="8,0,0,0" />
+                <TextBlock Text="{loc:Tr CropEditor_Width}" VerticalAlignment="Center" Margin="8,0,0,0" />
                 <NumericUpDown x:Name="WInput" MinWidth="140" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
-                <TextBlock Text="高さ:" VerticalAlignment="Center" Margin="8,0,0,0" />
+                <TextBlock Text="{loc:Tr CropEditor_Height}" VerticalAlignment="Center" Margin="8,0,0,0" />
                 <NumericUpDown x:Name="HInput" MinWidth="140" Minimum="0" FormatString="0" ValueChanged="OnNumericValueChanged" />
             </StackPanel>
             <Button Grid.Column="2"
-                    Content="OK"
+                    Content="{loc:Tr Common_Ok}"
                     Classes="accent"
                     Margin="0,0,8,0"
                     MinWidth="80"
                     HorizontalContentAlignment="Center"
                     Click="OnOkClicked" />
             <Button Grid.Column="3"
-                    Content="キャンセル"
+                    Content="{loc:Tr Common_Cancel}"
                     MinWidth="80"
                     HorizontalContentAlignment="Center"
                     Click="OnCancelClicked" />
