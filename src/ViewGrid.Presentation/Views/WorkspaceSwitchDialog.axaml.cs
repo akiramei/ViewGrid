@@ -21,16 +21,28 @@ public partial class WorkspaceSwitchDialog : Window
         InitializeComponent();
     }
 
-    /// <summary>DI から VM を取得 + 一覧ロード後にダイアログを開く。</summary>
+    /// <summary>
+    /// DI から VM を取得 + 一覧ロード後にダイアログを開く。
+    /// VM は <see cref="LocService"/> の PropertyChanged を購読する (ダイアログ表示中の言語切替で
+    /// CreateCardTitle / CreateConfirmLabel を即時更新するため) ので、 Closed 後に必ず
+    /// <c>Dispose</c> を呼んで購読解除する (ダイアログ自身は短命で何度も開閉される)。
+    /// </summary>
     public static async System.Threading.Tasks.Task ShowAsync(Window owner, IServiceProvider services)
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(services);
 
         var vm = services.GetRequiredService<WorkspaceSwitchDialogViewModel>();
-        await vm.LoadAsync();
-        var dialog = new WorkspaceSwitchDialog { DataContext = vm };
-        await dialog.ShowDialog(owner);
+        try
+        {
+            await vm.LoadAsync();
+            var dialog = new WorkspaceSwitchDialog { DataContext = vm };
+            await dialog.ShowDialog(owner);
+        }
+        finally
+        {
+            vm.Dispose();
+        }
     }
 
     private void OnCancelClicked(object? sender, RoutedEventArgs e) => Close();

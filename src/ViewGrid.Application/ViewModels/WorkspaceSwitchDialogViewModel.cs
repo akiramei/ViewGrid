@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ViewGrid.Application.Localization;
 using ViewGrid.Core.Services;
@@ -12,7 +13,7 @@ namespace ViewGrid.Application.ViewModels;
 /// 「再起動して切替」 押下時に <see cref="ApplyAsync"/> を呼び、 ダイアログ側で
 /// <c>active.json</c> 書き換え後にプロセス再起動する。
 /// </summary>
-public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
+public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase, IDisposable
 {
     private readonly IWorkspaceManager _manager;
     private readonly IWorkspaceContext _context;
@@ -135,6 +136,34 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
         _manager = manager;
         _context = context;
         _loc = loc;
+        // 言語切替時に CreateCardTitle / CreateConfirmLabel を再評価。
+        // ダイアログ表示中の即時反映用。 Dispose で必ず解除する (ダイアログ Closed で呼ばれる)。
+        _loc.PropertyChanged += OnLocPropertyChanged;
+    }
+
+    /// <summary>
+    /// 言語切替で resx 値が変わったとき、 i18n を引いている computed property を一斉再評価する。
+    /// LocService は <c>"Item[]"</c> という indexer 専用通知を発火するため、 それを「全 i18n
+    /// プロパティの再評価トリガ」 と解釈する。 <see cref="StatusMessage"/> や
+    /// <see cref="DraftDisplayName"/> 等の 「代入時点の文字列を保持する property」 はここでは
+    /// 触らない (ユーザーが編集中の値を破壊しないため)。
+    /// </summary>
+    private void OnLocPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is null or "" or "Item[]")
+        {
+            OnPropertyChanged(nameof(CreateCardTitle));
+            OnPropertyChanged(nameof(CreateConfirmLabel));
+        }
+    }
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _loc.PropertyChanged -= OnLocPropertyChanged;
     }
 
     public async Task LoadAsync(CancellationToken ct = default)
