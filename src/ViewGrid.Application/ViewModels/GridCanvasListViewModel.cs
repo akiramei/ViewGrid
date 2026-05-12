@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using ViewGrid.Application.AutoSave;
 using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.Interfaces;
@@ -32,6 +33,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
     private readonly UpdateGridCanvasSizeUseCase _updateCanvasSizeUseCase;
     private readonly IAppSettingsService _appSettings;
     private readonly IUndoRedoService _history;
+    private readonly ILocalizationService _loc;
     private readonly ILogger<GridCanvasListViewModel> _logger;
 
     private readonly SaveCoordinator _autoSave;
@@ -117,6 +119,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
         UpdateGridCanvasSizeUseCase updateCanvasSizeUseCase,
         IAppSettingsService appSettings,
         IUndoRedoService history,
+        ILocalizationService loc,
         ILogger<GridCanvasListViewModel> logger)
     {
         _repository = repository;
@@ -126,6 +129,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
         _updateCanvasSizeUseCase = updateCanvasSizeUseCase;
         _appSettings = appSettings;
         _history = history;
+        _loc = loc;
         _logger = logger;
         _autoSave = new SaveCoordinator(
             AutoSaveDebounce,
@@ -353,7 +357,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
             await ReloadGridsInternalAsync(ct);
             SelectedGrid = Grids.FirstOrDefault(g => g.GridId == result.Value.Id);
             IsCreating = false;
-            StatusMessage = $"「{result.Value.Name}」を作成しました。";
+            StatusMessage = _loc.Format("Status_GridCreatedFmt", result.Value.Name);
         }
         finally { IsSaving = false; }
     }
@@ -378,7 +382,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
 
             Grids.Remove(selected);
             SelectedGrid = Grids.FirstOrDefault();
-            StatusMessage = $"「{selected.Name}」を削除しました。";
+            StatusMessage = _loc.Format("Status_GridDeletedFmt", selected.Name);
         }
         finally { IsSaving = false; }
     }
@@ -396,7 +400,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
         {
             IsSaving = true;
             var ok = await RenameInternalAsync(selected, trimmed, ct);
-            if (ok) StatusMessage = "名前を変更しました。";
+            if (ok) StatusMessage = _loc["Status_GridRenamed"];
         }
         finally { IsSaving = false; }
     }
@@ -419,7 +423,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
         {
             IsSaving = true;
             var ok = await UpdateCanvasSizeInternalAsync(selected, before, newSize, ct);
-            if (ok) StatusMessage = "キャンバスサイズを変更しました。";
+            if (ok) StatusMessage = _loc["Status_CanvasSizeChanged"];
         }
         finally { IsSaving = false; }
     }
@@ -450,7 +454,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
         var newName = target.EditingName?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(newName))
         {
-            StatusMessage = "グリッド名を入力してください。";
+            StatusMessage = _loc["Status_GridNameRequired"];
             return false;
         }
 
@@ -498,7 +502,7 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
             // IsDirty=true が残る稀なケースを防ぐため、 ここで RevertEditing で確実に揃える
             // (Editing は最新の永続化値と一致 → IsDirty=false)。
             target.RevertEditing();
-            StatusMessage = "グリッド情報を保存しました。";
+            StatusMessage = _loc["Status_GridSaved"];
         }
         return true;
     }

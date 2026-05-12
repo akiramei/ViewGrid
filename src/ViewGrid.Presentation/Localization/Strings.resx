@@ -336,4 +336,52 @@
   <data name="Workspace_Import" xml:space="preserve"><value>インポート...</value></data>
   <data name="Workspace_Import_Tooltip" xml:space="preserve"><value>エクスポート済の zip からワークスペースを取り込みます。 取り込み先名は zip 内のメタデータから提案されます。</value></data>
   <data name="Workspace_RestartAndSwitch" xml:space="preserve"><value>再起動して切替</value></data>
+
+  <!-- VM ステータスメッセージ (Phase 3) -->
+  <data name="Status_Saved" xml:space="preserve"><value>保存しました。</value></data>
+  <data name="Status_SavedNoChange" xml:space="preserve"><value>保存しました（変更なし）。</value></data>
+  <data name="Status_GridNameRequired" xml:space="preserve"><value>グリッド名を入力してください。</value></data>
+  <data name="Status_GridSaved" xml:space="preserve"><value>グリッド情報を保存しました。</value></data>
+  <data name="Status_GridRenamed" xml:space="preserve"><value>名前を変更しました。</value></data>
+  <data name="Status_CanvasSizeChanged" xml:space="preserve"><value>キャンバスサイズを変更しました。</value></data>
+  <data name="Status_PlacementSwapped" xml:space="preserve"><value>配置を入れ替えました。</value></data>
+  <data name="Status_NoFreeCells" xml:space="preserve"><value>空きセルが見つかりません。</value></data>
+  <data name="Status_PlacementNotFoundForRemove" xml:space="preserve"><value>削除対象の配置が見つかりません。</value></data>
+  <data name="Status_PlacementRemoved" xml:space="preserve"><value>配置を削除しました。</value></data>
+  <data name="Status_GridWeightsUpdated" xml:space="preserve"><value>グリッド比率を更新しました。</value></data>
+  <data name="Status_PixelOffsetNoChange" xml:space="preserve"><value>ピクセル微調整: 変化なし。</value></data>
+  <data name="Status_VariantForked" xml:space="preserve"><value>別バリアントに分岐しました。準備タブで名前と特性を編集できます。</value></data>
+  <data name="Status_AutoCropNoTarget" xml:space="preserve"><value>対象色によるクロップ範囲がありません（または対象色が見つかりません）</value></data>
+  <data name="Status_DuplicatingWorkspace" xml:space="preserve"><value>複製中... ワークスペースのサイズによっては時間がかかります。</value></data>
+  <data name="Status_ImportingWorkspace" xml:space="preserve"><value>インポート中... ワークスペースのサイズによっては時間がかかります。</value></data>
+  <data name="Status_ExportingWorkspace" xml:space="preserve"><value>エクスポート中... ワークスペースのサイズによっては時間がかかります。</value></data>
+  <data name="Status_GridCreatedFmt" xml:space="preserve"><value>「{0}」を作成しました。</value></data>
+  <data name="Status_GridDeletedFmt" xml:space="preserve"><value>「{0}」を削除しました。</value></data>
+  <data name="Status_PlacementMovedFmt" xml:space="preserve"><value>({0},{1}) に移動しました。</value></data>
+  <data name="Status_PlacementPlacedFmt" xml:space="preserve"><value>({0},{1}) に配置しました。</value></data>
+  <data name="Status_PixelOffsetSavedFmt" xml:space="preserve"><value>ピクセル微調整を保存しました (ΔX={0}, ΔY={1})。</value></data>
+  <data name="Status_ExportedFmt" xml:space="preserve"><value>エクスポートしました: {0}</value></data>
+  <data name="Status_VariantCreatedFmt" xml:space="preserve"><value>「{0}」を作成しました。</value></data>
+  <data name="Status_VariantDeletedFmt" xml:space="preserve"><value>「{0}」を削除しました。</value></data>
+  <data name="Status_PngExportedFmt" xml:space="preserve"><value>出力しました: {0} ({1} bytes)</value></data>
+  <data name="Status_SaveFailedFmt" xml:space="preserve"><value>保存に失敗しました: {0}</value></data>
+  <data name="Status_PlacementNotFoundFmt" xml:space="preserve"><value>GridPlacement {0} が見つかりません。</value></data>
+  <data name="Status_CopyNotFoundFmt" xml:space="preserve"><value>ImageCopy {0} が見つかりません。</value></data>
+  <data name="Status_PreviewGeneratedFmt" xml:space="preserve"><value>プレビュー生成 {0} ms ({1} bytes)</value></data>
+  <data name="Status_ColLockedFmt" xml:space="preserve"><value>列 {0} をロックしました。</value></data>
+  <data name="Status_ColUnlockedFmt" xml:space="preserve"><value>列 {0} のロックを解除しました。</value></data>
+  <data name="Status_RowLockedFmt" xml:space="preserve"><value>行 {0} をロックしました。</value></data>
+  <data name="Status_RowUnlockedFmt" xml:space="preserve"><value>行 {0} のロックを解除しました。</value></data>
+  <data name="Status_PngExportTimingFmt" xml:space="preserve"><value>出力 {0} ms: {1} ({2} bytes)</value></data>
+  <data name="Status_FitColumnDone" xml:space="preserve"><value>列幅を画像にフィットしました。</value></data>
+  <data name="Status_FitRowDone" xml:space="preserve"><value>行高を画像にフィットしました。</value></data>
+  <data name="Status_FitNoTarget" xml:space="preserve"><value>フィット対象なし（余白がない、または計算範囲外）。</value></data>
+  <data name="Status_AssetImportedFmt" xml:space="preserve"><value>{0} 件追加</value></data>
+  <data name="Status_AssetDuplicatedFmt" xml:space="preserve"><value>{0} 件は既存（重複）</value></data>
+  <data name="Status_AssetImportFailedFmt" xml:space="preserve"><value>{0} 件失敗</value></data>
+  <data name="Status_NoChange" xml:space="preserve"><value>変更なし</value></data>
+  <data name="Status_AssetDeletedSingleFmt" xml:space="preserve"><value>{0} を削除しました。</value></data>
+  <data name="Status_AssetDeletedCountFmt" xml:space="preserve"><value>{0} 件削除しました。</value></data>
+  <data name="Status_AssetDeletedMixedFmt" xml:space="preserve"><value>{0} 件削除、{1} 件失敗（{2}）</value></data>
+  <data name="Status_AssetDeleted" xml:space="preserve"><value>アセットを削除しました。</value></data>
 </root>

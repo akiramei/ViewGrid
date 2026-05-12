@@ -336,4 +336,52 @@
   <data name="Workspace_Import" xml:space="preserve"><value>Import...</value></data>
   <data name="Workspace_Import_Tooltip" xml:space="preserve"><value>Import a workspace from an exported zip file. The destination name is suggested from the zip's metadata.</value></data>
   <data name="Workspace_RestartAndSwitch" xml:space="preserve"><value>Restart and switch</value></data>
+
+  <!-- VM status messages (Phase 3) -->
+  <data name="Status_Saved" xml:space="preserve"><value>Saved.</value></data>
+  <data name="Status_SavedNoChange" xml:space="preserve"><value>Saved (no changes).</value></data>
+  <data name="Status_GridNameRequired" xml:space="preserve"><value>Please enter a grid name.</value></data>
+  <data name="Status_GridSaved" xml:space="preserve"><value>Grid info saved.</value></data>
+  <data name="Status_GridRenamed" xml:space="preserve"><value>Renamed.</value></data>
+  <data name="Status_CanvasSizeChanged" xml:space="preserve"><value>Canvas size changed.</value></data>
+  <data name="Status_PlacementSwapped" xml:space="preserve"><value>Placements swapped.</value></data>
+  <data name="Status_NoFreeCells" xml:space="preserve"><value>No free cells available.</value></data>
+  <data name="Status_PlacementNotFoundForRemove" xml:space="preserve"><value>Placement to remove was not found.</value></data>
+  <data name="Status_PlacementRemoved" xml:space="preserve"><value>Placement removed.</value></data>
+  <data name="Status_GridWeightsUpdated" xml:space="preserve"><value>Grid ratios updated.</value></data>
+  <data name="Status_PixelOffsetNoChange" xml:space="preserve"><value>Pixel offset: no change.</value></data>
+  <data name="Status_VariantForked" xml:space="preserve"><value>Forked into a new variant. Edit name and properties in the Setup tab.</value></data>
+  <data name="Status_AutoCropNoTarget" xml:space="preserve"><value>No crop range from the target color (or the target color was not found).</value></data>
+  <data name="Status_DuplicatingWorkspace" xml:space="preserve"><value>Duplicating... May take a while depending on the workspace size.</value></data>
+  <data name="Status_ImportingWorkspace" xml:space="preserve"><value>Importing... May take a while depending on the workspace size.</value></data>
+  <data name="Status_ExportingWorkspace" xml:space="preserve"><value>Exporting... May take a while depending on the workspace size.</value></data>
+  <data name="Status_GridCreatedFmt" xml:space="preserve"><value>Created "{0}".</value></data>
+  <data name="Status_GridDeletedFmt" xml:space="preserve"><value>Deleted "{0}".</value></data>
+  <data name="Status_PlacementMovedFmt" xml:space="preserve"><value>Moved to ({0},{1}).</value></data>
+  <data name="Status_PlacementPlacedFmt" xml:space="preserve"><value>Placed at ({0},{1}).</value></data>
+  <data name="Status_PixelOffsetSavedFmt" xml:space="preserve"><value>Pixel offset saved (ΔX={0}, ΔY={1}).</value></data>
+  <data name="Status_ExportedFmt" xml:space="preserve"><value>Exported: {0}</value></data>
+  <data name="Status_VariantCreatedFmt" xml:space="preserve"><value>Created "{0}".</value></data>
+  <data name="Status_VariantDeletedFmt" xml:space="preserve"><value>Deleted "{0}".</value></data>
+  <data name="Status_PngExportedFmt" xml:space="preserve"><value>Exported: {0} ({1} bytes)</value></data>
+  <data name="Status_SaveFailedFmt" xml:space="preserve"><value>Save failed: {0}</value></data>
+  <data name="Status_PlacementNotFoundFmt" xml:space="preserve"><value>GridPlacement {0} was not found.</value></data>
+  <data name="Status_CopyNotFoundFmt" xml:space="preserve"><value>ImageCopy {0} was not found.</value></data>
+  <data name="Status_PreviewGeneratedFmt" xml:space="preserve"><value>Preview generated in {0} ms ({1} bytes)</value></data>
+  <data name="Status_ColLockedFmt" xml:space="preserve"><value>Column {0} locked.</value></data>
+  <data name="Status_ColUnlockedFmt" xml:space="preserve"><value>Column {0} unlocked.</value></data>
+  <data name="Status_RowLockedFmt" xml:space="preserve"><value>Row {0} locked.</value></data>
+  <data name="Status_RowUnlockedFmt" xml:space="preserve"><value>Row {0} unlocked.</value></data>
+  <data name="Status_PngExportTimingFmt" xml:space="preserve"><value>Exported in {0} ms: {1} ({2} bytes)</value></data>
+  <data name="Status_FitColumnDone" xml:space="preserve"><value>Column width fit to image.</value></data>
+  <data name="Status_FitRowDone" xml:space="preserve"><value>Row height fit to image.</value></data>
+  <data name="Status_FitNoTarget" xml:space="preserve"><value>Nothing to fit (no margin or outside range).</value></data>
+  <data name="Status_AssetImportedFmt" xml:space="preserve"><value>{0} added</value></data>
+  <data name="Status_AssetDuplicatedFmt" xml:space="preserve"><value>{0} already existed (duplicates)</value></data>
+  <data name="Status_AssetImportFailedFmt" xml:space="preserve"><value>{0} failed</value></data>
+  <data name="Status_NoChange" xml:space="preserve"><value>No changes</value></data>
+  <data name="Status_AssetDeletedSingleFmt" xml:space="preserve"><value>Deleted {0}.</value></data>
+  <data name="Status_AssetDeletedCountFmt" xml:space="preserve"><value>Deleted {0} items.</value></data>
+  <data name="Status_AssetDeletedMixedFmt" xml:space="preserve"><value>{0} deleted, {1} failed ({2})</value></data>
+  <data name="Status_AssetDeleted" xml:space="preserve"><value>Asset deleted.</value></data>
 </root>

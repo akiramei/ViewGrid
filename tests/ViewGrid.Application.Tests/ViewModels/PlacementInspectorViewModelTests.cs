@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using ViewGrid.Application.History;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
@@ -33,6 +34,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
         var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
         var copyProperties = new CopyPropertiesViewModel(
             updateCopy, history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
+            new NullLocalizationService(),
             NullLogger<CopyPropertiesViewModel>.Instance);
         _vm = new PlacementInspectorViewModel(
             offset,
@@ -47,6 +49,7 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
             history,
             _messenger,
             _fx.AppSettings,
+            new NullLocalizationService(),
             NullLogger<PlacementInspectorViewModel>.Instance);
         _place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
     }

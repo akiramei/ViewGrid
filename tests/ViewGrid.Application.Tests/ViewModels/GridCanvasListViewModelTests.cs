@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using ViewGrid.Application.History;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
@@ -23,6 +24,7 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         var history = new UndoRedoService();
         _vm = new GridCanvasListViewModel(
             _fx.GridRepository, create, delete, rename, updateSize, _fx.AppSettings, history,
+            new NullLocalizationService(),
             NullLogger<GridCanvasListViewModel>.Instance);
     }
 
@@ -107,6 +109,7 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         var history = new UndoRedoService();
         var vm2 = new GridCanvasListViewModel(
             _fx.GridRepository, create, delete, rename, updateSize, _fx.AppSettings, history,
+            new NullLocalizationService(),
             NullLogger<GridCanvasListViewModel>.Instance);
 
         await vm2.LoadAsync();

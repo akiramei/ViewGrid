@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
@@ -28,6 +29,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     private readonly IImageColorPicker _colorPicker;
     private readonly IAutoCropBboxResolver _autoCropResolver;
     private readonly IAppSettingsService _settings;
+    private readonly ILocalizationService _loc;
     private readonly ILogger<CopyPropertiesViewModel> _logger;
 
     private CopyItemViewModel? _source;
@@ -333,6 +335,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         IImageColorPicker colorPicker,
         IAutoCropBboxResolver autoCropResolver,
         IAppSettingsService settings,
+        ILocalizationService loc,
         ILogger<CopyPropertiesViewModel> logger)
     {
         _updateUseCase = updateUseCase;
@@ -341,6 +344,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         _colorPicker = colorPicker;
         _autoCropResolver = autoCropResolver;
         _settings = settings;
+        _loc = loc;
         _logger = logger;
         PropertyChanged += OnAnyPropertyChanged;
         RegionItems.CollectionChanged += OnRegionItemsCollectionChanged;
@@ -607,7 +611,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         try
         {
             IsDirty = false;
-            StatusMessage = "保存しました。";
+            StatusMessage = _loc["Status_Saved"];
         }
         finally
         {
@@ -766,7 +770,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
                 // どちらも UX 上は「クロップ範囲なし」で扱う。原画像読込失敗は HasThumbnail=false の
                 // ケースなので、AutoCropEnabled かつ HasThumbnail=true のときは (1) と解釈してよい。
                 AutoCropPreviewFraction = null;
-                AutoCropPreviewMessage = "対象色によるクロップ範囲がありません（または対象色が見つかりません）";
+                AutoCropPreviewMessage = _loc["Status_AutoCropNoTarget"];
             }
             else
             {

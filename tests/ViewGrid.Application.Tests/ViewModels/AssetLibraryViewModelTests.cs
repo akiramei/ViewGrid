@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
@@ -45,6 +46,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
             _picker,
             _messenger,
             history,
+            new NullLocalizationService(),
             NullLogger<AssetLibraryViewModel>.Instance);
     }
 
@@ -71,7 +73,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
             await _vm.AddFilesAsync([file]);
 
             _vm.Assets.Should().HaveCount(1);
-            _vm.StatusMessage.Should().Contain("1 件追加");
+            _vm.StatusMessage.Should().Contain("Status_AssetImportedFmt(1)");
             _vm.Assets[0].Width.Should().Be(100);
         }
         finally
@@ -90,7 +92,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
             await _vm.AddFilesAsync([file]);
 
             _vm.Assets.Should().HaveCount(1);
-            _vm.StatusMessage.Should().Contain("重複");
+            _vm.StatusMessage.Should().Contain("Status_AssetDuplicatedFmt");
         }
         finally
         {
@@ -108,7 +110,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
             await _vm.AddFilesAsync([bogus]);
 
             _vm.Assets.Should().BeEmpty();
-            _vm.StatusMessage.Should().Contain("失敗");
+            _vm.StatusMessage.Should().Contain("Status_AssetImportFailedFmt");
         }
         finally
         {
@@ -158,7 +160,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
 
             _vm.Assets.Should().BeEmpty();
             _vm.SelectedAsset.Should().BeNull();
-            _vm.StatusMessage.Should().Contain("削除しました");
+            _vm.StatusMessage.Should().Contain("Status_AssetDeletedSingleFmt");
         }
         finally
         {
@@ -253,7 +255,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
 
             ok.Should().BeTrue();
             _vm.Assets.Should().BeEmpty();
-            _vm.StatusMessage.Should().Contain("削除");
+            _vm.StatusMessage.Should().Contain("Status_AssetDeletedSingleFmt");
             received.Should().BeTrue();
         }
         finally

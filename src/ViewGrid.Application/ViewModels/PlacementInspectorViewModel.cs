@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using ViewGrid.Application.AutoSave;
 using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
@@ -44,6 +45,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
     private readonly IUndoRedoService _history;
     private readonly IMessenger _messenger;
     private readonly IAppSettingsService _appSettings;
+    private readonly ILocalizationService _loc;
     private readonly ILogger<PlacementInspectorViewModel> _logger;
     private readonly SaveCoordinator _autoSave;
     private bool _disposed;
@@ -123,6 +125,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         IUndoRedoService history,
         IMessenger messenger,
         IAppSettingsService appSettings,
+        ILocalizationService loc,
         ILogger<PlacementInspectorViewModel> logger)
     {
         _offsetUseCase = offsetUseCase;
@@ -137,6 +140,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         _history = history;
         _messenger = messenger;
         _appSettings = appSettings;
+        _loc = loc;
         _logger = logger;
         _autoSave = new SaveCoordinator(
             AutoSaveDebounce,
@@ -430,7 +434,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         var current = await _placementRepository.FindByIdAsync(source.PlacementId, ct);
         if (current is null)
         {
-            StatusMessage = $"GridPlacement {source.PlacementId} が見つかりません。";
+            StatusMessage = _loc.Format("Status_PlacementNotFoundFmt", source.PlacementId);
             return false;
         }
 
@@ -453,7 +457,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         if (!offsetChanged && !occupyChanged)
         {
             // 値変化なし — 履歴に積まない
-            ResetDirtyWithMessage("保存しました（変更なし）。");
+            ResetDirtyWithMessage(_loc["Status_SavedNoChange"]);
             return true;
         }
 
@@ -533,7 +537,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
                 ImageDrawSizeLabel = ComputeImageDrawSizeLabel(source, grid);
             }
             IsDirty = false;
-            StatusMessage = "保存しました。";
+            StatusMessage = _loc["Status_Saved"];
         }
         finally
         {
@@ -567,7 +571,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         var current = await _placementRepository.FindByIdAsync(source.PlacementId, ct);
         if (current is null)
         {
-            StatusMessage = $"GridPlacement {source.PlacementId} が見つかりません。";
+            StatusMessage = _loc.Format("Status_PlacementNotFoundFmt", source.PlacementId);
             return;
         }
 
@@ -637,7 +641,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         var sourceCopy = await _copyRepository.FindByIdAsync(source.CopyId, ct);
         if (sourceCopy is null)
         {
-            StatusMessage = $"ImageCopy {source.CopyId} が見つかりません。";
+            StatusMessage = _loc.Format("Status_CopyNotFoundFmt", source.CopyId);
             return;
         }
         var sourceLabel = string.IsNullOrWhiteSpace(sourceCopy.CopyName)
@@ -656,7 +660,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
             return;
         }
 
-        StatusMessage = "別バリアントに分岐しました。準備タブで名前と特性を編集できます。";
+        StatusMessage = _loc["Status_VariantForked"];
         // 候補リスト・配置の再ロードを誘発（CopyId 付け替え後の整合性を取る）。
         _messenger.Send(new CopyLibraryChangedMessage());
         LogForked(_logger, source.PlacementId, command.CreatedCopyId ?? Guid.Empty);

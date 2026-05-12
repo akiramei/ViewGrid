@@ -4,6 +4,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using ViewGrid.Application.History;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
@@ -42,6 +43,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         var updateCopyForInspector = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
         var copyPropertiesForInspector = new CopyPropertiesViewModel(
             updateCopyForInspector, _history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
+            new NullLocalizationService(),
             NullLogger<CopyPropertiesViewModel>.Instance);
         var inspector = new PlacementInspectorViewModel(
             offset,
@@ -56,6 +58,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             _history,
             _messenger,
             _fx.AppSettings,
+            new NullLocalizationService(),
             NullLogger<PlacementInspectorViewModel>.Instance);
 
         var updateWeights = new UpdateGridWeightsUseCase(_fx.GridRepository);
@@ -90,6 +93,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             _messenger,
             _history,
             inspector,
+            new NullLocalizationService(),
             NullLogger<GridWorkspaceViewModel>.Instance);
     }
 

@@ -44,6 +44,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly IFilePickerService _filePicker;
     private readonly IMessenger _messenger;
     private readonly IUndoRedoService _history;
+    private readonly ILocalizationService _loc;
     private readonly ILogger<GridWorkspaceViewModel> _logger;
 
     public PlacementInspectorViewModel Inspector { get; }
@@ -257,6 +258,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         IMessenger messenger,
         IUndoRedoService history,
         PlacementInspectorViewModel inspector,
+        ILocalizationService loc,
         ILogger<GridWorkspaceViewModel> logger)
     {
         _gridRepository = gridRepository;
@@ -281,6 +283,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _messenger = messenger;
         _history = history;
         Inspector = inspector;
+        _loc = loc;
         _logger = logger;
 
         _messenger.Register(this);
@@ -676,7 +679,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 // PlacementItemViewModel.Position は ObservableProperty なので View が反応する。
                 source.Position = dropPosition;
                 SelectedPlacement = source;
-                StatusMessage = $"({dropPosition.X},{dropPosition.Y}) に移動しました。";
+                StatusMessage = _loc.Format("Status_PlacementMovedFmt", dropPosition.X, dropPosition.Y);
                 return true;
             }
             else
@@ -696,7 +699,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 source.Position = target.Position;
                 target.Position = sourceOldPosition;
                 SelectedPlacement = source;
-                StatusMessage = "配置を入れ替えました。";
+                StatusMessage = _loc["Status_PlacementSwapped"];
                 return true;
             }
         }
@@ -733,7 +736,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 ? await AppendPlacementToViewAsync(pid, ct)
                 : null;
             SelectedPlacement = added;
-            StatusMessage = $"({position.X},{position.Y}) に配置しました。";
+            StatusMessage = _loc.Format("Status_PlacementPlacedFmt", position.X, position.Y);
             return true;
         }
         finally { IsBusy = false; }
@@ -752,7 +755,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             var position = FindFirstFreeCell(grid, candidate.OccupySize);
             if (position is null)
             {
-                StatusMessage = "空きセルが見つかりません。";
+                StatusMessage = _loc["Status_NoFreeCells"];
                 return;
             }
 
@@ -772,7 +775,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 ? await AppendPlacementToViewAsync(pid, ct)
                 : null;
             SelectedPlacement = added;
-            StatusMessage = $"({position.Value.X},{position.Value.Y}) に配置しました。";
+            StatusMessage = _loc.Format("Status_PlacementPlacedFmt", position.Value.X, position.Value.Y);
         }
         finally { IsBusy = false; }
     }
@@ -790,7 +793,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             var snapshot = await _placementRepository.FindByIdAsync(target.PlacementId, ct);
             if (snapshot is null)
             {
-                StatusMessage = "削除対象の配置が見つかりません。";
+                StatusMessage = _loc["Status_PlacementNotFoundForRemove"];
                 return;
             }
 
@@ -806,7 +809,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
             Placements.Remove(target);
             SelectedPlacement = Placements.FirstOrDefault();
-            StatusMessage = "配置を削除しました。";
+            StatusMessage = _loc["Status_PlacementRemoved"];
         }
         finally { IsBusy = false; }
     }
@@ -893,7 +896,10 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 StatusMessage = string.Join(", ", result.Errors);
                 return null;
             }
-            StatusMessage = $"プレビュー生成 {sw.ElapsedMilliseconds:N0} ms ({result.Value.Length:N0} bytes)";
+            StatusMessage = _loc.Format(
+                "Status_PreviewGeneratedFmt",
+                sw.ElapsedMilliseconds.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
+                result.Value.Length.ToString("N0", System.Globalization.CultureInfo.CurrentCulture));
             LogPreviewRendered(_logger, options.TrimMode, options.OutputMode, sw.ElapsedMilliseconds, result.Value.Length);
             return result.Value;
         }
@@ -922,7 +928,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             sw.Stop();
             StatusMessage = result.IsError
                 ? string.Join(", ", result.Errors)
-                : $"出力 {sw.ElapsedMilliseconds:N0} ms: {Path.GetFileName(path)} ({result.Value.FileSizeBytes:N0} bytes)";
+                : _loc.Format(
+                    "Status_PngExportTimingFmt",
+                    sw.ElapsedMilliseconds.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
+                    Path.GetFileName(path),
+                    result.Value.FileSizeBytes.ToString("N0", System.Globalization.CultureInfo.CurrentCulture));
             if (!result.IsError)
                 LogPngExported(_logger, options.TrimMode, options.OutputMode, sw.ElapsedMilliseconds, result.Value.FileSizeBytes);
         }
@@ -944,12 +954,15 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try
         {
             await File.WriteAllBytesAsync(path, bytes, ct);
-            StatusMessage = $"出力しました: {Path.GetFileName(path)} ({bytes.LongLength:N0} bytes)";
+            StatusMessage = _loc.Format(
+                "Status_PngExportedFmt",
+                Path.GetFileName(path),
+                bytes.LongLength.ToString("N0", System.Globalization.CultureInfo.CurrentCulture));
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            StatusMessage = $"保存に失敗しました: {ex.Message}";
+            StatusMessage = _loc.Format("Status_SaveFailedFmt", ex.Message);
             return false;
         }
     }
@@ -1009,7 +1022,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             grid.RowWeights = reloaded.RowWeights;
             OnPropertyChanged(nameof(CurrentGrid));
         }
-        StatusMessage = "グリッド比率を更新しました。";
+        StatusMessage = _loc["Status_GridWeightsUpdated"];
         return true;
     }
 
@@ -1033,7 +1046,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         var current = await _placementRepository.FindByIdAsync(placementId, ct);
         if (current is null)
         {
-            StatusMessage = $"GridPlacement {placementId} が見つかりません。";
+            StatusMessage = _loc.Format("Status_PlacementNotFoundFmt", placementId);
             return false;
         }
         var beforeX = current.PixelOffsetX;
@@ -1042,7 +1055,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         if (beforeX == clampedX && beforeY == clampedY)
         {
             // 値変化なし — 履歴に積まない
-            StatusMessage = "ピクセル微調整: 変化なし。";
+            StatusMessage = _loc["Status_PixelOffsetNoChange"];
             return true;
         }
 
@@ -1064,7 +1077,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             item.PixelOffsetX = clampedX;
             item.PixelOffsetY = clampedY;
         }
-        StatusMessage = $"ピクセル微調整を保存しました (ΔX={clampedX}, ΔY={clampedY})。";
+        StatusMessage = _loc.Format("Status_PixelOffsetSavedFmt", clampedX, clampedY);
         return true;
     }
 
@@ -1111,8 +1124,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         OnPropertyChanged(nameof(CurrentGrid));
 
         StatusMessage = changed
-            ? (axis == FitAxis.Column ? "列幅を画像にフィットしました。" : "行高を画像にフィットしました。")
-            : "フィット対象なし（余白がない、または計算範囲外）。";
+            ? _loc[axis == FitAxis.Column ? "Status_FitColumnDone" : "Status_FitRowDone"]
+            : _loc["Status_FitNoTarget"];
         return true;
     }
 
@@ -1152,7 +1165,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             grid.ColLocked = reloaded.ColLocked;
             OnPropertyChanged(nameof(CurrentGrid));
         }
-        StatusMessage = afterCol[colIndex] ? $"列 {colIndex} をロックしました。" : $"列 {colIndex} のロックを解除しました。";
+        StatusMessage = _loc.Format(
+            afterCol[colIndex] ? "Status_ColLockedFmt" : "Status_ColUnlockedFmt",
+            colIndex);
         return true;
     }
 
@@ -1188,7 +1203,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             grid.RowLocked = reloaded.RowLocked;
             OnPropertyChanged(nameof(CurrentGrid));
         }
-        StatusMessage = afterRow[rowIndex] ? $"行 {rowIndex} をロックしました。" : $"行 {rowIndex} のロックを解除しました。";
+        StatusMessage = _loc.Format(
+            afterRow[rowIndex] ? "Status_RowLockedFmt" : "Status_RowUnlockedFmt",
+            rowIndex);
         return true;
     }
 
@@ -1254,7 +1271,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 return;
             }
 
-            StatusMessage = $"「{nameToUse}」を作成しました。";
+            StatusMessage = _loc.Format("Status_VariantCreatedFmt", nameToUse);
             // 新規 Copy 作成は Undo 対象外。既存履歴の参照整合性が崩れる前にクリア。
             _history.Clear();
             _messenger.Send(new CopyLibraryChangedMessage());
@@ -1304,7 +1321,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             }
             SelectedCandidate = Candidates.FirstOrDefault();
 
-            StatusMessage = $"「{label}」を削除しました。";
+            StatusMessage = _loc.Format("Status_VariantDeletedFmt", label);
             // Copy 削除は cascade で Placement も消えるため履歴を全消去
             _history.Clear();
             _messenger.Send(new CopyLibraryChangedMessage());

@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using ViewGrid.Application.History;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
@@ -25,6 +26,7 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
     private readonly IFilePickerService _filePickerService;
     private readonly IMessenger _messenger;
     private readonly IUndoRedoService _history;
+    private readonly ILocalizationService _loc;
     private readonly ILogger<AssetLibraryViewModel> _logger;
 
     [ObservableProperty]
@@ -64,6 +66,7 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
         IFilePickerService filePickerService,
         IMessenger messenger,
         IUndoRedoService history,
+        ILocalizationService loc,
         ILogger<AssetLibraryViewModel> logger)
     {
         _importUseCase = importUseCase;
@@ -73,6 +76,7 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
         _filePickerService = filePickerService;
         _messenger = messenger;
         _history = history;
+        _loc = loc;
         _logger = logger;
 
         SelectedAssets.CollectionChanged += (_, _) =>
@@ -251,8 +255,10 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
             SelectedAsset = null;
 
             StatusMessage = failed == 0
-                ? (success == 1 ? $"{targets[0].DisplayName} を削除しました。" : $"{success} 件削除しました。")
-                : $"{success} 件削除、{failed} 件失敗（{string.Join(", ", errors.Distinct())}）";
+                ? (success == 1
+                    ? _loc.Format("Status_AssetDeletedSingleFmt", targets[0].DisplayName)
+                    : _loc.Format("Status_AssetDeletedCountFmt", success))
+                : _loc.Format("Status_AssetDeletedMixedFmt", success, failed, string.Join(", ", errors.Distinct()));
 
             // Asset 削除は cascade で関連 ImageCopy も削除されるため候補にも反映。
             // 履歴に該当 Copy を参照する Command が残ると Undo で NotFound になるので全消去。
@@ -299,8 +305,8 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
             }
 
             StatusMessage = displayName is null
-                ? "アセットを削除しました。"
-                : $"{displayName} を削除しました。";
+                ? _loc["Status_AssetDeleted"]
+                : _loc.Format("Status_AssetDeletedSingleFmt", displayName);
 
             // Asset 削除は cascade で関連 ImageCopy も削除されるため候補にも反映。
             // 履歴に該当 Copy を参照する Command が残ると Undo で NotFound になるので全消去。
@@ -331,13 +337,13 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
         return new AssetItemViewModel(asset, thumb);
     }
 
-    private static string BuildStatus(int imported, int duplicated, int failed)
+    private string BuildStatus(int imported, int duplicated, int failed)
     {
         var parts = new List<string>();
-        if (imported > 0) parts.Add($"{imported} 件追加");
-        if (duplicated > 0) parts.Add($"{duplicated} 件は既存（重複）");
-        if (failed > 0) parts.Add($"{failed} 件失敗");
-        return parts.Count > 0 ? string.Join(" / ", parts) : "変更なし";
+        if (imported > 0) parts.Add(_loc.Format("Status_AssetImportedFmt", imported));
+        if (duplicated > 0) parts.Add(_loc.Format("Status_AssetDuplicatedFmt", duplicated));
+        if (failed > 0) parts.Add(_loc.Format("Status_AssetImportFailedFmt", failed));
+        return parts.Count > 0 ? string.Join(" / ", parts) : _loc["Status_NoChange"];
     }
 
     [LoggerMessage(EventId = 2001, Level = LogLevel.Information, Message = "アセット一覧を読み込み: {Count} 件")]

@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using ViewGrid.Application.History;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
@@ -25,6 +26,7 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         _history = new UndoRedoService();
         _vm = new CopyPropertiesViewModel(
             update, _history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
+            new NullLocalizationService(),
             NullLogger<CopyPropertiesViewModel>.Instance);
     }
 
@@ -105,7 +107,7 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         await _vm.SaveAsync();
 
         _vm.IsDirty.Should().BeFalse();
-        _vm.StatusMessage.Should().Be("保存しました。");
+        _vm.StatusMessage.Should().Be("Status_Saved");
 
         // 永続化の確認
         var reloaded = await _fx.CopyRepository.FindByIdAsync(source.CopyId);

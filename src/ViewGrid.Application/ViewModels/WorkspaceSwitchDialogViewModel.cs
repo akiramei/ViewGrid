@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using ViewGrid.Application.Localization;
 using ViewGrid.Core.Services;
 using ViewGrid.Core.Settings;
 
@@ -15,6 +16,7 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
 {
     private readonly IWorkspaceManager _manager;
     private readonly IWorkspaceContext _context;
+    private readonly ILocalizationService _loc;
 
     public ObservableCollection<WorkspaceItem> Workspaces { get; } = [];
 
@@ -128,10 +130,11 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
     /// </summary>
     public bool ShowSelectedEditor => SelectedWorkspace is not null && !IsCreating;
 
-    public WorkspaceSwitchDialogViewModel(IWorkspaceManager manager, IWorkspaceContext context)
+    public WorkspaceSwitchDialogViewModel(IWorkspaceManager manager, IWorkspaceContext context, ILocalizationService loc)
     {
         _manager = manager;
         _context = context;
+        _loc = loc;
     }
 
     public async Task LoadAsync(CancellationToken ct = default)
@@ -243,12 +246,12 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
             ErrorOr.ErrorOr<WorkspaceManifest> result;
             if (DuplicateSourceName is { } src)
             {
-                StatusMessage = "複製中... ワークスペースのサイズによっては時間がかかります。";
+                StatusMessage = _loc["Status_DuplicatingWorkspace"];
                 result = await _manager.DuplicateAsync(src, newName, newDisplay, ct);
             }
             else if (ImportSourceZipPath is { } zip)
             {
-                StatusMessage = "インポート中... ワークスペースのサイズによっては時間がかかります。";
+                StatusMessage = _loc["Status_ImportingWorkspace"];
                 result = await _manager.ImportAsync(zip, newName, newDisplay, ct);
             }
             else
@@ -288,11 +291,11 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
         try
         {
             IsBusy = true;
-            StatusMessage = "エクスポート中... ワークスペースのサイズによっては時間がかかります。";
+            StatusMessage = _loc["Status_ExportingWorkspace"];
             var result = await _manager.ExportAsync(sel.Name, destinationZipPath, ct);
             StatusMessage = result.IsError
                 ? result.FirstError.Description
-                : $"エクスポートしました: {destinationZipPath}";
+                : _loc.Format("Status_ExportedFmt", destinationZipPath);
         }
         finally
         {

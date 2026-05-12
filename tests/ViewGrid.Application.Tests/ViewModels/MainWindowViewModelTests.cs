@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
@@ -45,6 +46,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         var sharedHistory = new ViewGrid.Application.History.UndoRedoService();
         _assetLibrary = new AssetLibraryViewModel(
             import, deleteAsset, _fx.AssetRepository, _fx.Thumbnails, picker, _messenger, sharedHistory,
+            new NullLocalizationService(),
             NullLogger<AssetLibraryViewModel>.Instance);
 
         var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
@@ -53,6 +55,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         // CopyPropertiesViewModel: PlacementInspector に inline embed されるため必要
         var copyProperties = new CopyPropertiesViewModel(
             updateCopy, sharedHistory, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
+            new NullLocalizationService(),
             NullLogger<CopyPropertiesViewModel>.Instance);
 
         // GridCanvasListViewModel
@@ -62,6 +65,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         var updateGridSize = new UpdateGridCanvasSizeUseCase(_fx.GridRepository);
         _gridList = new GridCanvasListViewModel(
             _fx.GridRepository, createGrid, deleteGrid, renameGrid, updateGridSize, _fx.AppSettings, sharedHistory,
+            new NullLocalizationService(),
             NullLogger<GridCanvasListViewModel>.Instance);
 
         // GridWorkspaceViewModel + PlacementInspector
@@ -80,6 +84,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             offset, occupy, fork, _fx.PlacementRepository, _fx.CopyRepository,
             _fx.AssetRepository, _fx.Thumbnails, _fx.Storage,
             copyProperties, sharedHistory, _messenger, _fx.AppSettings,
+            new NullLocalizationService(),
             NullLogger<PlacementInspectorViewModel>.Instance);
         var updateWeights = new UpdateGridWeightsUseCase(_fx.GridRepository);
         var updateLocks = new UpdateGridLocksUseCase(_fx.GridRepository);
@@ -92,6 +97,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             _fx.Thumbnails, _fx.CropResolver,
             place, remove, move, swap, render, export, updateWeights, updateLocks, offset,
             fitWeight, createCopy, updateCopy, picker, _messenger, sharedHistory, inspector,
+            new NullLocalizationService(),
             NullLogger<GridWorkspaceViewModel>.Instance);
 
         _vm = new MainWindowViewModel(
