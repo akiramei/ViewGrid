@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using ViewGrid.Application.History;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.Messages;
 
 namespace ViewGrid.Application.ViewModels;
@@ -12,6 +13,7 @@ public sealed partial class MainWindowViewModel
 {
     private readonly IMessenger _messenger;
     private readonly IUndoRedoService _history;
+    private readonly ILocalizationService _loc;
 
     /// <summary>
     /// VM 構築時 (= UI thread) に capture した SynchronizationContext。
@@ -43,13 +45,15 @@ public sealed partial class MainWindowViewModel
     [ObservableProperty]
     public partial bool CanRedo { get; set; }
 
-    /// <summary>編集メニューに表示する Undo ラベル（例: "元に戻す: 配置"）。</summary>
+    /// <summary>編集メニューに表示する Undo ラベル（例: "元に戻す: 配置"）。
+    /// 初期値はコンストラクタで <c>_loc[Edit_Undo]</c> から設定される。</summary>
     [ObservableProperty]
-    public partial string UndoLabel { get; set; } = "元に戻す";
+    public partial string UndoLabel { get; set; } = string.Empty;
 
-    /// <summary>編集メニューに表示する Redo ラベル（例: "やり直し: 配置"）。</summary>
+    /// <summary>編集メニューに表示する Redo ラベル（例: "やり直し: 配置"）。
+    /// 初期値はコンストラクタで <c>_loc[Edit_Redo]</c> から設定される。</summary>
     [ObservableProperty]
-    public partial string RedoLabel { get; set; } = "やり直し";
+    public partial string RedoLabel { get; set; } = string.Empty;
 
     /// <summary>履歴 UI（Phase 2 のツールバー Flyout）にバインドする履歴エントリ一覧。
     /// <see cref="IUndoRedoService.History"/> を都度評価する（StateChanged で通知）。</summary>
@@ -71,8 +75,8 @@ public sealed partial class MainWindowViewModel
             var assetCount = AssetLibrary.Assets.Count;
             var grid = GridList.SelectedGrid;
             if (grid is null)
-                return $"アセット {assetCount} 件 / グリッド未選択";
-            return $"アセット {assetCount} 件 / {grid.Name} ({grid.Cols}×{grid.Rows} セル)";
+                return _loc.Format("Status_NoGridSummaryFmt", assetCount);
+            return _loc.Format("Status_GridSummaryFmt", assetCount, grid.Name, grid.Cols, grid.Rows);
         }
     }
 
@@ -85,9 +89,9 @@ public sealed partial class MainWindowViewModel
         get
         {
             var total = _history.History.Count;
-            if (total == 0) return "履歴なし";
+            if (total == 0) return _loc["Status_NoHistory"];
             var current = _history.CurrentIndex + 1; // 0 始まりを 1 始まりへ
-            return $"履歴: {current}/{total}";
+            return _loc.Format("Status_HistorySummaryFmt", current, total);
         }
     }
 
@@ -105,7 +109,7 @@ public sealed partial class MainWindowViewModel
     /// ステータスバー右側に表示する未保存バッジの文字列。
     /// 未保存なしのときは空文字（View 側で <see cref="HasUnsavedChanges"/> により非表示にする）。
     /// </summary>
-    public string UnsavedSummary => HasUnsavedChanges ? "● 未保存の変更" : string.Empty;
+    public string UnsavedSummary => HasUnsavedChanges ? _loc["Status_UnsavedSummary"] : string.Empty;
 
     /// <summary>
     /// ステータスバー上のコンテキスト依存ヒント（永続ヒントバー）。
@@ -117,14 +121,14 @@ public sealed partial class MainWindowViewModel
         get
         {
             if (AssetLibrary.Assets.Count == 0)
-                return "画像をドラッグ&ドロップ または「+ 画像を追加」ボタンから取り込みを開始します";
+                return _loc["Hint_NoAssets"];
             if (GridList.SelectedGrid is null)
-                return "上の「+ 新規」でグリッドを作成すると配置を始められます";
+                return _loc["Hint_NoGrid"];
             if (GridWorkspace.SelectedPlacement is not null)
-                return "Shift+ドラッグ で微調整 / Ctrl+矢印 1px / Ctrl+Shift+矢印 10px / 境界をドラッグで比率調整 / Esc で選択解除";
+                return _loc["Hint_PlacementSelected"];
             if (GridWorkspace.SelectedCandidate is not null)
-                return "F2 でバリアント名変更 / Enter で確定 / Esc でキャンセル / セルへ D&D で配置";
-            return "右の候補をセルへドラッグ&ドロップで配置 / 境界ドラッグで比率 / ヘッダ 🔒 で固定";
+                return _loc["Hint_CandidateSelected"];
+            return _loc["Hint_Default"];
         }
     }
 
@@ -161,13 +165,15 @@ public sealed partial class MainWindowViewModel
         GridCanvasListViewModel gridList,
         GridWorkspaceViewModel gridWorkspace,
         IMessenger messenger,
-        IUndoRedoService history)
+        IUndoRedoService history,
+        ILocalizationService loc)
     {
         AssetLibrary = assetLibrary;
         GridList = gridList;
         GridWorkspace = gridWorkspace;
         _messenger = messenger;
         _history = history;
+        _loc = loc;
         // UI thread の context を capture しておく (StateChanged が ThreadPool 上で
         // 発火しても OnHistoryStateChanged を UI thread に marshal できるように)。
         _uiContext = SynchronizationContext.Current;
@@ -180,10 +186,36 @@ public sealed partial class MainWindowViewModel
         // Stage 3: Inspector に統合された IsAnyDirty (placement + shared) を未保存バッジに転送
         GridWorkspace.Inspector.PropertyChanged += OnDirtyTrackedPropertyChanged;
 
+        // 言語切替時に computed property (CurrentHints / StatusSummary / HistorySummary /
+        // UnsavedSummary / UndoLabel / RedoLabel) を再評価するため LocService の
+        // "Item[]" 通知を購読する。 ステータスバーは常時表示されるため操作トリガなしでも追従させる。
+        _loc.PropertyChanged += OnLocPropertyChanged;
+
         _history.StateChanged += OnHistoryStateChanged;
         _history.Undone += OnHistoryUndoneOrRedone;
         _history.Redone += OnHistoryUndoneOrRedone;
         OnHistoryStateChanged();
+    }
+
+    /// <summary>
+    /// 言語切替時に「文字列を引いている computed property」 を一斉に再評価させる。
+    /// LocService は <c>"Item[]"</c> という indexer 専用の特殊名で通知してくるが、
+    /// ここでは 「culture が変わった = 全 i18n プロパティを更新」 と解釈してまとめて notify する。
+    /// </summary>
+    private void OnLocPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // "Item[]" は WPF/Avalonia 慣例で 「全 indexer 値が変わった」 を表す。
+        // 個別キーで通知してくる実装にも備えて null や空文字も拾う。
+        if (e.PropertyName is null or "" or "Item[]")
+        {
+            OnPropertyChanged(nameof(CurrentHints));
+            OnPropertyChanged(nameof(StatusSummary));
+            OnPropertyChanged(nameof(HistorySummary));
+            OnPropertyChanged(nameof(UnsavedSummary));
+            // UndoLabel / RedoLabel は ObservableProperty (= フィールド保持) なので
+            // 履歴ハンドラ経由で再構築させる。
+            OnHistoryStateChanged();
+        }
     }
 
     /// <summary>Ctrl+Z / 編集メニュー → Undo。Undo 後に各 VM を最新 DB 状態に再同期する。</summary>
@@ -317,8 +349,8 @@ public sealed partial class MainWindowViewModel
     {
         CanUndo = _history.CanUndo;
         CanRedo = _history.CanRedo;
-        UndoLabel = _history.NextUndoDescription is { } u ? $"元に戻す: {u}" : "元に戻す";
-        RedoLabel = _history.NextRedoDescription is { } r ? $"やり直し: {r}" : "やり直し";
+        UndoLabel = _history.NextUndoDescription is { } u ? _loc.Format("Edit_UndoFmt", u) : _loc["Edit_Undo"];
+        RedoLabel = _history.NextRedoDescription is { } r ? _loc.Format("Edit_RedoFmt", r) : _loc["Edit_Redo"];
 
         // 履歴 UI 用プロパティ（History は呼び出しのたびに新しい List を生成するため、
         // 参照変更通知でバインドが再評価される）
@@ -482,6 +514,7 @@ public sealed partial class MainWindowViewModel
         _history.StateChanged -= OnHistoryStateChanged;
         _history.Undone -= OnHistoryUndoneOrRedone;
         _history.Redone -= OnHistoryUndoneOrRedone;
+        _loc.PropertyChanged -= OnLocPropertyChanged;
         AssetLibrary.Assets.CollectionChanged -= OnAssetLibraryAssetsChanged;
         GridList.PropertyChanged -= OnGridListPropertyChanged;
         GridWorkspace.PropertyChanged -= OnGridWorkspacePropertyChanged;

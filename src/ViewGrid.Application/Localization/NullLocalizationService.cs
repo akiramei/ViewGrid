@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 
 namespace ViewGrid.Application.Localization;
@@ -14,4 +15,9 @@ public sealed class NullLocalizationService : ILocalizationService
         args is { Length: > 0 }
             ? string.Format(CultureInfo.InvariantCulture, "{0}({1})", key, string.Join(",", args))
             : key ?? string.Empty;
+
+    /// <summary>言語切替を持たないので発火しない。 インタフェース要件を満たすためだけの宣言。</summary>
+#pragma warning disable CS0067 // event は never fires (テスト用 stub なので意図的)
+    public event PropertyChangedEventHandler? PropertyChanged;
+#pragma warning restore CS0067
 }

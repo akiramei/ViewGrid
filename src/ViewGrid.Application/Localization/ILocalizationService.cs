@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace ViewGrid.Application.Localization;
 
 /// <summary>
@@ -9,8 +11,11 @@ namespace ViewGrid.Application.Localization;
 /// 依存方向が逆転するため、 この抽象を経由する。</para>
 /// <para>テストでは <see cref="NullLocalizationService"/> を渡すことで「キー文字列を
 /// そのまま返す」 動作になり、 アサーションは表示文言の言語に依存しない。</para>
+/// <para><see cref="INotifyPropertyChanged"/> を継承しているため、 言語切替時に
+/// <c>"Item[]"</c> 通知を受け取って computed property を再評価できる
+/// (例: <c>MainWindowViewModel.CurrentHints</c>)。</para>
 /// </remarks>
-public interface ILocalizationService
+public interface ILocalizationService : INotifyPropertyChanged
 {
     /// <summary>キーから現在 culture の表示文字列を取得する。</summary>
     string this[string key] { get; }

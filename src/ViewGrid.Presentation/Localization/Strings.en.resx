@@ -399,4 +399,20 @@
   <data name="Term_VariantPrefix" xml:space="preserve"><value>Variant</value></data>
   <data name="Term_VariantUnnamed" xml:space="preserve"><value>(Unnamed)</value></data>
   <data name="Term_VariantUnknown" xml:space="preserve"><value>(Unknown variant)</value></data>
+
+  <!-- Status bar hints (Phase 3+: MainWindowViewModel.CurrentHints / UnsavedSummary) -->
+  <data name="Hint_NoAssets" xml:space="preserve"><value>Drag &amp; drop images, or click "+ Add images" to start importing</value></data>
+  <data name="Hint_NoGrid" xml:space="preserve"><value>Click "+ New" above to create a grid and start placing</value></data>
+  <data name="Hint_PlacementSelected" xml:space="preserve"><value>Shift+drag to nudge / Ctrl+Arrow 1px / Ctrl+Shift+Arrow 10px / drag borders to resize / Esc to deselect</value></data>
+  <data name="Hint_CandidateSelected" xml:space="preserve"><value>F2 to rename variant / Enter to confirm / Esc to cancel / drag &amp; drop onto a cell to place</value></data>
+  <data name="Hint_Default" xml:space="preserve"><value>Drag candidates to cells to place / drag borders to resize / 🔒 in header to lock</value></data>
+  <data name="Status_UnsavedSummary" xml:space="preserve"><value>● Unsaved changes</value></data>
+  <data name="Status_NoGridSummaryFmt" xml:space="preserve"><value>{0} assets / no grid selected</value></data>
+  <data name="Status_GridSummaryFmt" xml:space="preserve"><value>{0} assets / {1} ({2}×{3} cells)</value></data>
+  <data name="Status_NoHistory" xml:space="preserve"><value>No history</value></data>
+  <data name="Status_HistorySummaryFmt" xml:space="preserve"><value>History: {0}/{1}</value></data>
+  <data name="Edit_Undo" xml:space="preserve"><value>Undo</value></data>
+  <data name="Edit_UndoFmt" xml:space="preserve"><value>Undo: {0}</value></data>
+  <data name="Edit_Redo" xml:space="preserve"><value>Redo</value></data>
+  <data name="Edit_RedoFmt" xml:space="preserve"><value>Redo: {0}</value></data>
 </root>

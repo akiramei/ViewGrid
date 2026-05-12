@@ -101,7 +101,8 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             NullLogger<GridWorkspaceViewModel>.Instance);
 
         _vm = new MainWindowViewModel(
-            _assetLibrary, _gridList, _gridWorkspace, _messenger, sharedHistory);
+            _assetLibrary, _gridList, _gridWorkspace, _messenger, sharedHistory,
+            new NullLocalizationService());
     }
 
     public async Task DisposeAsync()
@@ -362,7 +363,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
     [Fact]
     public void CurrentHints_Empty_Library_Shows_Drop_Hint()
     {
-        _vm.CurrentHints.Should().Contain("ドラッグ");
+        _vm.CurrentHints.Should().Be("Hint_NoAssets");
     }
 
     /// <summary>
@@ -373,7 +374,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
     {
         await _fx.SeedAssetAsync();
         await _assetLibrary.LoadAsync();
-        _vm.CurrentHints.Should().Contain("グリッド");
+        _vm.CurrentHints.Should().Be("Hint_NoGrid");
     }
 
     /// <summary>
@@ -390,7 +391,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         _gridWorkspace.Inspector.IsDirty = true;
 
         _vm.HasUnsavedChanges.Should().BeTrue();
-        _vm.UnsavedSummary.Should().Contain("未保存");
+        _vm.UnsavedSummary.Should().Be("Status_UnsavedSummary");
     }
 
     /// <summary>
@@ -404,7 +405,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         _gridWorkspace.Inspector.CopyProperties.IsDirty = true;
 
         _vm.HasUnsavedChanges.Should().BeTrue();
-        _vm.UnsavedSummary.Should().Contain("未保存");
+        _vm.UnsavedSummary.Should().Be("Status_UnsavedSummary");
     }
 
     /// <summary>

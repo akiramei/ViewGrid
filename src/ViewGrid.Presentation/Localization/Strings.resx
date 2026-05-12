@@ -399,4 +399,20 @@
   <data name="Term_VariantPrefix" xml:space="preserve"><value>バリアント</value></data>
   <data name="Term_VariantUnnamed" xml:space="preserve"><value>(無名)</value></data>
   <data name="Term_VariantUnknown" xml:space="preserve"><value>(不明なバリアント)</value></data>
+
+  <!-- ステータスバー ヒント (Phase 3+: MainWindowViewModel.CurrentHints / UnsavedSummary) -->
+  <data name="Hint_NoAssets" xml:space="preserve"><value>画像をドラッグ&amp;ドロップ または「+ 画像を追加」ボタンから取り込みを開始します</value></data>
+  <data name="Hint_NoGrid" xml:space="preserve"><value>上の「+ 新規」でグリッドを作成すると配置を始められます</value></data>
+  <data name="Hint_PlacementSelected" xml:space="preserve"><value>Shift+ドラッグ で微調整 / Ctrl+矢印 1px / Ctrl+Shift+矢印 10px / 境界をドラッグで比率調整 / Esc で選択解除</value></data>
+  <data name="Hint_CandidateSelected" xml:space="preserve"><value>F2 でバリアント名変更 / Enter で確定 / Esc でキャンセル / セルへ D&amp;D で配置</value></data>
+  <data name="Hint_Default" xml:space="preserve"><value>右の候補をセルへドラッグ&amp;ドロップで配置 / 境界ドラッグで比率 / ヘッダ 🔒 で固定</value></data>
+  <data name="Status_UnsavedSummary" xml:space="preserve"><value>● 未保存の変更</value></data>
+  <data name="Status_NoGridSummaryFmt" xml:space="preserve"><value>アセット {0} 件 / グリッド未選択</value></data>
+  <data name="Status_GridSummaryFmt" xml:space="preserve"><value>アセット {0} 件 / {1} ({2}×{3} セル)</value></data>
+  <data name="Status_NoHistory" xml:space="preserve"><value>履歴なし</value></data>
+  <data name="Status_HistorySummaryFmt" xml:space="preserve"><value>履歴: {0}/{1}</value></data>
+  <data name="Edit_Undo" xml:space="preserve"><value>元に戻す</value></data>
+  <data name="Edit_UndoFmt" xml:space="preserve"><value>元に戻す: {0}</value></data>
+  <data name="Edit_Redo" xml:space="preserve"><value>やり直し</value></data>
+  <data name="Edit_RedoFmt" xml:space="preserve"><value>やり直し: {0}</value></data>
 </root>
