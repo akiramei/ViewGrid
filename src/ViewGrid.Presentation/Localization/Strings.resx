@@ -208,6 +208,71 @@
   <data name="Output_Trim" xml:space="preserve"><value>切り出し</value></data>
   <data name="Output_Trim_Tooltip" xml:space="preserve"><value>出力 PNG の切り出し範囲。 PhotoBoard 時も合成後の画像に同じセマンティクスで適用されます。</value></data>
 
+  <!-- Inspector (配置編集) -->
+  <data name="Inspector_SaveAll_Tooltip" xml:space="preserve"><value>配置固有 + 共有特性 をまとめて保存</value></data>
+  <data name="Inspector_DeletePlacement" xml:space="preserve"><value>配置を削除</value></data>
+  <data name="Inspector_DeletePlacement_Tooltip" xml:space="preserve"><value>この配置を削除します</value></data>
+  <data name="Inspector_PlacementSpecific" xml:space="preserve"><value>配置固有</value></data>
+  <data name="Inspector_OccupyCells" xml:space="preserve"><value>占有セル (W×H)</value></data>
+  <data name="Inspector_OccupyCells_Hint" xml:space="preserve"><value>この配置のみ占有セルが変わります（同バリアントの別配置には影響しません）</value></data>
+  <data name="Inspector_PixelOffset" xml:space="preserve"><value>ピクセル微調整 (ΔX/ΔY)</value></data>
+  <data name="Inspector_PixelOffset_ResetButton" xml:space="preserve"><value>0 にリセット</value></data>
+  <data name="Inspector_PixelOffset_Hint" xml:space="preserve"><value>ヒント: Shift+ドラッグ / Ctrl+矢印でも微調整可</value></data>
+  <data name="Inspector_SharedProperties" xml:space="preserve"><value>共有特性（同バリアントを参照する全配置に反映）</value></data>
+  <data name="Inspector_ForkVariant" xml:space="preserve"><value>この配置だけ別バリアントに分岐</value></data>
+  <data name="Inspector_ForkVariant_Tooltip" xml:space="preserve"><value>元バリアントを複製した独立バリアントに切替えます。他の配置には影響しません。</value></data>
+
+  <!-- CopyPropertiesView (バリアント特性編集) -->
+  <data name="CopyProps_NoSelection" xml:space="preserve"><value>バリアントを選択してください</value></data>
+  <data name="CopyProps_NoSelection_Hint" xml:space="preserve"><value>左の一覧から 1 件選ぶと特性を編集できます</value></data>
+  <data name="CopyProps_Save_Tooltip" xml:space="preserve"><value>特性編集を保存</value></data>
+  <data name="CopyProps_Tab_Properties" xml:space="preserve"><value>特性</value></data>
+  <data name="CopyProps_Tab_Crop" xml:space="preserve"><value>トリミング</value></data>
+  <data name="CopyProps_Tab_Regions" xml:space="preserve"><value>保護領域</value></data>
+  <data name="CopyProps_Rotation" xml:space="preserve"><value>回転</value></data>
+  <data name="CopyProps_Flip" xml:space="preserve"><value>反転</value></data>
+  <data name="CopyProps_FlipH" xml:space="preserve"><value>水平 (H)</value></data>
+  <data name="CopyProps_FlipV" xml:space="preserve"><value>垂直 (V)</value></data>
+  <data name="CopyProps_Scaling" xml:space="preserve"><value>スケーリング</value></data>
+  <data name="CopyProps_Alignment" xml:space="preserve"><value>アライメント</value></data>
+  <data name="CopyProps_TrimMode" xml:space="preserve"><value>トリミング方式</value></data>
+  <data name="CopyProps_TrimMode_Off" xml:space="preserve"><value>OFF</value></data>
+  <data name="CopyProps_TrimMode_Auto" xml:space="preserve"><value>自動（単色余白）</value></data>
+  <data name="CopyProps_TrimMode_Manual" xml:space="preserve"><value>手動（任意矩形）</value></data>
+  <data name="CopyProps_AutoCrop_TargetColor" xml:space="preserve"><value>対象色</value></data>
+  <data name="CopyProps_AutoCrop_Hex" xml:space="preserve"><value>HEX (#RRGGBB)</value></data>
+  <data name="CopyProps_AutoCrop_PickerHint" xml:space="preserve"><value>下のサムネ画像をクリックすると色を採取できます。</value></data>
+  <data name="CopyProps_AutoCrop_Threshold" xml:space="preserve"><value>許容色差（0–128）</value></data>
+  <data name="CopyProps_AutoCrop_Threshold_Hint" xml:space="preserve"><value>0 で完全一致のみ余白扱い（既定）。大きいほど許容。</value></data>
+  <data name="CopyProps_ManualCrop_Hint" xml:space="preserve"><value>サムネ上でドラッグして矩形を描画。4 隅 / 4 辺の 8 ハンドルでサイズ変更、内部ドラッグで移動。細かい調整は『詳細編集』で。</value></data>
+  <data name="CopyProps_ManualCrop_DetailButton" xml:space="preserve"><value>詳細編集（拡大表示）...</value></data>
+  <data name="CopyProps_ManualCrop_X" xml:space="preserve"><value>X (px)</value></data>
+  <data name="CopyProps_ManualCrop_Y" xml:space="preserve"><value>Y (px)</value></data>
+  <data name="CopyProps_ManualCrop_W" xml:space="preserve"><value>幅 (px)</value></data>
+  <data name="CopyProps_ManualCrop_H" xml:space="preserve"><value>高さ (px)</value></data>
+  <data name="CopyProps_Regions_Header" xml:space="preserve"><value>保護領域</value></data>
+  <data name="CopyProps_Regions_Description" xml:space="preserve"><value>セル内画像の一部を独立アセットとして分離し、 cell 内任意位置に配置します。 親の回転 / 反転 / アライメントは適用されず、 スケールのみ追従します。</value></data>
+  <data name="CopyProps_Regions_Add_Tooltip" xml:space="preserve"><value>新しい保護領域を追加します (画像中央に既定矩形)</value></data>
+  <data name="CopyProps_Regions_Edit_Tooltip" xml:space="preserve"><value>選択中の保護領域の矩形を編集します</value></data>
+  <data name="CopyProps_Regions_MoveUp_Tooltip" xml:space="preserve"><value>選択中の保護領域を 1 つ上に移動します (描画順が 1 つ前になります)</value></data>
+  <data name="CopyProps_Regions_MoveDown_Tooltip" xml:space="preserve"><value>選択中の保護領域を 1 つ下に移動します (描画順が 1 つ後ろになります)</value></data>
+  <data name="CopyProps_Regions_Remove_Tooltip" xml:space="preserve"><value>選択中の保護領域を削除します</value></data>
+  <data name="CopyProps_Regions_Empty" xml:space="preserve"><value>登録された保護領域はありません。 「追加」 で 1 件作成してから、 「編集」 で形を整えてください。</value></data>
+  <data name="CopyProps_Regions_SelectedHeader" xml:space="preserve"><value>選択中の保護領域</value></data>
+  <data name="CopyProps_Regions_OffsetX" xml:space="preserve"><value>Offset X (px)</value></data>
+  <data name="CopyProps_Regions_OffsetY" xml:space="preserve"><value>Offset Y (px)</value></data>
+  <data name="CopyProps_Regions_RotationLabel" xml:space="preserve"><value>回転 (region 単独)</value></data>
+  <data name="CopyProps_Regions_FlipLabel" xml:space="preserve"><value>反転 (region 単独)</value></data>
+  <data name="CopyProps_Regions_FillMode" xml:space="preserve"><value>塗りモード (親側)</value></data>
+  <data name="CopyProps_Regions_HexLabel" xml:space="preserve"><value>HEX (#AARRGGBB)</value></data>
+  <data name="CopyProps_Regions_HexHint" xml:space="preserve"><value>下のサムネ画像をクリックすると元画像 (Crop 適用前) から色を採取できます (FillMode は自動的に Custom に切り替わります)。</value></data>
+
+  <!-- MainWindow ステータスバー / 履歴 Flyout -->
+  <data name="History_Tooltip" xml:space="preserve"><value>操作履歴</value></data>
+  <data name="History_Header" xml:space="preserve"><value>操作履歴（最新 50 件）</value></data>
+  <data name="History_Empty" xml:space="preserve"><value>操作履歴はありません</value></data>
+  <data name="StatusBar_Unsaved_Tooltip" xml:space="preserve"><value>特性編集 / Inspector に未保存の編集があります。各タブの「保存」ボタンで永続化してください。</value></data>
+
   <!-- グリッドプロパティ (右ペイン) -->
   <data name="GridProps_Save_Tooltip" xml:space="preserve"><value>名前 + キャンバスサイズの変更をまとめて保存</value></data>
   <data name="GridProps_Reset_Tooltip" xml:space="preserve"><value>編集前の値に戻す</value></data>

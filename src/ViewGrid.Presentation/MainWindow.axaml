@@ -167,7 +167,7 @@
                 <Button x:Name="HistoryDropdownButton"
                         Classes="toolbar"
                         Margin="8,0,0,0"
-                        ToolTip.Tip="操作履歴">
+                        ToolTip.Tip="{loc:Tr History_Tooltip}">
                     <PathIcon Data="{StaticResource ChevronDownGeometry}" Width="12" Height="12" />
                     <Button.Flyout>
                         <Flyout Placement="BottomEdgeAlignedRight"
@@ -175,7 +175,7 @@
                             <Border MinWidth="320" MaxWidth="500" MaxHeight="500">
                                 <Grid RowDefinitions="Auto,*,Auto">
                                     <TextBlock Grid.Row="0"
-                                               Text="操作履歴（最新 50 件）"
+                                               Text="{loc:Tr History_Header}"
                                                FontWeight="SemiBold"
                                                Margin="12,8" />
                                     <ListBox Grid.Row="1"
@@ -188,7 +188,7 @@
                                              IsVisible="{Binding HasHistory}"
                                              PointerReleased="OnHistoryItemClicked" />
                                     <TextBlock Grid.Row="1"
-                                               Text="操作履歴はありません"
+                                               Text="{loc:Tr History_Empty}"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
                                                Opacity="0.5"
@@ -247,7 +247,7 @@
                            Opacity="1"
                            Margin="0,0,16,0"
                            Text="{Binding UnsavedSummary}"
-                           ToolTip.Tip="特性編集 / Inspector に未保存の編集があります。各タブの「保存」ボタンで永続化してください。"
+                           ToolTip.Tip="{loc:Tr StatusBar_Unsaved_Tooltip}"
                            IsVisible="{Binding HasUnsavedChanges}" />
                 <TextBlock Grid.Column="2"
                            Classes="StatusBarText"

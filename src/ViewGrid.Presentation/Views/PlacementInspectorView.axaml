@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:ViewGrid.Application.ViewModels;assembly=ViewGrid.Application"
              xmlns:views="clr-namespace:ViewGrid.Presentation.Views"
+             xmlns:loc="using:ViewGrid.Presentation.Localization"
              mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
              x:Name="InspectorRoot"
              x:Class="ViewGrid.Presentation.Views.PlacementInspectorView"
@@ -51,17 +52,17 @@
                         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <Button Command="{Binding SaveAllCommand}"
                                     Classes="accent"
-                                    ToolTip.Tip="配置固有 + 共有特性 をまとめて保存">
+                                    ToolTip.Tip="{loc:Tr Inspector_SaveAll_Tooltip}">
                                 <StackPanel Classes="IconButtonContent">
                                     <PathIcon Data="{StaticResource SaveGeometry}" Width="14" Height="14" />
-                                    <TextBlock Text="保存" />
+                                    <TextBlock Text="{loc:Tr Common_Save}" />
                                 </StackPanel>
                             </Button>
                             <Button Command="{Binding RevertAllCommand}"
-                                    ToolTip.Tip="編集前の値に戻す">
+                                    ToolTip.Tip="{loc:Tr GridProps_Reset_Tooltip}">
                                 <StackPanel Classes="IconButtonContent">
                                     <PathIcon Data="{StaticResource RefreshGeometry}" Width="14" Height="14" />
-                                    <TextBlock Text="リセット" />
+                                    <TextBlock Text="{loc:Tr Common_Reset}" />
                                 </StackPanel>
                             </Button>
                             <TextBlock Text="●"
@@ -69,13 +70,13 @@
                                        Foreground="{DynamicResource SystemAccentColor}"
                                        VerticalAlignment="Center"
                                        IsVisible="{Binding IsAnyDirty}"
-                                       ToolTip.Tip="未保存の変更があります" />
+                                       ToolTip.Tip="{loc:Tr Common_UnsavedTooltip}" />
                         </StackPanel>
                         <Button Grid.Column="2"
-                                Content="配置を削除"
+                                Content="{loc:Tr Inspector_DeletePlacement}"
                                 Classes="iconDanger"
                                 Command="{Binding #InspectorRoot.RemoveCommand}"
-                                ToolTip.Tip="この配置を削除します" />
+                                ToolTip.Tip="{loc:Tr Inspector_DeletePlacement_Tooltip}" />
                     </Grid>
                 </Border>
             </StackPanel>
@@ -94,7 +95,7 @@
                       Margin="0,0,0,10">
                 <Expander.Header>
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock Text="配置固有"
+                        <TextBlock Text="{loc:Tr Inspector_PlacementSpecific}"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
                         <TextBlock Opacity="0.6"
@@ -113,7 +114,7 @@
                 </Expander.Header>
                 <StackPanel Spacing="6">
                     <!-- 占有セル W×H (配置単位の固有特性) -->
-                    <TextBlock Classes="FieldLabel" Text="占有セル (W×H)" />
+                    <TextBlock Classes="FieldLabel" Text="{loc:Tr Inspector_OccupyCells}" />
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
                         <NumericUpDown Grid.Column="0"
                                        Value="{Binding OccupyWidth}"
@@ -128,16 +129,16 @@
                     </Grid>
                     <TextBlock Classes="HintText"
                                FontStyle="Italic"
-                               Text="この配置のみ占有セルが変わります（同バリアントの別配置には影響しません）" />
+                               Text="{loc:Tr Inspector_OccupyCells_Hint}" />
 
                     <!-- ピクセル微調整 ΔX/ΔY -->
                     <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
                         <TextBlock Grid.Column="0"
                                    Classes="FieldLabel"
-                                   Text="ピクセル微調整 (ΔX/ΔY)"
+                                   Text="{loc:Tr Inspector_PixelOffset}"
                                    VerticalAlignment="Center" />
                         <Button Grid.Column="1"
-                                Content="0 にリセット"
+                                Content="{loc:Tr Inspector_PixelOffset_ResetButton}"
                                 FontSize="10"
                                 Padding="6,2"
                                 Command="{Binding ResetPixelOffsetCommand}" />
@@ -159,7 +160,7 @@
                     </Grid>
                     <TextBlock Classes="HintText"
                                FontStyle="Italic"
-                               Text="ヒント: Shift+ドラッグ / Ctrl+矢印でも微調整可" />
+                               Text="{loc:Tr Inspector_PixelOffset_Hint}" />
                 </StackPanel>
             </Expander>
 
@@ -175,7 +176,7 @@
                       HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch">
                 <Expander.Header>
-                    <TextBlock Text="共有特性（同バリアントを参照する全配置に反映）"
+                    <TextBlock Text="{loc:Tr Inspector_SharedProperties}"
                                FontWeight="SemiBold"
                                TextWrapping="Wrap"
                                VerticalAlignment="Center" />
@@ -197,8 +198,8 @@
                         Padding="6,4"
                         FontSize="11"
                         Command="{Binding ForkVariantCommand}"
-                        ToolTip.Tip="元バリアントを複製した独立バリアントに切替えます。他の配置には影響しません。">
-                    <TextBlock Text="この配置だけ別バリアントに分岐"
+                        ToolTip.Tip="{loc:Tr Inspector_ForkVariant_Tooltip}">
+                    <TextBlock Text="{loc:Tr Inspector_ForkVariant}"
                                TextWrapping="Wrap"
                                TextAlignment="Center" />
                 </Button>

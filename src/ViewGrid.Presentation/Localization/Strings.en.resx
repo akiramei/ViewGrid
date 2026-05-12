@@ -208,6 +208,71 @@
   <data name="Output_Trim" xml:space="preserve"><value>Trim</value></data>
   <data name="Output_Trim_Tooltip" xml:space="preserve"><value>Trim range applied to the exported PNG. Same semantics in PhotoBoard mode.</value></data>
 
+  <!-- Inspector (placement editor) -->
+  <data name="Inspector_SaveAll_Tooltip" xml:space="preserve"><value>Save placement-specific and shared properties together</value></data>
+  <data name="Inspector_DeletePlacement" xml:space="preserve"><value>Delete placement</value></data>
+  <data name="Inspector_DeletePlacement_Tooltip" xml:space="preserve"><value>Delete this placement</value></data>
+  <data name="Inspector_PlacementSpecific" xml:space="preserve"><value>Placement-specific</value></data>
+  <data name="Inspector_OccupyCells" xml:space="preserve"><value>Occupy cells (W×H)</value></data>
+  <data name="Inspector_OccupyCells_Hint" xml:space="preserve"><value>Only this placement changes its occupied cells (other placements of the same variant are unaffected).</value></data>
+  <data name="Inspector_PixelOffset" xml:space="preserve"><value>Pixel offset (ΔX/ΔY)</value></data>
+  <data name="Inspector_PixelOffset_ResetButton" xml:space="preserve"><value>Reset to 0</value></data>
+  <data name="Inspector_PixelOffset_Hint" xml:space="preserve"><value>Tip: Shift+drag or Ctrl+arrow keys also adjust the offset.</value></data>
+  <data name="Inspector_SharedProperties" xml:space="preserve"><value>Shared properties (apply to all placements of this variant)</value></data>
+  <data name="Inspector_ForkVariant" xml:space="preserve"><value>Fork this placement into its own variant</value></data>
+  <data name="Inspector_ForkVariant_Tooltip" xml:space="preserve"><value>Switch this placement to a new variant cloned from the current one. Other placements are unaffected.</value></data>
+
+  <!-- CopyPropertiesView (variant properties editor) -->
+  <data name="CopyProps_NoSelection" xml:space="preserve"><value>Please select a variant</value></data>
+  <data name="CopyProps_NoSelection_Hint" xml:space="preserve"><value>Pick a single item from the list on the left to edit its properties.</value></data>
+  <data name="CopyProps_Save_Tooltip" xml:space="preserve"><value>Save the property edits</value></data>
+  <data name="CopyProps_Tab_Properties" xml:space="preserve"><value>Properties</value></data>
+  <data name="CopyProps_Tab_Crop" xml:space="preserve"><value>Crop</value></data>
+  <data name="CopyProps_Tab_Regions" xml:space="preserve"><value>Regions</value></data>
+  <data name="CopyProps_Rotation" xml:space="preserve"><value>Rotation</value></data>
+  <data name="CopyProps_Flip" xml:space="preserve"><value>Flip</value></data>
+  <data name="CopyProps_FlipH" xml:space="preserve"><value>Horizontal (H)</value></data>
+  <data name="CopyProps_FlipV" xml:space="preserve"><value>Vertical (V)</value></data>
+  <data name="CopyProps_Scaling" xml:space="preserve"><value>Scaling</value></data>
+  <data name="CopyProps_Alignment" xml:space="preserve"><value>Alignment</value></data>
+  <data name="CopyProps_TrimMode" xml:space="preserve"><value>Trim mode</value></data>
+  <data name="CopyProps_TrimMode_Off" xml:space="preserve"><value>OFF</value></data>
+  <data name="CopyProps_TrimMode_Auto" xml:space="preserve"><value>Auto (uniform-color border)</value></data>
+  <data name="CopyProps_TrimMode_Manual" xml:space="preserve"><value>Manual (custom rectangle)</value></data>
+  <data name="CopyProps_AutoCrop_TargetColor" xml:space="preserve"><value>Target color</value></data>
+  <data name="CopyProps_AutoCrop_Hex" xml:space="preserve"><value>HEX (#RRGGBB)</value></data>
+  <data name="CopyProps_AutoCrop_PickerHint" xml:space="preserve"><value>Click on the thumbnail below to pick a color.</value></data>
+  <data name="CopyProps_AutoCrop_Threshold" xml:space="preserve"><value>Color tolerance (0–128)</value></data>
+  <data name="CopyProps_AutoCrop_Threshold_Hint" xml:space="preserve"><value>0 = exact match only (default). Larger values tolerate more color difference.</value></data>
+  <data name="CopyProps_ManualCrop_Hint" xml:space="preserve"><value>Drag on the thumbnail to draw a rectangle. 8 handles resize edges/corners; drag inside to move. Use Detail Edit for fine tuning.</value></data>
+  <data name="CopyProps_ManualCrop_DetailButton" xml:space="preserve"><value>Detail edit (enlarged)...</value></data>
+  <data name="CopyProps_ManualCrop_X" xml:space="preserve"><value>X (px)</value></data>
+  <data name="CopyProps_ManualCrop_Y" xml:space="preserve"><value>Y (px)</value></data>
+  <data name="CopyProps_ManualCrop_W" xml:space="preserve"><value>Width (px)</value></data>
+  <data name="CopyProps_ManualCrop_H" xml:space="preserve"><value>Height (px)</value></data>
+  <data name="CopyProps_Regions_Header" xml:space="preserve"><value>Protected regions</value></data>
+  <data name="CopyProps_Regions_Description" xml:space="preserve"><value>Detach a portion of the cell image as an independent asset and place it freely inside the cell. The parent's rotation / flip / alignment do not apply; only its scale follows.</value></data>
+  <data name="CopyProps_Regions_Add_Tooltip" xml:space="preserve"><value>Add a new protected region (default rectangle at the image center).</value></data>
+  <data name="CopyProps_Regions_Edit_Tooltip" xml:space="preserve"><value>Edit the rectangle of the selected protected region.</value></data>
+  <data name="CopyProps_Regions_MoveUp_Tooltip" xml:space="preserve"><value>Move the selected region up one slot (drawn one step earlier).</value></data>
+  <data name="CopyProps_Regions_MoveDown_Tooltip" xml:space="preserve"><value>Move the selected region down one slot (drawn one step later).</value></data>
+  <data name="CopyProps_Regions_Remove_Tooltip" xml:space="preserve"><value>Delete the selected protected region.</value></data>
+  <data name="CopyProps_Regions_Empty" xml:space="preserve"><value>No protected regions registered. Press "Add" to create one and then "Edit" to refine its shape.</value></data>
+  <data name="CopyProps_Regions_SelectedHeader" xml:space="preserve"><value>Selected region</value></data>
+  <data name="CopyProps_Regions_OffsetX" xml:space="preserve"><value>Offset X (px)</value></data>
+  <data name="CopyProps_Regions_OffsetY" xml:space="preserve"><value>Offset Y (px)</value></data>
+  <data name="CopyProps_Regions_RotationLabel" xml:space="preserve"><value>Rotation (region only)</value></data>
+  <data name="CopyProps_Regions_FlipLabel" xml:space="preserve"><value>Flip (region only)</value></data>
+  <data name="CopyProps_Regions_FillMode" xml:space="preserve"><value>Fill mode (parent side)</value></data>
+  <data name="CopyProps_Regions_HexLabel" xml:space="preserve"><value>HEX (#AARRGGBB)</value></data>
+  <data name="CopyProps_Regions_HexHint" xml:space="preserve"><value>Click on the thumbnail below to pick a color from the source image (before crop). FillMode switches to Custom automatically.</value></data>
+
+  <!-- MainWindow status bar / history flyout -->
+  <data name="History_Tooltip" xml:space="preserve"><value>Operation history</value></data>
+  <data name="History_Header" xml:space="preserve"><value>Operation history (latest 50)</value></data>
+  <data name="History_Empty" xml:space="preserve"><value>No history yet</value></data>
+  <data name="StatusBar_Unsaved_Tooltip" xml:space="preserve"><value>You have unsaved edits in the Inspector. Press "Save" on each tab to persist them.</value></data>
+
   <!-- Grid properties (right pane) -->
   <data name="GridProps_Save_Tooltip" xml:space="preserve"><value>Save the name and canvas size changes together</value></data>
   <data name="GridProps_Reset_Tooltip" xml:space="preserve"><value>Revert to values before editing</value></data>
