@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using ViewGrid.Application.ViewModels;
+using ViewGrid.Presentation.Localization;
 
 namespace ViewGrid.Presentation.Views;
 
@@ -83,7 +84,7 @@ public partial class WorkspaceSwitchDialog : Window
 
             var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
             {
-                Title = "ワークスペースをエクスポート",
+                Title = LocService.Instance["FilePicker_ExportWorkspace_Title"],
                 DefaultExtension = "zip",
                 SuggestedFileName = $"{sel.Name}.zip",
                 FileTypeChoices = [new FilePickerFileType("ZIP") { Patterns = ["*.zip"] }],
@@ -97,7 +98,7 @@ public partial class WorkspaceSwitchDialog : Window
         }
         catch (Exception ex)
         {
-            vm.StatusMessage = $"エクスポートに失敗しました: {ex.Message}";
+            vm.StatusMessage = LocService.Instance.Format("Status_ExportFailedFmt", ex.Message);
         }
     }
 
@@ -117,7 +118,7 @@ public partial class WorkspaceSwitchDialog : Window
 
             var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = "インポートするワークスペース zip を選択",
+                Title = LocService.Instance["FilePicker_ImportWorkspace_Title"],
                 AllowMultiple = false,
                 FileTypeFilter = [new FilePickerFileType("ZIP") { Patterns = ["*.zip"] }],
             });
@@ -130,7 +131,7 @@ public partial class WorkspaceSwitchDialog : Window
         }
         catch (Exception ex)
         {
-            vm.StatusMessage = $"インポートの準備に失敗しました: {ex.Message}";
+            vm.StatusMessage = LocService.Instance.Format("Status_ImportPrepareFailedFmt", ex.Message);
         }
     }
 
@@ -143,11 +144,12 @@ public partial class WorkspaceSwitchDialog : Window
         if (DataContext is not WorkspaceSwitchDialogViewModel vm) return;
         if (vm.SelectedWorkspace is not { } sel) return;
 
+        var loc = LocService.Instance;
         var confirmed = await ConfirmDialog.ShowAsync(
             this,
-            "ワークスペースを削除",
-            $"「{sel.DisplayName}」を削除しますか?\nworkspaces/.trash/ にバックアップが残るため、 必要なら手動で復元できます。",
-            confirmLabel: "削除");
+            loc["Confirm_DeleteWorkspace_Title"],
+            loc.Format("Confirm_DeleteWorkspace_MessageFmt", sel.DisplayName),
+            confirmLabel: loc["Common_Delete"]);
         if (!confirmed) return;
 
         await vm.DeleteSelectedAsync();
@@ -191,7 +193,7 @@ public partial class WorkspaceSwitchDialog : Window
         if (string.IsNullOrEmpty(exePath))
         {
             if (DataContext is WorkspaceSwitchDialogViewModel vm)
-                vm.StatusMessage = "実行中の exe パスを解決できないため再起動できません。";
+                vm.StatusMessage = LocService.Instance["Status_RestartFailed_NoExePath"];
             return false;
         }
 
@@ -208,13 +210,13 @@ public partial class WorkspaceSwitchDialog : Window
         catch (System.ComponentModel.Win32Exception ex)
         {
             if (DataContext is WorkspaceSwitchDialogViewModel vm)
-                vm.StatusMessage = $"再起動に失敗しました: {ex.Message}";
+                vm.StatusMessage = LocService.Instance.Format("Status_RestartFailedFmt", ex.Message);
             return false;
         }
         catch (InvalidOperationException ex)
         {
             if (DataContext is WorkspaceSwitchDialogViewModel vm)
-                vm.StatusMessage = $"再起動に失敗しました: {ex.Message}";
+                vm.StatusMessage = LocService.Instance.Format("Status_RestartFailedFmt", ex.Message);
             return false;
         }
     }

@@ -415,4 +415,19 @@
   <data name="Edit_UndoFmt" xml:space="preserve"><value>Undo: {0}</value></data>
   <data name="Edit_Redo" xml:space="preserve"><value>Redo</value></data>
   <data name="Edit_RedoFmt" xml:space="preserve"><value>Redo: {0}</value></data>
+
+  <!-- ConfirmDialog invocations / FilePicker titles / related errors (Phase 3+) -->
+  <data name="Confirm_DeleteAsset_Title" xml:space="preserve"><value>Delete asset</value></data>
+  <data name="Confirm_DeleteAsset_MessageFmt" xml:space="preserve"><value>This will delete the asset "{0}" and its {1} variants.
+All placements referencing this asset will also be removed and the undo history will be reset.
+This cannot be undone. Continue?</value></data>
+  <data name="Confirm_DeleteWorkspace_Title" xml:space="preserve"><value>Delete workspace</value></data>
+  <data name="Confirm_DeleteWorkspace_MessageFmt" xml:space="preserve"><value>Delete "{0}"?
+A backup is kept under workspaces/.trash/ so you can restore it manually if needed.</value></data>
+  <data name="FilePicker_ExportWorkspace_Title" xml:space="preserve"><value>Export workspace</value></data>
+  <data name="FilePicker_ImportWorkspace_Title" xml:space="preserve"><value>Select a workspace zip to import</value></data>
+  <data name="Status_ExportFailedFmt" xml:space="preserve"><value>Export failed: {0}</value></data>
+  <data name="Status_ImportPrepareFailedFmt" xml:space="preserve"><value>Failed to prepare import: {0}</value></data>
+  <data name="Status_RestartFailed_NoExePath" xml:space="preserve"><value>Cannot restart: failed to resolve the running exe path.</value></data>
+  <data name="Status_RestartFailedFmt" xml:space="preserve"><value>Restart failed: {0}</value></data>
 </root>

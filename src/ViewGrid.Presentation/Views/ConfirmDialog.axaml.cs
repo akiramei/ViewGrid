@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using ViewGrid.Presentation.Localization;
 
 namespace ViewGrid.Presentation.Views;
 
@@ -16,8 +17,12 @@ public partial class ConfirmDialog : Window
         InitializeComponent();
     }
 
+    /// <summary>
+    /// 確認ダイアログを表示する。 <paramref name="confirmLabel"/> は <c>null</c> または空のとき
+    /// resx の <c>Common_Delete</c> (削除 / Delete) にフォールバック。
+    /// </summary>
     public static async System.Threading.Tasks.Task<bool> ShowAsync(
-        Window owner, string title, string message, string confirmLabel = "削除")
+        Window owner, string title, string message, string? confirmLabel = null)
     {
         var dialog = new ConfirmDialog
         {
@@ -25,7 +30,9 @@ public partial class ConfirmDialog : Window
         };
         dialog.TitleText.Text = title;
         dialog.MessageText.Text = message;
-        dialog.ConfirmButton.Content = confirmLabel;
+        dialog.ConfirmButton.Content = string.IsNullOrEmpty(confirmLabel)
+            ? LocService.Instance["Common_Delete"]
+            : confirmLabel;
         await dialog.ShowDialog(owner);
         return dialog._confirmed;
     }

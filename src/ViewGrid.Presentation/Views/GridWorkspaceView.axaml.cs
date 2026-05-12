@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using ViewGrid.Application.ViewModels;
+using ViewGrid.Presentation.Localization;
 
 namespace ViewGrid.Presentation.Views;
 
@@ -210,12 +211,13 @@ public partial class GridWorkspaceView : UserControl
         if (TopLevel.GetTopLevel(this) is not Window owner) return;
         if (owner.DataContext is not MainWindowViewModel mainVm) return;
 
-        var variantCount = group.Variants.Count;
-        var message =
-            $"アセット「{group.AssetFilename}」と紐づく {variantCount} バリアントを削除します。\n" +
-            "このアセットを参照している全配置も削除され、操作履歴はリセットされます。\n" +
-            "この操作は元に戻せません。続行しますか？";
-        var confirmed = await ConfirmDialog.ShowAsync(owner, "アセットの削除", message, "削除");
+        var loc = LocService.Instance;
+        var message = loc.Format("Confirm_DeleteAsset_MessageFmt", group.AssetFilename, group.Variants.Count);
+        var confirmed = await ConfirmDialog.ShowAsync(
+            owner,
+            loc["Confirm_DeleteAsset_Title"],
+            message,
+            confirmLabel: loc["Common_Delete"]);
         if (!confirmed) return;
 
         await mainVm.AssetLibrary.DeleteByIdAsync(group.AssetId);

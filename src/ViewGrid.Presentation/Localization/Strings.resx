@@ -415,4 +415,19 @@
   <data name="Edit_UndoFmt" xml:space="preserve"><value>元に戻す: {0}</value></data>
   <data name="Edit_Redo" xml:space="preserve"><value>やり直し</value></data>
   <data name="Edit_RedoFmt" xml:space="preserve"><value>やり直し: {0}</value></data>
+
+  <!-- ConfirmDialog 呼び出し / FilePicker タイトル / 関連エラー (Phase 3+) -->
+  <data name="Confirm_DeleteAsset_Title" xml:space="preserve"><value>アセットの削除</value></data>
+  <data name="Confirm_DeleteAsset_MessageFmt" xml:space="preserve"><value>アセット「{0}」と紐づく {1} バリアントを削除します。
+このアセットを参照している全配置も削除され、操作履歴はリセットされます。
+この操作は元に戻せません。続行しますか？</value></data>
+  <data name="Confirm_DeleteWorkspace_Title" xml:space="preserve"><value>ワークスペースを削除</value></data>
+  <data name="Confirm_DeleteWorkspace_MessageFmt" xml:space="preserve"><value>「{0}」を削除しますか?
+workspaces/.trash/ にバックアップが残るため、 必要なら手動で復元できます。</value></data>
+  <data name="FilePicker_ExportWorkspace_Title" xml:space="preserve"><value>ワークスペースをエクスポート</value></data>
+  <data name="FilePicker_ImportWorkspace_Title" xml:space="preserve"><value>インポートするワークスペース zip を選択</value></data>
+  <data name="Status_ExportFailedFmt" xml:space="preserve"><value>エクスポートに失敗しました: {0}</value></data>
+  <data name="Status_ImportPrepareFailedFmt" xml:space="preserve"><value>インポートの準備に失敗しました: {0}</value></data>
+  <data name="Status_RestartFailed_NoExePath" xml:space="preserve"><value>実行中の exe パスを解決できないため再起動できません。</value></data>
+  <data name="Status_RestartFailedFmt" xml:space="preserve"><value>再起動に失敗しました: {0}</value></data>
 </root>
