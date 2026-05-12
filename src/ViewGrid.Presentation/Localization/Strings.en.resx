@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- Menu Bar -->
+  <data name="Menu_File" xml:space="preserve"><value>File</value></data>
+  <data name="Menu_Edit" xml:space="preserve"><value>Edit</value></data>
+  <data name="Menu_Help" xml:space="preserve"><value>Help</value></data>
+
+  <data name="MenuItem_AddImages" xml:space="preserve"><value>Add Images...</value></data>
+  <data name="MenuItem_AddImages_Tooltip" xml:space="preserve"><value>Import images via the file picker. Drag &amp; drop is also supported.</value></data>
+  <data name="MenuItem_NewVariant" xml:space="preserve"><value>New Variant...</value></data>
+  <data name="MenuItem_NewVariant_Tooltip" xml:space="preserve"><value>Create a new variant from the selected asset (pick an image in the left pane first).</value></data>
+  <data name="MenuItem_ExportPng" xml:space="preserve"><value>Export as PNG...</value></data>
+  <data name="MenuItem_ExportPng_Tooltip" xml:space="preserve"><value>Render the current grid to a PNG file.</value></data>
+  <data name="MenuItem_Workspace" xml:space="preserve"><value>Workspace...</value></data>
+  <data name="MenuItem_Workspace_Tooltip" xml:space="preserve"><value>Switch, create, rename, or delete workspaces.</value></data>
+  <data name="MenuItem_Settings" xml:space="preserve"><value>Settings...</value></data>
+  <data name="MenuItem_Settings_Tooltip" xml:space="preserve"><value>Open application settings (theme, defaults, thumbnail size).</value></data>
+  <data name="MenuItem_Exit" xml:space="preserve"><value>Exit</value></data>
+  <data name="MenuItem_LicenseNotices" xml:space="preserve"><value>License Notices...</value></data>
+  <data name="MenuItem_LicenseNotices_Tooltip" xml:space="preserve"><value>Show the list of OSS libraries used by ViewGrid and their full license texts.</value></data>
+  <data name="MenuItem_About" xml:space="preserve"><value>About ViewGrid</value></data>
+
+  <!-- About dialog -->
+  <data name="About_Title" xml:space="preserve"><value>About ViewGrid</value></data>
+  <data name="About_Tagline" xml:space="preserve"><value>A simple tool for arranging images on a grid.</value></data>
+  <data name="About_OssThanks" xml:space="preserve"><value>Built on top of many open-source libraries. Our gratitude goes to all contributors.</value></data>
+  <data name="About_ShowLicenses" xml:space="preserve"><value>Show License Notices...</value></data>
+  <data name="About_Copyright" xml:space="preserve"><value>© 2026 ViewGrid</value></data>
+
+  <!-- License notices dialog -->
+  <data name="Licenses_Title" xml:space="preserve"><value>License Notices</value></data>
+  <data name="Licenses_Header" xml:space="preserve"><value>Open-Source Libraries Used by ViewGrid</value></data>
+  <data name="Licenses_Intro" xml:space="preserve"><value>This app is built on top of the following open-source software. We are deeply grateful to their authors and communities.</value></data>
+  <data name="Common_Close" xml:space="preserve"><value>Close</value></data>
+
+  <!-- Settings dialog -->
+  <data name="Settings_Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Settings_Language_Hint" xml:space="preserve"><value>Switch the UI display language. "Follow system" uses the OS locale setting.</value></data>
+  <data name="Settings_Language_System" xml:space="preserve"><value>Follow system (Default)</value></data>
+  <data name="Settings_Language_Japanese" xml:space="preserve"><value>日本語 (Japanese)</value></data>
+  <data name="Settings_Language_English" xml:space="preserve"><value>English</value></data>
+</root>

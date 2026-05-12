@@ -2,9 +2,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:loc="using:ViewGrid.Presentation.Localization"
         mc:Ignorable="d" d:DesignWidth="780" d:DesignHeight="600"
         x:Class="ViewGrid.Presentation.Views.LicenseNoticesWindow"
-        Title="ライセンス情報"
+        Title="{loc:Tr Licenses_Title}"
         Width="820" Height="640"
         MinWidth="520" MinHeight="360"
         WindowStartupLocation="CenterOwner"
@@ -12,10 +13,10 @@
 
     <Grid RowDefinitions="Auto,*,Auto" Margin="20">
         <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,12">
-            <TextBlock Text="ViewGrid が利用させていただいている OSS"
+            <TextBlock Text="{loc:Tr Licenses_Header}"
                        FontWeight="SemiBold"
                        FontSize="16" />
-            <TextBlock Text="このアプリは以下のオープンソースソフトウェアの上に成り立っています。 開発者・コミュニティの皆様に深く感謝いたします。"
+            <TextBlock Text="{loc:Tr Licenses_Intro}"
                        TextWrapping="Wrap"
                        FontSize="12"
                        Opacity="0.75" />
@@ -41,7 +42,7 @@
                     HorizontalAlignment="Right"
                     Margin="0,12,0,0"
                     Spacing="8">
-            <Button Content="閉じる"
+            <Button Content="{loc:Tr Common_Close}"
                     MinWidth="100"
                     HorizontalContentAlignment="Center"
                     IsCancel="True"

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ViewGrid.Application.ViewModels;
 using ViewGrid.Core.Services;
 using ViewGrid.Core.Settings;
+using ViewGrid.Presentation.Localization;
 using ViewGrid.Presentation.Services;
 using ViewGrid.Presentation.Views;
 
@@ -38,14 +40,16 @@ public partial class App : global::Avalonia.Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && _services is not null)
         {
-            // 設定からテーマ + アクセント色を適用 + 設定変更時の即時切替を購読
+            // 設定からテーマ + アクセント色 + 言語を適用 + 設定変更時の即時切替を購読
             var settings = _services.GetRequiredService<IAppSettingsService>();
             ApplyTheme(settings.Current);
             ApplyAccentColor(settings.Current);
+            ApplyLanguage(settings.Current);
             settings.Changed += (_, s) =>
             {
                 ApplyTheme(s);
                 ApplyAccentColor(s);
+                ApplyLanguage(s);
             };
 
             // ワークスペースロック取得失敗時は MainWindow ではなく WorkspaceLockedDialog を
@@ -190,5 +194,21 @@ public partial class App : global::Avalonia.Application
         if (RequestedThemeVariant == ThemeVariant.Light) return false;
         if (RequestedThemeVariant == ThemeVariant.Dark) return true;
         return ActualThemeVariant == ThemeVariant.Dark;
+    }
+
+    /// <summary>
+    /// <see cref="AppSettings.Language"/> を <see cref="LocService"/> に流して全 i18n binding を再評価する。
+    /// 値が "system" のときは <see cref="CultureInfo.CurrentUICulture"/> (OS ロケール) に従う。
+    /// 不正値や未対応 culture は安全のため日本語 (ja) にフォールバック。
+    /// </summary>
+    private static void ApplyLanguage(AppSettings settings)
+    {
+        var culture = settings.Language switch
+        {
+            "ja" => new CultureInfo("ja"),
+            "en" => new CultureInfo("en"),
+            _ => CultureInfo.CurrentUICulture,
+        };
+        LocService.Instance.SetCulture(culture);
     }
 }

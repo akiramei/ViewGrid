@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- メニューバー (Menu Bar) -->
+  <data name="Menu_File" xml:space="preserve"><value>ファイル</value></data>
+  <data name="Menu_Edit" xml:space="preserve"><value>編集</value></data>
+  <data name="Menu_Help" xml:space="preserve"><value>ヘルプ</value></data>
+
+  <data name="MenuItem_AddImages" xml:space="preserve"><value>画像を追加...</value></data>
+  <data name="MenuItem_AddImages_Tooltip" xml:space="preserve"><value>ファイルダイアログから画像を取り込みます。ドラッグ&amp;ドロップでも追加できます。</value></data>
+  <data name="MenuItem_NewVariant" xml:space="preserve"><value>新規バリアント...</value></data>
+  <data name="MenuItem_NewVariant_Tooltip" xml:space="preserve"><value>選択中の画像から新しいバリアントを作成します（左ペインで画像を選んでください）。</value></data>
+  <data name="MenuItem_ExportPng" xml:space="preserve"><value>PNG として保存...</value></data>
+  <data name="MenuItem_ExportPng_Tooltip" xml:space="preserve"><value>現在のグリッドを PNG 画像として書き出します。</value></data>
+  <data name="MenuItem_Workspace" xml:space="preserve"><value>ワークスペース...</value></data>
+  <data name="MenuItem_Workspace_Tooltip" xml:space="preserve"><value>ワークスペースの切替・新規作成・リネーム・削除を行います。</value></data>
+  <data name="MenuItem_Settings" xml:space="preserve"><value>設定...</value></data>
+  <data name="MenuItem_Settings_Tooltip" xml:space="preserve"><value>アプリの設定 (テーマ / 既定値 / サムネサイズ) を開きます。</value></data>
+  <data name="MenuItem_Exit" xml:space="preserve"><value>終了</value></data>
+  <data name="MenuItem_LicenseNotices" xml:space="preserve"><value>ライセンス情報...</value></data>
+  <data name="MenuItem_LicenseNotices_Tooltip" xml:space="preserve"><value>ViewGrid が利用させていただいている OSS の一覧とライセンス全文を表示します。</value></data>
+  <data name="MenuItem_About" xml:space="preserve"><value>ViewGrid について</value></data>
+
+  <!-- About ダイアログ -->
+  <data name="About_Title" xml:space="preserve"><value>ViewGrid について</value></data>
+  <data name="About_Tagline" xml:space="preserve"><value>画像をグリッドに配置するシンプルなツール。</value></data>
+  <data name="About_OssThanks" xml:space="preserve"><value>多数のオープンソースソフトウェアの上に成り立っています。 開発者の皆様に感謝。</value></data>
+  <data name="About_ShowLicenses" xml:space="preserve"><value>ライセンス情報を表示...</value></data>
+  <data name="About_Copyright" xml:space="preserve"><value>© 2026 ViewGrid</value></data>
+
+  <!-- ライセンス情報ダイアログ -->
+  <data name="Licenses_Title" xml:space="preserve"><value>ライセンス情報</value></data>
+  <data name="Licenses_Header" xml:space="preserve"><value>ViewGrid が利用させていただいている OSS</value></data>
+  <data name="Licenses_Intro" xml:space="preserve"><value>このアプリは以下のオープンソースソフトウェアの上に成り立っています。 開発者・コミュニティの皆様に深く感謝いたします。</value></data>
+  <data name="Common_Close" xml:space="preserve"><value>閉じる</value></data>
+
+  <!-- 設定ダイアログ -->
+  <data name="Settings_Language" xml:space="preserve"><value>言語</value></data>
+  <data name="Settings_Language_Hint" xml:space="preserve"><value>UI 表示言語を切り替えます。 「システムに従う」 では OS のロケール設定に従います。</value></data>
+  <data name="Settings_Language_System" xml:space="preserve"><value>システムに従う (Default)</value></data>
+  <data name="Settings_Language_Japanese" xml:space="preserve"><value>日本語</value></data>
+  <data name="Settings_Language_English" xml:space="preserve"><value>English</value></data>
+</root>

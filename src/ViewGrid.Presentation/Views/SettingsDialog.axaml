@@ -5,6 +5,7 @@
         xmlns:vm="using:ViewGrid.Application.ViewModels"
         xmlns:converters="using:ViewGrid.Presentation.Converters"
         xmlns:settings="using:ViewGrid.Core.Settings"
+        xmlns:loc="using:ViewGrid.Presentation.Localization"
         mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="560"
         x:Class="ViewGrid.Presentation.Views.SettingsDialog"
         x:DataType="vm:SettingsDialogViewModel"
@@ -17,6 +18,26 @@
     <Grid RowDefinitions="*,Auto" Margin="16">
         <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Spacing="12">
+
+                <!-- 言語 -->
+                <Border Classes="Card">
+                    <StackPanel Classes="FormSection">
+                        <TextBlock Classes="SectionHeader" Text="{loc:Tr Settings_Language}" />
+                        <TextBlock Classes="HintText"
+                                   Text="{loc:Tr Settings_Language_Hint}"
+                                   Margin="0,0,0,4" />
+
+                        <RadioButton GroupName="Language"
+                                     Content="{loc:Tr Settings_Language_System}"
+                                     IsChecked="{Binding IsLanguageSystem}" />
+                        <RadioButton GroupName="Language"
+                                     Content="{loc:Tr Settings_Language_Japanese}"
+                                     IsChecked="{Binding IsLanguageJa}" />
+                        <RadioButton GroupName="Language"
+                                     Content="{loc:Tr Settings_Language_English}"
+                                     IsChecked="{Binding IsLanguageEn}" />
+                    </StackPanel>
+                </Border>
 
                 <!-- 表示 (テーマ) -->
                 <Border Classes="Card">

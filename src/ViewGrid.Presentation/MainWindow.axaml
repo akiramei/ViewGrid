@@ -6,6 +6,7 @@
         xmlns:history="clr-namespace:ViewGrid.Application.History;assembly=ViewGrid.Application"
         xmlns:converters="clr-namespace:ViewGrid.Presentation.Converters"
         xmlns:views="clr-namespace:ViewGrid.Presentation.Views"
+        xmlns:loc="using:ViewGrid.Presentation.Localization"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="720"
         x:Class="ViewGrid.Presentation.MainWindow"
         x:Name="MainWindowRoot"
@@ -95,35 +96,35 @@
     -->
     <Grid RowDefinitions="Auto,*,Auto,Auto">
         <DockPanel Grid.Row="0" LastChildFill="False">
-            <!-- P3: メニューバー充実（ファイル / 編集 / 表示 / ヘルプ） -->
+            <!-- P3: メニューバー (ファイル / 編集 / ヘルプ)。 i18n: {loc:Tr} で全文字列を切替 -->
             <Menu DockPanel.Dock="Left">
-                <MenuItem Header="ファイル">
-                    <MenuItem Header="画像を追加..."
+                <MenuItem Header="{loc:Tr Menu_File}">
+                    <MenuItem Header="{loc:Tr MenuItem_AddImages}"
                               InputGesture="Ctrl+O"
                               Command="{Binding AssetLibrary.PickFilesAndImportCommand}"
-                              ToolTip.Tip="ファイルダイアログから画像を取り込みます。ドラッグ&amp;ドロップでも追加できます。" />
-                    <MenuItem Header="新規バリアント..."
+                              ToolTip.Tip="{loc:Tr MenuItem_AddImages_Tooltip}" />
+                    <MenuItem Header="{loc:Tr MenuItem_NewVariant}"
                               InputGesture="Ctrl+N"
                               Command="{Binding GridWorkspace.BeginCreateVariantCommand}"
-                              ToolTip.Tip="選択中の画像から新しいバリアントを作成します（左ペインで画像を選んでください）。" />
-                    <MenuItem Header="PNG として保存..."
+                              ToolTip.Tip="{loc:Tr MenuItem_NewVariant_Tooltip}" />
+                    <MenuItem Header="{loc:Tr MenuItem_ExportPng}"
                               InputGesture="Ctrl+E"
                               Command="{Binding GridWorkspace.ExportToPngCommand}"
-                              ToolTip.Tip="現在のグリッドを PNG 画像として書き出します。" />
+                              ToolTip.Tip="{loc:Tr MenuItem_ExportPng_Tooltip}" />
                     <Separator />
-                    <MenuItem Header="ワークスペース..."
+                    <MenuItem Header="{loc:Tr MenuItem_Workspace}"
                               Click="OnWorkspaceSwitchClicked"
-                              ToolTip.Tip="ワークスペースの切替・新規作成・リネーム・削除を行います。" />
-                    <MenuItem Header="設定..."
+                              ToolTip.Tip="{loc:Tr MenuItem_Workspace_Tooltip}" />
+                    <MenuItem Header="{loc:Tr MenuItem_Settings}"
                               InputGesture="Ctrl+,"
                               Click="OnSettingsClicked"
-                              ToolTip.Tip="アプリの設定 (テーマ / 既定値 / サムネサイズ) を開きます。" />
+                              ToolTip.Tip="{loc:Tr MenuItem_Settings_Tooltip}" />
                     <Separator />
-                    <MenuItem Header="終了"
+                    <MenuItem Header="{loc:Tr MenuItem_Exit}"
                               InputGesture="Alt+F4"
                               Click="OnExitClicked" />
                 </MenuItem>
-                <MenuItem Header="編集">
+                <MenuItem Header="{loc:Tr Menu_Edit}">
                     <MenuItem Header="{Binding UndoLabel}"
                               Command="{Binding UndoCommand}"
                               InputGesture="Ctrl+Z" />
@@ -131,11 +132,11 @@
                               Command="{Binding RedoCommand}"
                               InputGesture="Ctrl+Y" />
                 </MenuItem>
-                <MenuItem Header="ヘルプ">
-                    <MenuItem Header="ライセンス情報..."
+                <MenuItem Header="{loc:Tr Menu_Help}">
+                    <MenuItem Header="{loc:Tr MenuItem_LicenseNotices}"
                               Click="OnLicenseNoticesClicked"
-                              ToolTip.Tip="ViewGrid が利用させていただいている OSS の一覧とライセンス全文を表示します。" />
-                    <MenuItem Header="ViewGrid について"
+                              ToolTip.Tip="{loc:Tr MenuItem_LicenseNotices_Tooltip}" />
+                    <MenuItem Header="{loc:Tr MenuItem_About}"
                               Click="OnAboutClicked" />
                 </MenuItem>
             </Menu>

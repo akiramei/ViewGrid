@@ -94,6 +94,33 @@ public sealed class SettingsDialogViewModelTests
     }
 
     [Fact]
+    public void Language_Change_Saves_New_Settings()
+    {
+        var fake = new FakeSettingsService(new AppSettings { Language = "system" });
+        var vm = new SettingsDialogViewModel(fake, new FakeFilePickerService());
+
+        vm.Language = "en";
+
+        fake.LastSaved.Should().NotBeNull();
+        fake.LastSaved!.Language.Should().Be("en");
+        vm.IsLanguageEn.Should().BeTrue();
+        vm.IsLanguageJa.Should().BeFalse();
+        vm.IsLanguageSystem.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Language_Helper_Setter_Updates_Language()
+    {
+        var fake = new FakeSettingsService(new AppSettings { Language = "system" });
+        var vm = new SettingsDialogViewModel(fake, new FakeFilePickerService());
+
+        vm.IsLanguageJa = true;
+
+        vm.Language.Should().Be("ja");
+        fake.LastSaved!.Language.Should().Be("ja");
+    }
+
+    [Fact]
     public async Task ExportSettings_Cancel_Sets_Empty_IoStatus()
     {
         var fake = new FakeSettingsService(new AppSettings());

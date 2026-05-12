@@ -37,4 +37,16 @@ public sealed record AppSettings
     /// 既定 false (後方互換)。
     /// </summary>
     public bool EnableAutoSave { get; init; }
+
+    /// <summary>
+    /// UI 表示言語の選択。 値は以下のいずれか:
+    /// <list type="bullet">
+    ///   <item><c>"system"</c>: システムロケールに従う (既定)</item>
+    ///   <item><c>"ja"</c>: 日本語</item>
+    ///   <item><c>"en"</c>: 英語</item>
+    /// </list>
+    /// 切替は <see cref="ViewGrid.Core.Services.IAppSettingsService.UpdateAsync"/> 経由で行い、
+    /// LocService が PropertyChanged 経由で全 UI を即時更新する (アプリ再起動不要)。
+    /// </summary>
+    public string Language { get; init; } = "system";
 }

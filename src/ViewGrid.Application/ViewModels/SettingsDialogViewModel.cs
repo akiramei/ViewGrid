@@ -57,6 +57,12 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty] public partial bool EnableAutoSave { get; set; }
 
+    /// <summary>
+    /// UI 表示言語の選択。 "system" / "ja" / "en"。 <see cref="AppSettings.Language"/> と同期し、
+    /// 変更時に App 側の <c>ApplyLanguage</c> が <c>LocService</c> を更新して全 UI を即時切替する。
+    /// </summary>
+    [ObservableProperty] public partial string Language { get; set; } = "system";
+
     public SettingsDialogViewModel(IAppSettingsService settings, IFilePickerService filePicker)
     {
         _settings = settings;
@@ -80,6 +86,7 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
             DefaultAutoCropPreset = _settings.Current.DefaultAutoCropPreset;
             ThumbnailMaxEdgePixels = _settings.Current.ThumbnailMaxEdgePixels;
             EnableAutoSave = _settings.Current.EnableAutoSave;
+            Language = _settings.Current.Language;
         }
         finally
         {
@@ -146,6 +153,19 @@ public sealed partial class SettingsDialogViewModel : ViewModelBase
     }
 
     partial void OnEnableAutoSaveChanged(bool value) => SaveCurrent(s => s with { EnableAutoSave = value });
+
+    partial void OnLanguageChanged(string value)
+    {
+        SaveCurrent(s => s with { Language = value });
+        OnPropertyChanged(nameof(IsLanguageSystem));
+        OnPropertyChanged(nameof(IsLanguageJa));
+        OnPropertyChanged(nameof(IsLanguageEn));
+    }
+
+    /// <summary>言語 RadioButton 用ヘルパ。</summary>
+    public bool IsLanguageSystem { get => Language == "system"; set { if (value) Language = "system"; } }
+    public bool IsLanguageJa { get => Language == "ja"; set { if (value) Language = "ja"; } }
+    public bool IsLanguageEn { get => Language == "en"; set { if (value) Language = "en"; } }
 
     /// <summary>
     /// Current に対して mutator を適用した新しい <see cref="AppSettings"/> を保存する。

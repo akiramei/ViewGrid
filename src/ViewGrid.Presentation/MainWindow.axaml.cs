@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using ViewGrid.Application.History;
 using ViewGrid.Application.ViewModels;
+using ViewGrid.Presentation.Localization;
 using ViewGrid.Presentation.Views;
 
 namespace ViewGrid.Presentation;
@@ -84,16 +85,17 @@ public partial class MainWindow : Window
     /// <summary>「ヘルプ → ViewGrid について」: 簡易な情報ダイアログ。</summary>
     private async void OnAboutClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
+        var loc = LocService.Instance;
         var licenseButton = new Avalonia.Controls.Button
         {
-            Content = "ライセンス情報を表示...",
+            Content = loc["About_ShowLicenses"],
             HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
             HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
             Margin = new Avalonia.Thickness(0, 8, 0, 0),
         };
         var dialog = new Window
         {
-            Title = "ViewGrid について",
+            Title = loc["About_Title"],
             Width = 400,
             Height = 280,
             CanResize = false,
@@ -105,17 +107,17 @@ public partial class MainWindow : Window
                 Children =
                 {
                     new Avalonia.Controls.TextBlock { Text = "ViewGrid", FontSize = 22, FontWeight = Avalonia.Media.FontWeight.SemiBold },
-                    new Avalonia.Controls.TextBlock { Text = "画像をグリッドに配置するシンプルなツール。", Opacity = 0.75 },
+                    new Avalonia.Controls.TextBlock { Text = loc["About_Tagline"], Opacity = 0.75 },
                     new Avalonia.Controls.TextBlock
                     {
-                        Text = "多数のオープンソースソフトウェアの上に成り立っています。 開発者の皆様に感謝。",
+                        Text = loc["About_OssThanks"],
                         FontSize = 12,
                         Opacity = 0.75,
                         TextWrapping = Avalonia.Media.TextWrapping.Wrap,
                         Margin = new Avalonia.Thickness(0, 4, 0, 0),
                     },
                     licenseButton,
-                    new Avalonia.Controls.TextBlock { Text = "© 2026 ViewGrid", FontSize = 11, Opacity = 0.55, Margin = new Avalonia.Thickness(0, 8, 0, 0) },
+                    new Avalonia.Controls.TextBlock { Text = loc["About_Copyright"], FontSize = 11, Opacity = 0.55, Margin = new Avalonia.Thickness(0, 8, 0, 0) },
                 },
             },
         };
