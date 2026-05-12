@@ -638,6 +638,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     /// <summary>
     /// 配置済みアイテムをドロップ位置へ移動、または既存配置と入れ替える。
+    /// 実処理は <see cref="MovePlacementInternalAsync"/> / <see cref="SwapPlacementsInternalAsync"/> に委譲し、
+    /// ここでは guard / source-target 解決 / IsBusy 制御のみを担う。
     /// </summary>
     public async Task<bool> MoveOrSwapPlacementAsync(
         Guid sourcePlacementId,
@@ -650,60 +652,78 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         var source = Placements.FirstOrDefault(p => p.PlacementId == sourcePlacementId);
         if (source is null) return false;
 
-        // ドロップ先セルにある別の配置を探す
-        var target = Placements.FirstOrDefault(p =>
-            p.PlacementId != sourcePlacementId &&
-            dropPosition.X >= p.GridX && dropPosition.X < p.GridX + Math.Max(1, p.OccupyWidth) &&
-            dropPosition.Y >= p.GridY && dropPosition.Y < p.GridY + Math.Max(1, p.OccupyHeight));
+        var target = FindOverlappingPlacement(sourcePlacementId, dropPosition);
 
         try
         {
             IsBusy = true;
-            if (target is null)
-            {
-                // Move（Undo/Redo 履歴に積む）
-                var beforePosition = source.Position;
-                if (beforePosition == dropPosition) return false;
-                var moveDescription =
-                    $"移動: 「{source.Label}」 ({beforePosition.X},{beforePosition.Y}) → ({dropPosition.X},{dropPosition.Y})";
-                var command = new MovePlacementCommand(
-                    _moveUseCase, grid.GridId, sourcePlacementId, beforePosition, dropPosition, moveDescription);
-                var result = await _history.ExecuteAsync(command, ct);
-                if (result.IsError)
-                {
-                    StatusMessage = string.Join(", ", result.Errors);
-                    return false;
-                }
-                // Move では Position だけが変わる。共有特性 / Crop 設定 / サムネは不変なので、
-                // ReloadPlacementsAsync (全件再ロード + AutoCrop 再走査) は不要。
-                // PlacementItemViewModel.Position は ObservableProperty なので View が反応する。
-                source.Position = dropPosition;
-                SelectedPlacement = source;
-                StatusMessage = _loc.Format("Status_PlacementMovedFmt", dropPosition.X, dropPosition.Y);
-                return true;
-            }
-            else
-            {
-                // Swap（Undo/Redo 履歴に積む）
-                var swapDescription = $"入れ替え: 「{source.Label}」⇔「{target.Label}」";
-                var command = new SwapPlacementsCommand(
-                    _swapUseCase, grid.GridId, sourcePlacementId, target.PlacementId, swapDescription);
-                var result = await _history.ExecuteAsync(command, ct);
-                if (result.IsError)
-                {
-                    StatusMessage = string.Join(", ", result.Errors);
-                    return false;
-                }
-                // Swap も Position の交換のみで View は反応する。同上の理由で全件再ロード不要。
-                var sourceOldPosition = source.Position;
-                source.Position = target.Position;
-                target.Position = sourceOldPosition;
-                SelectedPlacement = source;
-                StatusMessage = _loc["Status_PlacementSwapped"];
-                return true;
-            }
+            return target is null
+                ? await MovePlacementInternalAsync(source, grid, dropPosition, ct)
+                : await SwapPlacementsInternalAsync(source, target, grid, ct);
         }
         finally { IsBusy = false; }
+    }
+
+    /// <summary>
+    /// 指定セルと矩形が重なる別の placement を探す (sourcePlacementId は除外)。
+    /// 見つからなければ <c>null</c>。 OccupySize は最低 1 で扱う。
+    /// </summary>
+    private PlacementItemViewModel? FindOverlappingPlacement(Guid sourcePlacementId, CellPosition cell) =>
+        Placements.FirstOrDefault(p =>
+            p.PlacementId != sourcePlacementId &&
+            cell.X >= p.GridX && cell.X < p.GridX + Math.Max(1, p.OccupyWidth) &&
+            cell.Y >= p.GridY && cell.Y < p.GridY + Math.Max(1, p.OccupyHeight));
+
+    /// <summary>
+    /// Move 経路。 Position だけが変わるため <see cref="ReloadPlacementsAsync"/> (全件再ロード +
+    /// AutoCrop 再走査) は呼ばない。 <c>PlacementItemViewModel.Position</c> は ObservableProperty なので
+    /// View binding が即座に追従する。 同位置への drop は no-op で <c>false</c> を返す。
+    /// </summary>
+    private async Task<bool> MovePlacementInternalAsync(
+        PlacementItemViewModel source, GridCanvasItemViewModel grid,
+        CellPosition dropPosition, CancellationToken ct)
+    {
+        var beforePosition = source.Position;
+        if (beforePosition == dropPosition) return false;
+
+        var moveDescription =
+            $"移動: 「{source.Label}」 ({beforePosition.X},{beforePosition.Y}) → ({dropPosition.X},{dropPosition.Y})";
+        var command = new MovePlacementCommand(
+            _moveUseCase, grid.GridId, source.PlacementId, beforePosition, dropPosition, moveDescription);
+        var result = await _history.ExecuteAsync(command, ct);
+        if (result.IsError)
+        {
+            StatusMessage = string.Join(", ", result.Errors);
+            return false;
+        }
+        source.Position = dropPosition;
+        SelectedPlacement = source;
+        StatusMessage = _loc.Format("Status_PlacementMovedFmt", dropPosition.X, dropPosition.Y);
+        return true;
+    }
+
+    /// <summary>
+    /// Swap 経路。 Position の交換のみで View は反応するため全件再ロード不要。
+    /// </summary>
+    private async Task<bool> SwapPlacementsInternalAsync(
+        PlacementItemViewModel source, PlacementItemViewModel target,
+        GridCanvasItemViewModel grid, CancellationToken ct)
+    {
+        var swapDescription = $"入れ替え: 「{source.Label}」⇔「{target.Label}」";
+        var command = new SwapPlacementsCommand(
+            _swapUseCase, grid.GridId, source.PlacementId, target.PlacementId, swapDescription);
+        var result = await _history.ExecuteAsync(command, ct);
+        if (result.IsError)
+        {
+            StatusMessage = string.Join(", ", result.Errors);
+            return false;
+        }
+        var sourceOldPosition = source.Position;
+        source.Position = target.Position;
+        target.Position = sourceOldPosition;
+        SelectedPlacement = source;
+        StatusMessage = _loc["Status_PlacementSwapped"];
+        return true;
     }
 
     /// <summary>
