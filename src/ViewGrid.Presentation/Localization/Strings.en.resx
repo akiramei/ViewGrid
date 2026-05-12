@@ -384,4 +384,19 @@
   <data name="Status_AssetDeletedCountFmt" xml:space="preserve"><value>Deleted {0} items.</value></data>
   <data name="Status_AssetDeletedMixedFmt" xml:space="preserve"><value>{0} deleted, {1} failed ({2})</value></data>
   <data name="Status_AssetDeleted" xml:space="preserve"><value>Asset deleted.</value></data>
+
+  <!-- WorkspaceSwitchDialog dynamic UI strings (Phase 3+) -->
+  <data name="Workspace_CreateCard_NewTitle" xml:space="preserve"><value>Create a new workspace</value></data>
+  <data name="Workspace_CreateCard_DuplicateTitleFmt" xml:space="preserve"><value>Duplicate "{0}"</value></data>
+  <data name="Workspace_CreateCard_ImportTitle" xml:space="preserve"><value>Import from zip</value></data>
+  <data name="Workspace_CreateConfirm_Create" xml:space="preserve"><value>Create</value></data>
+  <data name="Workspace_CreateConfirm_Duplicate" xml:space="preserve"><value>Duplicate</value></data>
+  <data name="Workspace_CreateConfirm_Import" xml:space="preserve"><value>Import</value></data>
+  <data name="Workspace_DisplayName_CopySuffixFmt" xml:space="preserve"><value>{0} (Copy)</value></data>
+
+  <!-- Terminology (Phase 3+: variant labels) -->
+  <data name="Term_Variant" xml:space="preserve"><value>Variant</value></data>
+  <data name="Term_VariantPrefix" xml:space="preserve"><value>Variant</value></data>
+  <data name="Term_VariantUnnamed" xml:space="preserve"><value>(Unnamed)</value></data>
+  <data name="Term_VariantUnknown" xml:space="preserve"><value>(Unknown variant)</value></data>
 </root>

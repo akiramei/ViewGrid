@@ -100,7 +100,10 @@ public sealed class ForkPlacementVariantUseCase(
 
     private static string MakeForkName(string? sourceName)
     {
-        var basis = string.IsNullOrWhiteSpace(sourceName) ? Terminology.Variant : sourceName;
+        // 派生バリアント名は DB に永続化されるため culture invariant な値を使う。
+        // 表示文字列 (Terminology.VariantKey) ではなく VariantInvariant を選ぶ理由:
+        // 後で言語切替しても既存 DB に残った fork 名が UI 上で意味不明にならないようにする。
+        var basis = string.IsNullOrWhiteSpace(sourceName) ? Terminology.VariantInvariant : sourceName;
         return $"{basis} (派生)";
     }
 }

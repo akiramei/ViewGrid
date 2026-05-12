@@ -384,4 +384,19 @@
   <data name="Status_AssetDeletedCountFmt" xml:space="preserve"><value>{0} 件削除しました。</value></data>
   <data name="Status_AssetDeletedMixedFmt" xml:space="preserve"><value>{0} 件削除、{1} 件失敗（{2}）</value></data>
   <data name="Status_AssetDeleted" xml:space="preserve"><value>アセットを削除しました。</value></data>
+
+  <!-- WorkspaceSwitchDialog 動的 UI 文字列 (Phase 3+) -->
+  <data name="Workspace_CreateCard_NewTitle" xml:space="preserve"><value>新しいワークスペースを作成</value></data>
+  <data name="Workspace_CreateCard_DuplicateTitleFmt" xml:space="preserve"><value>「{0}」 を複製</value></data>
+  <data name="Workspace_CreateCard_ImportTitle" xml:space="preserve"><value>zip からインポート</value></data>
+  <data name="Workspace_CreateConfirm_Create" xml:space="preserve"><value>作成</value></data>
+  <data name="Workspace_CreateConfirm_Duplicate" xml:space="preserve"><value>複製</value></data>
+  <data name="Workspace_CreateConfirm_Import" xml:space="preserve"><value>インポート</value></data>
+  <data name="Workspace_DisplayName_CopySuffixFmt" xml:space="preserve"><value>{0} (コピー)</value></data>
+
+  <!-- Terminology (Phase 3+: バリアント呼称) -->
+  <data name="Term_Variant" xml:space="preserve"><value>バリアント</value></data>
+  <data name="Term_VariantPrefix" xml:space="preserve"><value>バリアント</value></data>
+  <data name="Term_VariantUnnamed" xml:space="preserve"><value>(無名)</value></data>
+  <data name="Term_VariantUnknown" xml:space="preserve"><value>(不明なバリアント)</value></data>
 </root>

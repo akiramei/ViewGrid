@@ -367,8 +367,10 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.CommitCreateVariantAsync();
 
         _vm.Candidates.Should().HaveCount(2);
-        // ordinal = 既存件数 (1) + 1 = 2 → "バリアント 2"
-        _vm.Candidates.Should().Contain(c => c.CopyDisplayName == "バリアント 2");
+        // ordinal = 既存件数 (1) + 1 = 2 → "{prefix} 2"
+        // NullLocalizationService が key を素通しするため prefix は "Term_VariantPrefix"
+        // (本番では resx から「バリアント」 / "Variant" に解決される)。
+        _vm.Candidates.Should().Contain(c => c.CopyDisplayName == "Term_VariantPrefix 2");
     }
 
     /// <summary>BeginCreateVariant: SelectedCandidate が null だと no-op。</summary>

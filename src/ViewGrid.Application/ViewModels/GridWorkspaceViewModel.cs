@@ -718,7 +718,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         {
             IsBusy = true;
             var candidate = Candidates.FirstOrDefault(c => c.CopyId == copyId);
-            var copyLabel = candidate?.CopyDisplayName ?? Terminology.VariantUnknown;
+            var copyLabel = candidate?.CopyDisplayName ?? _loc[Terminology.VariantUnknownKey];
             var description = $"配置: 「{copyLabel}」→ ({position.X},{position.Y})";
             var command = new PlaceCommand(
                 _placeUseCase, _removeUseCase, _placementRepository,
@@ -1261,7 +1261,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             // 命名規則: 同じアセットに紐づく既存バリアント数 + 1
             var ordinal = Candidates.Count(c => c.AssetId == assetId) + 1;
             var nameToUse = string.IsNullOrWhiteSpace(DraftVariantName)
-                ? $"{Terminology.VariantPrefix} {ordinal}"
+                ? $"{_loc[Terminology.VariantPrefixKey]} {ordinal}"
                 : DraftVariantName.Trim();
 
             var result = await _createCopyUseCase.ExecuteAsync(assetId, copyName: nameToUse, ct: ct);
@@ -1394,9 +1394,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             CopyName = trimmed,
             ClearCopyName = trimmed is null,
         };
-        var beforeLabel = string.IsNullOrWhiteSpace(beforeName) ? Terminology.VariantUnnamed : beforeName;
-        var afterLabel = string.IsNullOrWhiteSpace(trimmed) ? Terminology.VariantUnnamed : trimmed;
-        var description = $"{Terminology.Variant}名変更: 「{beforeLabel}」→「{afterLabel}」";
+        var beforeLabel = string.IsNullOrWhiteSpace(beforeName) ? _loc[Terminology.VariantUnnamedKey] : beforeName;
+        var afterLabel = string.IsNullOrWhiteSpace(trimmed) ? _loc[Terminology.VariantUnnamedKey] : trimmed;
+        var description = $"{_loc[Terminology.VariantKey]}名変更: 「{beforeLabel}」→「{afterLabel}」";
         var command = new UpdateImageCopyCommand(_updateCopyUseCase, candidate.CopyId, before, after, description);
 
         var result = await _history.ExecuteAsync(command, ct);

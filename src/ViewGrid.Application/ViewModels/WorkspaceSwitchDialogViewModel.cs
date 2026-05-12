@@ -74,17 +74,17 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
 
     /// <summary>新規作成カードのヘッダ文言。 複製 / インポートモードでは別文言になる。</summary>
     public string CreateCardTitle => IsDuplicateMode
-        ? $"「{DuplicateSourceName}」 を複製"
+        ? _loc.Format("Workspace_CreateCard_DuplicateTitleFmt", DuplicateSourceName ?? string.Empty)
         : IsImportMode
-            ? "zip からインポート"
-            : "新しいワークスペースを作成";
+            ? _loc["Workspace_CreateCard_ImportTitle"]
+            : _loc["Workspace_CreateCard_NewTitle"];
 
     /// <summary>確定ボタンのラベル。 複製 / インポートモードでは別文言になる。</summary>
     public string CreateConfirmLabel => IsDuplicateMode
-        ? "複製"
+        ? _loc["Workspace_CreateConfirm_Duplicate"]
         : IsImportMode
-            ? "インポート"
-            : "作成";
+            ? _loc["Workspace_CreateConfirm_Import"]
+            : _loc["Workspace_CreateConfirm_Create"];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCreate))]
@@ -197,7 +197,7 @@ public sealed partial class WorkspaceSwitchDialogViewModel : ViewModelBase
         DuplicateSourceName = source.Name;
         ImportSourceZipPath = null;
         DraftName = ProposeCopyName(source.Name);
-        DraftDisplayName = $"{source.DisplayName} (コピー)";
+        DraftDisplayName = _loc.Format("Workspace_DisplayName_CopySuffixFmt", source.DisplayName);
         StatusMessage = null;
         IsCreating = true;
     }

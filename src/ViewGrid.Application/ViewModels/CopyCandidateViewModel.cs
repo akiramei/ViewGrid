@@ -52,7 +52,7 @@ public sealed partial class CopyCandidateViewModel : ObservableObject
     public bool IsExpanded { get; set; }
 
     public string CopyDisplayName => string.IsNullOrWhiteSpace(CopyName)
-        ? Terminology.VariantUnnamed
+        ? LocAccessor.Current[Terminology.VariantUnnamedKey]
         : CopyName!;
 
     public string SummaryLine =>

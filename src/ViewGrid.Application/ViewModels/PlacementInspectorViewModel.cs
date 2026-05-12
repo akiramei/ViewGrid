@@ -645,7 +645,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
             return;
         }
         var sourceLabel = string.IsNullOrWhiteSpace(sourceCopy.CopyName)
-            ? Localization.Terminology.VariantUnnamed
+            ? _loc[Localization.Terminology.VariantUnnamedKey]
             : sourceCopy.CopyName!;
         var description = $"バリアントを分岐: 「{sourceLabel}」 → 派生";
 

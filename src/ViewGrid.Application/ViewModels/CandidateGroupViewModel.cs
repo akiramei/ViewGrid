@@ -32,7 +32,7 @@ public sealed partial class CandidateGroupViewModel : ObservableObject
     /// <summary>
     /// グループヘッダに表示するサマリ（例: "3 バリアント"）。
     /// </summary>
-    public string SummaryLine => $"{Variants.Count} {Terminology.Variant}";
+    public string SummaryLine => $"{Variants.Count} {LocAccessor.Current[Terminology.VariantKey]}";
 
     /// <summary>
     /// TreeView での展開状態。<c>TreeViewItem.IsExpanded</c> に TwoWay バインドされ、

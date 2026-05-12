@@ -5,6 +5,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Microsoft.Extensions.DependencyInjection;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.ViewModels;
 using ViewGrid.Core.Services;
 using ViewGrid.Core.Settings;
@@ -40,6 +41,10 @@ public partial class App : global::Avalonia.Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && _services is not null)
         {
+            // ItemViewModel 等の non-DI 経路から ILocalizationService を引けるように Singleton 注入。
+            // 通常は DI コンストラクタ注入を使うが、 大量に new される ListBox 要素 VM のみここを経由する。
+            LocAccessor.Current = _services.GetRequiredService<ILocalizationService>();
+
             // 設定からテーマ + アクセント色 + 言語を適用 + 設定変更時の即時切替を購読
             var settings = _services.GetRequiredService<IAppSettingsService>();
             ApplyTheme(settings.Current);
