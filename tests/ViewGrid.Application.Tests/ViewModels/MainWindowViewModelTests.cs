@@ -92,11 +92,16 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository, _fx.AssetRepository,
             _fx.CropResolver, updateWeights,
             NullLogger<FitGridWeightToPlacementUseCase>.Instance);
+        var variantProperties = new CopyPropertiesViewModel(
+            updateCopy, sharedHistory, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
+            new NullLocalizationService(),
+            NullLogger<CopyPropertiesViewModel>.Instance);
         _gridWorkspace = new GridWorkspaceViewModel(
             _fx.GridRepository, _fx.CopyRepository, _fx.AssetRepository, _fx.PlacementRepository,
             _fx.Thumbnails, _fx.CropResolver,
             place, remove, move, swap, render, export, updateWeights, updateLocks, offset,
-            fitWeight, createCopy, updateCopy, picker, _messenger, sharedHistory, inspector,
+            fitWeight, createCopy, updateCopy, deleteAsset, _fx.Storage, _fx.AppSettings, picker, _messenger, sharedHistory, inspector,
+            variantProperties,
             new NullLocalizationService(),
             NullLogger<GridWorkspaceViewModel>.Instance);
 

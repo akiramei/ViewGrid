@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using ViewGrid.Application.AutoSave;
 using ViewGrid.Application.History;
 using ViewGrid.Application.History.Commands;
 using ViewGrid.Application.Localization;
@@ -42,6 +43,10 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly FitGridWeightToPlacementUseCase _fitWeightUseCase;
     private readonly CreateLogicalCopyUseCase _createCopyUseCase;
     private readonly UpdateImageCopyUseCase _updateCopyUseCase;
+    private readonly DeleteImageAssetUseCase _deleteAssetUseCase;
+    private readonly IImageStorage _imageStorage;
+    private readonly IAppSettingsService _appSettings;
+    private readonly SaveCoordinator _variantAutoSave;
     private readonly IFilePickerService _filePicker;
     private readonly IMessenger _messenger;
     private readonly IUndoRedoService _history;
@@ -49,6 +54,13 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly ILogger<GridWorkspaceViewModel> _logger;
 
     public PlacementInspectorViewModel Inspector { get; }
+
+    /// <summary>
+    /// 候補リストでバリアントを選択中 (= 配置未選択) に右ペインに表示する共有特性編集 VM。
+    /// PlacementInspector 内の CopyProperties とは別インスタンス。
+    /// 配置選択中は Inspector.CopyProperties が使われるのでこちらは表示されない。
+    /// </summary>
+    public CopyPropertiesViewModel VariantProperties { get; }
 
     [ObservableProperty]
     public partial GridCanvasItemViewModel? CurrentGrid { get; set; }
@@ -224,15 +236,22 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     {
         get
         {
-            if (CurrentGrid is null) return NoSelection.Instance;
-            if (SelectedPlacement is { } p)
-                return new PlacementSelection(CurrentGrid.GridId, p.PlacementId, p.CopyId);
-            return new GridSelection(CurrentGrid.GridId);
+            // 優先順位: Placement > Variant > Grid > None。
+            // 配置が選択されていればそれが最強 (= 共有特性編集は Inspector 内の CopyProperties で行う)。
+            // 配置がなくバリアントが選択中なら VariantSelection (= スタンドアロン CopyProperties を表示)。
+            if (CurrentGrid is { } grid && SelectedPlacement is { } p)
+                return new PlacementSelection(grid.GridId, p.PlacementId, p.CopyId);
+            if (SelectedCandidate is { } cand)
+                return new VariantSelection(cand.CopyId, cand.AssetId);
+            if (CurrentGrid is { } gridOnly)
+                return new GridSelection(gridOnly.GridId);
+            return NoSelection.Instance;
         }
     }
 
     /// <summary>View 側で <c>IsVisible</c> バインドを使う場合の利便プロパティ（DataTemplate 切替なら不要）。</summary>
     public bool IsPlacementSelected => CurrentSelection is PlacementSelection;
+    public bool IsVariantSelected => CurrentSelection is VariantSelection;
     public bool IsGridOnlySelected => CurrentSelection is GridSelection;
     public bool IsNoSelection => CurrentSelection is NoSelection;
 
@@ -255,10 +274,14 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         FitGridWeightToPlacementUseCase fitWeightUseCase,
         CreateLogicalCopyUseCase createCopyUseCase,
         UpdateImageCopyUseCase updateCopyUseCase,
+        DeleteImageAssetUseCase deleteAssetUseCase,
+        IImageStorage imageStorage,
+        IAppSettingsService appSettings,
         IFilePickerService filePicker,
         IMessenger messenger,
         IUndoRedoService history,
         PlacementInspectorViewModel inspector,
+        CopyPropertiesViewModel variantProperties,
         ILocalizationService loc,
         ILogger<GridWorkspaceViewModel> logger)
     {
@@ -280,14 +303,64 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _fitWeightUseCase = fitWeightUseCase;
         _createCopyUseCase = createCopyUseCase;
         _updateCopyUseCase = updateCopyUseCase;
+        _deleteAssetUseCase = deleteAssetUseCase;
+        _imageStorage = imageStorage;
+        _appSettings = appSettings;
         _filePicker = filePicker;
         _messenger = messenger;
         _history = history;
         Inspector = inspector;
+        VariantProperties = variantProperties;
         _loc = loc;
         _logger = logger;
 
+        // VariantProperties (= 候補リスト経由のスタンドアロン共有特性編集) は
+        // PlacementInspector 経由のものとは別経路なので、 専用 SaveCoordinator で
+        // auto-save を駆動する。 PlacementInspector 側の auto-save 配線とは独立。
+        _variantAutoSave = new SaveCoordinator(
+            TimeSpan.FromMilliseconds(1000),
+            isEnabled: () => _appSettings.Current.EnableAutoSave,
+            isDirty: () => VariantProperties.IsDirty && VariantProperties.HasCopy,
+            signatureProvider: ComputeVariantAutoSaveSignature,
+            saveAction: ct => VariantProperties.TrySaveAsync(ct));
+        VariantProperties.PropertyChanged += OnVariantPropertiesChanged;
+        _appSettings.Changed += OnAppSettingsChangedForVariant;
+
         _messenger.Register(this);
+    }
+
+    /// <summary>
+    /// VariantProperties の編集系プロパティ変化を auto-save coordinator に通知。
+    /// 内部状態の通知も含まれるが NotifyEdited は dirty / 設定 OFF / 失敗 retry を
+    /// gate してくれるので invocation コスト以外の害はない。
+    /// </summary>
+    private void OnVariantPropertiesChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        _variantAutoSave.NotifyEdited();
+    }
+
+    private void OnAppSettingsChangedForVariant(object? sender, Core.Settings.AppSettings settings)
+    {
+        // 設定 OFF にされた瞬間に保留中の auto-save をキャンセル。
+        if (!settings.EnableAutoSave) _variantAutoSave.Cancel();
+    }
+
+    /// <summary>
+    /// VariantProperties 用の auto-save signature。 失敗 retry guard と編集対象切替検出に使う。
+    /// CopyId + 主要編集値を連結 (Inspector 側 ComputeAutoSaveSignature と同じ構造)。
+    /// </summary>
+    private string ComputeVariantAutoSaveSignature()
+    {
+        var src = VariantProperties.AttachedSourceForTests;
+        return string.Concat(
+            src?.CopyId.ToString() ?? "null", "|",
+            VariantProperties.Rotation, "|",
+            VariantProperties.FlipX, "|", VariantProperties.FlipY, "|",
+            VariantProperties.ScalingMode, "|",
+            VariantProperties.AlignX, "|", VariantProperties.AlignY, "|",
+            VariantProperties.AutoCropEnabled, "|",
+            VariantProperties.AutoCropPreset, "|",
+            VariantProperties.AutoCropThreshold);
     }
 
     /// <summary>
@@ -358,6 +431,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     {
         OnPropertyChanged(nameof(CurrentSelection));
         OnPropertyChanged(nameof(IsPlacementSelected));
+        OnPropertyChanged(nameof(IsVariantSelected));
         OnPropertyChanged(nameof(IsGridOnlySelected));
         OnPropertyChanged(nameof(IsNoSelection));
     }
@@ -1333,17 +1407,36 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try
         {
             IsBusy = true;
-            var result = await _copyRepository.DeleteAsync(target.CopyId, ct);
-            if (result.IsError)
+            var label = target.CopyDisplayName;
+
+            // このアセットの最後のバリアントか判定する。 そうなら親アセットごと
+            // cascade 削除する (孤児アセット = アセット件数だけ残って候補リストから
+            // 完全に見えなくなる状態を防止)。
+            var group = CandidateGroups.FirstOrDefault(g => g.AssetId == target.AssetId);
+            var isLastVariant = group is not null && group.Variants.Count == 1;
+
+            if (isLastVariant)
             {
-                StatusMessage = string.Join(", ", result.Errors);
-                return;
+                // DeleteImageAssetUseCase は DB cascade で ImageCopy / GridPlacement / ProtectedRegion を
+                // まとめて消し、 画像本体ファイルとサムネも削除する。
+                var assetResult = await _deleteAssetUseCase.ExecuteAsync(target.AssetId, ct);
+                if (assetResult.IsError)
+                {
+                    StatusMessage = string.Join(", ", assetResult.Errors);
+                    return;
+                }
+            }
+            else
+            {
+                var copyResult = await _copyRepository.DeleteAsync(target.CopyId, ct);
+                if (copyResult.IsError)
+                {
+                    StatusMessage = string.Join(", ", copyResult.Errors);
+                    return;
+                }
             }
 
-            var label = target.CopyDisplayName;
             Candidates.Remove(target);
-            // CandidateGroups からも対応 Variant を除去。グループが空になったらグループごと削除。
-            var group = CandidateGroups.FirstOrDefault(g => g.AssetId == target.AssetId);
             if (group is not null)
             {
                 group.Variants.Remove(target);
@@ -1353,9 +1446,14 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             SelectedCandidate = Candidates.FirstOrDefault();
 
             StatusMessage = _loc.Format("Status_VariantDeletedFmt", label);
-            // Copy 削除は cascade で Placement も消えるため履歴を全消去
+            // Copy / Asset 削除は cascade で Placement も消えるため履歴を全消去
             _history.Clear();
             _messenger.Send(new CopyLibraryChangedMessage());
+            if (isLastVariant)
+            {
+                // AssetLibraryViewModel.Assets を再ロードさせる (アセット件数表示を更新)
+                _messenger.Send(new AssetLibraryChangedMessage());
+            }
             LogVariantDeleted(_logger, target.CopyId);
         }
         finally
@@ -1445,12 +1543,49 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     /// <summary>
     /// SelectedCandidate / IsBusy / IsCreatingVariant 変化時に
-    /// 関連コマンドの CanExecute を再評価する。
+    /// 関連コマンドの CanExecute を再評価する。 また CurrentSelection の再評価
+    /// (バリアント選択時に VariantSelection 状態へ遷移) と VariantProperties の
+    /// 編集対象差し替えも行う。
     /// </summary>
     partial void OnSelectedCandidateChanged(CopyCandidateViewModel? value)
     {
         BeginCreateVariantCommand.NotifyCanExecuteChanged();
         DeleteSelectedCandidateCommand.NotifyCanExecuteChanged();
+        NotifySelectionChanged();
+        _ = AttachVariantPropertiesAsync(value);
+    }
+
+    /// <summary>
+    /// VariantProperties (右ペイン スタンドアロン CopyPropertiesView の VM) に
+    /// SelectedCandidate の variant データを attach する。 失敗時は null attach で無効状態に。
+    /// </summary>
+    private async Task AttachVariantPropertiesAsync(CopyCandidateViewModel? candidate)
+    {
+        if (candidate is null)
+        {
+            VariantProperties.Attach(null);
+            return;
+        }
+
+        try
+        {
+            var copy = await _copyRepository.FindByIdAsync(candidate.CopyId);
+            var asset = copy is null ? null : await _assetRepository.FindByIdAsync(copy.AssetId);
+            if (copy is null || asset is null)
+            {
+                VariantProperties.Attach(null);
+                return;
+            }
+            var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
+            var sourcePath = _imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
+            var item = new CopyItemViewModel(copy, thumb, sourcePath, asset.Size.Width, asset.Size.Height);
+            VariantProperties.Attach(item);
+            _variantAutoSave.ResetFailureGuard();
+        }
+        catch
+        {
+            VariantProperties.Attach(null);
+        }
     }
 
     partial void OnIsBusyChanged(bool value)

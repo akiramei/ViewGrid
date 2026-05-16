@@ -17,7 +17,7 @@ namespace ViewGrid.Application.ViewModels;
 /// アセットライブラリ（準備フェーズの画像一覧）。
 /// ファイル取り込み・削除・一覧更新の UI 状態を管理する。
 /// </summary>
-public sealed partial class AssetLibraryViewModel : ViewModelBase
+public sealed partial class AssetLibraryViewModel : ViewModelBase, IRecipient<AssetLibraryChangedMessage>
 {
     private readonly ImportImageUseCase _importUseCase;
     private readonly DeleteImageAssetUseCase _deleteUseCase;
@@ -84,6 +84,20 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase
             if (_bulkUpdatingSelection) return; // bulk 完了時に明示的に通知する
             NotifySelectionChanged();
         };
+
+        // GridWorkspaceViewModel が「最後のバリアント削除→アセットも cascade 削除」 を行った時の
+        // 通知を IRecipient<AssetLibraryChangedMessage>.Receive 経由で受け取る。
+        // WeakReferenceMessenger.Default を使うので明示 unregister は不要。
+        _messenger.RegisterAll(this);
+    }
+
+    /// <summary>
+    /// <see cref="AssetLibraryChangedMessage"/> を受け取って Assets をリポジトリから再ロード。
+    /// 別 VM (GridWorkspaceViewModel など) からアセット削除が走った場合の同期に使う。
+    /// </summary>
+    public void Receive(AssetLibraryChangedMessage message)
+    {
+        _ = LoadAsync();
     }
 
     /// <summary>

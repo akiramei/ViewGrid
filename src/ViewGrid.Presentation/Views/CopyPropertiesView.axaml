@@ -60,6 +60,18 @@
             </Border>
 
             <!--
+                StatusMessage を一番下に固定し、 その上に 保存 / リセット バーを置く。
+                ボタンの y 位置がメッセージ表示有無で動かないようにするためこの順 (DockPanel は
+                XAML 先頭にある Bottom-dock ほど下端に配置される)。
+            -->
+            <TextBlock DockPanel.Dock="Bottom"
+                       Text="{Binding StatusMessage}"
+                       Opacity="0.7"
+                       FontSize="11"
+                       Margin="0,8,0,0"
+                       IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <!--
                 スタンドアロン用「保存 / リセット」バー。配置タブの Inspector に inline embed する
                 場合は ShowSaveBar=False で隠し、Inspector 側の統一保存ボタンに任せる。
             -->
@@ -87,13 +99,6 @@
                            IsVisible="{Binding IsDirty}"
                            ToolTip.Tip="{loc:Tr Common_UnsavedTooltip}" />
             </StackPanel>
-
-            <TextBlock DockPanel.Dock="Bottom"
-                       Text="{Binding StatusMessage}"
-                       Opacity="0.7"
-                       FontSize="11"
-                       Margin="0,8,0,0"
-                       IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
             <!--
                 項目数増加に伴うタブ分割。「特性」は変形・配置の既存項目（編集頻度高、既定タブ）、
