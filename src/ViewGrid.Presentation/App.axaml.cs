@@ -84,9 +84,15 @@ public partial class App : global::Avalonia.Application
                 // live VM を辿って await する。
                 desktop.ShutdownRequested += OnShutdownRequested;
 
-                // 初回起動時にアセット一覧とグリッド一覧を読み込み
+                // 初回起動時にアセット一覧 / グリッド一覧 / 候補リストを読み込み。
+                // 候補リスト (GridWorkspace.Candidates / CandidateGroups) は LoadGridAsync 経由
+                // でしか populate されないが、 グリッドが 0 件のワークスペースだと SelectedGrid が
+                // null のままで LoadGridAsync が走らない → 既存アセットがあるのに候補リストが空、
+                // という UI 上「アセットが消えた」 ように見える状態が発生する。 起動時に明示的に
+                // 呼ぶことで、 グリッド有無に依存せず DB の copy 一覧を candidate list に反映する。
                 _ = vm.AssetLibrary.LoadAsync();
                 _ = vm.GridList.LoadAsync();
+                _ = vm.GridWorkspace.LoadCandidatesAsync();
             }
         }
 
