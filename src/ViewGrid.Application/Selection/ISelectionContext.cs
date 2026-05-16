@@ -6,7 +6,7 @@ namespace ViewGrid.Application.Selection;
 /// <para>
 /// 具体型は record で網羅: <see cref="NoSelection"/> / <see cref="GridSelection"/> /
 /// <see cref="PlacementSelection"/>。これらだけで現状の右ペイン文脈は表現できる。
-/// 将来 <c>AssetSelection</c> / <c>VariantSelection</c> 等を追加して拡張する。
+/// (将来 <c>AssetSelection</c> 等の追加が必要なら拡張する。)
 /// </para>
 /// <para>
 /// View 側では <c>ContentControl</c> の <c>DataTemplates</c> で型ごとの
@@ -35,3 +35,10 @@ public sealed record GridSelection(Guid GridId) : ISelectionContext;
 /// ナビゲート）の表示に使う。
 /// </summary>
 public sealed record PlacementSelection(Guid GridId, Guid PlacementId, Guid CopyId) : ISelectionContext;
+
+/// <summary>
+/// 候補リストでバリアントが選択されているが、 グリッド上に配置されていない (or 配置選択は無い) 状態。
+/// CopyPropertiesView (共有特性編集) を独立に表示するために使う。
+/// 配置が選択されている場合は <see cref="PlacementSelection"/> が優先される。
+/// </summary>
+public sealed record VariantSelection(Guid CopyId, Guid AssetId) : ISelectionContext;

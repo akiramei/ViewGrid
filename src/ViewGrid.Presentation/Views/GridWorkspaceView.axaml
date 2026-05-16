@@ -719,7 +719,12 @@
                     <views:GridPropertiesView DataContext="{Binding CurrentGrid}"
                                               IsVisible="{Binding #GridWorkspaceRoot.((vm:GridWorkspaceViewModel)DataContext).IsGridOnlySelected}" />
 
-                    <!-- グリッド未選択: 案内 -->
+                    <!-- バリアント選択中 (配置未選択): スタンドアロン CopyPropertiesView を表示。
+                         配置選択中は IsPlacementSelected が true なので Inspector が優先表示される。 -->
+                    <views:CopyPropertiesView DataContext="{Binding #GridWorkspaceRoot.((vm:GridWorkspaceViewModel)DataContext).VariantProperties}"
+                                              IsVisible="{Binding #GridWorkspaceRoot.((vm:GridWorkspaceViewModel)DataContext).IsVariantSelected}" />
+
+                    <!-- 何も選択していない (グリッド無し かつ バリアント無し): 案内 -->
                     <Border IsVisible="{Binding IsNoSelection}"
                             Padding="12">
                         <StackPanel Spacing="6"

@@ -69,6 +69,11 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             NullLogger<FitGridWeightToPlacementUseCase>.Instance);
         var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
         var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
+        var deleteAsset = new DeleteImageAssetUseCase(_fx.AssetRepository, _fx.Storage, _fx.Thumbnails);
+        var variantProperties = new CopyPropertiesViewModel(
+            updateCopy, _history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
+            new NullLocalizationService(),
+            NullLogger<CopyPropertiesViewModel>.Instance);
 
         _vm = new GridWorkspaceViewModel(
             _fx.GridRepository,
@@ -89,10 +94,14 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             fitWeight,
             createCopy,
             updateCopy,
+            deleteAsset,
+            _fx.Storage,
+            _fx.AppSettings,
             picker,
             _messenger,
             _history,
             inspector,
+            variantProperties,
             new NullLocalizationService(),
             NullLogger<GridWorkspaceViewModel>.Instance);
     }
@@ -311,7 +320,11 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         _vm.IsGridOnlySelected.Should().BeFalse();
     }
 
-    /// <summary>配置選択を解除すると GridSelection に戻る。</summary>
+    /// <summary>
+    /// 配置選択を解除すると、 候補も選択されていなければ GridSelection に戻る。
+    /// (VariantSelection 導入前は配置選択時点で候補が auto-set されるパスを考慮していなかったが、
+    /// 新仕様では 「候補 = VariantSelection」 を表すので、 GridSelection に戻すには候補も解除する必要がある。)
+    /// </summary>
     [Fact]
     public async Task Clearing_Placement_Falls_Back_To_GridSelection()
     {
@@ -325,9 +338,76 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         _vm.IsPlacementSelected.Should().BeTrue();
 
         _vm.SelectedPlacement = null;
+        _vm.SelectedCandidate = null;
 
         _vm.CurrentSelection.Should().BeOfType<ViewGrid.Application.Selection.GridSelection>();
         _vm.IsGridOnlySelected.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// 配置選択を解除しても、 候補 (SelectedCandidate) が選択されたままなら
+    /// VariantSelection に遷移する (= 共有特性編集を継続できる)。
+    /// </summary>
+    [Fact]
+    public async Task Clearing_Placement_With_Candidate_Still_Selected_Returns_VariantSelection()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        _vm.SelectedCandidate = _vm.Candidates.Single();
+        _vm.SelectedPlacement = _vm.Placements.Single();
+        _vm.IsPlacementSelected.Should().BeTrue();
+
+        _vm.SelectedPlacement = null;
+
+        _vm.CurrentSelection.Should().BeOfType<ViewGrid.Application.Selection.VariantSelection>();
+        _vm.IsVariantSelected.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// 候補リストでバリアントを選択中 (= 配置未選択 + グリッドの有無は問わない) なら
+    /// CurrentSelection は <see cref="ViewGrid.Application.Selection.VariantSelection"/> になる。
+    /// </summary>
+    [Fact]
+    public async Task CurrentSelection_With_Selected_Candidate_Returns_VariantSelection()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        await _vm.ReloadFromMessageAsyncForTests();
+        _vm.SelectedCandidate = _vm.Candidates.Single();
+
+        _vm.CurrentSelection.Should().BeOfType<ViewGrid.Application.Selection.VariantSelection>();
+        var sel = (ViewGrid.Application.Selection.VariantSelection)_vm.CurrentSelection;
+        sel.CopyId.Should().Be(copy.Id);
+        sel.AssetId.Should().Be(asset.Id);
+        _vm.IsVariantSelected.Should().BeTrue();
+        _vm.IsPlacementSelected.Should().BeFalse();
+        _vm.IsGridOnlySelected.Should().BeFalse();
+        _vm.IsNoSelection.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// 配置選択と候補選択が両方ある場合は PlacementSelection が優先される
+    /// (= 共有特性編集は Inspector 内 CopyProperties で行うので VariantProperties は表示されない)。
+    /// </summary>
+    [Fact]
+    public async Task PlacementSelection_Takes_Priority_Over_VariantSelection()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        _vm.SelectedCandidate = _vm.Candidates.Single();
+        _vm.SelectedPlacement = _vm.Placements.Single();
+
+        _vm.CurrentSelection.Should().BeOfType<ViewGrid.Application.Selection.PlacementSelection>();
+        _vm.IsPlacementSelected.Should().BeTrue();
+        _vm.IsVariantSelected.Should().BeFalse();
     }
 
     // ─── 配置ファースト UI 第 2 段階 (Stage 2): バリアント新規作成 / リネーム / 削除 ───
@@ -545,6 +625,45 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         _vm.CandidateGroups.Should().HaveCount(1);
         _vm.CandidateGroups.Single().Variants.Should().HaveCount(1);
         _vm.CandidateGroups.Single().Variants.Single().CopyDisplayName.Should().Be("keep");
+    }
+
+    /// <summary>
+    /// 最後のバリアントを削除すると、 親アセットも DB から cascade 削除される
+    /// (孤児アセットを残さない)。 同アセット内に他のバリアントが残る場合は
+    /// アセットは残るので、 「最後のバリアント」 判定が効くことを併せて確認する。
+    /// </summary>
+    [Fact]
+    public async Task DeleteSelectedCandidate_Last_Variant_Cascade_Deletes_Asset()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "only");
+        await _vm.ReloadFromMessageAsyncForTests();
+        _vm.SelectedCandidate = _vm.Candidates.Single();
+
+        await _vm.DeleteSelectedCandidateAsync();
+
+        // アセットが DB から消えていること (孤児にならず cascade)
+        var reloaded = await _fx.AssetRepository.FindByIdAsync(asset.Id);
+        reloaded.Should().BeNull();
+    }
+
+    /// <summary>
+    /// 同アセットに 2 バリアントある状態で 1 つ削除した場合は、 アセットは DB に残る
+    /// (まだ「最後のバリアント」 では無いので cascade 削除しない)。
+    /// </summary>
+    [Fact]
+    public async Task DeleteSelectedCandidate_Non_Last_Variant_Keeps_Asset()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, copyName: "keep");
+        var c2 = await _fx.SeedCopyAsync(asset.Id, copyName: "remove");
+        await _vm.ReloadFromMessageAsyncForTests();
+        _vm.SelectedCandidate = _vm.Candidates.First(c => c.CopyId == c2.Id);
+
+        await _vm.DeleteSelectedCandidateAsync();
+
+        var reloaded = await _fx.AssetRepository.FindByIdAsync(asset.Id);
+        reloaded.Should().NotBeNull();
     }
 
     /// <summary>
