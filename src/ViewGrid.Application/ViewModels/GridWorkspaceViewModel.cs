@@ -374,6 +374,13 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private Task _pendingInspectorTask = Task.CompletedTask;
 
     /// <summary>
+    /// 配置選択に伴う候補同期 (<see cref="SyncCandidateToPlacement"/>) 実行中フラグ。
+    /// この間の <see cref="SelectedCandidate"/> 変更はユーザー操作ではないので、
+    /// <see cref="OnSelectedCandidateChanged"/> の「配置選択解除」を抑止する。
+    /// </summary>
+    private bool _syncingCandidateFromPlacement;
+
+    /// <summary>
     /// SelectedPlacement 変更時に呼ばれる明示 async pipeline。 partial void hook
     /// (<see cref="OnSelectedPlacementChanged"/>) は本メソッドを fire-and-forget で kick するだけ。
     /// テストや外部呼び出しは戻り値の Task を await することで切替完了を待てる。
@@ -382,10 +389,45 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// </summary>
     public Task SelectPlacementAsync(PlacementItemViewModel? value)
     {
+        SyncCandidateToPlacement(value);
         var previous = _pendingInspectorTask;
         _pendingInspectorTask = FlushThenAttachAsync(previous, value, CurrentGrid);
         NotifySelectionChanged();
         return _pendingInspectorTask;
+    }
+
+    /// <summary>
+    /// 配置選択時に、候補リストの選択をその配置のバリアントへ追従させる。
+    /// 配置選択が右ペインで優先される仕様上、追従させないと候補リストのハイライトと
+    /// 右ペインの表示内容がズレ、「いまどのバリアントが対象か」が分からなくなる。
+    /// 畳まれているグループは展開して選択を可視化する。
+    /// <para>
+    /// <paramref name="value"/> が null (配置選択解除) のときは候補選択に触れない。
+    /// 配置解除はバリアントクリック起点でも起こり (<see cref="OnSelectedCandidateChanged"/>)、
+    /// その場合はユーザーが選んだ候補をそのまま残す必要があるため。
+    /// </para>
+    /// <para>
+    /// 同期で生じる <see cref="SelectedCandidate"/> 変更は <see cref="_syncingCandidateFromPlacement"/>
+    /// でマークし、<see cref="OnSelectedCandidateChanged"/> 側の「配置選択解除」を抑止する
+    /// (この同期は配置選択の付随処理であって、ユーザーのバリアント選択ではない)。
+    /// </para>
+    /// </summary>
+    private void SyncCandidateToPlacement(PlacementItemViewModel? value)
+    {
+        if (value is null)
+            return;
+
+        var match = Candidates.FirstOrDefault(c => c.CopyId == value.CopyId);
+        if (match is null || ReferenceEquals(match, SelectedCandidate))
+            return;
+
+        var group = CandidateGroups.FirstOrDefault(g => g.AssetId == match.AssetId);
+        if (group is not null)
+            group.IsExpanded = true;
+
+        _syncingCandidateFromPlacement = true;
+        try { SelectedCandidate = match; }
+        finally { _syncingCandidateFromPlacement = false; }
     }
 
     /// <summary>SelectedPlacement 変更時に Inspector を Attach し、CurrentSelection も再計算する。
@@ -1551,6 +1593,19 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     {
         BeginCreateVariantCommand.NotifyCanExecuteChanged();
         DeleteSelectedCandidateCommand.NotifyCanExecuteChanged();
+
+        // ユーザーが候補リストで配置中とは別のバリアントを選んだら、配置選択を解除して
+        // 右ペインをバリアント単体編集 (VariantSelection) に切り替える。配置選択が優先される
+        // 仕様上、これをしないと「セル選択中はバリアントを変えても右ペインが無反応」になる。
+        // 配置由来の同期 (_syncingCandidateFromPlacement) はユーザー操作ではないので解除しない。
+        if (!_syncingCandidateFromPlacement
+            && value is not null
+            && SelectedPlacement is { } placement
+            && placement.CopyId != value.CopyId)
+        {
+            SelectedPlacement = null;
+        }
+
         NotifySelectionChanged();
         _ = AttachVariantPropertiesAsync(value);
     }

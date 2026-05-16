@@ -410,6 +410,55 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         _vm.IsVariantSelected.Should().BeFalse();
     }
 
+    /// <summary>
+    /// 配置を選択すると、候補リストの選択 (SelectedCandidate) がその配置のバリアントへ
+    /// 追従する。候補リストのハイライトと右ペイン表示の対象を常に一致させる (案1)。
+    /// 同期による候補変更で配置選択自体が解除されないことも確認する。
+    /// </summary>
+    [Fact]
+    public async Task Selecting_Placement_Syncs_Candidate_To_Its_Variant()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var c1 = await _fx.SeedCopyAsync(asset.Id, copyName: "v1");
+        var c2 = await _fx.SeedCopyAsync(asset.Id, copyName: "v2");
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, c2.Id, new CellPosition(0, 0));
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+
+        // 別バリアント (c1) を選択した状態で、c2 のバリアントを使う配置を選ぶ。
+        _vm.SelectedCandidate = _vm.Candidates.First(c => c.CopyId == c1.Id);
+        _vm.SelectedPlacement = _vm.Placements.Single();
+
+        _vm.SelectedCandidate!.CopyId.Should().Be(c2.Id);
+        _vm.IsPlacementSelected.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// 配置選択中に候補リストで別バリアントを選ぶと、配置選択が解除され
+    /// 右ペインがバリアント単体編集 (VariantSelection) に切り替わる。
+    /// 「セル選択中はバリアントを変えても右ペインが無反応」というデッドクリックの解消 (案1)。
+    /// </summary>
+    [Fact]
+    public async Task Selecting_Different_Variant_While_Placement_Selected_Switches_To_VariantSelection()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var c1 = await _fx.SeedCopyAsync(asset.Id, copyName: "placed");
+        var c2 = await _fx.SeedCopyAsync(asset.Id, copyName: "other");
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, c1.Id, new CellPosition(0, 0));
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        _vm.SelectedPlacement = _vm.Placements.Single();
+        _vm.IsPlacementSelected.Should().BeTrue();
+
+        _vm.SelectedCandidate = _vm.Candidates.First(c => c.CopyId == c2.Id);
+
+        _vm.SelectedPlacement.Should().BeNull();
+        _vm.CurrentSelection.Should().BeOfType<ViewGrid.Application.Selection.VariantSelection>();
+        ((ViewGrid.Application.Selection.VariantSelection)_vm.CurrentSelection).CopyId.Should().Be(c2.Id);
+    }
+
     // ─── 配置ファースト UI 第 2 段階 (Stage 2): バリアント新規作成 / リネーム / 削除 ───
 
     /// <summary>新規バリアント作成: SelectedCandidate のアセットを起点に新 Copy が増える。</summary>
