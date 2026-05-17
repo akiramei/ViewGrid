@@ -39,10 +39,22 @@ internal static class Program
             if (heldLock is not null)
             {
                 host.Services.ApplyMigrationsAsync().GetAwaiter().GetResult();
+
+                // キャプチャモード: クリーンな一時ワークスペースを撮影向けに整える。
+                // --capture-scenario=<id> 指定時はそのシーンを組み立て、 無指定なら
+                // サンプル画像を投入するだけ (撮影者が手動でグリッド作成・配置する)。
+                if (CaptureMode.IsRequested(args))
+                {
+                    var scenarioId = CaptureMode.ParseScenarioId(args);
+                    if (scenarioId is not null)
+                        CaptureScenarios.BuildAsync(host.Services, scenarioId, args).GetAwaiter().GetResult();
+                    else
+                        CaptureMode.SeedSamplesAsync(host.Services, args).GetAwaiter().GetResult();
+                }
             }
 
             BuildAvaloniaApp(host.Services)
-                .StartWithClassicDesktopLifetime(args);
+                .StartWithClassicDesktopLifetime(CaptureMode.StripArgs(args));
         }
         finally
         {
@@ -86,10 +98,18 @@ internal static class Program
     /// </summary>
     private static (IHost Host, WorkspaceLock? HeldLock) BuildHost(string[] args)
     {
-        var rootDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ViewGrid");
+        // キャプチャモードはユーザーデータと隔離した一時ルートを使う (起動ごとにクリーン)。
+        var captureMode = CaptureMode.IsRequested(args);
+        var rootDir = captureMode
+            ? CaptureMode.PrepareRoot()
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ViewGrid");
         Directory.CreateDirectory(rootDir);
+
+        // キャプチャモードは撮影方針 (Light テーマ / 日本語) に合わせた settings.json を先に書き出す。
+        if (captureMode)
+            CaptureMode.WriteCaptureSettings(rootDir);
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
@@ -101,9 +121,14 @@ internal static class Program
                 retainedFileCountLimit: 14)
             .CreateLogger();
 
+        // キャプチャモードは一時ワークスペースの場所をログに残す (撮影者がログ / DB を辿れるように)。
+        if (captureMode)
+            Log.Information("キャプチャモード: 一時ワークスペース = {Root}", rootDir);
+
         // ワークスペース解決 (旧バージョンからの自動移行 + active.json 解決)。
-        // --workspace=<name> 引数 (再起動経路) があれば優先する。
-        var cliWorkspace = ParseWorkspaceArg(args);
+        // キャプチャモードは専用ワークスペースを強制し、 通常は --workspace=<name>
+        // 引数 (再起動経路) があれば優先する。
+        var cliWorkspace = captureMode ? CaptureMode.WorkspaceName : ParseWorkspaceArg(args);
         var (activeWorkspace, workspaceDir) = WorkspaceBootstrap.Resolve(rootDir, cliWorkspace);
 
         // 同一ワークスペースの二重起動を阻止するファイルロック。 失敗時は App 側で
@@ -114,11 +139,12 @@ internal static class Program
             ActiveWorkspaceName: activeWorkspace,
             OwnerProcessId: lockResult.OwnerProcessId);
 
-        var host = Host.CreateDefaultBuilder(args)
+        var host = Host.CreateDefaultBuilder(CaptureMode.StripArgs(args))
             .UseSerilog()
             .ConfigureServices((_, services) =>
             {
                 services.AddSingleton(lockedState);
+                services.AddSingleton(new CaptureModeState(captureMode));
                 services
                     .AddInfrastructure(rootDir, workspaceDir, activeWorkspace)
                     .AddApplication()

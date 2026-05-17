@@ -75,6 +75,15 @@ public partial class App : global::Avalonia.Application
                 // FilePickerService は MainWindow を owner として使うので、ここで注入する
                 _services.GetRequiredService<AvaloniaFilePickerService>().SetOwnerWindow(window);
 
+                // キャプチャモードではウィンドウサイズを固定し、スクリーンショットの寸法を一定にする。
+                if (_services.GetRequiredService<CaptureModeState>().IsActive)
+                {
+                    window.Width = CaptureMode.WindowWidth;
+                    window.Height = CaptureMode.WindowHeight;
+                    window.CanResize = false;
+                    window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+                }
+
                 desktop.MainWindow = window;
 
                 // シャットダウン時に LastOpenedGridId の永続化が完了するまで待つ。
