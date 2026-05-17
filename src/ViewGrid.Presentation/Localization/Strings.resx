@@ -171,7 +171,7 @@
   <data name="Workspace_NewVariant_Tooltip" xml:space="preserve"><value>選択中バリアントと同じアセットから新規バリアントを作成</value></data>
   <data name="Workspace_NewVariant_Placeholder" xml:space="preserve"><value>名前（空欄で「バリアント N」自動採番）</value></data>
   <data name="Workspace_DeleteVariant_Tooltip" xml:space="preserve"><value>選択中バリアントを削除（関連配置も削除されます）</value></data>
-  <data name="Workspace_VariantName_Placeholder" xml:space="preserve"><value>（空欄で「既定」表示）</value></data>
+  <data name="Workspace_VariantName_Placeholder" xml:space="preserve"><value>（空欄で「無名」表示）</value></data>
   <data name="Workspace_DeleteAsset" xml:space="preserve"><value>アセットを削除...</value></data>
   <data name="Workspace_PreviewButton" xml:space="preserve"><value>プレビュー</value></data>
   <data name="Workspace_ExportPng" xml:space="preserve"><value>PNG 出力</value></data>

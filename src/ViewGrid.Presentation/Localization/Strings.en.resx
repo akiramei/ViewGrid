@@ -171,7 +171,7 @@
   <data name="Workspace_NewVariant_Tooltip" xml:space="preserve"><value>Create a new variant from the same asset as the selected one.</value></data>
   <data name="Workspace_NewVariant_Placeholder" xml:space="preserve"><value>Name (empty = auto "Variant N")</value></data>
   <data name="Workspace_DeleteVariant_Tooltip" xml:space="preserve"><value>Delete the selected variant (related placements are also removed).</value></data>
-  <data name="Workspace_VariantName_Placeholder" xml:space="preserve"><value>(empty shows "Default")</value></data>
+  <data name="Workspace_VariantName_Placeholder" xml:space="preserve"><value>(empty shows "Unnamed")</value></data>
   <data name="Workspace_DeleteAsset" xml:space="preserve"><value>Delete asset...</value></data>
   <data name="Workspace_PreviewButton" xml:space="preserve"><value>Preview</value></data>
   <data name="Workspace_ExportPng" xml:space="preserve"><value>Export PNG</value></data>
@@ -392,7 +392,7 @@
   <data name="Status_PlacementRemoved" xml:space="preserve"><value>Placement removed.</value></data>
   <data name="Status_GridWeightsUpdated" xml:space="preserve"><value>Grid ratios updated.</value></data>
   <data name="Status_PixelOffsetNoChange" xml:space="preserve"><value>Pixel offset: no change.</value></data>
-  <data name="Status_VariantForked" xml:space="preserve"><value>Forked into a new variant. Edit name and properties in the Setup tab.</value></data>
+  <data name="Status_VariantForked" xml:space="preserve"><value>Forked into a new variant. Edit name and properties in the Properties tab.</value></data>
   <data name="Status_AutoCropNoTarget" xml:space="preserve"><value>No crop range from the target color (or the target color was not found).</value></data>
   <data name="Status_DuplicatingWorkspace" xml:space="preserve"><value>Duplicating... May take a while depending on the workspace size.</value></data>
   <data name="Status_ImportingWorkspace" xml:space="preserve"><value>Importing... May take a while depending on the workspace size.</value></data>
