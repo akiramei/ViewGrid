@@ -22,7 +22,26 @@ using SkiaSharp;
 //   dotnet run --project tools/CaptureToolkit -- generate-review
 //   dotnet run --project tools/CaptureToolkit -- status
 
-return args switch
+// --docs=<root> でドキュメントツリーを切り替える (既定 docs)。
+// 日本語マニュアルは --docs=docs、 英語マニュアルは --docs=docs/en。
+var positional = new List<string>();
+foreach (var arg in args)
+{
+    if (arg.StartsWith("--docs=", StringComparison.Ordinal))
+    {
+        var value = arg["--docs=".Length..];
+        if (string.IsNullOrWhiteSpace(value))
+            Console.Error.WriteLine("⚠️  --docs= の値が空です。 既定の docs を使用します。");
+        else
+            Commands.DocsRoot = value;
+    }
+    else
+    {
+        positional.Add(arg);
+    }
+}
+
+return positional.ToArray() switch
 {
     [] => Commands.PrintHelp(),
     ["help"] or ["-h"] or ["--help"] => Commands.PrintHelp(),
@@ -58,10 +77,26 @@ internal enum ImageStatus { Missing, Placeholder, Replaced }
 
 internal static class Commands
 {
-    private const string DocsRoot = "docs";
-    private const string RawRoot = "docs/images/_raw";
-    private const string ManifestPath = "docs/images/.placeholder-manifest.json";
-    private const string ReviewPath = "docs/CAPTURE-REVIEW.md";
+    /// <summary>
+    /// ドキュメントツリーのルート。 <c>--docs=&lt;root&gt;</c> で切り替える (既定 <c>docs</c>)。
+    /// 日本語マニュアルは <c>docs</c>、 英語マニュアルは <c>docs/en</c>。
+    /// 配下の md / images / CAPTURE-REVIEW.md / manifest はすべてこのルート相対で解決する。
+    /// </summary>
+    public static string DocsRoot { get; set; } = "docs";
+
+    private static string RawRoot => $"{DocsRoot}/images/_raw";
+    private static string ManifestPath => $"{DocsRoot}/images/.placeholder-manifest.json";
+    private static string ReviewPath => $"{DocsRoot}/CAPTURE-REVIEW.md";
+
+    /// <summary>
+    /// docs ルート末尾セグメントから言語を判定する (<c>en</c> なら英語、 それ以外は日本語)。
+    /// compose のラベルやレビューのチェックリスト文言の出し分けに使う。
+    /// </summary>
+    private static string CurrentLanguage =>
+        string.Equals(
+            new DirectoryInfo(Path.GetFullPath(DocsRoot)).Name, "en", StringComparison.OrdinalIgnoreCase)
+            ? "en"
+            : "ja";
 
     public static int PrintHelp()
     {
@@ -69,7 +104,7 @@ internal static class Commands
             ViewGrid CAPTURE Toolkit
 
             Usage:
-              dotnet run --project tools/CaptureToolkit -- <subcommand>
+              dotnet run --project tools/CaptureToolkit -- [--docs=<root>] <subcommand>
 
             Subcommands:
               generate-placeholders   各 <!-- CAPTURE --> から仕様埋め込み placeholder PNG を生成
@@ -82,6 +117,8 @@ internal static class Commands
 
             Notes:
               - リポジトリ root から実行すること (`docs/` を相対パスで参照)。
+              - --docs=<root>: 対象ドキュメントツリー (既定 docs)。 英語マニュアルは --docs=docs/en。
+                images / _raw / CAPTURE-REVIEW.md / manifest はすべてこのルート配下で解決する。
               - 状態判定は docs/images/.placeholder-manifest.json (placeholder SHA 記録) を使う。
                 placeholder と SHA 一致 → ❌ Placeholder のまま
                 placeholder と SHA 不一致 → ✅ 撮影済 (実画像で上書きされた)
@@ -238,9 +275,9 @@ internal static class Commands
         int processed = 0, errors = 0, noBlock = 0;
         foreach (var rawPath in Directory.EnumerateFiles(rawRootFull, "*.png", SearchOption.AllDirectories).OrderBy(p => p, StringComparer.Ordinal))
         {
-            // _raw/<chapter>/<name>.png → docs/images/<chapter>/<name>.png
+            // _raw/<chapter>/<name>.png → <docs>/images/<chapter>/<name>.png
             var rel = Path.GetRelativePath(rawRootFull, rawPath).Replace('\\', '/');
-            var targetRel = $"docs/images/{rel}";
+            var targetRel = $"{DocsRoot}/images/{rel}";
             var targetKey = NormalizePath(targetRel);
 
             if (!blockByTarget.TryGetValue(targetKey, out var block))
@@ -317,18 +354,28 @@ internal static class Commands
     /// </summary>
     public static int ComposeScaling()
     {
-        var labels = new[]
-        {
-            "原寸固定 (None)",
-            "アスペクト維持 (Contain)",
-            "縮小のみ (ShrinkOnly)",
-            "拡大のみ (EnlargeOnly)",
-            "アスペクト維持・覆う (Cover)",
-            "完全充填 (Fill)",
-        };
+        var labels = CurrentLanguage == "en"
+            ? new[]
+            {
+                "Original (None)",
+                "Aspect fit (Contain)",
+                "Shrink only (ShrinkOnly)",
+                "Enlarge only (EnlargeOnly)",
+                "Aspect fill (Cover)",
+                "Stretch (Fill)",
+            }
+            : new[]
+            {
+                "原寸固定 (None)",
+                "アスペクト維持 (Contain)",
+                "縮小のみ (ShrinkOnly)",
+                "拡大のみ (EnlargeOnly)",
+                "アスペクト維持・覆う (Cover)",
+                "完全充填 (Fill)",
+            };
         return RunCompose(
             recipeName: "scaling-modes",
-            targetRel: "docs/images/um/um-05-11-scaling-modes.png",
+            targetRel: $"{DocsRoot}/images/um/um-05-11-scaling-modes.png",
             labels: labels,
             cols: 3, rows: 2);
     }
@@ -342,15 +389,17 @@ internal static class Commands
     /// </summary>
     public static int ComposePhotoBoard()
     {
-        var labels = new[]
-        {
-            "ナチュラル (Natural)",
-            "ラフ (Rough)",
-            "バラ撒き (Scattered)",
-        };
+        var labels = CurrentLanguage == "en"
+            ? new[] { "Natural", "Rough", "Scattered" }
+            : new[]
+            {
+                "ナチュラル (Natural)",
+                "ラフ (Rough)",
+                "バラ撒き (Scattered)",
+            };
         return RunCompose(
             recipeName: "photoboard-styles",
-            targetRel: "docs/images/um/um-06-16-photoboard-styles.png",
+            targetRel: $"{DocsRoot}/images/um/um-06-16-photoboard-styles.png",
             labels: labels,
             cols: 3, rows: 1);
     }
@@ -459,7 +508,7 @@ internal static class Commands
         sb.AppendLine("- [ ] サイズ一致 (placeholder の Size と実画像の寸法)");
         sb.AppendLine("- [ ] サンプル画像一致 (Samples 通りの画像が映っている)");
         sb.AppendLine("- [ ] State 通りの構図");
-        sb.AppendLine("- [ ] 言語設定 ja");
+        sb.AppendLine($"- [ ] 言語設定 {CurrentLanguage}");
         sb.AppendLine();
         sb.AppendLine("---");
         sb.AppendLine();
@@ -527,12 +576,24 @@ internal static class CaptureParser
     public static List<CaptureBlock> ParseAllBlocks(string docsRoot)
     {
         var blocks = new List<CaptureBlock>();
+        if (!Directory.Exists(docsRoot))
+        {
+            Console.Error.WriteLine($"⚠️  Docs directory not found: {docsRoot}");
+            return blocks;
+        }
+
         foreach (var mdPath in Directory.EnumerateFiles(docsRoot, "*.md", SearchOption.AllDirectories))
         {
             // 自動生成ファイル / インベントリ自身は除外
             var fileName = Path.GetFileName(mdPath);
             if (fileName == "CAPTURE-REVIEW.md") continue;
             if (fileName == "CAPTURE-LIST.md") continue;
+
+            // 言語別サブツリー (docs/en/) は、 そのルートを --docs=docs/en で直接
+            // 指定したときだけ処理する。 上位ルート (docs) のスキャンには含めない。
+            var relFirstSegment = Path.GetRelativePath(docsRoot, mdPath)
+                .Replace('\\', '/').Split('/')[0];
+            if (relFirstSegment is "en") continue;
 
             var content = File.ReadAllText(mdPath);
             foreach (Match m in BlockPattern.Matches(content))
