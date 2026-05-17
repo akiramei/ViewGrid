@@ -107,9 +107,10 @@ internal static class Program
                 "ViewGrid");
         Directory.CreateDirectory(rootDir);
 
-        // キャプチャモードは撮影方針 (Light テーマ / 日本語) に合わせた settings.json を先に書き出す。
+        // キャプチャモードは撮影向けの settings.json を先に書き出す (Light テーマ + 解決済み言語)。
+        // 言語は --capture-lang 明示指定、 無ければシステム言語 (ja / それ以外は en)。
         if (captureMode)
-            CaptureMode.WriteCaptureSettings(rootDir);
+            CaptureMode.WriteCaptureSettings(rootDir, CaptureMode.ResolveLanguage(args));
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()

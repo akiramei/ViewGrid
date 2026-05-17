@@ -7,6 +7,19 @@ using ViewGrid.Core.Services;
 
 namespace ViewGrid.Presentation;
 
+/// <summary>
+/// 言語別の表示文字列。 グリッド名・バリアント名など、 撮影時に UI へ表示される
+/// 文字列を ja / en の両方で保持する。
+/// </summary>
+/// <param name="Ja">日本語の文字列。</param>
+/// <param name="En">英語の文字列。</param>
+internal sealed record LocalizedText(string Ja, string En)
+{
+    /// <summary>指定言語の文字列を返す (<c>"ja"</c> 以外はすべて <see cref="En"/>)。</summary>
+    public string For(string language) =>
+        string.Equals(language, "ja", StringComparison.OrdinalIgnoreCase) ? Ja : En;
+}
+
 /// <summary>キャプチャシナリオ内の 1 配置 (どのサンプル画像をどのセルに置くか)。</summary>
 /// <param name="SampleFileName">配置するサンプル画像のファイル名 (例: <c>sample-01.png</c>)。</param>
 /// <param name="Column">配置先セルの列 (0 始まり)。</param>
@@ -15,8 +28,8 @@ internal sealed record CapturePlacement(string SampleFileName, int Column, int R
 
 /// <summary>シナリオが既定バリアントに加えて作成する追加バリアント。</summary>
 /// <param name="SampleFileName">対象アセットのサンプル画像ファイル名。</param>
-/// <param name="Name">追加バリアントの表示名。</param>
-internal sealed record CaptureExtraVariant(string SampleFileName, string Name);
+/// <param name="Name">追加バリアントの表示名 (言語別)。</param>
+internal sealed record CaptureExtraVariant(string SampleFileName, LocalizedText Name);
 
 /// <summary>保護領域の矩形 (元画像座標系の 0–1 比率) と塗りつぶし方法。</summary>
 internal sealed record CaptureRegion(
@@ -35,7 +48,7 @@ internal sealed record CaptureVariantProperty(
 
 /// <summary>キャプチャシナリオが用意する 1 グリッド。</summary>
 internal sealed record CaptureGrid(
-    string Name,
+    LocalizedText Name,
     int Columns,
     int Rows,
     int CanvasWidth,
@@ -90,7 +103,7 @@ internal static class CaptureScenarios
             Samples: Samples1To4,
             Grids:
             [
-                Grid("グリッド 1", 2, 2,
+                Grid(1,2, 2,
                     Place("sample-01.png", 0, 0),
                     Place("sample-02.png", 1, 0),
                     Place("sample-03.png", 1, 1)),
@@ -103,11 +116,11 @@ internal static class CaptureScenarios
             Samples: ["sample-01.png", "sample-02.png", "sample-03.png"],
             Grids:
             [
-                Grid("グリッド 1", 3, 3,
+                Grid(1,3, 3,
                     Place("sample-01.png", 0, 0),
                     Place("sample-02.png", 1, 1),
                     Place("sample-03.png", 2, 2)),
-                Grid("グリッド 2", 3, 3),
+                Grid(2,3, 3),
             ]),
 
         new CaptureScenario(
@@ -115,7 +128,7 @@ internal static class CaptureScenarios
             Description: "グリッド設定 (右ペイン)。 配置なしのグリッドがアクティブ。"
                 + " 撮影者は名前欄を編集してドラフト状態 (● バッジ) にして撮る。",
             Samples: [],
-            Grids: [Grid("グリッド 1", 2, 2)]),
+            Grids: [Grid(1,2, 2)]),
 
         new CaptureScenario(
             Id: "um-03-07-boundary-drag",
@@ -124,7 +137,7 @@ internal static class CaptureScenarios
             Samples: Samples1To6,
             Grids:
             [
-                Grid("グリッド 1", 3, 3,
+                Grid(1,3, 3,
                     Place("sample-01.png", 0, 0),
                     Place("sample-02.png", 1, 0),
                     Place("sample-03.png", 2, 0),
@@ -139,40 +152,40 @@ internal static class CaptureScenarios
                 + " sample-02 は候補のまま。 撮影者は sample-02 を右上セルへドラッグして緑ハイライトを撮る。"
                 + " (qs-03-03-drag-to-cell も同一シーン)",
             Samples: ["sample-01.png", "sample-02.png"],
-            Grids: [Grid("グリッド 1", 2, 2, Place("sample-01.png", 0, 0))]),
+            Grids: [Grid(1,2, 2, Place("sample-01.png", 0, 0))]),
 
         new CaptureScenario(
             Id: "qs-03-03-drag-to-cell",
             Description: "候補→セルの D&D。 um-04-09-drop-valid と同一シーン。",
             Samples: ["sample-01.png", "sample-02.png"],
-            Grids: [Grid("グリッド 1", 2, 2, Place("sample-01.png", 0, 0))]),
+            Grids: [Grid(1,2, 2, Place("sample-01.png", 0, 0))]),
 
         new CaptureScenario(
             Id: "um-04-10-inspector",
             Description: "Inspector の構造。 2×2 グリッドに sample-01 を 1 件配置済み。"
                 + " 撮影者は配置をクリック選択して右ペインの Inspector を出す。",
             Samples: ["sample-01.png"],
-            Grids: [Grid("グリッド 1", 2, 2, Place("sample-01.png", 0, 0))]),
+            Grids: [Grid(1,2, 2, Place("sample-01.png", 0, 0))]),
 
         new CaptureScenario(
             Id: "um-06-15-output-settings",
             Description: "出力設定。 2×2 グリッドに sample-01〜04 を配置済み。"
                 + " 撮影者は右ペインの出力設定 Expander を展開して撮る。",
             Samples: Samples1To4,
-            Grids: [Grid("グリッド 1", 2, 2, PlaceFour())]),
+            Grids: [Grid(1,2, 2, PlaceFour())]),
 
         new CaptureScenario(
             Id: "qs-03-04-preview-window",
             Description: "プレビューウィンドウ。 2×2 グリッドに sample-01〜04 を配置済み。"
                 + " 撮影者はプレビューボタンを押してプレビューを開く。 (um-06-18-preview も同一シーン)",
             Samples: Samples1To4,
-            Grids: [Grid("グリッド 1", 2, 2, PlaceFour())]),
+            Grids: [Grid(1,2, 2, PlaceFour())]),
 
         new CaptureScenario(
             Id: "um-06-18-preview",
             Description: "プレビューウィンドウ。 qs-03-04-preview-window と同一シーン。",
             Samples: Samples1To4,
-            Grids: [Grid("グリッド 1", 2, 2, PlaceFour())]),
+            Grids: [Grid(1,2, 2, PlaceFour())]),
 
         new CaptureScenario(
             Id: "um-02-05-add-variant",
@@ -180,7 +193,7 @@ internal static class CaptureScenarios
                 + " (既定「(無名)」+「派生 1」) を用意済み。 撮影者は候補ペインを撮る。",
             Samples: ["sample-01.png"],
             Grids: [],
-            ExtraVariants: [new CaptureExtraVariant("sample-01.png", "派生 1")]),
+            ExtraVariants: [new CaptureExtraVariant("sample-01.png", new LocalizedText("派生 1", "Variant 1"))]),
 
         new CaptureScenario(
             Id: "um-05-11-alignment",
@@ -228,8 +241,9 @@ internal static class CaptureScenarios
     private static CapturePlacement Place(string sample, int column, int row) =>
         new(sample, column, row);
 
-    private static CaptureGrid Grid(string name, int columns, int rows, params CapturePlacement[] placements) =>
-        new(name, columns, rows, Canvas, Canvas, placements);
+    private static CaptureGrid Grid(int number, int columns, int rows, params CapturePlacement[] placements) =>
+        new(new LocalizedText($"グリッド {number}", $"Grid {number}"),
+            columns, rows, Canvas, Canvas, placements);
 
     /// <summary>シナリオ ID で定義を引く (大文字小文字無視)。 未定義なら null。</summary>
     public static CaptureScenario? Find(string id) =>
@@ -260,6 +274,9 @@ internal static class CaptureScenarios
                 + " --capture-samples=<dir> で明示指定できます。", scenarioId);
             return;
         }
+
+        // グリッド名・バリアント名など UI 可視文字列の言語を解決する。
+        var language = CaptureMode.ResolveLanguage(args);
 
         using var scope = services.CreateScope();
         var sp = scope.ServiceProvider;
@@ -304,11 +321,12 @@ internal static class CaptureScenarios
                 continue;
             }
 
-            var variantResult = await createCopy.ExecuteAsync(assetId, ev.Name);
+            var variantName = ev.Name.For(language);
+            var variantResult = await createCopy.ExecuteAsync(assetId, variantName);
             if (variantResult.IsError)
             {
                 Log.Warning("キャプチャモード: 追加バリアント作成失敗 {Sample}/{Name}: {Errors}",
-                    ev.SampleFileName, ev.Name,
+                    ev.SampleFileName, variantName,
                     string.Join(", ", variantResult.Errors.Select(e => e.Description)));
             }
         }
@@ -348,9 +366,10 @@ internal static class CaptureScenarios
         var totalPlacements = 0;
         foreach (var g in scenario.Grids)
         {
+            var gridName = g.Name.For(language);
             var gridResult = await createGrid.ExecuteAsync(new CreateGridCanvasRequest
             {
-                Name = g.Name,
+                Name = gridName,
                 Rows = g.Rows,
                 Cols = g.Columns,
                 CanvasWidth = g.CanvasWidth,
@@ -359,7 +378,7 @@ internal static class CaptureScenarios
             if (gridResult.IsError)
             {
                 Log.Warning("キャプチャモード: グリッド '{Grid}' 作成失敗: {Errors}",
-                    g.Name, string.Join(", ", gridResult.Errors.Select(e => e.Description)));
+                    gridName, string.Join(", ", gridResult.Errors.Select(e => e.Description)));
                 continue;
             }
 

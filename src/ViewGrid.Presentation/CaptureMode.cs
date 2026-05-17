@@ -32,6 +32,9 @@ internal static class CaptureMode
     /// <summary>撮影シナリオ ID を指定する起動引数のプレフィックス (例: <c>--capture-scenario=um-04-09-drop-valid</c>)。</summary>
     private const string ScenarioArgPrefix = "--capture-scenario=";
 
+    /// <summary>UI 言語を指定する起動引数のプレフィックス (例: <c>--capture-lang=en</c>)。</summary>
+    private const string LangArgPrefix = "--capture-lang=";
+
     /// <summary>キャプチャ用ワークスペース名 (一時ルート配下に作られる)。</summary>
     public const string WorkspaceName = "capture";
 
@@ -73,6 +76,29 @@ internal static class CaptureMode
     }
 
     /// <summary>
+    /// キャプチャ時の UI 言語 (<c>"ja"</c> / <c>"en"</c>) を解決する。
+    /// <c>--capture-lang=&lt;ja|en&gt;</c> の明示指定を優先し (ja/en 以外の値は en へフォールバック)、
+    /// 未指定ならシステム言語を検出する — <see cref="CultureInfo.CurrentUICulture"/> が日本語なら
+    /// ja、 それ以外はすべて en。 アプリ本体の言語設定「システムに従う」と同じ判定基準。
+    /// </summary>
+    public static string ResolveLanguage(string[] args)
+    {
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith(LangArgPrefix, StringComparison.Ordinal))
+            {
+                var value = arg[LangArgPrefix.Length..];
+                return string.Equals(value, "ja", StringComparison.OrdinalIgnoreCase) ? "ja" : "en";
+            }
+        }
+
+        return string.Equals(
+            CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "ja", StringComparison.OrdinalIgnoreCase)
+            ? "ja"
+            : "en";
+    }
+
+    /// <summary>
     /// ViewGrid 独自のキャプチャ用引数を取り除いた配列を返す。
     /// 値を持たない <c>--capture-mode</c> を Generic Host のコマンドライン設定や
     /// Avalonia に素通しすると解析エラーになりうるため、 起動前に除去する。
@@ -81,7 +107,8 @@ internal static class CaptureMode
         Array.FindAll(args, a =>
             !string.Equals(a, Flag, StringComparison.Ordinal)
             && !a.StartsWith(SamplesArgPrefix, StringComparison.Ordinal)
-            && !a.StartsWith(ScenarioArgPrefix, StringComparison.Ordinal));
+            && !a.StartsWith(ScenarioArgPrefix, StringComparison.Ordinal)
+            && !a.StartsWith(LangArgPrefix, StringComparison.Ordinal));
 
     /// <summary>
     /// キャプチャ用の一時ルートディレクトリを用意する。
@@ -109,12 +136,12 @@ internal static class CaptureMode
     }
 
     /// <summary>
-    /// キャプチャ用ルートに settings.json を書き出し、 テーマ Light / 言語 ja に固定する。
-    /// CAPTURE-LIST.md の撮影方針 (Light テーマ・日本語) に合わせるため。
+    /// キャプチャ用ルートに settings.json を書き出し、 テーマ Light / 指定言語に固定する。
+    /// 言語は <see cref="ResolveLanguage"/> が解決した <c>"ja"</c> / <c>"en"</c>。
     /// </summary>
-    public static void WriteCaptureSettings(string rootDir)
+    public static void WriteCaptureSettings(string rootDir, string language)
     {
-        var settings = new AppSettings { Theme = "Light", Language = "ja" };
+        var settings = new AppSettings { Theme = "Light", Language = language };
         var json = JsonSerializer.Serialize(settings, SettingsJsonOptions);
         File.WriteAllText(Path.Combine(rootDir, "settings.json"), json);
     }
