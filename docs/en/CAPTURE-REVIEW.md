@@ -6,12 +6,12 @@
 ## 進捗サマリ
 
 - 合計: **25** 件
-- ✅ 撮影済 (placeholder 上書き済): **0**
-- ❌ Placeholder のまま: **25**
+- ✅ 撮影済 (placeholder 上書き済): **25**
+- ❌ Placeholder のまま: **0**
 
 ## `quickstart.md`
 
-### ❌ `qs-01-01-main-window-overview.png`
+### ✅ `qs-01-01-main-window-overview.png`
 
 ![Overview of the app after launch (three-pane layout)](images/qs/qs-01-01-main-window-overview.png)
 
@@ -21,7 +21,7 @@
 | Size | 1280×800 |
 | Samples | sample-01.png, sample-02.png, sample-03.png, sample-04.png |
 | Caption | Overview of the app after launch (three-pane layout) |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `quickstart.md:19` |
 
 **State**:
@@ -40,7 +40,7 @@
 
 ---
 
-### ❌ `qs-03-01-drag-drop-images.png`
+### ✅ `qs-03-01-drag-drop-images.png`
 
 ![Importing images from Explorer by drag and drop](images/qs/qs-03-01-drag-drop-images.png)
 
@@ -51,7 +51,7 @@
 | Samples | sample-01.png, sample-02.png, sample-03.png, sample-04.png (4 files in Explorer) |
 | Caption | Importing images from Explorer by drag and drop |
 | Note | A composition showing the semi-transparent icon during the drag + the Copy cursor. ViewGrid does not currently highlight the whole panel (the drop is indicated only by the OS cursor change). |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `quickstart.md:56` |
 
 **State**:
@@ -69,7 +69,7 @@
 
 ---
 
-### ❌ `qs-03-02-create-grid-flyout.png`
+### ✅ `qs-03-02-create-grid-flyout.png`
 
 ![New Grid creation flyout (2 columns × 2 rows, 1200×1200 px)](images/qs/qs-03-02-create-grid-flyout.png)
 
@@ -80,7 +80,7 @@
 | Samples | (no sample images needed, UI only) |
 | Caption | New Grid creation flyout (2 columns × 2 rows, 1200×1200 px) |
 | Note | Focus is on the name input field. The raw file is docs/images/_raw/qs/qs-03-02-create-grid-flyout.png |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `quickstart.md:77` |
 
 **State**:
@@ -97,7 +97,7 @@
 
 ---
 
-### ❌ `qs-03-03-drag-to-cell.png`
+### ✅ `qs-03-03-drag-to-cell.png`
 
 ![Drag and drop from the candidate list onto a cell](images/qs/qs-03-03-drag-to-cell.png)
 
@@ -108,7 +108,7 @@
 | Samples | sample-01 (already placed top-left), sample-02 (being dragged) |
 | Caption | Drag and drop from the candidate list onto a cell |
 | Note | The thumbnail preview during the drag + the highlight of the destination cell + an already-placed cell are all visible at once. |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `quickstart.md:98` |
 
 **State**:
@@ -126,7 +126,7 @@
 
 ---
 
-### ❌ `qs-03-04-preview-window.png`
+### ✅ `qs-03-04-preview-window.png`
 
 ![Checking the result in the preview window](images/qs/qs-03-04-preview-window.png)
 
@@ -137,7 +137,7 @@
 | Samples | sample-01 to 04 (already placed in a 2×2) |
 | Caption | Checking the result in the preview window |
 | Note | A position where the "Fit" and "100%" buttons of the zoom bar are visible (the actual UI has 4 buttons: "−", "Fit", "100%", "+"). |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `quickstart.md:119` |
 
 **State**:
@@ -154,7 +154,7 @@
 
 ---
 
-### ❌ `qs-03-05-export-png-dialog.png`
+### ✅ `qs-03-05-export-png-dialog.png`
 
 ![The OS-native save dialog](images/qs/qs-03-05-export-png-dialog.png)
 
@@ -165,7 +165,7 @@
 | Samples | (no sample images needed, OS dialog only) |
 | Caption | The OS-native save dialog |
 | Note | The dialog title "Save as PNG" must be clearly visible. |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `quickstart.md:135` |
 
 **State**:
@@ -184,7 +184,7 @@
 
 ## `user-manual/01-concepts.md`
 
-### ❌ `um-01-03-main-window-3pane.png`
+### ✅ `um-01-03-main-window-3pane.png`
 
 ![Three-pane layout of the main window (left: grid list, center: canvas, right: Inspector / candidates)](images/um/um-01-03-main-window-3pane.png)
 
@@ -195,7 +195,7 @@
 | Samples | sample-01, sample-02, sample-03 (3 assets + 3 placements) |
 | Caption | Three-pane layout of the main window (left: grid list, center: canvas, right: Inspector / candidates) |
 | Note | A composition that clearly shows the pane borders and label positions |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/01-concepts.md:78` |
 
 **State**:
@@ -215,7 +215,7 @@
 
 ## `user-manual/02-assets.md`
 
-### ❌ `um-02-04-add-images-picker.png`
+### ✅ `um-02-04-add-images-picker.png`
 
 ![The file picker used for importing images](images/um/um-02-04-add-images-picker.png)
 
@@ -226,7 +226,7 @@
 | Samples | (no sample images needed, just the picker. However, it is clearer if sample-*.png are visible in the list) |
 | Caption | The file picker used for importing images |
 | Note | The picker title and filter name are visible |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/02-assets.md:21` |
 
 **State**:
@@ -244,7 +244,7 @@
 
 ---
 
-### ❌ `um-02-05-add-variant.png`
+### ✅ `um-02-05-add-variant.png`
 
 ![Adding a variant from the candidate list](images/um/um-02-05-add-variant.png)
 
@@ -254,7 +254,7 @@
 | Size | 400×600 |
 | Samples | sample-01 (source asset), 2 variants of sample-01 |
 | Caption | Adding a variant from the candidate list |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/02-assets.md:68` |
 
 **State**:
@@ -272,7 +272,7 @@
 
 ## `user-manual/03-grids.md`
 
-### ❌ `um-03-06-create-grid-flyout.png`
+### ✅ `um-03-06-create-grid-flyout.png`
 
 ![New Grid creation flyout](images/um/um-03-06-create-grid-flyout.png)
 
@@ -283,7 +283,7 @@
 | Samples | (no sample image needed, UI only) |
 | Caption | New Grid creation flyout |
 | Note | All fields and the Create / Cancel buttons are visible |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/03-grids.md:20` |
 
 **State**:
@@ -299,7 +299,7 @@
 
 ---
 
-### ❌ `um-03-06-grid-properties.png`
+### ✅ `um-03-06-grid-properties.png`
 
 ![Grid Settings in the right pane (draft editing + Save button)](images/um/um-03-06-grid-properties.png)
 
@@ -309,7 +309,7 @@
 | Size | 482×600 |
 | Samples | (no sample image needed, Grid only selected) |
 | Caption | Grid Settings in the right pane (draft editing + Save button) |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/03-grids.md:38` |
 
 **State**:
@@ -325,7 +325,7 @@
 
 ---
 
-### ❌ `um-03-07-boundary-drag.png`
+### ✅ `um-03-07-boundary-drag.png`
 
 ![Adjusting column width by dragging a boundary](images/um/um-03-07-boundary-drag.png)
 
@@ -335,7 +335,7 @@
 | Size | 580×790 |
 | Samples | sample-01 through sample-06 (6 of the 9 cells in a 3x3 grid filled; the grid lines make boundary movement easy to see) |
 | Caption | Adjusting column width by dragging a boundary |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/03-grids.md:57` |
 
 **State**:
@@ -354,7 +354,7 @@
 
 ## `user-manual/04-placements.md`
 
-### ❌ `um-04-09-drop-valid.png`
+### ✅ `um-04-09-drop-valid.png`
 
 ![Hovering over a valid drop target (green highlight)](images/um/um-04-09-drop-valid.png)
 
@@ -364,7 +364,7 @@
 | Size | 580×790 |
 | Samples | sample-01 (placed), sample-02 (being dragged) |
 | Caption | Hovering over a valid drop target (green highlight) |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/04-placements.md:15` |
 
 **State**:
@@ -380,7 +380,7 @@
 
 ---
 
-### ❌ `um-04-10-inspector.png`
+### ✅ `um-04-10-inspector.png`
 
 ![Structure of the Inspector (placement-specific + shared properties, with the save bar + Delete Placement at the top)](images/um/um-04-10-inspector.png)
 
@@ -390,7 +390,7 @@
 | Size | 482×800 |
 | Samples | sample-01 (placed and selected) |
 | Caption | Structure of the Inspector (placement-specific + shared properties, with the save bar + Delete Placement at the top) |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/04-placements.md:47` |
 
 **State**:
@@ -409,7 +409,7 @@
 
 ## `user-manual/05-shared-properties.md`
 
-### ❌ `um-05-11-scaling-modes.png`
+### ✅ `um-05-11-scaling-modes.png`
 
 ![Comparison of the 6 scaling modes](images/um/um-05-11-scaling-modes.png)
 
@@ -420,7 +420,7 @@
 | Samples | aspect-landscape.png (placed in a 1:1 cell; ideal as material that causes an aspect mismatch) |
 | Caption | Comparison of the 6 scaling modes |
 | Note | tools/CaptureToolkit -- compose-scaling automatically composites the 6 PNGs (docs/images/_raw/composites/scaling-modes/1-None.png through 6-Fill.png) into a 3x2 grid. Comparing the four-corner marker positions of each sample makes the differences clear |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/05-shared-properties.md:61` |
 
 **State**:
@@ -437,7 +437,7 @@
 
 ---
 
-### ❌ `um-05-11-alignment.png`
+### ✅ `um-05-11-alignment.png`
 
 ![Structure of the shared properties editing tab (Properties)](images/um/um-05-11-alignment.png)
 
@@ -448,7 +448,7 @@
 | Samples | (no sample image needed, UI only) |
 | Caption | Structure of the shared properties editing tab (Properties) |
 | Note | In the implementation, alignment is two ComboBoxes (AlignX / AlignY). The "3x3 radio buttons + arrow icons" that the spec envisioned is not implemented (a candidate for a future UI improvement) |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/05-shared-properties.md:94` |
 
 **State**:
@@ -465,7 +465,7 @@
 
 ---
 
-### ❌ `um-05-13-autocrop.png`
+### ✅ `um-05-13-autocrop.png`
 
 ![AutoCrop settings + the detected rectangle on the preview thumbnail](images/um/um-05-13-autocrop.png)
 
@@ -476,7 +476,7 @@
 | Samples | autocrop-white.png (200px white margin on the outer edge + a 1200x1200 subject inside) |
 | Caption | AutoCrop settings + the detected rectangle on the preview thumbnail |
 | Note | If taking 3 shots to compare the white / black / transparent presets, use autocrop-black/transparent with the same composition |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/05-shared-properties.md:178` |
 
 **State**:
@@ -495,7 +495,7 @@
 
 ---
 
-### ❌ `um-05-13-manualcrop-editor.png`
+### ✅ `um-05-13-manualcrop-editor.png`
 
 ![ManualCrop detailed editing dialog (8 handles + matte display + numeric input)](images/um/um-05-13-manualcrop-editor.png)
 
@@ -506,7 +506,7 @@
 | Samples | sample-01 (grid lines + four-corner markers make the rectangle position easy to read) |
 | Caption | ManualCrop detailed editing dialog (8 handles + matte display + numeric input) |
 | Note | The grid lines on sample-01 make the rectangle position visible to the pixel |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/05-shared-properties.md:211` |
 
 **State**:
@@ -523,7 +523,7 @@
 
 ---
 
-### ❌ `um-05-14-region-tab.png`
+### ✅ `um-05-14-region-tab.png`
 
 ![Structure of the Protected Regions tab (list + detailed editing of the selected region)](images/um/um-05-14-region-tab.png)
 
@@ -533,7 +533,7 @@
 | Size | 482×830 |
 | Samples | region-speech.png (a source image where a speech-bubble-style region is easy to understand) |
 | Caption | Structure of the Protected Regions tab (list + detailed editing of the selected region) |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/05-shared-properties.md:246` |
 
 **State**:
@@ -552,7 +552,7 @@
 
 ## `user-manual/06-output.md`
 
-### ❌ `um-06-15-output-settings.png`
+### ✅ `um-06-15-output-settings.png`
 
 ![Expanded state of the Output Settings (mode / style / intensity / trim)](images/um/um-06-15-output-settings.png)
 
@@ -562,7 +562,7 @@
 | Size | 482×600 |
 | Samples | sample-01 to 04 (placed in a 2x2 layout, partly visible in the background) |
 | Caption | Expanded state of the Output Settings (mode / style / intensity / trim) |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/06-output.md:16` |
 
 **State**:
@@ -579,7 +579,7 @@
 
 ---
 
-### ❌ `um-06-16-photoboard-styles.png`
+### ✅ `um-06-16-photoboard-styles.png`
 
 ![Comparison of the three PhotoBoard styles](images/um/um-06-16-photoboard-styles.png)
 
@@ -590,7 +590,7 @@
 | Samples | photo-01.png, photo-02.png, photo-03.png, photo-04.png (photographic images that showcase the PhotoBoard effect) |
 | Caption | Comparison of the three PhotoBoard styles |
 | Note | Composite image. Use tools/CaptureToolkit -- compose-photoboard to auto-compose the three PNGs into a 3x1 grid |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/06-output.md:73` |
 
 **State**:
@@ -607,7 +607,7 @@
 
 ---
 
-### ❌ `um-06-18-preview.png`
+### ✅ `um-06-18-preview.png`
 
 ![Layout of the preview window](images/um/um-06-18-preview.png)
 
@@ -617,7 +617,7 @@
 | Size | 1280×900 |
 | Samples | sample-01 to 04 (2x2 placement) |
 | Caption | Layout of the preview window |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/06-output.md:129` |
 
 **State**:
@@ -635,7 +635,7 @@
 
 ## `user-manual/07-workspaces.md`
 
-### ❌ `um-07-21-workspace-switch.png`
+### ✅ `um-07-21-workspace-switch.png`
 
 ![Switch Workspace dialog](images/um/um-07-21-workspace-switch.png)
 
@@ -646,7 +646,7 @@
 | Samples | (no sample images needed, dialog only) |
 | Caption | Switch Workspace dialog |
 | Note | The currently active workspace card has a highlight border |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/07-workspaces.md:58` |
 
 **State**:
@@ -666,7 +666,7 @@
 
 ## `user-manual/08-history.md`
 
-### ❌ `um-08-25-history-flyout.png`
+### ✅ `um-08-25-history-flyout.png`
 
 ![History flyout (shows the latest 50 entries, for jumping)](images/um/um-08-25-history-flyout.png)
 
@@ -676,7 +676,7 @@
 | Size | 400×420 |
 | Samples | sample-01 to 05 (assets for stacking up 10 operations of history) |
 | Caption | History flyout (shows the latest 50 entries, for jumping) |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/08-history.md:41` |
 
 **State**:
@@ -697,7 +697,7 @@
 
 ## `user-manual/09-settings.md`
 
-### ❌ `um-09-26-settings-dialog.png`
+### ✅ `um-09-26-settings-dialog.png`
 
 ![Settings dialog (top half: Language / Display sections)](images/um/um-09-26-settings-dialog.png)
 
@@ -708,7 +708,7 @@
 | Samples | (no sample images needed, dialog only) |
 | Caption | Settings dialog (top half: Language / Display sections) |
 | Note | Shown opened at the default 520x560. The remaining sections (Defaults / Save behavior / Advanced / Settings import-export) appear when scrolling. Either add a note in the body text such as "scroll within the dialog to..." or add a separate capture of the bottom half. |
-| Status | ❌ Placeholder |
+| Status | ✅ Replaced |
 | Source | `user-manual/09-settings.md:18` |
 
 **State**:
