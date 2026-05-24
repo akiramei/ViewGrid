@@ -31,8 +31,12 @@ local-data/
 .DS_Store
 Thumbs.db
 
-# Claude Code (per-user, not project-wide)
+# Claude Code (per-user / per-session、 リポジトリ管理対象外)
 .claude/settings.local.json
+.claude/worktrees/
+
+# dotnet ローカルキャッシュ (CLI から DOTNET_CLI_HOME 等で書き出される)
+.dotnet_home/
 
 # diffguard (個人用ソース品質管理ツール、 リポジトリ管理対象外)
 .diffguard/
