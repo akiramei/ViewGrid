@@ -35,6 +35,10 @@ Thumbs.db
 .claude/settings.local.json
 .claude/worktrees/
 
+# 開発者向け引継ぎメモ (個人用、 公開リポジトリ管理対象外)
+HANDOFF.md
+HANDOFF/
+
 # dotnet ローカルキャッシュ (CLI から DOTNET_CLI_HOME 等で書き出される)
 .dotnet_home/
 
