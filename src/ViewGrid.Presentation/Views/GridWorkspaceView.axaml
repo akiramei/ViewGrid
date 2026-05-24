@@ -375,7 +375,7 @@
                                 IsEnabled="{Binding HasGrid}" />
                         <Button Content="{loc:Tr Workspace_ExportPng}"
                                 Classes="accent"
-                                Command="{Binding ExportToPngCommand}"
+                                Command="{Binding Output.ExportToPngCommand}"
                                 IsEnabled="{Binding HasGrid}" />
                     </StackPanel>
                 </Grid>
@@ -476,9 +476,9 @@
                             <TextBlock Opacity="0.6"
                                        FontSize="11"
                                        VerticalAlignment="Center">
-                                <Run Text="{Binding SelectedOutputMode, Converter={StaticResource OutputModeLabel}, Mode=OneWay}" />
+                                <Run Text="{Binding Output.SelectedOutputMode, Converter={StaticResource OutputModeLabel}, Mode=OneWay}" />
                                 <Run Text=" / " />
-                                <Run Text="{Binding SelectedTrimMode, Converter={StaticResource TrimModeLabel}, Mode=OneWay}" />
+                                <Run Text="{Binding Output.SelectedTrimMode, Converter={StaticResource TrimModeLabel}, Mode=OneWay}" />
                             </TextBlock>
                         </StackPanel>
                     </Expander.Header>
@@ -490,26 +490,26 @@
                                 <ToggleButton Grid.Column="0"
                                               Classes="Segment"
                                               Content="{loc:Tr Output_Mode_Normal}"
-                                              IsChecked="{Binding IsNormalMode, Mode=OneWay}"
-                                              Command="{Binding SelectOutputModeNormalCommand}"
+                                              IsChecked="{Binding Output.IsNormalMode, Mode=OneWay}"
+                                              Command="{Binding Output.SelectOutputModeNormalCommand}"
                                               ToolTip.Tip="{loc:Tr Output_Mode_Normal_Tooltip}" />
                                 <ToggleButton Grid.Column="1"
                                               Classes="Segment"
                                               Content="{loc:Tr Output_Mode_PhotoBoard}"
-                                              IsChecked="{Binding IsPhotoBoardMode, Mode=OneWay}"
-                                              Command="{Binding SelectOutputModePhotoBoardCommand}"
+                                              IsChecked="{Binding Output.IsPhotoBoardMode, Mode=OneWay}"
+                                              Command="{Binding Output.SelectOutputModePhotoBoardCommand}"
                                               ToolTip.Tip="{loc:Tr Output_Mode_PhotoBoard_Tooltip}" />
                             </Grid>
                         </StackPanel>
 
                         <!-- ─── スタイル (PhotoBoard 時のみ) ─── -->
-                        <StackPanel Spacing="6" IsVisible="{Binding IsPhotoBoardMode}">
+                        <StackPanel Spacing="6" IsVisible="{Binding Output.IsPhotoBoardMode}">
                             <TextBlock Text="{loc:Tr Output_Style}" Classes="SectionHeader" />
                             <StackPanel Spacing="4">
                                 <!-- ナチュラル -->
                                 <ToggleButton Classes="StyleCard"
-                                              IsChecked="{Binding IsStyleNatural, Mode=OneWay}"
-                                              Command="{Binding ApplyPhotoBoardStyleNaturalCommand}"
+                                              IsChecked="{Binding Output.IsStyleNatural, Mode=OneWay}"
+                                              Command="{Binding Output.ApplyPhotoBoardStyleNaturalCommand}"
                                               ToolTip.Tip="{loc:Tr Output_Style_Natural_Tooltip}">
                                     <Grid ColumnDefinitions="64,*" ColumnSpacing="10">
                                         <!-- フォントの SemiBold 文字は視覚重心が下寄りになるため、
@@ -553,8 +553,8 @@
 
                                 <!-- ラフ -->
                                 <ToggleButton Classes="StyleCard"
-                                              IsChecked="{Binding IsStyleRough, Mode=OneWay}"
-                                              Command="{Binding ApplyPhotoBoardStyleRoughCommand}"
+                                              IsChecked="{Binding Output.IsStyleRough, Mode=OneWay}"
+                                              Command="{Binding Output.ApplyPhotoBoardStyleRoughCommand}"
                                               ToolTip.Tip="{loc:Tr Output_Style_Rough_Tooltip}">
                                     <Grid ColumnDefinitions="64,*" ColumnSpacing="10">
                                         <!-- フォントの SemiBold 文字は視覚重心が下寄りになるため、
@@ -598,8 +598,8 @@
 
                                 <!-- バラ撒き -->
                                 <ToggleButton Classes="StyleCard"
-                                              IsChecked="{Binding IsStyleScattered, Mode=OneWay}"
-                                              Command="{Binding ApplyPhotoBoardStyleScatteredCommand}"
+                                              IsChecked="{Binding Output.IsStyleScattered, Mode=OneWay}"
+                                              Command="{Binding Output.ApplyPhotoBoardStyleScatteredCommand}"
                                               ToolTip.Tip="{loc:Tr Output_Style_Scattered_Tooltip}">
                                     <Grid ColumnDefinitions="64,*" ColumnSpacing="10">
                                         <!-- フォントの SemiBold 文字は視覚重心が下寄りになるため、
@@ -651,12 +651,12 @@
                         </StackPanel>
 
                         <!-- ─── 調整: 配置の乱れスライダー (PhotoBoard 時のみ) ─── -->
-                        <StackPanel Spacing="4" IsVisible="{Binding IsPhotoBoardMode}">
+                        <StackPanel Spacing="4" IsVisible="{Binding Output.IsPhotoBoardMode}">
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Text="{loc:Tr Output_Intensity}" Classes="SectionHeader" />
                                 <Button Grid.Column="1"
                                         Classes="resetIntensity"
-                                        Command="{Binding ResetPhotoBoardIntensityCommand}"
+                                        Command="{Binding Output.ResetPhotoBoardIntensityCommand}"
                                         ToolTip.Tip="{loc:Tr Output_Intensity_Reset_Tooltip}">
                                     <StackPanel Orientation="Horizontal" Spacing="4"
                                                 VerticalAlignment="Center">
@@ -673,7 +673,7 @@
                                            FontSize="11" VerticalAlignment="Center" />
                                 <Slider Grid.Column="1" Minimum="0" Maximum="1"
                                         TickFrequency="0.1"
-                                        Value="{Binding SelectedPhotoBoardIntensity}"
+                                        Value="{Binding Output.SelectedPhotoBoardIntensity}"
                                         ToolTip.Tip="{loc:Tr Output_Intensity_Slider_Tooltip}" />
                                 <TextBlock Grid.Column="2" Text="{loc:Tr Output_Intensity_High}" Classes="HintText"
                                            FontSize="11" VerticalAlignment="Center" />
@@ -683,8 +683,8 @@
                         <!-- ─── 切り出し: 通常モードでも PhotoBoard モードでも常に表示 ─── -->
                         <StackPanel Spacing="4">
                             <TextBlock Text="{loc:Tr Output_Trim}" Classes="SectionHeader" />
-                            <ComboBox ItemsSource="{Binding TrimModeOptions}"
-                                      SelectedItem="{Binding SelectedTrimMode}"
+                            <ComboBox ItemsSource="{Binding Output.TrimModeOptions}"
+                                      SelectedItem="{Binding Output.SelectedTrimMode}"
                                       HorizontalAlignment="Stretch"
                                       ToolTip.Tip="{loc:Tr Output_Trim_Tooltip}">
                                 <ComboBox.ItemTemplate>

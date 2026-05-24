@@ -361,7 +361,7 @@ public partial class PreviewWindow : Window
         SaveButton.IsEnabled = false;
         try
         {
-            var saved = await _workspace.SavePngBytesAsync(_bytes);
+            var saved = await _workspace.Output.SavePngBytesAsync(_bytes);
             if (saved) Close();
         }
         catch (Exception)

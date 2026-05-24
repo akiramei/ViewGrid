@@ -92,7 +92,7 @@ public partial class GridWorkspaceView : UserControl
         PreviewButton.IsEnabled = false;
         try
         {
-            var bytes = await vm.RequestPreviewAsync();
+            var bytes = await vm.Output.RequestPreviewAsync();
             if (bytes is null || bytes.Length == 0)
                 return;
 

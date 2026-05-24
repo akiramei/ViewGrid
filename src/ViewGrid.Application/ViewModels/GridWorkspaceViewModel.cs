@@ -23,7 +23,7 @@ namespace ViewGrid.Application.ViewModels;
 /// 配置タブのワークスペース。アクティブグリッド、配置済み一覧、配置候補を保持し、
 /// 配置/取消コマンドを提供する。
 /// </summary>
-public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<CopyLibraryChangedMessage>, IDisposable
+public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<CopyLibraryChangedMessage>, IGridOutputContext, IDisposable
 {
     private readonly IGridCanvasRepository _gridRepository;
     private readonly IImageCopyRepository _copyRepository;
@@ -35,8 +35,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly RemovePlacementUseCase _removeUseCase;
     private readonly MovePlacementUseCase _moveUseCase;
     private readonly SwapPlacementsUseCase _swapUseCase;
-    private readonly RenderGridUseCase _renderUseCase;
-    private readonly ExportGridUseCase _exportUseCase;
+    // RenderGridUseCase / ExportGridUseCase は GridOutputViewModel へ移管 (Phase 4)。
+    // コンストラクタ引数はまだ受け取って Output 構築時に渡すが、 本 VM 自身では保持しない。
     private readonly UpdateGridWeightsUseCase _updateWeightsUseCase;
     private readonly UpdateGridLocksUseCase _updateLocksUseCase;
     private readonly UpdatePlacementOffsetUseCase _updateOffsetUseCase;
@@ -47,7 +47,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly IImageStorage _imageStorage;
     private readonly IAppSettingsService _appSettings;
     private readonly SaveCoordinator _variantAutoSave;
-    private readonly IFilePickerService _filePicker;
+    // IFilePickerService は GridOutputViewModel へ移管 (Phase 4)。 引数のみ受け取って Output に渡す。
     private readonly IMessenger _messenger;
     private readonly IUndoRedoService _history;
     private readonly ILocalizationService _loc;
@@ -78,125 +78,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     public partial string? StatusMessage { get; set; }
 
     /// <summary>
-    /// プレビュー / PNG 出力の最上位モード。通常 / 写真ボードを切り替える。
-    /// 切り出し (<see cref="SelectedTrimMode"/>) とは直交軸で、両方を組み合わせて使う。
-    /// 永続化はせず、セッション内のオプション扱い（既定 Normal）。
+    /// 出力 / プレビューパネル (右カラム下) の子 VM。 OutputMode / TrimMode / PhotoBoardStyle や
+    /// プレビュー生成・PNG エクスポートはすべて <see cref="GridOutputViewModel"/> に委譲する。
+    /// View binding は <c>{Binding Output.SelectedOutputMode}</c> のように Output 経由でアクセス。
     /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsPhotoBoardMode))]
-    [NotifyPropertyChangedFor(nameof(IsNormalMode))]
-    public partial OutputMode SelectedOutputMode { get; set; } = OutputMode.Normal;
-
-    /// <summary>
-    /// プレビュー / PNG 出力の切り出し設定。<see cref="TrimMode.None"/> はキャンバス全面、
-    /// <see cref="TrimMode.OccupiedCells"/> は占有セルの bbox で切り出し、
-    /// <see cref="TrimMode.DrawnPixels"/> は α&gt;0 のピクセル走査で求めた bbox で切り出し。
-    /// PhotoBoard モードでは「合成後の画像」に対して同じセマンティクスで適用される。
-    /// 永続化はせず、セッション内のオプション扱い（既定 None）。
-    /// </summary>
-    [ObservableProperty]
-    public partial TrimMode SelectedTrimMode { get; set; } = TrimMode.None;
-
-    public IReadOnlyList<TrimMode> TrimModeOptions { get; } =
-        [TrimMode.None, TrimMode.OccupiedCells, TrimMode.DrawnPixels];
-
-    public IReadOnlyList<OutputMode> OutputModeOptions { get; } =
-        [OutputMode.Normal, OutputMode.PhotoBoard];
-
-    public IReadOnlyList<PhotoBoardStyle> PhotoBoardStyleOptions { get; } =
-        [PhotoBoardStyle.Natural, PhotoBoardStyle.Rough, PhotoBoardStyle.Scattered];
-
-    /// <summary>
-    /// PhotoBoard モードのスタイルプリセット。各値は係数セット
-    /// (<see cref="PhotoBoardStyleCoefficients"/>) を引くキー。<see cref="OutputMode.Normal"/>
-    /// 時は無視される。永続化はせずセッション内のオプション扱い (既定 Natural)。
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsStyleNatural))]
-    [NotifyPropertyChangedFor(nameof(IsStyleRough))]
-    [NotifyPropertyChangedFor(nameof(IsStyleScattered))]
-    public partial PhotoBoardStyle SelectedPhotoBoardStyle { get; set; } = PhotoBoardStyle.Natural;
-
-    /// <summary>選択中スタイルがナチュラルかどうか (View 側のスタイルボタン IsChecked 表示)。</summary>
-    public bool IsStyleNatural => SelectedPhotoBoardStyle == PhotoBoardStyle.Natural;
-
-    /// <summary>選択中スタイルがラフかどうか。</summary>
-    public bool IsStyleRough => SelectedPhotoBoardStyle == PhotoBoardStyle.Rough;
-
-    /// <summary>選択中スタイルがバラ撒きかどうか。</summary>
-    public bool IsStyleScattered => SelectedPhotoBoardStyle == PhotoBoardStyle.Scattered;
-
-    /// <summary>
-    /// PhotoBoard モードの強度。<c>0.0</c> で「ほぼ整列」(係数すべて 0 倍)、
-    /// <c>0.5</c> でスタイル基準値そのまま、<c>1.0</c> で「最大効果」(係数 2 倍)。
-    /// UI 上では数値非表示で「控えめ ↔ 大胆」の感覚スライダーとして見せる。
-    /// 永続化はせずセッション内のオプション扱い (既定 0.5)。
-    /// </summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ResetPhotoBoardIntensityCommand))]
-    public partial double SelectedPhotoBoardIntensity { get; set; } = 0.5;
-
-    /// <summary>「既定に戻す」ボタンの活性条件。スライダーが既定値 (0.5) から
-    /// 動いていれば <c>true</c>。 既定位置のときは <c>false</c> でボタンが無効表示になる。</summary>
-    private bool CanResetPhotoBoardIntensity() =>
-        Math.Abs(SelectedPhotoBoardIntensity - 0.5) > 0.001;
-
-    /// <summary>
-    /// スタイル切替時は強度を既定値 (0.5 = そのスタイルのベースライン) に戻す。
-    /// 各スタイルは <see cref="PhotoBoardStyleCoefficients"/> ベースラインが大きく異なるため、
-    /// 同じ intensity でも見え方が大きく変わる。 「スタイルを選んだ直後はそのスタイルの基準値で
-    /// 見える」状態に揃えることで、 比較の起点が明確になる UX 契約。
-    /// </summary>
-    partial void OnSelectedPhotoBoardStyleChanged(PhotoBoardStyle value) =>
-        SelectedPhotoBoardIntensity = 0.5;
-
-    [RelayCommand]
-    private void SelectOutputModeNormal() => SelectedOutputMode = OutputMode.Normal;
-
-    [RelayCommand]
-    private void SelectOutputModePhotoBoard() => SelectedOutputMode = OutputMode.PhotoBoard;
-
-    [RelayCommand]
-    private void ApplyPhotoBoardStyleNatural() => SelectedPhotoBoardStyle = PhotoBoardStyle.Natural;
-
-    [RelayCommand]
-    private void ApplyPhotoBoardStyleRough() => SelectedPhotoBoardStyle = PhotoBoardStyle.Rough;
-
-    [RelayCommand]
-    private void ApplyPhotoBoardStyleScattered() => SelectedPhotoBoardStyle = PhotoBoardStyle.Scattered;
-
-    /// <summary>「配置の乱れ」スライダーを既定値 (0.5) に戻す。スライダーは正確に
-    /// 中央へ戻すのが難しい UI のため、明示的なリセット手段を提供する。
-    /// 既定位置にあるときは <see cref="CanResetPhotoBoardIntensity"/> で無効化される。</summary>
-    [RelayCommand(CanExecute = nameof(CanResetPhotoBoardIntensity))]
-    private void ResetPhotoBoardIntensity() => SelectedPhotoBoardIntensity = 0.5;
-
-    /// <summary>
-    /// <see cref="SelectedOutputMode"/> が <see cref="OutputMode.PhotoBoard"/> のときに <c>true</c>。
-    /// View 側でスタイル / 強度パネルの表示切替に使う。
-    /// </summary>
-    public bool IsPhotoBoardMode => SelectedOutputMode == OutputMode.PhotoBoard;
-
-    /// <summary>
-    /// <see cref="SelectedOutputMode"/> が <see cref="OutputMode.Normal"/> のときに <c>true</c>。
-    /// 出力モードの ToggleButton ペアの IsChecked 表示に使う (PhotoBoard モードと排他)。
-    /// </summary>
-    public bool IsNormalMode => SelectedOutputMode == OutputMode.Normal;
-
-    /// <summary>
-    /// 現在の VM 設定からレンダリングオプションを構築する。 PhotoBoard モード時は係数を
-    /// スタイル + 強度から派生させる。 Normal 時は coefs=null。
-    /// </summary>
-    private RenderOptions BuildRenderOptions()
-    {
-        var coefs = SelectedOutputMode == OutputMode.PhotoBoard
-            ? PhotoBoardStyleCoefficients.For(SelectedPhotoBoardStyle, SelectedPhotoBoardIntensity)
-            : null;
-        return new RenderOptions(
-            TrimMode: SelectedTrimMode,
-            OutputMode: SelectedOutputMode,
-            PhotoBoardCoefficients: coefs);
-    }
+    public GridOutputViewModel Output { get; }
 
     /// <summary>
     /// 「+ 新規バリアント」フライアウトを開いているか。<c>true</c> の間だけ View 側で名前入力 TextBox と
@@ -295,8 +181,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _removeUseCase = removeUseCase;
         _moveUseCase = moveUseCase;
         _swapUseCase = swapUseCase;
-        _renderUseCase = renderUseCase;
-        _exportUseCase = exportUseCase;
+        // renderUseCase / exportUseCase は Output に渡すだけで保持しない (Phase 4 移管)
         _updateWeightsUseCase = updateWeightsUseCase;
         _updateLocksUseCase = updateLocksUseCase;
         _updateOffsetUseCase = updateOffsetUseCase;
@@ -306,13 +191,17 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _deleteAssetUseCase = deleteAssetUseCase;
         _imageStorage = imageStorage;
         _appSettings = appSettings;
-        _filePicker = filePicker;
+        // filePicker は Output に渡すだけで保持しない (Phase 4 移管)
         _messenger = messenger;
         _history = history;
         Inspector = inspector;
         VariantProperties = variantProperties;
         _loc = loc;
         _logger = logger;
+
+        // 出力 / プレビューパネルの子 VM を構築。 this を IGridOutputContext として渡して
+        // CurrentGrid / IsBusy / StatusMessage を共有させる (循環参照ではなく親子委譲)。
+        Output = new GridOutputViewModel(this, renderUseCase, exportUseCase, filePicker, loc, logger);
 
         // VariantProperties (= 候補リスト経由のスタンドアロン共有特性編集) は
         // PlacementInspector 経由のものとは別経路なので、 専用 SaveCoordinator で
@@ -1151,104 +1040,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         return null;
     }
 
-    /// <summary>
-    /// 現在のグリッドをレンダリングして PNG バイト列を返す（プレビュー用）。
-    /// 失敗時は <c>null</c> を返し、<see cref="StatusMessage"/> にエラーを格納する。
-    /// </summary>
-    public async Task<byte[]?> RequestPreviewAsync(CancellationToken ct = default)
-    {
-        var grid = CurrentGrid;
-        if (grid is null || IsBusy) return null;
-
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            IsBusy = true;
-            var options = BuildRenderOptions();
-            var result = await _renderUseCase.ExecuteAsync(grid.GridId, options, ct);
-            sw.Stop();
-            if (result.IsError)
-            {
-                StatusMessage = string.Join(", ", result.Errors);
-                return null;
-            }
-            StatusMessage = _loc.Format(
-                "Status_PreviewGeneratedFmt",
-                sw.ElapsedMilliseconds.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
-                result.Value.Length.ToString("N0", System.Globalization.CultureInfo.CurrentCulture));
-            LogPreviewRendered(_logger, options.TrimMode, options.OutputMode, sw.ElapsedMilliseconds, result.Value.Length);
-            return result.Value;
-        }
-        finally { IsBusy = false; }
-    }
-
-    /// <summary>
-    /// SaveDialog を出して指定パスへ PNG として書き出す。プレビュー経由しない高速パス。
-    /// </summary>
-    [RelayCommand]
-    public async Task ExportToPngAsync(CancellationToken ct = default)
-    {
-        var grid = CurrentGrid;
-        if (grid is null || IsBusy) return;
-
-        var suggested = $"{SanitizeFileName(grid.Name)}.png";
-        var path = await _filePicker.PickSavePngPathAsync(suggested, ct);
-        if (string.IsNullOrEmpty(path)) return;
-
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            IsBusy = true;
-            var options = BuildRenderOptions();
-            var result = await _exportUseCase.ExecuteAsync(grid.GridId, path, options, ct);
-            sw.Stop();
-            StatusMessage = result.IsError
-                ? string.Join(", ", result.Errors)
-                : _loc.Format(
-                    "Status_PngExportTimingFmt",
-                    sw.ElapsedMilliseconds.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
-                    Path.GetFileName(path),
-                    result.Value.FileSizeBytes.ToString("N0", System.Globalization.CultureInfo.CurrentCulture));
-            if (!result.IsError)
-                LogPngExported(_logger, options.TrimMode, options.OutputMode, sw.ElapsedMilliseconds, result.Value.FileSizeBytes);
-        }
-        finally { IsBusy = false; }
-    }
-
-    /// <summary>
-    /// プレビューで生成した既存 PNG バイト列を、SaveDialog で選んだパスに書き出す。
-    /// </summary>
-    public async Task<bool> SavePngBytesAsync(byte[] bytes, CancellationToken ct = default)
-    {
-        var grid = CurrentGrid;
-        if (grid is null || bytes.Length == 0) return false;
-
-        var suggested = $"{SanitizeFileName(grid.Name)}.png";
-        var path = await _filePicker.PickSavePngPathAsync(suggested, ct);
-        if (string.IsNullOrEmpty(path)) return false;
-
-        try
-        {
-            await File.WriteAllBytesAsync(path, bytes, ct);
-            StatusMessage = _loc.Format(
-                "Status_PngExportedFmt",
-                Path.GetFileName(path),
-                bytes.LongLength.ToString("N0", System.Globalization.CultureInfo.CurrentCulture));
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            StatusMessage = _loc.Format("Status_SaveFailedFmt", ex.Message);
-            return false;
-        }
-    }
-
-    private static string SanitizeFileName(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var clean = new string(name.Select(c => Array.IndexOf(invalid, c) >= 0 ? '_' : c).ToArray());
-        return string.IsNullOrWhiteSpace(clean) ? "viewgrid-export" : clean;
-    }
+    // RequestPreviewAsync / ExportToPngAsync / SavePngBytesAsync / SanitizeFileName は
+    // Phase 4 で GridOutputViewModel に移管。 Output プロパティ経由でアクセスする (`Output.RequestPreviewAsync` 等)。
 
     /// <summary>
     /// 境界ドラッグでの重み更新を保存する。<paramref name="colWeights"/> または
@@ -1809,11 +1602,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     [LoggerMessage(EventId = 5007, Level = LogLevel.Debug, Message = "配置タブからバリアントのリネームをキャンセル: copy={CopyId}")]
     private static partial void LogVariantRenameCanceled(ILogger logger, Guid copyId);
 
-    [LoggerMessage(EventId = 5008, Level = LogLevel.Information, Message = "プレビュー生成: trim={TrimMode} output={OutputMode} elapsed={ElapsedMs}ms bytes={Bytes}")]
-    private static partial void LogPreviewRendered(ILogger logger, TrimMode trimMode, OutputMode outputMode, long elapsedMs, int bytes);
-
-    [LoggerMessage(EventId = 5009, Level = LogLevel.Information, Message = "PNG 出力: trim={TrimMode} output={OutputMode} elapsed={ElapsedMs}ms bytes={Bytes}")]
-    private static partial void LogPngExported(ILogger logger, TrimMode trimMode, OutputMode outputMode, long elapsedMs, long bytes);
+    // LogPreviewRendered (EventId 5008) / LogPngExported (EventId 5009) は GridOutputViewModel へ移管 (Phase 4)。
 
     public void Dispose()
     {
