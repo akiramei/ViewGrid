@@ -908,4 +908,168 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         _vm.Candidates.Single().Should().BeSameAs(candidate);
         candidate.CopyName.Should().Be("new");
     }
+
+    [Fact]
+    public async Task LivePreview_VariantProperties_Rotation_Pushes_To_Matching_Placements()
+    {
+        // VariantProperties (候補リスト経由のスタンドアロン共有特性編集) で Rotation を draft 編集すると、
+        // 同じ CopyId を使う全 placement の PlacementItemViewModel が即時更新される (canvas binding 反映用)。
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        var p1 = await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+        var p2 = await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(1, 0));
+        p1.IsError.Should().BeFalse();
+        p2.IsError.Should().BeFalse();
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        _vm.Placements.Should().HaveCount(2);
+        _vm.Placements.Should().AllSatisfy(p => p.Rotation.Should().Be(Rotation.None));
+
+        // VariantProperties に直接 attach (SelectedCandidate 経由は fire-and-forget で await できないため)
+        var copyItem = new CopyItemViewModel(copy, thumbnailPath: null, sourceImagePath: null,
+            sourceWidth: asset.Size.Width, sourceHeight: asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItem);
+
+        _vm.VariantProperties.Rotation = Rotation.Cw90;
+
+        _vm.Placements.Should().AllSatisfy(p => p.Rotation.Should().Be(Rotation.Cw90));
+        // DB は変わっていない (Save 前)
+        var stored = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        stored!.Transform.Rotation.Should().Be(Rotation.None);
+    }
+
+    [Fact]
+    public async Task LivePreview_VariantProperties_Alignment_Pushes_To_Matching_Placements()
+    {
+        // AlignX / AlignY はそれぞれ独立に draft 編集できるが Placement の Alignment は構造体一括 setter。
+        // どちらを変えても他方を維持して push されることを確認。
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        var item = _vm.Placements.Single();
+
+        var copyItem = new CopyItemViewModel(copy, null, null, asset.Size.Width, asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItem);
+
+        _vm.VariantProperties.AlignX = AnchorX.Right;
+        item.Alignment.X.Should().Be(AnchorX.Right);
+        item.Alignment.Y.Should().Be(AnchorY.Center); // 維持
+
+        _vm.VariantProperties.AlignY = AnchorY.Top;
+        item.Alignment.X.Should().Be(AnchorX.Right); // 維持
+        item.Alignment.Y.Should().Be(AnchorY.Top);
+    }
+
+    [Fact]
+    public async Task LivePreview_VariantProperties_Rollback_On_Switch_To_Different_Variant()
+    {
+        // 別 variant に切替 → 旧 variant CopyId を使う placement を DB 値 (= 切替前の永続化値) に巻き戻し。
+        var asset = await _fx.SeedAssetAsync();
+        var copyA = await _fx.SeedCopyAsync(asset.Id, copyName: "A");
+        var copyB = await _fx.SeedCopyAsync(asset.Id, copyName: "B");
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copyA.Id, new CellPosition(0, 0));
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        var item = _vm.Placements.Single(p => p.CopyId == copyA.Id);
+        item.Rotation.Should().Be(Rotation.None);
+
+        var copyItemA = new CopyItemViewModel(copyA, null, null, asset.Size.Width, asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItemA);
+        _vm.VariantProperties.Rotation = Rotation.Cw180; // ライブプレビュー push
+        item.Rotation.Should().Be(Rotation.Cw180);
+
+        // 別 variant (B) に attach → 旧 variant (A) の placement を rollback
+        var copyItemB = new CopyItemViewModel(copyB, null, null, asset.Size.Width, asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItemB);
+
+        item.Rotation.Should().Be(Rotation.None); // DB 値に戻った
+    }
+
+    [Fact]
+    public async Task LivePreview_VariantProperties_Revert_Rolls_Back_Placements()
+    {
+        // Revert ボタン → DraftReverted イベント → 当該 CopyId の placement を DB 値に巻き戻し。
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        var item = _vm.Placements.Single();
+
+        var copyItem = new CopyItemViewModel(copy, null, null, asset.Size.Width, asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItem);
+        _vm.VariantProperties.FlipX = true;
+        item.FlipX.Should().BeTrue();
+
+        _vm.VariantProperties.Revert();
+
+        item.FlipX.Should().BeFalse(); // DB 値に戻った
+    }
+
+    [Fact]
+    public async Task LivePreview_VariantProperties_Save_Then_Fresh_LoadGrid_Reflects_Saved_Values()
+    {
+        // Save 後の DB 状態を fresh LoadGridAsync で再構築した placement VM が saved 値を持つこと。
+        // (push と DB の二重書き込みパスが将来分岐しても、 DB 真理値が canvas に正しく現れるかの最終防衛)。
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        var copyItem = new CopyItemViewModel(copy, null, null, asset.Size.Width, asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItem);
+        _vm.VariantProperties.Rotation = Rotation.Cw270;
+        _vm.VariantProperties.FlipY = true;
+        var ok = await _vm.VariantProperties.TrySaveAsync();
+        ok.Should().BeTrue();
+
+        // fresh load: Placements.Clear → 再 LoadPlacementsAsync で DB から新 instance を構築
+        await _vm.LoadGridAsync(null);
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel((await _fx.GridRepository.FindByIdAsync(grid.Id))!));
+
+        var freshItem = _vm.Placements.Single();
+        freshItem.Rotation.Should().Be(Rotation.Cw270);
+        freshItem.FlipY.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task LivePreview_VariantProperties_Save_Keeps_Placements_In_Sync()
+    {
+        // Save 後は DB = canvas (live preview push 済み値) = source の三者が一致する no-op reload。
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        var item = _vm.Placements.Single();
+
+        var copyItem = new CopyItemViewModel(copy, null, null, asset.Size.Width, asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItem);
+        _vm.VariantProperties.ScalingMode = ScalingMode.UniformCover;
+        item.ScalingMode.Should().Be(ScalingMode.UniformCover);
+
+        var ok = await _vm.VariantProperties.TrySaveAsync();
+        ok.Should().BeTrue();
+        // Save 経由で送られた CopyLibraryChangedMessage で reload が起きるので念のため await
+        await _vm.ReloadFromMessageAsyncForTests();
+
+        // DB / source / 表示用 placement の三者一致
+        var stored = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        stored!.ScalingMode.Should().Be(ScalingMode.UniformCover);
+        _vm.Placements.Single().ScalingMode.Should().Be(ScalingMode.UniformCover);
+    }
 }

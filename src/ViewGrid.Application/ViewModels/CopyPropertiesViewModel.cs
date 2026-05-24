@@ -39,6 +39,24 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// プロダクションコードからは使わない（<see cref="HasCopy"/> や個別プロパティで判定する）。</summary>
     internal CopyItemViewModel? AttachedSourceForTests => _source;
 
+    /// <summary>現在 attach されているバリアントの <see cref="ImageCopy.Id"/>。 ライブプレビュー push で
+    /// 「どの CopyId を使う placement に値を伝播するか」 を決めるために <see cref="GridWorkspaceViewModel"/>
+    /// が参照する。 attach 解除中 (<c>_source == null</c>) は <c>null</c>。</summary>
+    public Guid? AttachedCopyId => _source?.CopyId;
+
+    /// <summary>
+    /// <see cref="Attach"/> / <see cref="ResetDirtyAndShowSavedMessage"/> 等の内部更新が走っている間 <c>true</c>。
+    /// ライブプレビューの購読側がこの間 push をスキップする (内部更新は DB 値設定なので canvas 反映不要)。
+    /// </summary>
+    public bool IsAttaching => _suppressDirty;
+
+    /// <summary>
+    /// <see cref="Revert"/> が呼ばれて draft が破棄されたときに発火する。 ライブプレビューで
+    /// canvas に push 済みの値を DB 値に巻き戻す責務は購読側 (<see cref="GridWorkspaceViewModel"/>) が持つ。
+    /// イベント引数は revert 時点で attach されていた <see cref="ImageCopy.Id"/> (rollback 対象)。
+    /// </summary>
+    public event EventHandler<Guid>? DraftReverted;
+
     /// <summary>
     /// AutoCrop プレビュー計算の進行中タスクをキャンセルするための CTS。
     /// 閾値スライダーや HEX 入力で連続変更されるたびに古い計算を打ち切り、
@@ -622,7 +640,12 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     [RelayCommand(CanExecute = nameof(CanRevert))]
     public void Revert()
     {
+        // revert 対象 CopyId を Attach 前にキャプチャ。 Attach は _source を入れ替えないので
+        // 直後でも値は取れるが、 将来的に Attach の semantics が変わっても安全な順序にしておく。
+        var revertedCopyId = _source?.CopyId;
         Attach(_source);
+        if (revertedCopyId is Guid id)
+            DraftReverted?.Invoke(this, id);
     }
 
     private bool CanSave() => HasCopy && IsDirty;

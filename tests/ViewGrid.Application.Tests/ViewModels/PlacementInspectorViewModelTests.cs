@@ -362,4 +362,85 @@ public sealed class PlacementInspectorViewModelTests : IAsyncLifetime
 
         _vm.PixelOffsetX.Should().Be(beforeX);
     }
+
+    [Fact]
+    public async Task LivePreview_PixelOffset_Edit_Pushes_To_Source_Immediately()
+    {
+        // ライブプレビュー: 保存前でも draft 編集が _source (PlacementItemViewModel) に伝播し、
+        // canvas binding が即時更新される。 ユーザーは値変化を目視してから Save / Revert を選べる。
+        var (item, _, gridVm) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item, gridVm);
+
+        _vm.PixelOffsetX = 75;
+        _vm.PixelOffsetY = -20;
+
+        item.PixelOffsetX.Should().Be(75);
+        item.PixelOffsetY.Should().Be(-20);
+        // 永続化はされていない (Save 前)
+        var stored = await _fx.PlacementRepository.FindByIdAsync(item.PlacementId);
+        stored!.PixelOffsetX.Should().Be(0);
+        stored.PixelOffsetY.Should().Be(0);
+        _vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task LivePreview_OccupySize_Edit_Pushes_To_Source_With_Min_One_Coerce()
+    {
+        var (item, _, gridVm) = await SeedAndPlaceAsync();
+        await _vm.AttachAsync(item, gridVm);
+
+        _vm.OccupyWidth = 2;
+        _vm.OccupyHeight = 0; // 0 入力は Save と揃えて Math.Max(1, x) で 1 に coerce
+
+        item.OccupySize.Width.Should().Be(2);
+        item.OccupySize.Height.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task LivePreview_PixelOffset_Edit_Does_Not_Propagate_To_Sibling_Placement()
+    {
+        // 配置固有 (PixelOffset/Occupy) は placement 単位の特性。 同じ CopyId を共有する
+        // 別 placement には決して伝播してはならない (共有特性との対比テスト)。
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedGridAsync(2, 2);
+        var p1 = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+        var p2 = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(1, 0));
+        var item1 = new PlacementItemViewModel(p1.Value, copy, asset, null);
+        var item2 = new PlacementItemViewModel(p2.Value, copy, asset, null);
+        var gridVm = new GridCanvasItemViewModel((await _fx.GridRepository.FindByIdAsync(grid.Id))!);
+
+        await _vm.AttachAsync(item1, gridVm);
+        _vm.PixelOffsetX = 123;
+
+        item1.PixelOffsetX.Should().Be(123);
+        item2.PixelOffsetX.Should().Be(0); // 兄弟 placement は無影響
+    }
+
+    [Fact]
+    public async Task LivePreview_AutoSaveOff_Switch_To_Different_Placement_Rolls_Back_Old_Source()
+    {
+        // auto-save OFF + 配置固有 draft が残ったまま別 placement へ切替 → 古い source に
+        // push 済みの未保存値を DB の永続化値に巻き戻して canvas を整合させる (Phase 1 の境界遷移方針)。
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedGridAsync(2, 2);
+        var p1 = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+        var p2 = await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(1, 0));
+        var item1 = new PlacementItemViewModel(p1.Value, copy, asset, null);
+        var item2 = new PlacementItemViewModel(p2.Value, copy, asset, null);
+        var gridVm = new GridCanvasItemViewModel((await _fx.GridRepository.FindByIdAsync(grid.Id))!);
+        _fx.AppSettings.Current.EnableAutoSave.Should().BeFalse();
+
+        await _vm.AttachAsync(item1, gridVm);
+        _vm.PixelOffsetX = 300; // ライブプレビュー push: item1.PixelOffsetX = 300
+        item1.PixelOffsetX.Should().Be(300);
+
+        // 別 placement へ切替 → 旧 source (item1) を DB 値に rollback
+        await _vm.AttachAsync(item2, gridVm);
+
+        item1.PixelOffsetX.Should().Be(p1.Value.PixelOffsetX); // DB の永続化値 (= 0)
+        item1.PixelOffsetY.Should().Be(p1.Value.PixelOffsetY);
+        item1.OccupySize.Should().Be(p1.Value.OccupySize);
+    }
 }

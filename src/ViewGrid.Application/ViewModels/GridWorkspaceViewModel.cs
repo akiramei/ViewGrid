@@ -326,18 +326,151 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         VariantProperties.PropertyChanged += OnVariantPropertiesChanged;
         _appSettings.Changed += OnAppSettingsChangedForVariant;
 
+        // ライブプレビュー配線: VariantProperties / Inspector.CopyProperties の draft 変更を
+        // 該当 CopyId の placement VM (PlacementItemViewModel) に即時 push し、 attach 切替や
+        // Revert で draft が破棄される際は DB から ApplyCopyChanges で rollback する。
+        Inspector.CopyProperties.PropertyChanged += OnInspectorCopyPropertiesChanged;
+        VariantProperties.DraftReverted += OnVariantPropertiesDraftReverted;
+        Inspector.CopyProperties.DraftReverted += OnInspectorCopyPropertiesDraftReverted;
+
         _messenger.Register(this);
     }
 
     /// <summary>
-    /// VariantProperties の編集系プロパティ変化を auto-save coordinator に通知。
-    /// 内部状態の通知も含まれるが NotifyEdited は dirty / 設定 OFF / 失敗 retry を
-    /// gate してくれるので invocation コスト以外の害はない。
+    /// VariantProperties の編集系プロパティ変化を auto-save coordinator に通知 + ライブプレビュー push。
+    /// 内部状態の通知も含まれるが NotifyEdited は dirty / 設定 OFF / 失敗 retry を gate してくれる。
     /// </summary>
     private void OnVariantPropertiesChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         _variantAutoSave.NotifyEdited();
+        HandleCopyPropertiesEvent(VariantProperties, ref _variantPropertiesLastCopyId, e.PropertyName);
     }
+
+    /// <summary>
+    /// Inspector embed の CopyProperties の編集系プロパティ変化を捕まえてライブプレビュー push する。
+    /// auto-save 連動は Inspector 側で既に行われているのでここでは push と attach 切替検知のみ担当。
+    /// </summary>
+    private void OnInspectorCopyPropertiesChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        HandleCopyPropertiesEvent(Inspector.CopyProperties, ref _inspectorCopyPropertiesLastCopyId, e.PropertyName);
+    }
+
+    /// <summary>
+    /// CopyProperties (VariantProperties / Inspector.CopyProperties 共通) の PropertyChanged ハンドリング。
+    /// (1) attach 切替の検知: 直前の CopyId と比較して変化があれば、 旧 CopyId の placement を DB から rollback、
+    /// (2) ライブプレビュー push: <see cref="IsLivePreviewSharedProperty"/> に該当するなら現在 attach 中の
+    /// CopyId を使う placement に値を伝播。 IsAttaching 中は内部更新なので push しない (DB 値 = 現在値で no-op)。
+    /// </summary>
+    private void HandleCopyPropertiesEvent(
+        CopyPropertiesViewModel cp,
+        ref Guid? lastCopyId,
+        string? propertyName)
+    {
+        var currentCopyId = cp.AttachedCopyId;
+        if (currentCopyId != lastCopyId)
+        {
+            var previous = lastCopyId;
+            lastCopyId = currentCopyId;
+            if (previous is Guid old)
+                _ = RollbackPlacementsForCopyAsync(old, CancellationToken.None);
+        }
+
+        if (cp.IsAttaching) return;
+        if (!IsLivePreviewSharedProperty(propertyName)) return;
+        if (currentCopyId is not Guid copyId) return;
+        PushSharedPropertyLivePreview(cp, copyId, propertyName);
+    }
+
+    private void OnVariantPropertiesDraftReverted(object? sender, Guid copyId)
+        => _ = RollbackPlacementsForCopyAsync(copyId, CancellationToken.None, skipIfStillAttached: false);
+
+    private void OnInspectorCopyPropertiesDraftReverted(object? sender, Guid copyId)
+        => _ = RollbackPlacementsForCopyAsync(copyId, CancellationToken.None, skipIfStillAttached: false);
+
+    /// <summary>
+    /// <see cref="CopyPropertiesViewModel"/> の編集バッファのうち、 canvas 表示に即時反映できる軽量な
+    /// 共有プロパティかどうか。 AutoCrop / ManualCrop / ProtectedRegions は Phase 2 以降。
+    /// </summary>
+    private static bool IsLivePreviewSharedProperty(string? propertyName) => propertyName is
+        nameof(CopyPropertiesViewModel.Rotation) or
+        nameof(CopyPropertiesViewModel.FlipX) or
+        nameof(CopyPropertiesViewModel.FlipY) or
+        nameof(CopyPropertiesViewModel.ScalingMode) or
+        nameof(CopyPropertiesViewModel.AlignX) or
+        nameof(CopyPropertiesViewModel.AlignY);
+
+    /// <summary>
+    /// draft 中の共有プロパティ値を、 当該 CopyId を使う全 <see cref="PlacementItemViewModel"/> に push する。
+    /// AlignX / AlignY は <see cref="Alignment"/> 構造体を再構築して 1 setter で渡す (個別 setter がないため)。
+    /// 同値書込は ObservableProperty の等価性チェックで no-op。
+    /// </summary>
+    private void PushSharedPropertyLivePreview(CopyPropertiesViewModel cp, Guid copyId, string? propertyName)
+    {
+        foreach (var p in Placements)
+        {
+            if (p.CopyId != copyId) continue;
+            switch (propertyName)
+            {
+                case nameof(CopyPropertiesViewModel.Rotation):
+                    p.Rotation = cp.Rotation;
+                    break;
+                case nameof(CopyPropertiesViewModel.FlipX):
+                    p.FlipX = cp.FlipX;
+                    break;
+                case nameof(CopyPropertiesViewModel.FlipY):
+                    p.FlipY = cp.FlipY;
+                    break;
+                case nameof(CopyPropertiesViewModel.ScalingMode):
+                    p.ScalingMode = cp.ScalingMode;
+                    break;
+                case nameof(CopyPropertiesViewModel.AlignX):
+                case nameof(CopyPropertiesViewModel.AlignY):
+                    p.Alignment = new Alignment(cp.AlignX, cp.AlignY);
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 指定 CopyId を使う全 <see cref="PlacementItemViewModel"/> を DB の最新 <see cref="ImageCopy"/> 値に
+    /// 巻き戻す。 ライブプレビューで push した未保存値を canvas から取り除くために、 attach 切替や Revert
+    /// のタイミングで呼ばれる。 DB 読込失敗は黙って続行 (次の <see cref="LoadPlacementsAsync"/> で整合される)。
+    /// <para>
+    /// <paramref name="skipIfStillAttached"/> = <c>true</c> (既定): attach 切替検知経由の rollback。
+    /// DB await 中にユーザーが当該 copyId に再 attach した場合は draft 値を上書きしないようスキップ
+    /// (Codex review 指摘の race fix: A→B→A→edit の高速操作で古い rollback が新しい draft を消す問題)。
+    /// <paramref name="skipIfStillAttached"/> = <c>false</c>: <c>Revert</c> 経由の明示的 discard。
+    /// 同 source への attach は維持されたままだが ユーザー intent は「DB 値に戻す」なので必ず apply。
+    /// </para>
+    /// </summary>
+    private async Task RollbackPlacementsForCopyAsync(
+        Guid copyId, CancellationToken ct, bool skipIfStillAttached = true)
+    {
+        try
+        {
+            var copy = await _copyRepository.FindByIdAsync(copyId, ct);
+            if (copy is null) return;
+            if (skipIfStillAttached &&
+                (Inspector.CopyProperties.AttachedCopyId == copyId ||
+                 VariantProperties.AttachedCopyId == copyId))
+                return;
+            foreach (var p in Placements)
+            {
+                if (p.CopyId == copyId)
+                    p.ApplyCopyChanges(copy);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch { /* DB エラーは無視 (次の LoadPlacementsAsync で整合される) */ }
+    }
+
+    /// <summary>
+    /// ライブプレビュー push / rollback で参照する、 各 CopyProperties が直前に attach していた CopyId。
+    /// PropertyChanged 観測ごとに <see cref="CopyPropertiesViewModel.AttachedCopyId"/> と比較して、
+    /// 変化があれば旧 CopyId の placement を rollback する。 初期値は null。
+    /// </summary>
+    private Guid? _variantPropertiesLastCopyId;
+    private Guid? _inspectorCopyPropertiesLastCopyId;
 
     private void OnAppSettingsChangedForVariant(object? sender, Core.Settings.AppSettings settings)
     {
@@ -532,6 +665,12 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         Placements.Clear();
         SelectedPlacement = null;
         StatusMessage = null;
+
+        // Placements を Clear したのでライブプレビュー用の lastCopyId tracking も巻き戻す。
+        // attach 切替検知は次の AttachVariantPropertiesAsync / Inspector.AttachAsync から
+        // 自然に再開する (lastCopyId=null → 新 CopyId への遷移として扱われ rollback は no-op)。
+        _inspectorCopyPropertiesLastCopyId = null;
+        _variantPropertiesLastCopyId = null;
 
         // SelectedPlacement = null は OnSelectedPlacementChanged 経由で FlushThenAttachAsync を
         // fire-and-forget 起動する。 そのタスクは Inspector の auto-save flush と同 DbContext での
@@ -1678,7 +1817,19 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     public void Dispose()
     {
+        // 構成で張った全 subscription を解除して循環参照を断つ (Codex review 指摘の dispose 漏れ修正)。
+        // Inspector.CopyProperties / VariantProperties は別々の CopyPropertiesViewModel インスタンスで、
+        // Inspector.Dispose() が前者を破棄するため、 こちらは subscription 解除のみ担当。
+        VariantProperties.PropertyChanged -= OnVariantPropertiesChanged;
+        VariantProperties.DraftReverted -= OnVariantPropertiesDraftReverted;
+        Inspector.CopyProperties.PropertyChanged -= OnInspectorCopyPropertiesChanged;
+        Inspector.CopyProperties.DraftReverted -= OnInspectorCopyPropertiesDraftReverted;
+        _appSettings.Changed -= OnAppSettingsChangedForVariant;
+        _variantAutoSave.Dispose();
         _messenger.UnregisterAll(this);
         Inspector.Dispose();
+        // VariantProperties は Inspector.CopyProperties とは別インスタンスで、 GridWorkspaceVM が
+        // 構築・所有しているので明示的に Dispose する (AutoCropPreview CTS を解放するため)。
+        VariantProperties.Dispose();
     }
 }

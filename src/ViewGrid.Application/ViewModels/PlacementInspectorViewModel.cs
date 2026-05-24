@@ -305,6 +305,46 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
             try { await TrySaveAllAsync(ct); }
             catch { /* 同上 */ }
         }
+        else if (!_appSettings.Current.EnableAutoSave && IsDirty)
+        {
+            // auto-save OFF で配置固有 draft が残ったまま切替 → ライブプレビューで _source に
+            // push 済みの未保存値が canvas に残るので、 DB 値で巻き戻す。 共有特性側の rollback は
+            // GridWorkspaceViewModel が CopyProperties の attach 切替を検知して行う。
+            try { await RollbackSourceFromDbAsync(ct); }
+            catch { /* DB 読込失敗時は黙って続行 (次の LoadPlacementsAsync で整合される) */ }
+        }
+    }
+
+    /// <summary>
+    /// <see cref="_source"/> の placement 固有プロパティ (PixelOffset / OccupySize) を DB 値に巻き戻す。
+    /// auto-save OFF で配置固有 draft が破棄される際に、 ライブプレビューで canvas に push 済みの
+    /// 値を DB の永続化値に揃えるための内部ヘルパ。 既に同値なら no-op (ObservableProperty の等価性チェック)。
+    /// <para>
+    /// race fix (Codex review 指摘): DB 読込の await 中に AttachAsync で _source が別 placement に
+    /// 切り替わる可能性がある。 await 前に source をローカルキャプチャしておき、 復帰後も同じ source に
+    /// 対して書き戻す (古い source 自体は Placements 内に存在し続け canvas に表示されているので、
+    /// 当該 source の DB 整合を取る責務は依然必要)。 OnSourcePropertyChanged は src != _source を
+    /// ガードしているので、 _source が別物に変わっていれば Inspector buffer は汚染されない。
+    /// </para>
+    /// </summary>
+    private async Task RollbackSourceFromDbAsync(CancellationToken ct)
+    {
+        var source = _source;
+        if (source is null) return;
+        var current = await _placementRepository.FindByIdAsync(source.PlacementId, ct);
+        if (current is null) return;
+
+        _suppressDirty = true;
+        try
+        {
+            source.PixelOffsetX = current.PixelOffsetX;
+            source.PixelOffsetY = current.PixelOffsetY;
+            source.OccupySize = current.OccupySize;
+        }
+        finally
+        {
+            _suppressDirty = false;
+        }
     }
 
     /// <summary>
@@ -720,6 +760,34 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         // 連続編集で debounce が毎回 reset されるよう、 編集系プロパティ変更ごとに Coordinator に
         // 通知する (Coordinator 側で設定 OFF / 同 signature 失敗 / dirty なし は内部 gate でスキップ)。
         _autoSave.NotifyEdited();
+
+        // ライブプレビュー: 配置固有プロパティの draft 変更を即時 _source に push して canvas に反映。
+        // Save 待ちの遅延描画を排し、 ユーザーが目視で値変化を確認してから Save / Revert を選べる UX。
+        // 同値書込は ObservableProperty の等価性チェックで no-op になるので Shift+ドラッグからの
+        // OnSourcePropertyChanged 経路ともループしない。
+        PushPlacementDraftToSource(e.PropertyName);
+    }
+
+    /// <summary>
+    /// 配置固有 draft (PixelOffsetX/Y, OccupyWidth/Height) を <see cref="_source"/> に push する。
+    /// Save 時の <c>Math.Max(1, x)</c> coerce と揃えて OccupySize を構築する。 _source が null なら no-op。
+    /// </summary>
+    private void PushPlacementDraftToSource(string? propertyName)
+    {
+        if (_source is not { } source) return;
+        switch (propertyName)
+        {
+            case nameof(PixelOffsetX):
+                source.PixelOffsetX = PixelOffsetX;
+                break;
+            case nameof(PixelOffsetY):
+                source.PixelOffsetY = PixelOffsetY;
+                break;
+            case nameof(OccupyWidth):
+            case nameof(OccupyHeight):
+                source.OccupySize = new OccupySize(Math.Max(1, OccupyWidth), Math.Max(1, OccupyHeight));
+                break;
+        }
     }
 
     /// <summary>
