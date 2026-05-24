@@ -91,18 +91,20 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
     [ObservableProperty]
     public partial string ImageDrawSizeLabel { get; set; } = string.Empty;
 
-    // 編集バッファ（配置固有のみ）
-    [ObservableProperty] public partial int PixelOffsetX { get; set; }
-    [ObservableProperty] public partial int PixelOffsetY { get; set; }
+    // 編集バッファ（配置固有のみ）。 NumericUpDown の空入力で一時的に null になり得るため int?。
+    // 保存系では Math.Clamp / Math.Max の前に ?? 0 / ?? 1 でフォールバックする。
+    [ObservableProperty] public partial int? PixelOffsetX { get; set; }
+    [ObservableProperty] public partial int? PixelOffsetY { get; set; }
 
     /// <summary>
     /// 占有セル幅（W）の編集バッファ。配置固有特性として placement に持たせる。
     /// 同じバリアントを別グリッド・別セルに配置しても、それぞれで独立に変えられる。
+    /// nullable の理由は <see cref="PixelOffsetX"/> と同じ。
     /// </summary>
-    [ObservableProperty] public partial int OccupyWidth { get; set; } = 1;
+    [ObservableProperty] public partial int? OccupyWidth { get; set; } = 1;
 
-    /// <summary>占有セル高さ（H）の編集バッファ。</summary>
-    [ObservableProperty] public partial int OccupyHeight { get; set; } = 1;
+    /// <summary>占有セル高さ（H）の編集バッファ。 nullable の理由は <see cref="PixelOffsetX"/> と同じ。</summary>
+    [ObservableProperty] public partial int? OccupyHeight { get; set; } = 1;
 
     /// <summary>
     /// 配置固有 (<see cref="IsDirty"/>) と共有特性 (<see cref="CopyProperties"/>.IsDirty) の
@@ -466,9 +468,10 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         var grid = _grid;
         if (source is null || grid is null || !IsDirty) return true;
 
-        var clampedX = Math.Clamp(PixelOffsetX, -MaxPixelOffset, MaxPixelOffset);
-        var clampedY = Math.Clamp(PixelOffsetY, -MaxPixelOffset, MaxPixelOffset);
-        var newOccupy = new OccupySize(Math.Max(1, OccupyWidth), Math.Max(1, OccupyHeight));
+        // null (空入力中) は 0 / 1 にフォールバック (NumericUpDown.Minimum と整合させた既存挙動)。
+        var clampedX = Math.Clamp(PixelOffsetX ?? 0, -MaxPixelOffset, MaxPixelOffset);
+        var clampedY = Math.Clamp(PixelOffsetY ?? 0, -MaxPixelOffset, MaxPixelOffset);
+        var newOccupy = new OccupySize(Math.Max(1, OccupyWidth ?? 1), Math.Max(1, OccupyHeight ?? 1));
 
         // before の値は DB の永続化済み値から取得（Shift+ドラッグで _source が書き換わっている可能性がある）
         var current = await _placementRepository.FindByIdAsync(source.PlacementId, ct);
@@ -775,17 +778,18 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
     private void PushPlacementDraftToSource(string? propertyName)
     {
         if (_source is not { } source) return;
+        // draft (int?) → source (int) の push。 入力欄を空にしている瞬間は null → 0/1 にフォールバック。
         switch (propertyName)
         {
             case nameof(PixelOffsetX):
-                source.PixelOffsetX = PixelOffsetX;
+                source.PixelOffsetX = PixelOffsetX ?? 0;
                 break;
             case nameof(PixelOffsetY):
-                source.PixelOffsetY = PixelOffsetY;
+                source.PixelOffsetY = PixelOffsetY ?? 0;
                 break;
             case nameof(OccupyWidth):
             case nameof(OccupyHeight):
-                source.OccupySize = new OccupySize(Math.Max(1, OccupyWidth), Math.Max(1, OccupyHeight));
+                source.OccupySize = new OccupySize(Math.Max(1, OccupyWidth ?? 1), Math.Max(1, OccupyHeight ?? 1));
                 break;
         }
     }

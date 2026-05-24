@@ -1,5 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:ViewGrid.Presentation.Controls">
     <!--
         ViewGrid 共通スタイル。
         FontSize / Opacity / Margin / 色をハードコードしてきた各ビューを Class 適用に置換し、
@@ -23,6 +24,19 @@
     -->
     <Style Selector="Window">
         <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI, Yu Gothic UI, Meiryo UI, sans-serif" />
+    </Style>
+
+    <!--
+        NumericUpDown の Value は decimal? なので、 source 側が非 nullable な int 等だと
+        入力欄を空にした瞬間に「null → int」変換例外が発生し、 ErrorTemplate がコントロール
+        直下に System.InvalidCastException スタックトレースを赤字で描画してしまう。
+        本プロジェクトでは VM 側プロパティを int? に統一する方針 (例: CopyPropertiesViewModel
+        の ManualCropPixelX 等) で根本回避している。 BlankGuard はその上で 「フォーカス離脱時に
+        null のままなら Minimum に戻す」 という UX 上のフォールアップを全 NumericUpDown に
+        一括適用するためのもの。
+    -->
+    <Style Selector="NumericUpDown">
+        <Setter Property="controls:NumericUpDownBlankGuard.IsEnabled" Value="True" />
     </Style>
 
     <!-- セクション見出し（パネル単位、サブグループ単位の小見出し共通） -->

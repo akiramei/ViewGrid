@@ -102,10 +102,13 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
     // 新規作成ドラフト
     [ObservableProperty] public partial bool IsCreating { get; set; }
     [ObservableProperty] public partial string DraftName { get; set; } = string.Empty;
-    [ObservableProperty] public partial int DraftRows { get; set; } = 3;
-    [ObservableProperty] public partial int DraftCols { get; set; } = 3;
-    [ObservableProperty] public partial int DraftCanvasWidth { get; set; } = 1200;
-    [ObservableProperty] public partial int DraftCanvasHeight { get; set; } = 1200;
+    // Draft* は NumericUpDown にバインドされるため、 入力欄を空にすると一時的に null になり得る。
+    // NumericUpDown.Value (decimal?) → 非 nullable int への変換例外を避けるため int? で受ける。
+    // ConfirmCreateAsync で null は Minimum (1) にフォールバック。
+    [ObservableProperty] public partial int? DraftRows { get; set; } = 3;
+    [ObservableProperty] public partial int? DraftCols { get; set; } = 3;
+    [ObservableProperty] public partial int? DraftCanvasWidth { get; set; } = 1200;
+    [ObservableProperty] public partial int? DraftCanvasHeight { get; set; } = 1200;
     /// <summary>列比率（カンマ区切り、空 = 均等）。例: "2,1,1"。</summary>
     [ObservableProperty] public partial string DraftColWeights { get; set; } = string.Empty;
     /// <summary>行比率（カンマ区切り、空 = 均等）。例: "2,1,1"。</summary>
@@ -331,14 +334,15 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
             var parsedColWeights = ParseWeights(DraftColWeights);
             var parsedRowWeights = ParseWeights(DraftRowWeights);
 
+            // Draft* は int? (UI 空欄許容)。 null は Minimum (1) にフォールバックして UseCase へ。
             var result = await _createUseCase.ExecuteAsync(
                 new CreateGridCanvasRequest
                 {
                     Name = DraftName,
-                    Rows = DraftRows,
-                    Cols = DraftCols,
-                    CanvasWidth = DraftCanvasWidth,
-                    CanvasHeight = DraftCanvasHeight,
+                    Rows = DraftRows ?? 1,
+                    Cols = DraftCols ?? 1,
+                    CanvasWidth = DraftCanvasWidth ?? 1,
+                    CanvasHeight = DraftCanvasHeight ?? 1,
                     ColWeights = parsedColWeights,
                     RowWeights = parsedRowWeights,
                 },
@@ -475,8 +479,10 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
         GridCanvasItemViewModel target, string newName, CancellationToken ct)
     {
         var nameChanged = newName != target.Name;
-        var newWidth = target.EditingCanvasWidth;
-        var newHeight = target.EditingCanvasHeight;
+        // EditingCanvasWidth/Height は NumericUpDown の空入力で一時的に null になり得る (int?)。
+        // 保存時は最小値 1 にフォールバック (NumericUpDown.Minimum と整合)。
+        var newWidth = target.EditingCanvasWidth ?? 1;
+        var newHeight = target.EditingCanvasHeight ?? 1;
         var sizeChanged = newWidth != target.CanvasWidth || newHeight != target.CanvasHeight;
 
         var savedAny = false;

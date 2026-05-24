@@ -798,16 +798,4 @@ public partial class CopyPropertiesView : UserControl
         }
     }
 
-    /// <summary>
-    /// 非 nullable int にバインドした NumericUpDown のテキストを空にすると Avalonia の Value が
-    /// null になり「Could not convert '(null)' to System.Int32」のバインディングエラーが赤字で
-    /// 表示され、レイアウトが崩れる。フォーカスが外れたタイミングで空のまま残っていれば
-    /// <see cref="NumericUpDown.Minimum"/> に強制的に戻すことで二度と null が source に書かれない
-    /// 状態にする（連続入力中の一時的 null は許容）。
-    /// </summary>
-    private void OnNumericUpDownLostFocus(object? sender, RoutedEventArgs e)
-    {
-        if (sender is NumericUpDown nud && nud.Value is null)
-            nud.Value = nud.Minimum;
-    }
 }

@@ -282,8 +282,7 @@
                                 <TextBlock Classes="FieldLabel" Text="{loc:Tr CopyProps_AutoCrop_Threshold}" Margin="0,8,0,0" />
                                 <NumericUpDown Value="{Binding AutoCropThreshold}"
                                                Minimum="0" Maximum="128"
-                                               FormatString="0"
-                                               LostFocus="OnNumericUpDownLostFocus" />
+                                               FormatString="0" />
                                 <TextBlock Classes="HintText"
                                            Text="{loc:Tr CopyProps_AutoCrop_Threshold_Hint}" />
 
@@ -372,16 +371,14 @@
                                         <NumericUpDown Value="{Binding ManualCropPixelX}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}"
-                                                       LostFocus="OnNumericUpDownLostFocus" />
+                                                       IsEnabled="{Binding IsManualCropDefined}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Classes="FieldLabel" Text="{loc:Tr CopyProps_ManualCrop_Y}" />
                                         <NumericUpDown Value="{Binding ManualCropPixelY}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}"
-                                                       LostFocus="OnNumericUpDownLostFocus" />
+                                                       IsEnabled="{Binding IsManualCropDefined}" />
                                     </StackPanel>
                                 </Grid>
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
@@ -390,16 +387,14 @@
                                         <NumericUpDown Value="{Binding ManualCropPixelWidth}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}"
-                                                       LostFocus="OnNumericUpDownLostFocus" />
+                                                       IsEnabled="{Binding IsManualCropDefined}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Classes="FieldLabel" Text="{loc:Tr CopyProps_ManualCrop_H}" />
                                         <NumericUpDown Value="{Binding ManualCropPixelHeight}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}"
-                                                       LostFocus="OnNumericUpDownLostFocus" />
+                                                       IsEnabled="{Binding IsManualCropDefined}" />
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
@@ -491,15 +486,13 @@
                                     <TextBlock Classes="FieldLabel" Text="{loc:Tr CopyProps_Regions_OffsetX}" />
                                     <NumericUpDown Value="{Binding OffsetXPx}"
                                                    FormatString="0"
-                                                   Increment="1"
-                                                   LostFocus="OnNumericUpDownLostFocus" />
+                                                   Increment="1" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Grid.Row="0" Spacing="2">
                                     <TextBlock Classes="FieldLabel" Text="{loc:Tr CopyProps_Regions_OffsetY}" />
                                     <NumericUpDown Value="{Binding OffsetYPx}"
                                                    FormatString="0"
-                                                   Increment="1"
-                                                   LostFocus="OnNumericUpDownLostFocus" />
+                                                   Increment="1" />
                                 </StackPanel>
                             </Grid>
 

@@ -61,13 +61,17 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
     [ObservableProperty]
     public partial string EditingName { get; set; } = string.Empty;
 
-    /// <summary>編集中のキャンバス幅 px (保存前のドラフト)。</summary>
+    /// <summary>
+    /// 編集中のキャンバス幅 px (保存前のドラフト)。 NumericUpDown.Value が decimal? なので、
+    /// 非 nullable int だと入力欄を空にした瞬間にバインディング例外が出てしまう。 nullable に
+    /// しておくことで「一時的な空欄」 を許容し、 保存時には Minimum (=1) フォールバックで int 化する。
+    /// </summary>
     [ObservableProperty]
-    public partial int EditingCanvasWidth { get; set; }
+    public partial int? EditingCanvasWidth { get; set; }
 
-    /// <summary>編集中のキャンバス高さ px (保存前のドラフト)。</summary>
+    /// <summary>編集中のキャンバス高さ px (保存前のドラフト)。 <see cref="EditingCanvasWidth"/> と同じ理由で nullable。</summary>
     [ObservableProperty]
-    public partial int EditingCanvasHeight { get; set; }
+    public partial int? EditingCanvasHeight { get; set; }
 
     /// <summary>
     /// ドラフトと永続化済み値の差分。 保存ボタンの IsEnabled 制御に使う。
@@ -77,8 +81,8 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
     public partial bool IsDirty { get; set; }
 
     partial void OnEditingNameChanged(string value) => RecomputeIsDirty();
-    partial void OnEditingCanvasWidthChanged(int value) => RecomputeIsDirty();
-    partial void OnEditingCanvasHeightChanged(int value) => RecomputeIsDirty();
+    partial void OnEditingCanvasWidthChanged(int? value) => RecomputeIsDirty();
+    partial void OnEditingCanvasHeightChanged(int? value) => RecomputeIsDirty();
 
     partial void OnNameChanged(string value)
     {
