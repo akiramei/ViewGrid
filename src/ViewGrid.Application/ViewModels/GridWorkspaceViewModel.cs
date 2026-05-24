@@ -35,17 +35,16 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly RemovePlacementUseCase _removeUseCase;
     private readonly MovePlacementUseCase _moveUseCase;
     private readonly SwapPlacementsUseCase _swapUseCase;
-    // RenderGridUseCase / ExportGridUseCase は GridOutputViewModel へ移管 (Phase 4)。
-    // コンストラクタ引数はまだ受け取って Output 構築時に渡すが、 本 VM 自身では保持しない。
-    // UpdateGridWeightsUseCase / UpdateGridLocksUseCase / FitGridWeightToPlacementUseCase は
-    // GridStructureEditorViewModel へ移管 (Phase 4-3)。 引数のみ受け取って Structure 構築時に渡す。
+    // Phase 4 で移管された UseCase は本 VM には保持しない:
+    //  - RenderGridUseCase / ExportGridUseCase / IFilePickerService → GridOutputViewModel
+    //  - UpdateGridWeightsUseCase / UpdateGridLocksUseCase / FitGridWeightToPlacementUseCase → GridStructureEditorViewModel
+    //  - CreateLogicalCopyUseCase / UpdateImageCopyUseCase / DeleteImageAssetUseCase → VariantManagerViewModel
+    // Phase 5 で子 VM を直接 DI 注入する設計に切り替えたため、 これらの UseCase は本 VM コンストラクタの
+    // 引数からも消えた (子 VM 自身が DI で受け取る)。
     private readonly UpdatePlacementOffsetUseCase _updateOffsetUseCase;
-    // CreateLogicalCopyUseCase / UpdateImageCopyUseCase / DeleteImageAssetUseCase は
-    // VariantManagerViewModel へ移管 (Phase 4-2)。 引数のみ受け取って Variants 構築時に渡す。
     private readonly IImageStorage _imageStorage;
     private readonly IAppSettingsService _appSettings;
     private readonly SaveCoordinator _variantAutoSave;
-    // IFilePickerService は GridOutputViewModel へ移管 (Phase 4)。 引数のみ受け取って Output に渡す。
     private readonly IMessenger _messenger;
     private readonly IUndoRedoService _history;
     private readonly ILocalizationService _loc;
@@ -154,22 +153,16 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         RemovePlacementUseCase removeUseCase,
         MovePlacementUseCase moveUseCase,
         SwapPlacementsUseCase swapUseCase,
-        RenderGridUseCase renderUseCase,
-        ExportGridUseCase exportUseCase,
-        UpdateGridWeightsUseCase updateWeightsUseCase,
-        UpdateGridLocksUseCase updateLocksUseCase,
         UpdatePlacementOffsetUseCase updateOffsetUseCase,
-        FitGridWeightToPlacementUseCase fitWeightUseCase,
-        CreateLogicalCopyUseCase createCopyUseCase,
-        UpdateImageCopyUseCase updateCopyUseCase,
-        DeleteImageAssetUseCase deleteAssetUseCase,
         IImageStorage imageStorage,
         IAppSettingsService appSettings,
-        IFilePickerService filePicker,
         IMessenger messenger,
         IUndoRedoService history,
         PlacementInspectorViewModel inspector,
         CopyPropertiesViewModel variantProperties,
+        GridOutputViewModel output,
+        VariantManagerViewModel variants,
+        GridStructureEditorViewModel structure,
         ILocalizationService loc,
         ILogger<GridWorkspaceViewModel> logger)
     {
@@ -183,13 +176,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _removeUseCase = removeUseCase;
         _moveUseCase = moveUseCase;
         _swapUseCase = swapUseCase;
-        // renderUseCase / exportUseCase は Output に渡すだけで保持しない (Phase 4 移管)
-        // updateWeightsUseCase / updateLocksUseCase / fitWeightUseCase は Structure に渡すだけ (Phase 4-3 移管)
         _updateOffsetUseCase = updateOffsetUseCase;
-        // createCopyUseCase / updateCopyUseCase / deleteAssetUseCase は Variants に渡すだけ (Phase 4-2 移管)
         _imageStorage = imageStorage;
         _appSettings = appSettings;
-        // filePicker は Output に渡すだけで保持しない (Phase 4 移管)
         _messenger = messenger;
         _history = history;
         Inspector = inspector;
@@ -197,22 +186,15 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _loc = loc;
         _logger = logger;
 
-        // 出力 / プレビューパネルの子 VM を構築。 this を IGridOutputContext として渡して
-        // CurrentGrid / IsBusy / StatusMessage を共有させる (循環参照ではなく親子委譲)。
-        Output = new GridOutputViewModel(this, renderUseCase, exportUseCase, filePicker, loc, logger);
-
-        // バリアント管理 (新規作成 / 削除 / リネーム) の子 VM を構築。 同じく this を
-        // IVariantManagerContext として渡し、 候補リスト (Candidates / CandidateGroups /
-        // SelectedCandidate) と IsBusy / StatusMessage / LoadCandidatesAsync を共有させる。
-        Variants = new VariantManagerViewModel(
-            this, createCopyUseCase, updateCopyUseCase, deleteAssetUseCase,
-            copyRepository, history, messenger, loc, logger);
-
-        // グリッド構造編集 (重み / ロック / FitGridWeight) の子 VM を構築。 this を
-        // IGridStructureEditorContext として渡し、 CurrentGrid 参照 + StatusMessage 書込 +
-        // NotifyCurrentGridChanged (= OnPropertyChanged(nameof(CurrentGrid))) を共有させる。
-        Structure = new GridStructureEditorViewModel(
-            this, gridRepository, updateWeightsUseCase, updateLocksUseCase, fitWeightUseCase, history, loc);
+        // 子 VM 3 つは DI で構築済みのものを受け取って 2-phase init (AttachContext) で
+        // this を注入する (Phase 5: 9 個の UseCase 引数を Workspace VM コンストラクタから
+        // 排除し、 「Workspace VM が子 VM 構築用に Use Case を素通しする」 不自然な引数膨張を解消)。
+        Output = output;
+        Variants = variants;
+        Structure = structure;
+        Output.AttachContext(this);
+        Variants.AttachContext(this);
+        Structure.AttachContext(this);
 
         // VariantProperties (= 候補リスト経由のスタンドアロン共有特性編集) は
         // PlacementInspector 経由のものとは別経路なので、 専用 SaveCoordinator で

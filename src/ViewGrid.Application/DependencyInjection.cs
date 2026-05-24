@@ -49,6 +49,11 @@ public static class DependencyInjection
         services.AddTransient<CopyPropertiesViewModel>();
         services.AddTransient<GridCanvasListViewModel>();
         services.AddTransient<PlacementInspectorViewModel>();
+        // GridWorkspaceViewModel の子 VM 3 つ (Phase 5: 2-phase init で循環依存を回避し直接 DI 注入)。
+        // Workspace VM のコンストラクタが 9 個の UseCase 引数を素通しせずに済むようにする。
+        services.AddTransient<GridOutputViewModel>();
+        services.AddTransient<VariantManagerViewModel>();
+        services.AddTransient<GridStructureEditorViewModel>();
         services.AddTransient<GridWorkspaceViewModel>();
         services.AddTransient<MainWindowViewModel>();
         services.AddTransient<SettingsDialogViewModel>();

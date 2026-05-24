@@ -22,12 +22,20 @@ namespace ViewGrid.Application.ViewModels;
 /// </summary>
 public sealed partial class GridOutputViewModel : ViewModelBase
 {
-    private readonly IGridOutputContext _context;
     private readonly RenderGridUseCase _renderUseCase;
     private readonly ExportGridUseCase _exportUseCase;
     private readonly IFilePickerService _filePicker;
     private readonly ILocalizationService _loc;
-    private readonly ILogger _logger;
+    private readonly ILogger<GridOutputViewModel> _logger;
+    private IGridOutputContext? _context;
+
+    /// <summary>
+    /// <see cref="AttachContext"/> で attach されたコンテキストへのアクセサ。
+    /// 未 attach のままメソッドが呼ばれた場合は明確な例外を出して、 構築順の誤りを早期検出する。
+    /// </summary>
+    private IGridOutputContext Context => _context
+        ?? throw new InvalidOperationException(
+            $"{nameof(GridOutputViewModel)}.{nameof(AttachContext)} must be called before using this VM.");
 
     /// <summary>
     /// プレビュー / PNG 出力の最上位モード。 通常 / 写真ボードを切り替える。
@@ -101,19 +109,31 @@ public sealed partial class GridOutputViewModel : ViewModelBase
     public bool IsNormalMode => SelectedOutputMode == OutputMode.Normal;
 
     public GridOutputViewModel(
-        IGridOutputContext context,
         RenderGridUseCase renderUseCase,
         ExportGridUseCase exportUseCase,
         IFilePickerService filePicker,
         ILocalizationService loc,
-        ILogger logger)
+        ILogger<GridOutputViewModel> logger)
     {
-        _context = context;
         _renderUseCase = renderUseCase;
         _exportUseCase = exportUseCase;
         _filePicker = filePicker;
         _loc = loc;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// 親 (<see cref="GridWorkspaceViewModel"/>) を attach する 2-phase 初期化。 DI 構造を
+    /// 「子 VM を Workspace VM の引数で受け取る」 形にするために、 親→子の context 注入は
+    /// 構築後に setter ベースで行う (循環依存をコンストラクタ injection で解こうとすると詰む)。
+    /// 同じインスタンスへの再 attach は呼出順の誤りを示唆するので InvalidOperationException で拒否。
+    /// </summary>
+    public void AttachContext(IGridOutputContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (_context is not null)
+            throw new InvalidOperationException($"{nameof(GridOutputViewModel)} is already attached.");
+        _context = context;
     }
 
     /// <summary>「既定に戻す」ボタンの活性条件。 スライダーが既定値 (0.5) から
@@ -172,29 +192,29 @@ public sealed partial class GridOutputViewModel : ViewModelBase
     /// </summary>
     public async Task<byte[]?> RequestPreviewAsync(CancellationToken ct = default)
     {
-        var grid = _context.CurrentGrid;
-        if (grid is null || _context.IsBusy) return null;
+        var grid = Context.CurrentGrid;
+        if (grid is null || Context.IsBusy) return null;
 
         var sw = Stopwatch.StartNew();
         try
         {
-            _context.IsBusy = true;
+            Context.IsBusy = true;
             var options = BuildRenderOptions();
             var result = await _renderUseCase.ExecuteAsync(grid.GridId, options, ct);
             sw.Stop();
             if (result.IsError)
             {
-                _context.StatusMessage = string.Join(", ", result.Errors);
+                Context.StatusMessage = string.Join(", ", result.Errors);
                 return null;
             }
-            _context.StatusMessage = _loc.Format(
+            Context.StatusMessage = _loc.Format(
                 "Status_PreviewGeneratedFmt",
                 sw.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture),
                 result.Value.Length.ToString("N0", CultureInfo.CurrentCulture));
             LogPreviewRendered(_logger, options.TrimMode, options.OutputMode, sw.ElapsedMilliseconds, result.Value.Length);
             return result.Value;
         }
-        finally { _context.IsBusy = false; }
+        finally { Context.IsBusy = false; }
     }
 
     /// <summary>
@@ -203,8 +223,8 @@ public sealed partial class GridOutputViewModel : ViewModelBase
     [RelayCommand]
     public async Task ExportToPngAsync(CancellationToken ct = default)
     {
-        var grid = _context.CurrentGrid;
-        if (grid is null || _context.IsBusy) return;
+        var grid = Context.CurrentGrid;
+        if (grid is null || Context.IsBusy) return;
 
         var suggested = $"{SanitizeFileName(grid.Name)}.png";
         var path = await _filePicker.PickSavePngPathAsync(suggested, ct);
@@ -213,11 +233,11 @@ public sealed partial class GridOutputViewModel : ViewModelBase
         var sw = Stopwatch.StartNew();
         try
         {
-            _context.IsBusy = true;
+            Context.IsBusy = true;
             var options = BuildRenderOptions();
             var result = await _exportUseCase.ExecuteAsync(grid.GridId, path, options, ct);
             sw.Stop();
-            _context.StatusMessage = result.IsError
+            Context.StatusMessage = result.IsError
                 ? string.Join(", ", result.Errors)
                 : _loc.Format(
                     "Status_PngExportTimingFmt",
@@ -227,7 +247,7 @@ public sealed partial class GridOutputViewModel : ViewModelBase
             if (!result.IsError)
                 LogPngExported(_logger, options.TrimMode, options.OutputMode, sw.ElapsedMilliseconds, result.Value.FileSizeBytes);
         }
-        finally { _context.IsBusy = false; }
+        finally { Context.IsBusy = false; }
     }
 
     /// <summary>
@@ -235,7 +255,7 @@ public sealed partial class GridOutputViewModel : ViewModelBase
     /// </summary>
     public async Task<bool> SavePngBytesAsync(byte[] bytes, CancellationToken ct = default)
     {
-        var grid = _context.CurrentGrid;
+        var grid = Context.CurrentGrid;
         if (grid is null || bytes.Length == 0) return false;
 
         var suggested = $"{SanitizeFileName(grid.Name)}.png";
@@ -245,7 +265,7 @@ public sealed partial class GridOutputViewModel : ViewModelBase
         try
         {
             await File.WriteAllBytesAsync(path, bytes, ct);
-            _context.StatusMessage = _loc.Format(
+            Context.StatusMessage = _loc.Format(
                 "Status_PngExportedFmt",
                 Path.GetFileName(path),
                 bytes.LongLength.ToString("N0", CultureInfo.CurrentCulture));
@@ -253,7 +273,7 @@ public sealed partial class GridOutputViewModel : ViewModelBase
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _context.StatusMessage = _loc.Format("Status_SaveFailedFmt", ex.Message);
+            Context.StatusMessage = _loc.Format("Status_SaveFailedFmt", ex.Message);
             return false;
         }
     }

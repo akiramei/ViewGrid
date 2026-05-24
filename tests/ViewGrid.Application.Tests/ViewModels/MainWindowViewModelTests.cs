@@ -96,12 +96,23 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             updateCopy, sharedHistory, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,
             new NullLocalizationService(),
             NullLogger<CopyPropertiesViewModel>.Instance);
+        // Phase 5: 子 VM 3 つを構築して Workspace VM に渡す。
+        var output = new GridOutputViewModel(
+            render, export, picker, new NullLocalizationService(),
+            NullLogger<GridOutputViewModel>.Instance);
+        var variants = new VariantManagerViewModel(
+            createCopy, updateCopy, deleteAsset, _fx.CopyRepository,
+            sharedHistory, _messenger, new NullLocalizationService(),
+            NullLogger<VariantManagerViewModel>.Instance);
+        var structure = new GridStructureEditorViewModel(
+            _fx.GridRepository, updateWeights, updateLocks, fitWeight, sharedHistory,
+            new NullLocalizationService());
         _gridWorkspace = new GridWorkspaceViewModel(
             _fx.GridRepository, _fx.CopyRepository, _fx.AssetRepository, _fx.PlacementRepository,
             _fx.Thumbnails, _fx.CropResolver,
-            place, remove, move, swap, render, export, updateWeights, updateLocks, offset,
-            fitWeight, createCopy, updateCopy, deleteAsset, _fx.Storage, _fx.AppSettings, picker, _messenger, sharedHistory, inspector,
-            variantProperties,
+            place, remove, move, swap, offset,
+            _fx.Storage, _fx.AppSettings, _messenger, sharedHistory, inspector,
+            variantProperties, output, variants, structure,
             new NullLocalizationService(),
             NullLogger<GridWorkspaceViewModel>.Instance);
 

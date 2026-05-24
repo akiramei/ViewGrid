@@ -75,6 +75,19 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             new NullLocalizationService(),
             NullLogger<CopyPropertiesViewModel>.Instance);
 
+        // Phase 5: 子 VM 3 つを直接構築して Workspace VM に渡す (DI 経由ではなくテスト fixture では手動)。
+        // Workspace は 2-phase init (AttachContext) で this を子に注入するため、 子はここでは未 attach。
+        var output = new GridOutputViewModel(
+            render, export, picker, new NullLocalizationService(),
+            NullLogger<GridOutputViewModel>.Instance);
+        var variants = new VariantManagerViewModel(
+            createCopy, updateCopy, deleteAsset, _fx.CopyRepository,
+            _history, _messenger, new NullLocalizationService(),
+            NullLogger<VariantManagerViewModel>.Instance);
+        var structure = new GridStructureEditorViewModel(
+            _fx.GridRepository, updateWeights, updateLocks, fitWeight, _history,
+            new NullLocalizationService());
+
         _vm = new GridWorkspaceViewModel(
             _fx.GridRepository,
             _fx.CopyRepository,
@@ -86,22 +99,16 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             remove,
             move,
             swap,
-            render,
-            export,
-            updateWeights,
-            updateLocks,
             offset,
-            fitWeight,
-            createCopy,
-            updateCopy,
-            deleteAsset,
             _fx.Storage,
             _fx.AppSettings,
-            picker,
             _messenger,
             _history,
             inspector,
             variantProperties,
+            output,
+            variants,
+            structure,
             new NullLocalizationService(),
             NullLogger<GridWorkspaceViewModel>.Instance);
     }

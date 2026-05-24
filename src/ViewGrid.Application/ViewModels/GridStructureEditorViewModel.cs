@@ -21,16 +21,23 @@ namespace ViewGrid.Application.ViewModels;
 /// </summary>
 public sealed partial class GridStructureEditorViewModel : ViewModelBase
 {
-    private readonly IGridStructureEditorContext _context;
     private readonly IGridCanvasRepository _gridRepository;
     private readonly UpdateGridWeightsUseCase _updateWeightsUseCase;
     private readonly UpdateGridLocksUseCase _updateLocksUseCase;
     private readonly FitGridWeightToPlacementUseCase _fitWeightUseCase;
     private readonly IUndoRedoService _history;
     private readonly ILocalizationService _loc;
+    private IGridStructureEditorContext? _context;
+
+    /// <summary>
+    /// <see cref="AttachContext"/> で attach された親 (<see cref="GridWorkspaceViewModel"/>) へのアクセサ。
+    /// 未 attach のままメソッドが呼ばれた場合は明確な例外を出して構築順の誤りを早期検出する。
+    /// </summary>
+    private IGridStructureEditorContext Context => _context
+        ?? throw new InvalidOperationException(
+            $"{nameof(GridStructureEditorViewModel)}.{nameof(AttachContext)} must be called before using this VM.");
 
     public GridStructureEditorViewModel(
-        IGridStructureEditorContext context,
         IGridCanvasRepository gridRepository,
         UpdateGridWeightsUseCase updateWeightsUseCase,
         UpdateGridLocksUseCase updateLocksUseCase,
@@ -38,13 +45,24 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
         IUndoRedoService history,
         ILocalizationService loc)
     {
-        _context = context;
         _gridRepository = gridRepository;
         _updateWeightsUseCase = updateWeightsUseCase;
         _updateLocksUseCase = updateLocksUseCase;
         _fitWeightUseCase = fitWeightUseCase;
         _history = history;
         _loc = loc;
+    }
+
+    /// <summary>
+    /// 親 (<see cref="GridWorkspaceViewModel"/>) を attach する 2-phase 初期化。
+    /// 詳細は <see cref="GridOutputViewModel.AttachContext"/> 参照。
+    /// </summary>
+    public void AttachContext(IGridStructureEditorContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (_context is not null)
+            throw new InvalidOperationException($"{nameof(GridStructureEditorViewModel)} is already attached.");
+        _context = context;
     }
 
     /// <summary>
@@ -57,7 +75,7 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
         IReadOnlyList<int>? rowWeights,
         CancellationToken ct = default)
     {
-        var grid = _context.CurrentGrid;
+        var grid = Context.CurrentGrid;
         if (grid is null) return false;
 
         var beforeCol = grid.ColWeights;
@@ -75,7 +93,7 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
         var result = await _history.ExecuteAsync(command, ct);
         if (result.IsError)
         {
-            _context.StatusMessage = string.Join(", ", result.Errors);
+            Context.StatusMessage = string.Join(", ", result.Errors);
             return false;
         }
 
@@ -85,9 +103,9 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
         {
             grid.ColWeights = reloaded.ColWeights;
             grid.RowWeights = reloaded.RowWeights;
-            _context.NotifyCurrentGridChanged();
+            Context.NotifyCurrentGridChanged();
         }
-        _context.StatusMessage = _loc["Status_GridWeightsUpdated"];
+        Context.StatusMessage = _loc["Status_GridWeightsUpdated"];
         return true;
     }
 
@@ -116,7 +134,7 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
     public async Task<bool> FitGridWeightAsync(
         Guid placementId, FitAxis axis, CancellationToken ct = default)
     {
-        var grid = _context.CurrentGrid;
+        var grid = Context.CurrentGrid;
         if (grid is null) return false;
 
         var beforeCol = grid.ColWeights;
@@ -133,7 +151,7 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
         var result = await _history.ExecuteAsync(command, ct);
         if (result.IsError)
         {
-            _context.StatusMessage = string.Join(", ", result.Errors);
+            Context.StatusMessage = string.Join(", ", result.Errors);
             return false;
         }
 
@@ -147,9 +165,9 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
 
         grid.ColWeights = reloaded.ColWeights;
         grid.RowWeights = reloaded.RowWeights;
-        _context.NotifyCurrentGridChanged();
+        Context.NotifyCurrentGridChanged();
 
-        _context.StatusMessage = changed
+        Context.StatusMessage = changed
             ? _loc[axis == FitAxis.Column ? "Status_FitColumnDone" : "Status_FitRowDone"]
             : _loc["Status_FitNoTarget"];
         return true;
@@ -174,7 +192,7 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
     /// </summary>
     private async Task<bool> ToggleAxisLockAsync(FitAxis axis, int index, CancellationToken ct)
     {
-        var grid = _context.CurrentGrid;
+        var grid = Context.CurrentGrid;
         if (grid is null) return false;
 
         var axisCount = axis == FitAxis.Column ? grid.Cols : grid.Rows;
@@ -209,7 +227,7 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
         var result = await _history.ExecuteAsync(command, ct);
         if (result.IsError)
         {
-            _context.StatusMessage = string.Join(", ", result.Errors);
+            Context.StatusMessage = string.Join(", ", result.Errors);
             return false;
         }
 
@@ -219,12 +237,12 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
         {
             if (axis == FitAxis.Column) grid.ColLocked = reloaded.ColLocked;
             else grid.RowLocked = reloaded.RowLocked;
-            _context.NotifyCurrentGridChanged();
+            Context.NotifyCurrentGridChanged();
         }
 
         var statusKeyOn = axis == FitAxis.Column ? "Status_ColLockedFmt" : "Status_RowLockedFmt";
         var statusKeyOff = axis == FitAxis.Column ? "Status_ColUnlockedFmt" : "Status_RowUnlockedFmt";
-        _context.StatusMessage = _loc.Format(afterAxis[index] ? statusKeyOn : statusKeyOff, index);
+        Context.StatusMessage = _loc.Format(afterAxis[index] ? statusKeyOn : statusKeyOff, index);
         return true;
     }
 

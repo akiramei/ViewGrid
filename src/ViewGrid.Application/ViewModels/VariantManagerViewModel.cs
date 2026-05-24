@@ -25,7 +25,6 @@ namespace ViewGrid.Application.ViewModels;
 /// </summary>
 public sealed partial class VariantManagerViewModel : ViewModelBase
 {
-    private readonly IVariantManagerContext _context;
     private readonly CreateLogicalCopyUseCase _createCopyUseCase;
     private readonly UpdateImageCopyUseCase _updateCopyUseCase;
     private readonly DeleteImageAssetUseCase _deleteAssetUseCase;
@@ -33,7 +32,16 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
     private readonly IUndoRedoService _history;
     private readonly IMessenger _messenger;
     private readonly ILocalizationService _loc;
-    private readonly ILogger _logger;
+    private readonly ILogger<VariantManagerViewModel> _logger;
+    private IVariantManagerContext? _context;
+
+    /// <summary>
+    /// <see cref="AttachContext"/> で attach された親 (<see cref="GridWorkspaceViewModel"/>) へのアクセサ。
+    /// 未 attach のままメソッドが呼ばれた場合は明確な例外を出して構築順の誤りを早期検出する。
+    /// </summary>
+    private IVariantManagerContext Context => _context
+        ?? throw new InvalidOperationException(
+            $"{nameof(VariantManagerViewModel)}.{nameof(AttachContext)} must be called before using this VM.");
 
     /// <summary>
     /// 「+ 新規バリアント」 フライアウトを開いているか。 <c>true</c> の間だけ View 側で名前入力 TextBox と
@@ -51,7 +59,6 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
     public partial string DraftVariantName { get; set; } = string.Empty;
 
     public VariantManagerViewModel(
-        IVariantManagerContext context,
         CreateLogicalCopyUseCase createCopyUseCase,
         UpdateImageCopyUseCase updateCopyUseCase,
         DeleteImageAssetUseCase deleteAssetUseCase,
@@ -59,9 +66,8 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
         IUndoRedoService history,
         IMessenger messenger,
         ILocalizationService loc,
-        ILogger logger)
+        ILogger<VariantManagerViewModel> logger)
     {
-        _context = context;
         _createCopyUseCase = createCopyUseCase;
         _updateCopyUseCase = updateCopyUseCase;
         _deleteAssetUseCase = deleteAssetUseCase;
@@ -73,18 +79,30 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 親 (<see cref="GridWorkspaceViewModel"/>) を attach する 2-phase 初期化。
+    /// 詳細は <see cref="GridOutputViewModel.AttachContext"/> 参照。
+    /// </summary>
+    public void AttachContext(IVariantManagerContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (_context is not null)
+            throw new InvalidOperationException($"{nameof(VariantManagerViewModel)} is already attached.");
+        _context = context;
+    }
+
+    /// <summary>
     /// 「+ 新規バリアント」 フライアウトを開く。 <see cref="DraftVariantName"/> を空にリセットして、
     /// View 側で名前入力 TextBox を表示する。 SelectedCandidate 未選択 / IsBusy 中は no-op。
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanBeginCreateVariant))]
     public void BeginCreateVariant()
     {
-        if (_context.SelectedCandidate is null || _context.IsBusy) return;
+        if (Context.SelectedCandidate is null || Context.IsBusy) return;
         DraftVariantName = string.Empty;
         IsCreatingVariant = true;
     }
 
-    private bool CanBeginCreateVariant() => _context.SelectedCandidate is not null && !_context.IsBusy;
+    private bool CanBeginCreateVariant() => Context.SelectedCandidate is not null && !Context.IsBusy;
 
     /// <summary>新規作成フライアウトを閉じる (作成しない)。</summary>
     [RelayCommand]
@@ -103,8 +121,8 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
     [RelayCommand]
     public async Task CommitCreateVariantAsync(CancellationToken ct = default)
     {
-        var candidate = _context.SelectedCandidate;
-        if (candidate is null || _context.IsBusy)
+        var candidate = Context.SelectedCandidate;
+        if (candidate is null || Context.IsBusy)
         {
             IsCreatingVariant = false;
             DraftVariantName = string.Empty;
@@ -113,10 +131,10 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
 
         try
         {
-            _context.IsBusy = true;
+            Context.IsBusy = true;
             var assetId = candidate.AssetId;
             // 命名規則: 同じアセットに紐づく既存バリアント数 + 1
-            var ordinal = _context.Candidates.Count(c => c.AssetId == assetId) + 1;
+            var ordinal = Context.Candidates.Count(c => c.AssetId == assetId) + 1;
             var nameToUse = string.IsNullOrWhiteSpace(DraftVariantName)
                 ? $"{_loc[Terminology.VariantPrefixKey]} {ordinal}"
                 : DraftVariantName.Trim();
@@ -124,24 +142,24 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
             var result = await _createCopyUseCase.ExecuteAsync(assetId, copyName: nameToUse, ct: ct);
             if (result.IsError)
             {
-                _context.StatusMessage = string.Join(", ", result.Errors);
+                Context.StatusMessage = string.Join(", ", result.Errors);
                 return;
             }
 
-            _context.StatusMessage = _loc.Format("Status_VariantCreatedFmt", nameToUse);
+            Context.StatusMessage = _loc.Format("Status_VariantCreatedFmt", nameToUse);
             // 新規 Copy 作成は Undo 対象外。 既存履歴の参照整合性が崩れる前にクリア。
             _history.Clear();
             _messenger.Send(new CopyLibraryChangedMessage());
             // 新バリアントを選択状態にするため、 Candidates 再ロード後に CopyId で再選択。
             // ReloadFromMessageAsync は fire-and-forget なので await できないが、
             // 親が受信側でもあるため Receive → ReloadFromMessageAsync の経路で更新される。
-            await _context.LoadCandidatesAsync(ct);
-            _context.SelectedCandidate = _context.Candidates.FirstOrDefault(c => c.CopyId == result.Value.Id) ?? _context.SelectedCandidate;
+            await Context.LoadCandidatesAsync(ct);
+            Context.SelectedCandidate = Context.Candidates.FirstOrDefault(c => c.CopyId == result.Value.Id) ?? Context.SelectedCandidate;
             LogVariantCreated(_logger, assetId, result.Value.Id);
         }
         finally
         {
-            _context.IsBusy = false;
+            Context.IsBusy = false;
             IsCreatingVariant = false;
             DraftVariantName = string.Empty;
         }
@@ -153,18 +171,18 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanDeleteSelectedCandidate))]
     public async Task DeleteSelectedCandidateAsync(CancellationToken ct = default)
     {
-        var target = _context.SelectedCandidate;
-        if (target is null || _context.IsBusy) return;
+        var target = Context.SelectedCandidate;
+        if (target is null || Context.IsBusy) return;
 
         try
         {
-            _context.IsBusy = true;
+            Context.IsBusy = true;
             var label = target.CopyDisplayName;
 
             // このアセットの最後のバリアントか判定する。 そうなら親アセットごと
             // cascade 削除する (孤児アセット = アセット件数だけ残って候補リストから
             // 完全に見えなくなる状態を防止)。
-            var group = _context.CandidateGroups.FirstOrDefault(g => g.AssetId == target.AssetId);
+            var group = Context.CandidateGroups.FirstOrDefault(g => g.AssetId == target.AssetId);
             var isLastVariant = group is not null && group.Variants.Count == 1;
 
             if (isLastVariant)
@@ -174,7 +192,7 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
                 var assetResult = await _deleteAssetUseCase.ExecuteAsync(target.AssetId, ct);
                 if (assetResult.IsError)
                 {
-                    _context.StatusMessage = string.Join(", ", assetResult.Errors);
+                    Context.StatusMessage = string.Join(", ", assetResult.Errors);
                     return;
                 }
             }
@@ -183,21 +201,21 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
                 var copyResult = await _copyRepository.DeleteAsync(target.CopyId, ct);
                 if (copyResult.IsError)
                 {
-                    _context.StatusMessage = string.Join(", ", copyResult.Errors);
+                    Context.StatusMessage = string.Join(", ", copyResult.Errors);
                     return;
                 }
             }
 
-            _context.Candidates.Remove(target);
+            Context.Candidates.Remove(target);
             if (group is not null)
             {
                 group.Variants.Remove(target);
                 if (group.Variants.Count == 0)
-                    _context.CandidateGroups.Remove(group);
+                    Context.CandidateGroups.Remove(group);
             }
-            _context.SelectedCandidate = _context.Candidates.FirstOrDefault();
+            Context.SelectedCandidate = Context.Candidates.FirstOrDefault();
 
-            _context.StatusMessage = _loc.Format("Status_VariantDeletedFmt", label);
+            Context.StatusMessage = _loc.Format("Status_VariantDeletedFmt", label);
             // Copy / Asset 削除は cascade で Placement も消えるため履歴を全消去
             _history.Clear();
             _messenger.Send(new CopyLibraryChangedMessage());
@@ -210,11 +228,11 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
         }
         finally
         {
-            _context.IsBusy = false;
+            Context.IsBusy = false;
         }
     }
 
-    private bool CanDeleteSelectedCandidate() => !_context.IsBusy && _context.SelectedCandidate is not null;
+    private bool CanDeleteSelectedCandidate() => !Context.IsBusy && Context.SelectedCandidate is not null;
 
     /// <summary>
     /// インラインリネーム編集を開始する。 <paramref name="candidate"/> の <c>IsEditing</c>=true、
@@ -224,7 +242,7 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
     public void BeginEditCandidate(CopyCandidateViewModel candidate)
     {
         ArgumentNullException.ThrowIfNull(candidate);
-        foreach (var c in _context.Candidates)
+        foreach (var c in Context.Candidates)
         {
             if (!ReferenceEquals(c, candidate) && c.IsEditing)
             {
@@ -282,7 +300,7 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
         var result = await _history.ExecuteAsync(command, ct);
         if (result.IsError)
         {
-            _context.StatusMessage = string.Join(", ", result.Errors);
+            Context.StatusMessage = string.Join(", ", result.Errors);
             return;
         }
 
