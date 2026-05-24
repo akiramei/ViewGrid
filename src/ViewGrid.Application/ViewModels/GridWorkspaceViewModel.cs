@@ -23,7 +23,7 @@ namespace ViewGrid.Application.ViewModels;
 /// 配置タブのワークスペース。アクティブグリッド、配置済み一覧、配置候補を保持し、
 /// 配置/取消コマンドを提供する。
 /// </summary>
-public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<CopyLibraryChangedMessage>, IGridOutputContext, IVariantManagerContext, IDisposable
+public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<CopyLibraryChangedMessage>, IGridOutputContext, IVariantManagerContext, IGridStructureEditorContext, IDisposable
 {
     private readonly IGridCanvasRepository _gridRepository;
     private readonly IImageCopyRepository _copyRepository;
@@ -37,10 +37,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly SwapPlacementsUseCase _swapUseCase;
     // RenderGridUseCase / ExportGridUseCase は GridOutputViewModel へ移管 (Phase 4)。
     // コンストラクタ引数はまだ受け取って Output 構築時に渡すが、 本 VM 自身では保持しない。
-    private readonly UpdateGridWeightsUseCase _updateWeightsUseCase;
-    private readonly UpdateGridLocksUseCase _updateLocksUseCase;
+    // UpdateGridWeightsUseCase / UpdateGridLocksUseCase / FitGridWeightToPlacementUseCase は
+    // GridStructureEditorViewModel へ移管 (Phase 4-3)。 引数のみ受け取って Structure 構築時に渡す。
     private readonly UpdatePlacementOffsetUseCase _updateOffsetUseCase;
-    private readonly FitGridWeightToPlacementUseCase _fitWeightUseCase;
     // CreateLogicalCopyUseCase / UpdateImageCopyUseCase / DeleteImageAssetUseCase は
     // VariantManagerViewModel へ移管 (Phase 4-2)。 引数のみ受け取って Variants 構築時に渡す。
     private readonly IImageStorage _imageStorage;
@@ -89,6 +88,14 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// IsCreatingVariant / DraftVariantName も <see cref="VariantManagerViewModel"/> 側に移管済み。
     /// </summary>
     public VariantManagerViewModel Variants { get; }
+
+    /// <summary>
+    /// グリッド構造編集 (列・行の重み更新 / ロック / FitGridWeight) を司る子 VM。 Phase 4 で抽出。
+    /// 公開メソッド (<see cref="ApplyGridWeightsAsync"/> / <see cref="FitGridWeightAsync"/> /
+    /// <see cref="ToggleColLockAsync"/> / <see cref="ToggleRowLockAsync"/>) は本 VM の薄い wrapper を
+    /// 残置して View / code-behind の経路を不変に保つ (Phase 4-3 で後方互換のためのファサード)。
+    /// </summary>
+    public GridStructureEditorViewModel Structure { get; }
 
     // IsCreatingVariant / DraftVariantName は VariantManagerViewModel へ移管 (Phase 4-2)。
     // View からは {Binding Variants.IsCreatingVariant} / {Binding Variants.DraftVariantName} で参照。
@@ -177,10 +184,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _moveUseCase = moveUseCase;
         _swapUseCase = swapUseCase;
         // renderUseCase / exportUseCase は Output に渡すだけで保持しない (Phase 4 移管)
-        _updateWeightsUseCase = updateWeightsUseCase;
-        _updateLocksUseCase = updateLocksUseCase;
+        // updateWeightsUseCase / updateLocksUseCase / fitWeightUseCase は Structure に渡すだけ (Phase 4-3 移管)
         _updateOffsetUseCase = updateOffsetUseCase;
-        _fitWeightUseCase = fitWeightUseCase;
         // createCopyUseCase / updateCopyUseCase / deleteAssetUseCase は Variants に渡すだけ (Phase 4-2 移管)
         _imageStorage = imageStorage;
         _appSettings = appSettings;
@@ -202,6 +207,12 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         Variants = new VariantManagerViewModel(
             this, createCopyUseCase, updateCopyUseCase, deleteAssetUseCase,
             copyRepository, history, messenger, loc, logger);
+
+        // グリッド構造編集 (重み / ロック / FitGridWeight) の子 VM を構築。 this を
+        // IGridStructureEditorContext として渡し、 CurrentGrid 参照 + StatusMessage 書込 +
+        // NotifyCurrentGridChanged (= OnPropertyChanged(nameof(CurrentGrid))) を共有させる。
+        Structure = new GridStructureEditorViewModel(
+            this, gridRepository, updateWeightsUseCase, updateLocksUseCase, fitWeightUseCase, history, loc);
 
         // VariantProperties (= 候補リスト経由のスタンドアロン共有特性編集) は
         // PlacementInspector 経由のものとは別経路なので、 専用 SaveCoordinator で
@@ -1043,63 +1054,14 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     // RequestPreviewAsync / ExportToPngAsync / SavePngBytesAsync / SanitizeFileName は
     // Phase 4 で GridOutputViewModel に移管。 Output プロパティ経由でアクセスする (`Output.RequestPreviewAsync` 等)。
 
-    /// <summary>
-    /// 境界ドラッグでの重み更新を保存する。<paramref name="colWeights"/> または
-    /// <paramref name="rowWeights"/> のどちらかが null（変更なし）でも構わない。
-    /// 成功時は <see cref="CurrentGrid"/> の重みを更新して View にリビルドさせる。
-    /// </summary>
-    public async Task<bool> ApplyGridWeightsAsync(
+    // ApplyGridWeightsAsync / BuildAfterWeights / ResolveWeightsChangeFormatKey は
+    // GridStructureEditorViewModel へ移管 (Phase 4-3)。 既存呼出元 (Code-behind GridCanvasView /
+    // テスト) との後方互換のため、 本 VM 上に薄い wrapper を残置して Structure に転送する。
+    public Task<bool> ApplyGridWeightsAsync(
         IReadOnlyList<int>? colWeights,
         IReadOnlyList<int>? rowWeights,
-        CancellationToken ct = default)
-    {
-        var grid = CurrentGrid;
-        if (grid is null) return false;
-
-        var beforeCol = grid.ColWeights;
-        var beforeRow = grid.RowWeights;
-        var afterCol = BuildAfterWeights(beforeCol, colWeights);
-        var afterRow = BuildAfterWeights(beforeRow, rowWeights);
-
-        var colChanged = !afterCol.SequenceEqual(beforeCol);
-        var rowChanged = !afterRow.SequenceEqual(beforeRow);
-        if (!colChanged && !rowChanged) return true; // 値変化なし — 履歴に積まない
-
-        var description = _loc.Format(ResolveWeightsChangeFormatKey(colChanged, rowChanged), grid.Name);
-        var command = new UpdateGridWeightsCommand(
-            _updateWeightsUseCase, grid.GridId, beforeCol, beforeRow, afterCol, afterRow, description);
-        var result = await _history.ExecuteAsync(command, ct);
-        if (result.IsError)
-        {
-            StatusMessage = string.Join(", ", result.Errors);
-            return false;
-        }
-
-        // 永続化された最新値を再取得して VM に反映
-        var reloaded = await _gridRepository.FindByIdAsync(grid.GridId, ct);
-        if (reloaded is not null)
-        {
-            grid.ColWeights = reloaded.ColWeights;
-            grid.RowWeights = reloaded.RowWeights;
-            OnPropertyChanged(nameof(CurrentGrid));
-        }
-        StatusMessage = _loc["Status_GridWeightsUpdated"];
-        return true;
-    }
-
-    /// <summary>
-    /// 重み更新の after 配列を構築する。 <paramref name="after"/> が <c>null</c>
-    /// (= その軸は変更なし) なら <paramref name="before"/> をそのまま返す。
-    /// </summary>
-    private static ImmutableArray<int> BuildAfterWeights(ImmutableArray<int> before, IReadOnlyList<int>? after) =>
-        after is null ? before : [.. after];
-
-    /// <summary>
-    /// 履歴 description 用の resx format key を決める。 両軸変化時は「比率」、 片軸のみ変化時は「列幅」/「行高」 系。
-    /// </summary>
-    private static string ResolveWeightsChangeFormatKey(bool colChanged, bool rowChanged) =>
-        colChanged && rowChanged ? "History_WeightsChangedRatiosFmt"
-            : (colChanged ? "History_WeightsChangedColFmt" : "History_WeightsChangedRowFmt");
+        CancellationToken ct = default) =>
+        Structure.ApplyGridWeightsAsync(colWeights, rowWeights, ct);
 
     /// <summary>
     /// Shift+ドラッグ等のキャンバス操作で配置の <see cref="GridPlacement.PixelOffsetX"/> /
@@ -1156,137 +1118,17 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         return true;
     }
 
-    /// <summary>
-    /// 指定 placement の実描画矩形に合わせて、占有列幅または行高を縮める。
-    /// 余白は隣接列/行に分配（端列/端行で隣接がない側の余白は破棄）。
-    /// 成功時は最新の重みを <see cref="CurrentGrid"/> に反映し、View を再構築させる。
-    /// 操作は <see cref="FitGridWeightCommand"/> でラップして履歴に積むため、 Undo で旧重みに戻り、
-    /// Redo で再計算される。 fit が no-op だった場合も command は履歴に積まれる
-    /// (空の Undo エントリになるが、 redo スタックの stale snapshot を確実に破棄するため)。
-    /// </summary>
-    public async Task<bool> FitGridWeightAsync(
-        Guid placementId, FitAxis axis, CancellationToken ct = default)
-    {
-        var grid = CurrentGrid;
-        if (grid is null) return false;
+    // FitGridWeightAsync / ToggleColLockAsync / ToggleRowLockAsync / ToggleAxisLockAsync /
+    // NormalizeLocks は GridStructureEditorViewModel へ移管 (Phase 4-3)。
+    // 既存呼出元 (Code-behind GridCanvasView / テスト) との後方互換のため、 本 VM 上に薄い wrapper を残置。
+    public Task<bool> FitGridWeightAsync(Guid placementId, FitAxis axis, CancellationToken ct = default) =>
+        Structure.FitGridWeightAsync(placementId, axis, ct);
 
-        var beforeCol = grid.ColWeights;
-        var beforeRow = grid.RowWeights;
-
-        var description = _loc.Format(
-            axis == FitAxis.Column ? "History_FitGridColFmt" : "History_FitGridRowFmt",
-            grid.Name);
-        var command = new FitGridWeightCommand(
-            _fitWeightUseCase, _updateWeightsUseCase,
-            grid.GridId, placementId, axis,
-            beforeCol, beforeRow,
-            description);
-        var result = await _history.ExecuteAsync(command, ct);
-        if (result.IsError)
-        {
-            StatusMessage = string.Join(", ", result.Errors);
-            return false;
-        }
-
-        // 重みが変わった可能性があるので、グリッドを再読込して反映
-        var reloaded = await _gridRepository.FindByIdAsync(grid.GridId, ct);
-        if (reloaded is null) return false;
-
-        var changed =
-            !reloaded.ColWeights.SequenceEqual(beforeCol) ||
-            !reloaded.RowWeights.SequenceEqual(beforeRow);
-
-        grid.ColWeights = reloaded.ColWeights;
-        grid.RowWeights = reloaded.RowWeights;
-        OnPropertyChanged(nameof(CurrentGrid));
-
-        StatusMessage = changed
-            ? _loc[axis == FitAxis.Column ? "Status_FitColumnDone" : "Status_FitRowDone"]
-            : _loc["Status_FitNoTarget"];
-        return true;
-    }
-
-    /// <summary>
-    /// 指定列のロック状態を反転する（true ↔ false）。
-    /// 成功時は <see cref="CurrentGrid"/> の <see cref="GridCanvasItemViewModel.ColLocked"/>
-    /// も更新して View を再構築させる。 実体は <see cref="ToggleAxisLockAsync"/> に委譲。
-    /// </summary>
     public Task<bool> ToggleColLockAsync(int colIndex, CancellationToken ct = default) =>
-        ToggleAxisLockAsync(FitAxis.Column, colIndex, ct);
+        Structure.ToggleColLockAsync(colIndex, ct);
 
-    /// <summary>指定行のロック状態を反転する。 実体は <see cref="ToggleAxisLockAsync"/> に委譲。</summary>
     public Task<bool> ToggleRowLockAsync(int rowIndex, CancellationToken ct = default) =>
-        ToggleAxisLockAsync(FitAxis.Row, rowIndex, ct);
-
-    /// <summary>
-    /// 列 / 行のロック状態を反転する共通実装。 列・行の対称性を <see cref="FitAxis"/> 引数で吸収し、
-    /// Toggle{Col,Row}LockAsync 双子メソッドの重複を排した。 axis 側の locked 配列を反転し、
-    /// もう一方の axis の値はそのまま <see cref="UpdateGridLocksCommand"/> に渡す。
-    /// </summary>
-    private async Task<bool> ToggleAxisLockAsync(FitAxis axis, int index, CancellationToken ct)
-    {
-        var grid = CurrentGrid;
-        if (grid is null) return false;
-
-        var axisCount = axis == FitAxis.Column ? grid.Cols : grid.Rows;
-        if (index < 0 || index >= axisCount) return false;
-
-        // axis 側 (反転対象) ともう一方 (other、 そのまま渡す) を正規化して取得。
-        var beforeAxis = NormalizeLocks(axis == FitAxis.Column ? grid.ColLocked : grid.RowLocked, axisCount);
-        var afterAxis = beforeAxis.SetItem(index, !beforeAxis[index]);
-        var otherCount = axis == FitAxis.Column ? grid.Rows : grid.Cols;
-        var beforeOther = NormalizeLocks(axis == FitAxis.Column ? grid.RowLocked : grid.ColLocked, otherCount);
-
-        // UpdateGridLocksCommand は (beforeCol, beforeRow, afterCol, afterRow) を取るので、
-        // axis に応じて引数の Col/Row 側を組み立てる。
-        var (commandBeforeCol, commandBeforeRow, commandAfterCol, commandAfterRow) = axis == FitAxis.Column
-            ? (beforeAxis, beforeOther, afterAxis, beforeOther)
-            : (beforeOther, beforeAxis, beforeOther, afterAxis);
-
-        var isLocked = afterAxis[index];
-        var formatKey = (axis, isLocked) switch
-        {
-            (FitAxis.Column, true) => "History_ColLockedFmt",
-            (FitAxis.Column, false) => "History_ColUnlockedFmt",
-            (FitAxis.Row, true) => "History_RowLockedFmt",
-            _ => "History_RowUnlockedFmt",
-        };
-        var description = _loc.Format(formatKey, index, grid.Name);
-
-        var command = new UpdateGridLocksCommand(
-            _updateLocksUseCase, grid.GridId,
-            commandBeforeCol, commandBeforeRow, commandAfterCol, commandAfterRow,
-            description);
-        var result = await _history.ExecuteAsync(command, ct);
-        if (result.IsError)
-        {
-            StatusMessage = string.Join(", ", result.Errors);
-            return false;
-        }
-
-        // 永続化後の最新値で grid の axis 側だけを更新 (other は変えていない)。
-        var reloaded = await _gridRepository.FindByIdAsync(grid.GridId, ct);
-        if (reloaded is not null)
-        {
-            if (axis == FitAxis.Column) grid.ColLocked = reloaded.ColLocked;
-            else grid.RowLocked = reloaded.RowLocked;
-            OnPropertyChanged(nameof(CurrentGrid));
-        }
-
-        var statusKeyOn = axis == FitAxis.Column ? "Status_ColLockedFmt" : "Status_RowLockedFmt";
-        var statusKeyOff = axis == FitAxis.Column ? "Status_ColUnlockedFmt" : "Status_RowUnlockedFmt";
-        StatusMessage = _loc.Format(afterAxis[index] ? statusKeyOn : statusKeyOff, index);
-        return true;
-    }
-
-    /// <summary>
-    /// 期待長と一致する <see cref="ImmutableArray{T}"/> をそのまま返す。 不一致 (旧データ等で
-    /// length が ColLocked.Length != Cols 等) の場合は全 false の配列で正規化する。
-    /// </summary>
-    private static ImmutableArray<bool> NormalizeLocks(ImmutableArray<bool> source, int expectedLength) =>
-        source.Length == expectedLength
-            ? source
-            : [.. Enumerable.Range(0, expectedLength).Select(_ => false)];
+        Structure.ToggleRowLockAsync(rowIndex, ct);
 
     // バリアント新規作成 / 削除 / インラインリネームは VariantManagerViewModel へ移管 (Phase 4-2)。
     // View からは {Binding Variants.BeginCreateVariantCommand} 等。
@@ -1369,6 +1211,13 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     // LogVariantRenameCanceled (5007) は VariantManagerViewModel へ移管 (Phase 4-2)。
 
     // LogPreviewRendered (EventId 5008) / LogPngExported (EventId 5009) は GridOutputViewModel へ移管 (Phase 4)。
+
+    /// <summary>
+    /// <see cref="IGridStructureEditorContext.NotifyCurrentGridChanged"/> の実装。
+    /// 子 VM (Structure) が CurrentGrid 内部 (重み / ロック) を更新した後に呼び、
+    /// View binding (GridCanvasView の Rebuild 等) を再評価させる。
+    /// </summary>
+    public void NotifyCurrentGridChanged() => OnPropertyChanged(nameof(CurrentGrid));
 
     public void Dispose()
     {
