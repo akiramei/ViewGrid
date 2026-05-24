@@ -146,7 +146,7 @@ public partial class GridWorkspaceView : UserControl
         if (item?.DataContext is not CopyCandidateViewModel candidate) return;
         if (candidate.IsEditing) return;
 
-        vm.BeginEditCandidate(candidate);
+        vm.Variants.BeginEditCandidate(candidate);
         e.Handled = true;
     }
 
@@ -159,7 +159,7 @@ public partial class GridWorkspaceView : UserControl
         if (DataContext is not GridWorkspaceViewModel vm) return;
         if (vm.SelectedCandidate is not { } candidate) return;
 
-        vm.BeginEditCandidate(candidate);
+        vm.Variants.BeginEditCandidate(candidate);
         e.Handled = true;
     }
 
@@ -175,12 +175,12 @@ public partial class GridWorkspaceView : UserControl
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
-            await vm.CommitEditCandidateAsync(candidate);
+            await vm.Variants.CommitEditCandidateAsync(candidate);
         }
         else if (e.Key == Key.Escape)
         {
             e.Handled = true;
-            vm.CancelEditCandidate(candidate);
+            vm.Variants.CancelEditCandidate(candidate);
         }
     }
 
@@ -195,7 +195,7 @@ public partial class GridWorkspaceView : UserControl
         if (DataContext is not GridWorkspaceViewModel vm) return;
         if (!candidate.IsEditing) return; // 既にキャンセル / 確定済み
 
-        await vm.CommitEditCandidateAsync(candidate);
+        await vm.Variants.CommitEditCandidateAsync(candidate);
     }
 
     /// <summary>

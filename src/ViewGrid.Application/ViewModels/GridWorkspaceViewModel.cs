@@ -23,7 +23,7 @@ namespace ViewGrid.Application.ViewModels;
 /// 配置タブのワークスペース。アクティブグリッド、配置済み一覧、配置候補を保持し、
 /// 配置/取消コマンドを提供する。
 /// </summary>
-public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<CopyLibraryChangedMessage>, IGridOutputContext, IDisposable
+public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<CopyLibraryChangedMessage>, IGridOutputContext, IVariantManagerContext, IDisposable
 {
     private readonly IGridCanvasRepository _gridRepository;
     private readonly IImageCopyRepository _copyRepository;
@@ -41,9 +41,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly UpdateGridLocksUseCase _updateLocksUseCase;
     private readonly UpdatePlacementOffsetUseCase _updateOffsetUseCase;
     private readonly FitGridWeightToPlacementUseCase _fitWeightUseCase;
-    private readonly CreateLogicalCopyUseCase _createCopyUseCase;
-    private readonly UpdateImageCopyUseCase _updateCopyUseCase;
-    private readonly DeleteImageAssetUseCase _deleteAssetUseCase;
+    // CreateLogicalCopyUseCase / UpdateImageCopyUseCase / DeleteImageAssetUseCase は
+    // VariantManagerViewModel へ移管 (Phase 4-2)。 引数のみ受け取って Variants 構築時に渡す。
     private readonly IImageStorage _imageStorage;
     private readonly IAppSettingsService _appSettings;
     private readonly SaveCoordinator _variantAutoSave;
@@ -85,19 +84,15 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     public GridOutputViewModel Output { get; }
 
     /// <summary>
-    /// 「+ 新規バリアント」フライアウトを開いているか。<c>true</c> の間だけ View 側で名前入力 TextBox と
-    /// 確定/キャンセルボタンが表示される（<see cref="GridCanvasListViewModel.IsCreating"/> と同パターン）。
-    /// 生成先のアセットは <see cref="SelectedCandidate"/> の <see cref="CopyCandidateViewModel.AssetId"/>。
+    /// バリアント新規作成 / 削除 / インラインリネームを司る子 VM。 Phase 4 で抽出。
+    /// View binding は <c>{Binding Variants.BeginCreateVariantCommand}</c> のように Variants 経由で。
+    /// IsCreatingVariant / DraftVariantName も <see cref="VariantManagerViewModel"/> 側に移管済み。
     /// </summary>
-    [ObservableProperty]
-    public partial bool IsCreatingVariant { get; set; }
+    public VariantManagerViewModel Variants { get; }
 
-    /// <summary>
-    /// 新規作成フライアウトの名前ドラフト。空白だけ / 空文字なら「バリアント N」自動採番、
-    /// 値があればそれを <see cref="CreateLogicalCopyUseCase"/> に渡す。
-    /// </summary>
-    [ObservableProperty]
-    public partial string DraftVariantName { get; set; } = string.Empty;
+    // IsCreatingVariant / DraftVariantName は VariantManagerViewModel へ移管 (Phase 4-2)。
+    // View からは {Binding Variants.IsCreatingVariant} / {Binding Variants.DraftVariantName} で参照。
+
 
     public ObservableCollection<PlacementItemViewModel> Placements { get; } = [];
     public ObservableCollection<CopyCandidateViewModel> Candidates { get; } = [];
@@ -186,9 +181,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         _updateLocksUseCase = updateLocksUseCase;
         _updateOffsetUseCase = updateOffsetUseCase;
         _fitWeightUseCase = fitWeightUseCase;
-        _createCopyUseCase = createCopyUseCase;
-        _updateCopyUseCase = updateCopyUseCase;
-        _deleteAssetUseCase = deleteAssetUseCase;
+        // createCopyUseCase / updateCopyUseCase / deleteAssetUseCase は Variants に渡すだけ (Phase 4-2 移管)
         _imageStorage = imageStorage;
         _appSettings = appSettings;
         // filePicker は Output に渡すだけで保持しない (Phase 4 移管)
@@ -202,6 +195,13 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         // 出力 / プレビューパネルの子 VM を構築。 this を IGridOutputContext として渡して
         // CurrentGrid / IsBusy / StatusMessage を共有させる (循環参照ではなく親子委譲)。
         Output = new GridOutputViewModel(this, renderUseCase, exportUseCase, filePicker, loc, logger);
+
+        // バリアント管理 (新規作成 / 削除 / リネーム) の子 VM を構築。 同じく this を
+        // IVariantManagerContext として渡し、 候補リスト (Candidates / CandidateGroups /
+        // SelectedCandidate) と IsBusy / StatusMessage / LoadCandidatesAsync を共有させる。
+        Variants = new VariantManagerViewModel(
+            this, createCopyUseCase, updateCopyUseCase, deleteAssetUseCase,
+            copyRepository, history, messenger, loc, logger);
 
         // VariantProperties (= 候補リスト経由のスタンドアロン共有特性編集) は
         // PlacementInspector 経由のものとは別経路なので、 専用 SaveCoordinator で
@@ -1288,243 +1288,19 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             ? source
             : [.. Enumerable.Range(0, expectedLength).Select(_ => false)];
 
-    // ─── 配置ファースト UI 第 2 段階 (Stage 2): バリアント新規作成 / インラインリネーム / 削除 ───
-    //
-    // 配置タブの候補リストから直接バリアントを管理できるようにする。配置タブが
-    // 「全アセットのバリアントをツリー表示」する設計なので、操作対象は SelectedCandidate を
-    // 起点とする。CopyLibraryChangedMessage で他 VM と同期する。
+    // バリアント新規作成 / 削除 / インラインリネームは VariantManagerViewModel へ移管 (Phase 4-2)。
+    // View からは {Binding Variants.BeginCreateVariantCommand} 等。
+    // BeginEditCandidate / CancelEditCandidate / CommitEditCandidateAsync は code-behind から
+    // vm.Variants.BeginEditCandidate(...) のように呼ぶ。
 
     /// <summary>
-    /// 「+ 新規バリアント」フライアウトを開く。<see cref="DraftVariantName"/> を空にリセットして、
-    /// View 側で名前入力 TextBox を表示する。<see cref="SelectedCandidate"/> 未選択 / IsBusy 中は no-op。
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanBeginCreateVariant))]
-    public void BeginCreateVariant()
-    {
-        if (SelectedCandidate is null || IsBusy) return;
-        DraftVariantName = string.Empty;
-        IsCreatingVariant = true;
-    }
-
-    private bool CanBeginCreateVariant() => SelectedCandidate is not null && !IsBusy;
-
-    /// <summary>新規作成フライアウトを閉じる（作成しない）。</summary>
-    [RelayCommand]
-    public void CancelCreateVariant()
-    {
-        IsCreatingVariant = false;
-        DraftVariantName = string.Empty;
-    }
-
-    /// <summary>
-    /// 新規作成フライアウトの確定。<see cref="DraftVariantName"/> を渡して
-    /// <see cref="CreateLogicalCopyUseCase"/> を呼び、<see cref="SelectedCandidate"/> の
-    /// アセットに紐づく新バリアントを生成する。空白 / 空文字なら「バリアント N」自動採番。
-    /// 新規 Copy 作成は Undo 対象外（履歴に積めないので _history.Clear()）。
-    /// </summary>
-    [RelayCommand]
-    public async Task CommitCreateVariantAsync(CancellationToken ct = default)
-    {
-        var candidate = SelectedCandidate;
-        if (candidate is null || IsBusy)
-        {
-            IsCreatingVariant = false;
-            DraftVariantName = string.Empty;
-            return;
-        }
-
-        try
-        {
-            IsBusy = true;
-            var assetId = candidate.AssetId;
-            // 命名規則: 同じアセットに紐づく既存バリアント数 + 1
-            var ordinal = Candidates.Count(c => c.AssetId == assetId) + 1;
-            var nameToUse = string.IsNullOrWhiteSpace(DraftVariantName)
-                ? $"{_loc[Terminology.VariantPrefixKey]} {ordinal}"
-                : DraftVariantName.Trim();
-
-            var result = await _createCopyUseCase.ExecuteAsync(assetId, copyName: nameToUse, ct: ct);
-            if (result.IsError)
-            {
-                StatusMessage = string.Join(", ", result.Errors);
-                return;
-            }
-
-            StatusMessage = _loc.Format("Status_VariantCreatedFmt", nameToUse);
-            // 新規 Copy 作成は Undo 対象外。既存履歴の参照整合性が崩れる前にクリア。
-            _history.Clear();
-            _messenger.Send(new CopyLibraryChangedMessage());
-            // 新バリアントを選択状態にするため、Candidates 再ロード後に CopyId で再選択。
-            // ReloadFromMessageAsync は fire-and-forget なので await できないが、
-            // 自身が受信側でもあるため Receive → ReloadFromMessageAsync の経路で更新される。
-            await LoadCandidatesAsync(ct);
-            SelectedCandidate = Candidates.FirstOrDefault(c => c.CopyId == result.Value.Id) ?? SelectedCandidate;
-            LogVariantCreated(_logger, assetId, result.Value.Id);
-        }
-        finally
-        {
-            IsBusy = false;
-            IsCreatingVariant = false;
-            DraftVariantName = string.Empty;
-        }
-    }
-
-    /// <summary>
-    /// 選択中バリアントを削除する。Cascade で関連 Placement も消えるため、履歴は全消去。
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanDeleteSelectedCandidate))]
-    public async Task DeleteSelectedCandidateAsync(CancellationToken ct = default)
-    {
-        var target = SelectedCandidate;
-        if (target is null || IsBusy) return;
-
-        try
-        {
-            IsBusy = true;
-            var label = target.CopyDisplayName;
-
-            // このアセットの最後のバリアントか判定する。 そうなら親アセットごと
-            // cascade 削除する (孤児アセット = アセット件数だけ残って候補リストから
-            // 完全に見えなくなる状態を防止)。
-            var group = CandidateGroups.FirstOrDefault(g => g.AssetId == target.AssetId);
-            var isLastVariant = group is not null && group.Variants.Count == 1;
-
-            if (isLastVariant)
-            {
-                // DeleteImageAssetUseCase は DB cascade で ImageCopy / GridPlacement / ProtectedRegion を
-                // まとめて消し、 画像本体ファイルとサムネも削除する。
-                var assetResult = await _deleteAssetUseCase.ExecuteAsync(target.AssetId, ct);
-                if (assetResult.IsError)
-                {
-                    StatusMessage = string.Join(", ", assetResult.Errors);
-                    return;
-                }
-            }
-            else
-            {
-                var copyResult = await _copyRepository.DeleteAsync(target.CopyId, ct);
-                if (copyResult.IsError)
-                {
-                    StatusMessage = string.Join(", ", copyResult.Errors);
-                    return;
-                }
-            }
-
-            Candidates.Remove(target);
-            if (group is not null)
-            {
-                group.Variants.Remove(target);
-                if (group.Variants.Count == 0)
-                    CandidateGroups.Remove(group);
-            }
-            SelectedCandidate = Candidates.FirstOrDefault();
-
-            StatusMessage = _loc.Format("Status_VariantDeletedFmt", label);
-            // Copy / Asset 削除は cascade で Placement も消えるため履歴を全消去
-            _history.Clear();
-            _messenger.Send(new CopyLibraryChangedMessage());
-            if (isLastVariant)
-            {
-                // AssetLibraryViewModel.Assets を再ロードさせる (アセット件数表示を更新)
-                _messenger.Send(new AssetLibraryChangedMessage());
-            }
-            LogVariantDeleted(_logger, target.CopyId);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    private bool CanDeleteSelectedCandidate() => !IsBusy && SelectedCandidate is not null;
-
-    /// <summary>
-    /// インラインリネーム編集を開始する。<paramref name="candidate"/> の <see cref="CopyCandidateViewModel.IsEditing"/>=true、
-    /// <see cref="CopyCandidateViewModel.EditingName"/> に現在の <see cref="CopyCandidateViewModel.CopyName"/> をコピー。
-    /// 同時に他項目が編集中なら強制的にキャンセルする（同時編集を防ぐ）。
-    /// </summary>
-    public void BeginEditCandidate(CopyCandidateViewModel candidate)
-    {
-        ArgumentNullException.ThrowIfNull(candidate);
-        foreach (var c in Candidates)
-        {
-            if (!ReferenceEquals(c, candidate) && c.IsEditing)
-            {
-                c.IsEditing = false;
-                c.EditingName = null;
-            }
-        }
-        candidate.EditingName = candidate.CopyName;
-        candidate.IsEditing = true;
-    }
-
-    /// <summary>インラインリネーム編集をキャンセル（保存しない）。</summary>
-    public void CancelEditCandidate(CopyCandidateViewModel candidate)
-    {
-        ArgumentNullException.ThrowIfNull(candidate);
-        candidate.IsEditing = false;
-        candidate.EditingName = null;
-        LogVariantRenameCanceled(_logger, candidate.CopyId);
-    }
-
-    /// <summary>
-    /// インラインリネームを確定して DB に保存する。<see cref="CopyCandidateViewModel.EditingName"/> を
-    /// trim（空白だけなら null）した上で <see cref="CopyCandidateViewModel.CopyName"/> と比較し、
-    /// 同じなら no-op、違えば <see cref="UpdateImageCopyCommand"/> を組み立てて履歴に積む。
-    /// Undo/Redo round-trip 対応。
-    /// </summary>
-    public async Task CommitEditCandidateAsync(CopyCandidateViewModel candidate, CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(candidate);
-        if (!candidate.IsEditing) return;
-
-        var trimmed = string.IsNullOrWhiteSpace(candidate.EditingName) ? null : candidate.EditingName!.Trim();
-        var beforeName = candidate.CopyName;
-        // 編集状態は先に閉じる（保存中の View 再描画で TextBox にフォーカスが残らないように）
-        candidate.IsEditing = false;
-        candidate.EditingName = null;
-
-        if (string.Equals(trimmed, beforeName, StringComparison.Ordinal))
-            return; // 変更なしなら履歴に積まない
-
-        var before = new UpdateImageCopyChanges
-        {
-            CopyName = beforeName,
-            ClearCopyName = beforeName is null,
-        };
-        var after = new UpdateImageCopyChanges
-        {
-            CopyName = trimmed,
-            ClearCopyName = trimmed is null,
-        };
-        var beforeLabel = string.IsNullOrWhiteSpace(beforeName) ? _loc[Terminology.VariantUnnamedKey] : beforeName;
-        var afterLabel = string.IsNullOrWhiteSpace(trimmed) ? _loc[Terminology.VariantUnnamedKey] : trimmed;
-        var description = _loc.Format("History_VariantRenameFmt", _loc[Terminology.VariantKey], beforeLabel, afterLabel);
-        var command = new UpdateImageCopyCommand(_updateCopyUseCase, candidate.CopyId, before, after, description);
-
-        var result = await _history.ExecuteAsync(command, ct);
-        if (result.IsError)
-        {
-            StatusMessage = string.Join(", ", result.Errors);
-            return;
-        }
-
-        // 永続化が成功したので VM の表示も即時更新（CopyDisplayName が再計算される）
-        candidate.CopyName = trimmed;
-        _messenger.Send(new CopyLibraryChangedMessage());
-        LogVariantRenamed(_logger, candidate.CopyId);
-    }
-
-    /// <summary>
-    /// SelectedCandidate / IsBusy / IsCreatingVariant 変化時に
-    /// 関連コマンドの CanExecute を再評価する。 また CurrentSelection の再評価
-    /// (バリアント選択時に VariantSelection 状態へ遷移) と VariantProperties の
-    /// 編集対象差し替えも行う。
+    /// SelectedCandidate 変化時の hook。 Variants 子 VM のコマンド CanExecute 再評価と、
+    /// CurrentSelection の再評価 (バリアント選択時に VariantSelection 状態へ遷移)、
+    /// および VariantProperties の編集対象差し替えを行う。
     /// </summary>
     partial void OnSelectedCandidateChanged(CopyCandidateViewModel? value)
     {
-        BeginCreateVariantCommand.NotifyCanExecuteChanged();
-        DeleteSelectedCandidateCommand.NotifyCanExecuteChanged();
+        Variants.NotifyContextChanged();
 
         // ユーザーが候補リストで配置中とは別のバリアントを選んだら、配置選択を解除して
         // 右ペインをバリアント単体編集 (VariantSelection) に切り替える。配置選択が優先される
@@ -1577,8 +1353,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     partial void OnIsBusyChanged(bool value)
     {
-        BeginCreateVariantCommand.NotifyCanExecuteChanged();
-        DeleteSelectedCandidateCommand.NotifyCanExecuteChanged();
+        Variants.NotifyContextChanged();
     }
 
     [LoggerMessage(EventId = 5001, Level = LogLevel.Information, Message = "配置候補を読み込み: {Count} 件")]
@@ -1590,17 +1365,8 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     [LoggerMessage(EventId = 5003, Level = LogLevel.Warning, Message = "候補・配置の自動更新に失敗")]
     private static partial void LogReloadFailed(ILogger logger, Exception ex);
 
-    [LoggerMessage(EventId = 5004, Level = LogLevel.Information, Message = "配置タブから新規バリアント作成: asset={AssetId} copy={CopyId}")]
-    private static partial void LogVariantCreated(ILogger logger, Guid assetId, Guid copyId);
-
-    [LoggerMessage(EventId = 5005, Level = LogLevel.Information, Message = "配置タブからバリアント削除: copy={CopyId}")]
-    private static partial void LogVariantDeleted(ILogger logger, Guid copyId);
-
-    [LoggerMessage(EventId = 5006, Level = LogLevel.Information, Message = "配置タブからバリアントをリネーム: copy={CopyId}")]
-    private static partial void LogVariantRenamed(ILogger logger, Guid copyId);
-
-    [LoggerMessage(EventId = 5007, Level = LogLevel.Debug, Message = "配置タブからバリアントのリネームをキャンセル: copy={CopyId}")]
-    private static partial void LogVariantRenameCanceled(ILogger logger, Guid copyId);
+    // LogVariantCreated (5004) / LogVariantDeleted (5005) / LogVariantRenamed (5006) /
+    // LogVariantRenameCanceled (5007) は VariantManagerViewModel へ移管 (Phase 4-2)。
 
     // LogPreviewRendered (EventId 5008) / LogPngExported (EventId 5009) は GridOutputViewModel へ移管 (Phase 4)。
 

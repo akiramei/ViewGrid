@@ -33,7 +33,7 @@
         <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
         <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}" />
         <KeyBinding Gesture="Ctrl+O" Command="{Binding AssetLibrary.PickFilesAndImportCommand}" />
-        <KeyBinding Gesture="Ctrl+N" Command="{Binding GridWorkspace.BeginCreateVariantCommand}" />
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding GridWorkspace.Variants.BeginCreateVariantCommand}" />
         <KeyBinding Gesture="Ctrl+E" Command="{Binding GridWorkspace.Output.ExportToPngCommand}" />
         <!-- 設定ダイアログ (Ctrl+,) は code-behind の KeyDown ハンドラで処理。
              KeyBindings 内 ElementName 参照が NameScope の都合で解決しないため。 -->
@@ -105,7 +105,7 @@
                               ToolTip.Tip="{loc:Tr MenuItem_AddImages_Tooltip}" />
                     <MenuItem Header="{loc:Tr MenuItem_NewVariant}"
                               InputGesture="Ctrl+N"
-                              Command="{Binding GridWorkspace.BeginCreateVariantCommand}"
+                              Command="{Binding GridWorkspace.Variants.BeginCreateVariantCommand}"
                               ToolTip.Tip="{loc:Tr MenuItem_NewVariant_Tooltip}" />
                     <MenuItem Header="{loc:Tr MenuItem_ExportPng}"
                               InputGesture="Ctrl+E"

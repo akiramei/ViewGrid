@@ -164,13 +164,13 @@
                         F2 / ダブルクリックでインラインリネーム、Delete キーは ListBox 上で扱う。
                     -->
                     <StackPanel Orientation="Horizontal" Spacing="8"
-                                IsVisible="{Binding !IsCreatingVariant}">
+                                IsVisible="{Binding !Variants.IsCreatingVariant}">
                         <Button Content="{loc:Tr Workspace_Place}"
                                 Command="{Binding PlaceSelectedToFirstFreeCellCommand}"
                                 IsEnabled="{Binding SelectedCandidate, Converter={x:Static ObjectConverters.IsNotNull}}"
                                 Classes="accent"
                                 ToolTip.Tip="{loc:Tr Workspace_Place_Tooltip}" />
-                        <Button Command="{Binding BeginCreateVariantCommand}"
+                        <Button Command="{Binding Variants.BeginCreateVariantCommand}"
                                 Classes="iconAccent"
                                 ToolTip.Tip="{loc:Tr Workspace_NewVariant_Tooltip}">
                             <StackPanel Classes="IconButtonContent">
@@ -178,7 +178,7 @@
                                 <TextBlock Text="{loc:Tr Workspace_NewVariant}" />
                             </StackPanel>
                         </Button>
-                        <Button Command="{Binding DeleteSelectedCandidateCommand}"
+                        <Button Command="{Binding Variants.DeleteSelectedCandidateCommand}"
                                 Classes="iconDanger"
                                 ToolTip.Tip="{loc:Tr Workspace_DeleteVariant_Tooltip}">
                             <StackPanel Classes="IconButtonContent">
@@ -189,29 +189,29 @@
                     </StackPanel>
 
                     <!-- 新規作成フライアウト: 名前入力 + 作成/キャンセル -->
-                    <Border IsVisible="{Binding IsCreatingVariant}"
+                    <Border IsVisible="{Binding Variants.IsCreatingVariant}"
                             Padding="8"
                             Background="{DynamicResource SystemAltMediumLowColor}"
                             CornerRadius="4">
                         <StackPanel Spacing="6">
                             <TextBlock Text="{loc:Tr Workspace_NewVariant}" FontWeight="SemiBold" />
                             <TextBox x:Name="DraftVariantNameBox"
-                                     Text="{Binding DraftVariantName, Mode=TwoWay}"
+                                     Text="{Binding Variants.DraftVariantName, Mode=TwoWay}"
                                      PlaceholderText="{loc:Tr Workspace_NewVariant_Placeholder}"
-                                     IsVisible="{Binding IsCreatingVariant}"
+                                     IsVisible="{Binding Variants.IsCreatingVariant}"
                                      controls:FocusOnVisible.IsEnabled="True">
                                 <TextBox.KeyBindings>
-                                    <KeyBinding Gesture="Enter" Command="{Binding CommitCreateVariantCommand}" />
-                                    <KeyBinding Gesture="Escape" Command="{Binding CancelCreateVariantCommand}" />
+                                    <KeyBinding Gesture="Enter" Command="{Binding Variants.CommitCreateVariantCommand}" />
+                                    <KeyBinding Gesture="Escape" Command="{Binding Variants.CancelCreateVariantCommand}" />
                                 </TextBox.KeyBindings>
                             </TextBox>
                             <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
                                 <Button Content="{loc:Tr GridList_Create}"
                                         Classes="accent"
-                                        Command="{Binding CommitCreateVariantCommand}"
+                                        Command="{Binding Variants.CommitCreateVariantCommand}"
                                         IsDefault="True" />
                                 <Button Content="{loc:Tr Common_Cancel}"
-                                        Command="{Binding CancelCreateVariantCommand}" />
+                                        Command="{Binding Variants.CancelCreateVariantCommand}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>

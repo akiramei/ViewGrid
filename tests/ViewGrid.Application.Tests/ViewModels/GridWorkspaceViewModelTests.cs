@@ -470,12 +470,12 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
         _vm.SelectedCandidate = _vm.Candidates.Single();
 
-        _vm.BeginCreateVariant();
-        _vm.IsCreatingVariant.Should().BeTrue();
-        _vm.DraftVariantName = "派生 A";
-        await _vm.CommitCreateVariantAsync();
+        _vm.Variants.BeginCreateVariant();
+        _vm.Variants.IsCreatingVariant.Should().BeTrue();
+        _vm.Variants.DraftVariantName = "派生 A";
+        await _vm.Variants.CommitCreateVariantAsync();
 
-        _vm.IsCreatingVariant.Should().BeFalse();
+        _vm.Variants.IsCreatingVariant.Should().BeFalse();
         _vm.Candidates.Should().HaveCount(2);
         _vm.Candidates.Should().Contain(c => c.CopyDisplayName == "派生 A");
         // 新バリアントが選択されている
@@ -491,9 +491,9 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
         _vm.SelectedCandidate = _vm.Candidates.Single();
 
-        _vm.BeginCreateVariant();
-        _vm.DraftVariantName = "   "; // 空白だけ → null 扱い
-        await _vm.CommitCreateVariantAsync();
+        _vm.Variants.BeginCreateVariant();
+        _vm.Variants.DraftVariantName = "   "; // 空白だけ → null 扱い
+        await _vm.Variants.CommitCreateVariantAsync();
 
         _vm.Candidates.Should().HaveCount(2);
         // ordinal = 既存件数 (1) + 1 = 2 → "{prefix} 2"
@@ -507,8 +507,8 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
     public void BeginCreateVariant_NoOp_When_No_Candidate_Selected()
     {
         _vm.SelectedCandidate.Should().BeNull();
-        _vm.BeginCreateVariant();
-        _vm.IsCreatingVariant.Should().BeFalse();
+        _vm.Variants.BeginCreateVariant();
+        _vm.Variants.IsCreatingVariant.Should().BeFalse();
     }
 
     /// <summary>削除: SelectedCandidate を物理削除し、Candidates から除去される。</summary>
@@ -521,7 +521,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
         _vm.SelectedCandidate = _vm.Candidates.First(c => c.CopyId == c2.Id);
 
-        await _vm.DeleteSelectedCandidateAsync();
+        await _vm.Variants.DeleteSelectedCandidateAsync();
 
         _vm.Candidates.Should().HaveCount(1);
         _vm.Candidates.Single().CopyId.Should().Be(c1.Id);
@@ -536,11 +536,11 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
         var candidate = _vm.Candidates.Single();
 
-        _vm.BeginEditCandidate(candidate);
+        _vm.Variants.BeginEditCandidate(candidate);
         candidate.IsEditing.Should().BeTrue();
         candidate.EditingName = "new-name";
 
-        await _vm.CommitEditCandidateAsync(candidate);
+        await _vm.Variants.CommitEditCandidateAsync(candidate);
 
         candidate.IsEditing.Should().BeFalse();
         candidate.CopyName.Should().Be("new-name");
@@ -560,9 +560,9 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         var candidate = _vm.Candidates.Single();
         var beforeHistoryCount = _history.History.Count;
 
-        _vm.BeginEditCandidate(candidate);
+        _vm.Variants.BeginEditCandidate(candidate);
         candidate.EditingName = "same"; // 同じ
-        await _vm.CommitEditCandidateAsync(candidate);
+        await _vm.Variants.CommitEditCandidateAsync(candidate);
 
         candidate.IsEditing.Should().BeFalse();
         _history.History.Count.Should().Be(beforeHistoryCount);
@@ -577,10 +577,10 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
         var candidate = _vm.Candidates.Single();
 
-        _vm.BeginEditCandidate(candidate);
+        _vm.Variants.BeginEditCandidate(candidate);
         candidate.EditingName = "draft";
 
-        _vm.CancelEditCandidate(candidate);
+        _vm.Variants.CancelEditCandidate(candidate);
 
         candidate.IsEditing.Should().BeFalse();
         candidate.EditingName.Should().BeNull();
@@ -596,9 +596,9 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
         var candidate = _vm.Candidates.Single();
 
-        _vm.BeginEditCandidate(candidate);
+        _vm.Variants.BeginEditCandidate(candidate);
         candidate.EditingName = "v2";
-        await _vm.CommitEditCandidateAsync(candidate);
+        await _vm.Variants.CommitEditCandidateAsync(candidate);
 
         await _history.UndoAsync();
 
@@ -653,7 +653,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         _vm.SelectedCandidate = _vm.Candidates.Single();
         _vm.CandidateGroups.Should().HaveCount(1);
 
-        await _vm.DeleteSelectedCandidateAsync();
+        await _vm.Variants.DeleteSelectedCandidateAsync();
 
         _vm.Candidates.Should().BeEmpty();
         _vm.CandidateGroups.Should().BeEmpty();
@@ -669,7 +669,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
         _vm.SelectedCandidate = _vm.Candidates.First(c => c.CopyId == c2.Id);
 
-        await _vm.DeleteSelectedCandidateAsync();
+        await _vm.Variants.DeleteSelectedCandidateAsync();
 
         _vm.CandidateGroups.Should().HaveCount(1);
         _vm.CandidateGroups.Single().Variants.Should().HaveCount(1);
@@ -689,7 +689,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
         _vm.SelectedCandidate = _vm.Candidates.Single();
 
-        await _vm.DeleteSelectedCandidateAsync();
+        await _vm.Variants.DeleteSelectedCandidateAsync();
 
         // アセットが DB から消えていること (孤児にならず cascade)
         var reloaded = await _fx.AssetRepository.FindByIdAsync(asset.Id);
@@ -709,7 +709,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
         _vm.SelectedCandidate = _vm.Candidates.First(c => c.CopyId == c2.Id);
 
-        await _vm.DeleteSelectedCandidateAsync();
+        await _vm.Variants.DeleteSelectedCandidateAsync();
 
         var reloaded = await _fx.AssetRepository.FindByIdAsync(asset.Id);
         reloaded.Should().NotBeNull();
@@ -728,9 +728,9 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         _vm.SelectedCandidate = _vm.Candidates.Single();
         _vm.CandidateGroups.Should().HaveCount(1);
 
-        _vm.BeginCreateVariant();
-        _vm.DraftVariantName = "派生";
-        await _vm.CommitCreateVariantAsync();
+        _vm.Variants.BeginCreateVariant();
+        _vm.Variants.DraftVariantName = "派生";
+        await _vm.Variants.CommitCreateVariantAsync();
 
         _vm.CandidateGroups.Should().HaveCount(1);
         _vm.CandidateGroups.Single().Variants.Should().HaveCount(2);
