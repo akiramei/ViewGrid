@@ -1,0 +1,9 @@
+[project]
+name = "grid_composition_phase2"
+version = "0.1.0"
+description = "Phase 2 feasibility experiment — GRID_COMPOSITION from Capability BOM"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
