@@ -1,0 +1,499 @@
+# 21-grid-composition.yaml
+# Capability BOM (機械可読版) — GRID_COMPOSITION
+#
+# このファイルは AI 実装フェーズで直接参照される正準データである。
+# 人間可読の解説は 20-capability-bom.md を参照。
+#
+# 変更時は 20-capability-bom.md と整合させること (差分は本ファイルが正)。
+
+schema_version: capability-bom-audit/v0.2
+# v0.1 からの変更:
+#   - NotFound 失敗理由を追加 (UC-02..UC-10)
+#   - UC-09 SetOrder の order_value 入力を inputs に明示
+#   - canonical_failure_reasons セクション新設
+
+capability:
+  id: GRID_COMPOSITION
+  name:
+    ja: グリッド配置構成
+    en: Grid Composition
+  purpose: >
+    グリッド (N 行 × M 列のセル格子) 上に画像派生物 (ImageCopy) を配置し、
+    境界と非重複を保証しつつ編成する。配置の妥当性に関する唯一の権威。
+
+  stakeholders:
+    - editor
+    - reusable_user
+    - large_format_user
+
+  # ============================================================
+  # UseCases
+  # ============================================================
+  use_cases:
+    - id: UC-01
+      name: CreateGridCanvas
+      kind: command
+      inputs: [name, grid_rows, grid_cols, canvas_size]
+      preconditions: []
+      postconditions:
+        - "A new GridCanvas exists with uniform weights and all-unlocked rows/cols."
+      failure_reasons: [InvalidDimensions]
+
+    - id: UC-02
+      name: ChangeGridDimensions
+      kind: command
+      inputs: [grid_id, new_grid_rows, new_grid_cols]
+      preconditions: [GridExists]
+      postconditions: [GridDimensionsUpdated]
+      failure_reasons: [NotFound, InvalidDimensions, WouldOrphanPlacements, WouldConflict]
+
+    - id: UC-03
+      name: ChangeRowColumnWeights
+      kind: command
+      inputs: [grid_id, axis, weights]
+      preconditions: [GridExists]
+      postconditions: [WeightsUpdated, PlacementPositionsUnchanged]
+      failure_reasons: [NotFound, InvalidWeights]
+
+    - id: UC-04
+      name: ToggleRowColumnLock
+      kind: command
+      inputs: [grid_id, axis, index]
+      preconditions: [GridExists, IndexInRange]
+      postconditions: [LockStateToggled]
+      failure_reasons: [NotFound, InvalidIndex]
+
+    - id: UC-05
+      name: PlaceImageCopy
+      kind: command
+      inputs: [grid_id, copy_id, position, occupy_size]
+      preconditions: [GridExists, ImageCopyExists]
+      postconditions:
+        - "A new Placement exists at z-order = max + 1."
+      failure_reasons: [NotFound, OutOfBounds, Conflict, UnknownCopyId]
+      notes: |
+        NotFound は GridCanvas 不在のとき。
+        UnknownCopyId は ImageCopy 不在のとき (foreign reference のため別扱い)。
+
+    - id: UC-06
+      name: MovePlacement
+      kind: command
+      inputs: [placement_id, new_position]
+      preconditions: [PlacementExists]
+      postconditions: [PlacementPositionUpdated]
+      failure_reasons: [NotFound, OutOfBounds, Conflict]
+      notes: "自身は衝突対象から除外する"
+
+    - id: UC-07
+      name: SwapPlacements
+      kind: command
+      inputs: [placement_id_a, placement_id_b]
+      preconditions: [BothPlacementsExist]
+      postconditions: [PositionsExchanged]
+      failure_reasons: [NotFound, OutOfBounds, Conflict]
+      notes: |
+        両者は互いに「既存配置との衝突」対象から除外する。
+        ただし R-02 の標準的な「候補 vs 既存」検査では A の新位置と B の新位置が
+        互いに重なるケースが捕捉できないため、追加で「A の新占有セル集合と
+        B の新占有セル集合の交差」を検証すること (詳細は 30-design.md §2.2 UC-07)。
+
+    - id: UC-08
+      name: ResizePlacementOccupancy
+      kind: command
+      inputs: [placement_id, new_occupy_size]
+      preconditions: [PlacementExists]
+      postconditions: [OccupySizeUpdated]
+      failure_reasons: [NotFound, OutOfBounds, Conflict]
+
+    - id: UC-09
+      name: ChangePlacementOrder
+      kind: command
+      inputs: [placement_id, operation, order_value]
+      input_notes: |
+        order_value は operation == SetOrder のときのみ必須 (1..N の整数)。
+        他の operation のときは無視される (none / null を渡してよい)。
+      operation_values:
+        - BringToFront
+        - SendToBack
+        - MoveForward
+        - MoveBackward
+        - SetOrder
+      preconditions: [PlacementExists]
+      postconditions: [OrderUpdated, OrdersStillUnique, OrdersAreDense]
+      failure_reasons: [NotFound, InvalidOrderValue]
+      notes: |
+        OrdersAreDense: 操作後の placement_order 集合は 1..N の連続値となる
+        (R-09 と同じ規範を UC-09 にも適用する)。
+
+    - id: UC-10
+      name: RemovePlacement
+      kind: command
+      inputs: [placement_id]
+      preconditions: [PlacementExists]
+      postconditions: [PlacementRemoved, RemainingOrdersCompacted]
+      failure_reasons: [NotFound]
+
+    - id: UC-11
+      name: ListPlacements
+      kind: query
+      inputs: [grid_id]
+      output: list_of_placements_in_z_order
+      failure_reasons: []
+      notes: "グリッドが存在しなければ空リストを返す (NotFound は発生しない)"
+
+  # ============================================================
+  # Canonical Failure Reasons (v0.2 新設)
+  # ============================================================
+  # AI はこのリストに無い失敗理由を作ってはならない (FORBIDDEN)。
+  # 失敗理由は UseCase の戻り値の正準形式を定める。
+  canonical_failure_reasons:
+    - name: NotFound
+      payload:
+        entity_kind: "GridCanvas | Placement"
+        entity_id: identity
+      applies_to: [UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-08, UC-09, UC-10]
+      notes: "前提条件 GridExists / PlacementExists が破れたとき"
+
+    - name: InvalidDimensions
+      payload:
+        detail: string
+      applies_to: [UC-01, UC-02]
+      notes: "grid_rows / grid_cols / canvas_size の値が R-03 違反"
+
+    - name: InvalidWeights
+      payload:
+        detail: string
+      applies_to: [UC-01, UC-03]
+      notes: "重み配列の長さ不一致 / 非正の整数 (R-04, R-05 違反)"
+
+    - name: InvalidIndex
+      payload:
+        axis: "Row | Col"
+        index: int
+      applies_to: [UC-04]
+
+    - name: InvalidOrderValue
+      payload:
+        detail: string
+        attempted_value: int
+      applies_to: [UC-09]
+      notes: "operation == SetOrder のとき order_value が範囲外、または他 operation で order_value が指定された"
+
+    - name: OutOfBounds
+      payload:
+        attempted_position: CellPosition
+        occupy_size: OccupySize
+      applies_to: [UC-02, UC-05, UC-06, UC-07, UC-08]
+
+    - name: Conflict
+      payload:
+        conflicting_placement_ids: "[identity]"
+      applies_to: [UC-02, UC-05, UC-06, UC-07, UC-08]
+      notes: "衝突相手の placement_id を 1 個以上含む。UC-07 の A-B 相互衝突も同じ Conflict で表現する"
+
+    - name: WouldOrphanPlacements
+      payload:
+        orphaned_placement_ids: "[identity]"
+      applies_to: [UC-02]
+      notes: "寸法縮小で既存配置が境界外になる場合"
+
+    - name: WouldConflict
+      payload:
+        conflicting_placement_ids: "[identity]"
+      applies_to: [UC-02]
+      notes: "Conflict と意味は同じだが UC-02 専用エイリアス。重みロック削除が必要な場合等も含む"
+
+    - name: UnknownCopyId
+      payload:
+        copy_id: identity
+      applies_to: [UC-05]
+      notes: "foreign reference (ImageCopy) 不在。NotFound とは別扱い"
+
+  # ============================================================
+  # Rules
+  # ============================================================
+  rules:
+    - id: R-01
+      name: PlacementMustFitWithinGrid
+      kind: invariant
+      enforced_at: use_case_layer
+      verification: pure_function
+      applies_to: [UC-05, UC-06, UC-07, UC-08, UC-02]
+
+    - id: R-02
+      name: PlacementsMustNotOverlap
+      kind: invariant
+      enforced_at: use_case_layer
+      verification: pure_function
+      applies_to: [UC-05, UC-06, UC-07, UC-08, UC-02]
+      notes: |
+        対象自身 (移動元 / 入れ替え相手) は「既存配置との衝突」検査の除外対象とする。
+        ただし UC-07 では A と B を相互に除外するため、A の新位置と B の新位置が
+        互いに重なるケースは標準検査で捕捉できない。UC-07 の workflow_decision は
+        この A-B 相互衝突を別途 (post-swap intersection check として) 検証する責任を持つ
+        (詳細は 30-design.md §2.2 UC-07 を参照)。
+
+    - id: R-03
+      name: GridDimensionsMustBePositive
+      kind: invariant
+      enforced_at: domain_model
+      verification: entity_constructor
+
+    - id: R-04
+      name: WeightsMustBePositiveIntegers
+      kind: invariant
+      enforced_at: domain_model
+      verification: entity_constructor
+
+    - id: R-05
+      name: WeightArrayLengthMatchesDimension
+      kind: invariant
+      enforced_at: [domain_model, use_case_layer]
+      verification: "Entity 構築時 + UC-02 (寸法変更時に重み長を調整)"
+
+    - id: R-06
+      name: PlacementOrderMustBeUnique
+      kind: invariant
+      enforced_at: use_case_layer
+      verification: "全配置の PlacementOrder の集合に重複がない"
+
+    - id: R-07
+      name: CellPositionAndOccupySizeAreImmutableInOnePlacement
+      kind: lifecycle
+      enforced_at: entity_immutability
+      verification: "変更は新しい Placement 値の生成として表現する (in-place 変更を禁止しない実装でも論理上同等であること)"
+      notes: "実装スタイルは AI 任意。意味として変更前後の Placement が観測可能であればよい"
+
+    - id: R-08
+      name: LockedWeightsAreSkippedInFitAdjustment
+      kind: policy
+      enforced_at: use_case_layer
+      verification: "Fit 動作中、locked = true のインデックスは重み再配分の対象外"
+
+    - id: R-09
+      name: RemovedPlacementOrderMustBeCompacted
+      kind: consistency
+      enforced_at: use_case_layer
+      verification: "UC-10 完了後、残りの PlacementOrder が 1..N の連続値になる (具体形式は設計書)"
+
+  # ============================================================
+  # Entities
+  # ============================================================
+  entities:
+    owned:
+      - name: GridCanvas
+        invariants: [R-03, R-04, R-05]
+        fields:
+          - { name: id, type: identity }
+          - { name: name, type: string }
+          - { name: grid_rows, type: int_positive }
+          - { name: grid_cols, type: int_positive }
+          - { name: col_weights, type: positive_int_array, length: "= grid_cols" }
+          - { name: row_weights, type: positive_int_array, length: "= grid_rows" }
+          - { name: col_locked, type: bool_array, length: "= grid_cols", default: all_false }
+          - { name: row_locked, type: bool_array, length: "= grid_rows", default: all_false }
+          - { name: canvas_size, type: PixelSize }
+          - { name: created_at, type: timestamp }
+          - { name: updated_at, type: timestamp }
+
+      - name: Placement
+        invariants: [R-01, R-02, R-06, R-07]
+        fields:
+          - { name: id, type: identity }
+          - { name: grid_id, type: identity, references: GridCanvas }
+          - { name: copy_id, type: identity, references_external: "IMAGE_VARIANT_MANAGEMENT.ImageCopy" }
+          - { name: position, type: CellPosition }
+          - { name: occupy_size, type: OccupySize }
+          - { name: placement_order, type: int_positive, unique_within: grid_id }
+          - { name: created_at, type: timestamp }
+
+    referenced:
+      - name: ImageCopy
+        provided_by: IMAGE_VARIANT_MANAGEMENT
+        reference_via: copy_id
+        access_policy: existence_check_only
+        notes: "ImageCopy の特性 (Scaling, Crop, Transform 等) を本 Capability は解釈しない"
+
+    value_objects:
+      - name: CellPosition
+        fields:
+          - { name: x, type: int, range: "[0, grid_cols)" }
+          - { name: y, type: int, range: "[0, grid_rows)" }
+
+      - name: OccupySize
+        fields:
+          - { name: width, type: int_positive }
+          - { name: height, type: int_positive }
+
+      - name: PixelSize
+        fields:
+          - { name: width, type: int_positive }
+          - { name: height, type: int_positive }
+
+  # ============================================================
+  # Events
+  # ============================================================
+  events:
+    - name: GridCanvasCreated
+      emitted_by: UC-01
+      payload: [grid_id, snapshot]
+    - name: GridDimensionsChanged
+      emitted_by: UC-02
+      payload: [grid_id, before, after]
+    - name: RowColumnWeightsChanged
+      emitted_by: UC-03
+      payload: [grid_id, axis, before, after]
+    - name: RowColumnLockToggled
+      emitted_by: UC-04
+      payload: [grid_id, axis, index, after_state]
+    - name: PlacementCreated
+      emitted_by: UC-05
+      payload: [placement_id, snapshot]
+    - name: PlacementMoved
+      emitted_by: UC-06
+      payload: [placement_id, before_position, after_position]
+    - name: PlacementsSwapped
+      emitted_by: UC-07
+      payload: [placement_id_a, placement_id_b, before_a, before_b]
+    - name: PlacementOccupancyResized
+      emitted_by: UC-08
+      payload: [placement_id, before_size, after_size]
+    - name: PlacementOrderChanged
+      emitted_by: UC-09
+      payload: [grid_id, before_order_map, after_order_map]
+    - name: PlacementRemoved
+      emitted_by: UC-10
+      payload: [placement_id, snapshot_before]
+
+  # ============================================================
+  # Decision Ownership
+  # ============================================================
+  decision_ownership:
+    domain_decision:
+      owned_by: [use_case_layer, domain_model]
+      examples:
+        - "配置妥当性の判定 (R-01, R-02)"
+        - "Placement の不変条件"
+      forbidden_in: [ui_layer, repository_layer, rendering_layer]
+
+    validation_decision:
+      owned_by: [use_case_layer]
+      examples:
+        - "入力値の範囲・型の妥当性"
+        - "UC-03 の重み配列長の検証"
+      forbidden_in: [domain_model]
+      notes: "Domain Model の不変条件で済むものは validation_decision に格上げしない"
+
+    workflow_decision:
+      owned_by: [use_case_layer, coordinator]
+      examples:
+        - "UC-07 の内部手順 (検証 → 入れ替え → イベント発行の順序)"
+      forbidden_in: [entity, repository_layer]
+
+    ui_interaction_decision:
+      owned_by: [ui_layer]
+      out_of_scope: true
+      notes: "本 Capability の範囲外。UI が UseCase へ正しい入力を作る責任を持つ"
+
+    persistence_decision:
+      owned_by: [repository_layer, infrastructure]
+      out_of_scope_for_business_logic: true
+      forbidden_in: [use_case_layer, domain_model]
+      notes: "本 Capability は Repository インターフェースのみ規定。保存形式は AI 任意"
+
+    rendering_decision:
+      owned_by: ["RENDERING_EXPORT (別 Capability)"]
+      out_of_scope: true
+      forbidden_in: [use_case_layer, domain_model]
+
+    history_decision:
+      owned_by: ["HISTORY_MANAGEMENT (別 Capability)"]
+      out_of_scope: true
+      notes: "本 Capability は Event を発行するのみ。Undo の粒度・統合は別 Capability"
+
+  # ============================================================
+  # Role Taxonomy (期待される関与)
+  # ============================================================
+  role_taxonomy:
+    allowed:
+      - role: observes
+        component: ui_layer
+        description: "状態変更イベントの購読"
+
+      - role: projects
+        component: ui_layer
+        description: "状態を表示用に整形"
+
+      - role: invokes
+        component: ui_layer
+        description: "UseCase の呼び出し"
+
+      - role: coordinates
+        component: [ui_layer, use_case_layer]
+        description: "複数 UseCase の調停"
+
+      - role: enforces
+        component: use_case_layer
+        description: "Rule の保証 (R-01〜R-09)"
+
+      - role: owns
+        component: [use_case_layer, domain_model]
+        description: "状態と Decision の所有"
+
+      - role: persists
+        component: repository_layer
+        description: "Domain Model の永続化"
+
+    suspicious_or_forbidden:
+      - situation: "ui_layer が owns を持つ"
+        severity: suspicious
+        reason: "Decision が UI に漏れている疑い"
+
+      - situation: "ui_layer が enforces を持つ"
+        severity: forbidden
+        reason: "Rule の保証権限が UI に流出"
+
+      - situation: "repository_layer が enforces を持つ"
+        severity: forbidden
+        reason: "永続化が Rule の権威を持つと、書込前後で整合が分裂"
+
+      - situation: "本 Capability が ImageCopy の意味解釈をする"
+        severity: forbidden
+        reason: "Capability 境界違反"
+
+      - situation: "本 Capability が描画情報を保持する"
+        severity: forbidden
+        reason: "rendering_decision の越境"
+
+  # ============================================================
+  # Capability Boundaries
+  # ============================================================
+  boundaries:
+    depends_on:
+      - capability: IMAGE_VARIANT_MANAGEMENT
+        interface: "ImageCopy existence check by CopyId"
+        access: read_only
+
+    depended_on_by:
+      - capability: HISTORY_MANAGEMENT
+        interface: "Events listed above"
+        access: subscribe
+
+      - capability: RENDERING_EXPORT
+        interface: "Read GridCanvas + Placement list (logical info only)"
+        access: read_only
+
+    excluded:
+      - "ImageCopy の編集"
+      - "Undo/Redo の粒度決定"
+      - "PNG / 画像ファイルの生成"
+      - "ワークスペース (DB / 画像格納) の切替"
+      - "UI レイアウト"
+
+  # ============================================================
+  # Observability for post-audit
+  # ============================================================
+  audit_requirements:
+    - "各 UseCase は (input → result) の対応が単一関数として表現可能"
+    - "各 Rule の保証コードがコード上 1 箇所に存在 (複数箇所 → suspected_overreach)"
+    - "Event 発行は状態変更と独立にテスト可能"

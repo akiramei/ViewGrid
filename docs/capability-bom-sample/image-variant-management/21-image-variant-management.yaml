@@ -1,0 +1,524 @@
+# 21-image-variant-management.yaml
+# Capability BOM (機械可読版) — IMAGE_VARIANT_MANAGEMENT v0.1
+#
+# 人間可読版は 20-capability-bom.md。両者で矛盾があれば本ファイルが正準。
+
+schema_version: capability-bom-audit/v0.2  # GRID_COMPOSITION v0.2 と同じスキーマ
+
+capability:
+  id: IMAGE_VARIANT_MANAGEMENT
+  name:
+    ja: 画像派生物管理
+    en: Image Variant Management
+  purpose: >
+    1 枚の元画像 (ImageAsset) から設定違いの論理コピー (ImageCopy) を複数生成・編集・問い合わせする。
+    ImageCopy の意味的権威 (許容設定とその意味) は本 Capability にある。
+
+  stakeholders:
+    - editor
+    - mass_reuser
+    - organizer
+
+  # ============================================================
+  # UseCases
+  # ============================================================
+  use_cases:
+    - id: UC-01
+      name: ImportImageAsset
+      kind: command
+      inputs: [image_bytes, original_filename, mime_type]
+      preconditions: [BytesAreReadable]
+      postconditions:
+        - "新規 hash: 新しい ImageAsset が生成"
+        - "既存 hash: 既存 ImageAsset を返す (新規生成しない、R-02)"
+      failure_reasons: [InvalidImageData, UnsupportedMimeType]
+
+    - id: UC-02
+      name: DeleteImageAsset
+      kind: command
+      inputs: [asset_id]
+      preconditions: [AssetExists]
+      postconditions:
+        - "依存 ImageCopy 0 件のとき: ImageAsset 削除"
+      failure_reasons: [NotFound, DependentCopiesExist]
+      notes: "依存派生物が残っている場合は自動カスケードせず DependentCopiesExist で拒否"
+
+    - id: UC-03
+      name: ListImageAssets
+      kind: query
+      inputs: []
+      output: list_of_image_assets
+      failure_reasons: []
+
+    - id: UC-04
+      name: GetImageAsset
+      kind: query
+      inputs: [asset_id]
+      output: image_asset_or_null
+      failure_reasons: [NotFound]
+
+    - id: UC-05
+      name: CreateImageCopy
+      kind: command
+      inputs:
+        - asset_id
+        - copy_name        # optional, null allowed (空文字 "" は不可、R-11)
+        - initial_transform  # optional, default Identity
+        - initial_scaling_mode  # optional, default UniformContain
+        - initial_alignment  # optional, default MiddleCenter
+        - initial_occupy_size  # optional, default (1,1)
+      preconditions: [AssetExists]
+      postconditions: ["新しい ImageCopy が生成 (R-03 を満たす)"]
+      failure_reasons: [NotFound, InvalidAlignment, InvalidScalingMode, InvalidOccupySize, InvalidTransform, InvalidCopyName]
+
+    - id: UC-06
+      name: DeleteImageCopy
+      kind: command
+      inputs: [copy_id]
+      preconditions: [CopyExists]
+      postconditions: ["ImageCopy 削除"]
+      failure_reasons: [NotFound]
+
+    - id: UC-07
+      name: ListImageCopies
+      kind: query
+      inputs: [asset_id_optional]
+      output: list_of_image_copies
+      failure_reasons: []
+      notes: "asset_id 指定なら絞り込み、null なら全件"
+
+    - id: UC-08
+      name: GetImageCopy
+      kind: query
+      inputs: [copy_id]
+      output: image_copy_or_null
+      failure_reasons: [NotFound]
+
+    - id: UC-09
+      name: ChangeCopyTransform
+      kind: command
+      inputs: [copy_id, new_transform]
+      preconditions: [CopyExists]
+      postconditions: [TransformUpdated]
+      failure_reasons: [NotFound, InvalidTransform]
+
+    - id: UC-10
+      name: ChangeScalingMode
+      kind: command
+      inputs: [copy_id, new_scaling_mode]
+      preconditions: [CopyExists]
+      postconditions: [ScalingModeUpdated]
+      failure_reasons: [NotFound, InvalidScalingMode]
+
+    - id: UC-11
+      name: ChangeAlignment
+      kind: command
+      inputs: [copy_id, new_alignment]
+      preconditions: [CopyExists]
+      postconditions: [AlignmentUpdated]
+      failure_reasons: [NotFound, InvalidAlignment]
+
+    - id: UC-12
+      name: ChangeAutoCropSettings
+      kind: command
+      inputs: [copy_id, target_color_argb, threshold]
+      input_notes: |
+        両値が両方 null (= OFF) または両方非 null である必要がある (R-06)。
+      preconditions: [CopyExists]
+      postconditions: [AutoCropUpdated]
+      failure_reasons: [NotFound, InvalidAutoCropSettings]
+
+    - id: UC-13
+      name: ChangeManualCropSettings
+      kind: command
+      inputs: [copy_id, x, y, width, height]
+      input_notes: |
+        4 値すべて非 null かすべて null (R-07)。値域は [0.0, 1.0] かつ x+width ≤ 1, y+height ≤ 1。
+      preconditions: [CopyExists]
+      postconditions: [ManualCropUpdated]
+      failure_reasons: [NotFound, InvalidManualCropFractions]
+
+    - id: UC-14
+      name: ChangeDefaultOccupySize
+      kind: command
+      inputs: [copy_id, new_occupy_size]
+      preconditions: [CopyExists]
+      postconditions: [DefaultOccupySizeUpdated]
+      failure_reasons: [NotFound, InvalidOccupySize]
+
+    - id: UC-15
+      name: RenameImageCopy
+      kind: command
+      inputs: [copy_id, new_name]
+      preconditions: [CopyExists]
+      postconditions: [NameUpdated]
+      failure_reasons: [NotFound, InvalidCopyName]
+      notes: "new_name は null 許容 (= 自動生成名に戻す)"
+
+    - id: UC-16
+      name: ImageCopyExists
+      kind: query
+      inputs: [copy_id]
+      output: bool
+      failure_reasons: []
+      notes: "cross-Capability 用 (GRID_COMPOSITION.UC-05 が UnknownCopyId 判定に使う)"
+
+    - id: UC-17
+      name: ImageAssetExists
+      kind: query
+      inputs: [asset_id]
+      output: bool
+      failure_reasons: []
+
+  # ============================================================
+  # Canonical Failure Reasons
+  # ============================================================
+  canonical_failure_reasons:
+    - name: NotFound
+      payload:
+        entity_kind: "ImageAsset | ImageCopy"
+        entity_id: identity
+      applies_to: [UC-02, UC-04, UC-05, UC-06, UC-08, UC-09, UC-10, UC-11, UC-12, UC-13, UC-14, UC-15]
+
+    - name: DependentCopiesExist
+      payload:
+        asset_id: identity
+        dependent_copy_ids: "[identity]"
+      applies_to: [UC-02]
+      notes: "本 Capability では自動カスケード削除を行わない。呼び出し側が決定する"
+
+    - name: InvalidImageData
+      payload:
+        detail: string
+      applies_to: [UC-01]
+
+    - name: UnsupportedMimeType
+      payload:
+        attempted_mime_type: string
+        supported_mime_types: "[string]"
+      applies_to: [UC-01]
+
+    - name: InvalidAlignment
+      payload:
+        attempted_value: string
+      applies_to: [UC-05, UC-11]
+
+    - name: InvalidScalingMode
+      payload:
+        attempted_value: string
+      applies_to: [UC-05, UC-10]
+
+    - name: InvalidTransform
+      payload:
+        attempted_rotation: string
+        attempted_flip_x: bool
+        attempted_flip_y: bool
+      applies_to: [UC-05, UC-09]
+
+    - name: InvalidOccupySize
+      payload:
+        attempted_width: int
+        attempted_height: int
+      applies_to: [UC-05, UC-14]
+
+    - name: InvalidAutoCropSettings
+      payload:
+        detail: string
+        attempted_target_color: "uint32 | null"
+        attempted_threshold: "byte | null"
+      applies_to: [UC-12]
+      notes: "片方だけ非 null、threshold > 255 等"
+
+    - name: InvalidManualCropFractions
+      payload:
+        detail: string
+        x: "double | null"
+        y: "double | null"
+        width: "double | null"
+        height: "double | null"
+      applies_to: [UC-13]
+
+    - name: InvalidCopyName
+      payload:
+        detail: string
+        attempted_value: "string | null"
+      applies_to: [UC-05, UC-15]
+      notes: "空文字 \"\" は不可 (null は OK = 自動生成名)。UC-05 は初期 copy_name が空文字なら拒否"
+
+  # ============================================================
+  # Rules
+  # ============================================================
+  rules:
+    - id: R-01
+      name: ImageAssetMustHaveValidImageData
+      kind: invariant
+      enforced_at: use_case_layer
+      verification: "UC-01 入口で decode 試行"
+
+    - id: R-02
+      name: ImageAssetFileHashMustBeUnique
+      kind: invariant
+      enforced_at: use_case_layer
+      verification: "UC-01 で SHA-256 hash を計算し、既存 hash があれば既存返却"
+      notes: "DB ユニーク制約に委ねず本 Capability で保証"
+
+    - id: R-03
+      name: ImageCopyMustReferenceExistingAsset
+      kind: invariant
+      enforced_at: [use_case_layer, domain_model]
+      verification: "UC-05 で asset_id 存在確認 + Entity の FK 制約"
+
+    - id: R-04
+      name: ScalingModeMustBeFromEnumeratedSet
+      kind: invariant
+      enforced_at: domain_model
+      verification: "Enum 制約"
+      enum_values: [UniformContain, UniformCover, Fill]
+
+    - id: R-05
+      name: AlignmentMustBeFromEnumeratedSet
+      kind: invariant
+      enforced_at: domain_model
+      verification: "Enum 制約"
+      enum_values: [TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight]
+
+    - id: R-06
+      name: AutoCropSettingsAreBothOrNeither
+      kind: invariant
+      enforced_at: domain_model
+      verification: "AutoCropSettings 構築時に target_color と threshold の null 性を検証"
+
+    - id: R-07
+      name: ManualCropFractionsMustBeNormalized
+      kind: invariant
+      enforced_at: domain_model
+      verification: |
+        ManualCropFraction 構築時:
+        - 4 値とも null か 4 値とも非 null
+        - 非 null なら x, y, width, height ∈ [0.0, 1.0]
+        - x + width ≤ 1.0, y + height ≤ 1.0
+
+    - id: R-08
+      name: ManualCropOverridesAutoCrop
+      kind: semantic
+      enforced_at: rendering_export_capability
+      enforced_at_in_this_capability: declaration_only
+      verification: "本 Capability は両方の値の共存を許容する。実際の優先関係は RENDERING_EXPORT が解釈"
+      notes: "Capability 境界に跨る Rule。本 Capability の Rule ledger には記載するが保証コードは別 Capability"
+
+    - id: R-09
+      name: RotationMustBeMultipleOf90
+      kind: invariant
+      enforced_at: domain_model
+      verification: "Rotation Enum: None / CW90 / CW180 / CW270"
+      enum_values: [None, CW90, CW180, CW270]
+
+    - id: R-10
+      name: DefaultOccupySizeMustBePositive
+      kind: invariant
+      enforced_at: domain_model
+      verification: "OccupySize.width ≥ 1, height ≥ 1"
+
+    - id: R-11
+      name: ImageCopyNameMustBeNullOrNonEmpty
+      kind: invariant
+      enforced_at: domain_model
+      verification: "CopyName == null OR CopyName.length > 0"
+
+  # ============================================================
+  # Entities
+  # ============================================================
+  entities:
+    owned:
+      - name: ImageAsset
+        invariants: [R-01, R-02]
+        fields:
+          - { name: id, type: identity }
+          - { name: source_type, type: enum, values: [LocalFile, Url, Clipboard, ...] }
+          - { name: original_filename, type: "string | null" }
+          - { name: stored_relative_path, type: string }
+          - { name: size, type: PixelSize }
+          - { name: file_hash, type: string, format: sha256_hex_lower }
+          - { name: file_size_bytes, type: int64 }
+          - { name: mime_type, type: string }
+          - { name: created_at, type: timestamp }
+
+      - name: ImageCopy
+        invariants: [R-03, R-04, R-05, R-06, R-07, R-09, R-10, R-11]
+        fields:
+          - { name: id, type: identity }
+          - { name: asset_id, type: identity, references: ImageAsset }
+          - { name: copy_name, type: "string | null" }
+          - { name: transform, type: ImageTransform }
+          - { name: scaling_mode, type: ScalingMode }
+          - { name: alignment, type: Alignment }
+          - { name: default_occupy_size, type: OccupySize }
+          - { name: auto_crop, type: "AutoCropSettings | null" }
+          - { name: manual_crop, type: "ManualCropFraction | null" }
+          - { name: created_at, type: timestamp }
+          - { name: updated_at, type: timestamp }
+        notes: "ProtectedRegion (PhotoBoard 保護領域) は v0.2 候補。本 v0.1 では含まない"
+
+    referenced: []
+
+    value_objects:
+      - name: PixelSize
+        notes: "GRID_COMPOSITION と共有定義 (../21-grid-composition.yaml)"
+        fields:
+          - { name: width, type: int_positive }
+          - { name: height, type: int_positive }
+
+      - name: OccupySize
+        notes: "GRID_COMPOSITION と共有定義"
+        fields:
+          - { name: width, type: int_positive }
+          - { name: height, type: int_positive }
+
+      - name: ImageTransform
+        fields:
+          - { name: rotation, type: Rotation }
+          - { name: flip_x, type: bool }
+          - { name: flip_y, type: bool }
+
+      - name: AutoCropSettings
+        fields:
+          - { name: target_color_argb, type: uint32 }
+          - { name: threshold, type: uint8, range: "[0, 255]" }
+        notes: "両値で意味あり (R-06)。集約値オブジェクトとして null か非 null で扱う"
+
+      - name: ManualCropFraction
+        fields:
+          - { name: x, type: double, range: "[0.0, 1.0]" }
+          - { name: y, type: double, range: "[0.0, 1.0]" }
+          - { name: width, type: double, range: "[0.0, 1.0]" }
+          - { name: height, type: double, range: "[0.0, 1.0]" }
+        invariants: ["x + width ≤ 1.0", "y + height ≤ 1.0"]
+
+    enums:
+      - name: Rotation
+        values: [None, CW90, CW180, CW270]
+      - name: ScalingMode
+        values: [UniformContain, UniformCover, Fill]
+      - name: Alignment
+        values: [TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight]
+
+  # ============================================================
+  # Events
+  # ============================================================
+  events:
+    - name: ImageAssetImported
+      emitted_by: UC-01 (new)
+      payload: [asset_id, snapshot]
+    - name: ImageAssetImportedAsDuplicate
+      emitted_by: UC-01 (existing hash)
+      payload: [existing_asset_id, attempted_hash]
+    - name: ImageAssetDeleted
+      emitted_by: UC-02
+      payload: [asset_id, snapshot_before]
+    - name: ImageCopyCreated
+      emitted_by: UC-05
+      payload: [copy_id, snapshot]
+    - name: ImageCopyDeleted
+      emitted_by: UC-06
+      payload: [copy_id, snapshot_before]
+      notes: "GRID_COMPOSITION が購読し、関連 Placement の扱いを GRID_COMPOSITION 側で決定"
+    - name: ImageCopyTransformChanged
+      emitted_by: UC-09
+      payload: [copy_id, before, after]
+    - name: ImageCopyScalingModeChanged
+      emitted_by: UC-10
+      payload: [copy_id, before, after]
+    - name: ImageCopyAlignmentChanged
+      emitted_by: UC-11
+      payload: [copy_id, before, after]
+    - name: ImageCopyAutoCropChanged
+      emitted_by: UC-12
+      payload: [copy_id, before, after]
+    - name: ImageCopyManualCropChanged
+      emitted_by: UC-13
+      payload: [copy_id, before, after]
+    - name: ImageCopyDefaultOccupySizeChanged
+      emitted_by: UC-14
+      payload: [copy_id, before, after]
+    - name: ImageCopyRenamed
+      emitted_by: UC-15
+      payload: [copy_id, before, after]
+
+  # ============================================================
+  # Decision Ownership
+  # ============================================================
+  decision_ownership:
+    domain_decision:
+      owned_by: [use_case_layer, domain_model]
+      examples:
+        - "ImageCopy の各設定の妥当性"
+        - "AutoCrop / ManualCrop の両値性 (R-06, R-07)"
+      forbidden_in: [ui_layer, repository_layer, rendering_layer]
+
+    validation_decision:
+      owned_by: [use_case_layer]
+      examples: ["入力範囲・型検証"]
+      forbidden_in: [domain_model]
+
+    workflow_decision:
+      owned_by: [use_case_layer]
+      examples: ["UC-01 の hash 重複検出フロー"]
+
+    ui_interaction_decision:
+      out_of_scope: true
+
+    persistence_decision:
+      owned_by: [repository_layer, infrastructure]
+      out_of_scope_for_business_logic: true
+
+    rendering_decision:
+      owned_by: ["RENDERING_EXPORT (別 Capability)"]
+      out_of_scope: true
+      forbidden_in: [use_case_layer, domain_model]
+      examples: ["R-08 (ManualCropOverridesAutoCrop) の実際の適用"]
+
+    history_decision:
+      owned_by: ["HISTORY_MANAGEMENT (別 Capability)"]
+      out_of_scope: true
+
+    cascade_decision:
+      owned_by: ["上位 Coordinator (本 Capability 外)"]
+      out_of_scope: true
+      notes: "UC-02 で派生物がある時の挙動。本 Capability は DependentCopiesExist で拒否のみ"
+
+  # ============================================================
+  # Capability Boundaries
+  # ============================================================
+  boundaries:
+    depends_on:
+      - capability: WORKSPACE_MANAGEMENT
+        interface: "IImageStorage / Repository (本 Capability 外)"
+        access: read_write
+
+    depended_on_by:
+      - capability: GRID_COMPOSITION
+        interface: "UC-16 ImageCopyExists"
+        access: query_only
+      - capability: HISTORY_MANAGEMENT
+        interface: "Events (subscribe)"
+        access: subscribe
+      - capability: RENDERING_EXPORT
+        interface: "Read ImageAsset + ImageCopy (R-08 適用の権威)"
+        access: read_only
+
+    excluded:
+      - "ImageCopy の描画 (RENDERING_EXPORT へ)"
+      - "Placement への影響 (GRID_COMPOSITION へ)"
+      - "Undo / Redo の粒度 (HISTORY へ)"
+      - "ファイルの物理保存形式 (Repository へ)"
+      - "ProtectedRegion (v0.2 候補)"
+
+  # ============================================================
+  # Audit requirements
+  # ============================================================
+  audit_requirements:
+    - "各 UseCase は (input → result) の単一関数として表現可能"
+    - "R-01〜R-07, R-09〜R-11 はコード上 1 箇所で保証"
+    - "R-08 は本 Capability では宣言のみで適用しない (適用コード不在をテストで確認)"
+    - "UC-02 が DependentCopiesExist で拒否することを必ずテスト"
+    - "UC-01 の hash 重複時に新規 Asset を作らないことを必ずテスト"

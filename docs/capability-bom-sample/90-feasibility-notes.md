@@ -1,0 +1,877 @@
+# 90 — フィージビリティ評価メモ
+
+## このドキュメントの位置づけ
+
+本書は、`GRID_COMPOSITION` を題材としたサンプル成果物 (10〜40) を実際に書いた経験から得た
+**課題・欠落リスク・人間コストの実情・方法論の限界** に関する所見である。
+
+書き手 (AI) の作業視点で、**この方法論を全 Capability に水平展開する場合に何が起こるか** を
+率直に評価する。
+
+> [!IMPORTANT]
+> 本書は楽観評価ではない。**サンプル作成中に実際に詰まった点、迷った点、
+> 「これは AI に渡しても解決しないだろう」と感じた点** を残すことを目的とする。
+
+---
+
+## 1. 全体所見 (要約)
+
+| 観点 | 評価 | 主な根拠 |
+| --- | --- | --- |
+| BOM → コード生成は原理的に成立するか | **条件付きで成立** | 純度の高い Capability (本サンプル) では成立。汎用 Capability では別の仕掛けが要る |
+| サンプル成果物の十分性 | **GRID_COMPOSITION 単体としては高い** | UC / Rule / Event / Decision が一意に決まっている |
+| 水平展開時の人間コスト | **6 Capability で 5〜10 倍** | 境界の交錯が増え、調整コストが線形以上に膨らむ |
+| 既存方法論ドキュメントの十分性 | **不足あり** | 後述 §6 の 8 つの判断はサンプル執筆中に独自決定が必要だった |
+| 監査の逆方向利用としての健全性 | **健全だが非対称性に注意** | §2 参照 |
+
+---
+
+## 2. 「BOM → コード生成」が逆問題として持つ非対称性
+
+本サンプルを書きながら最も強く感じた構造的問題。
+
+### 2.1 監査方向との非対称性
+
+| 方向 | 入力 | 出力 | 不足が顕在化する場所 |
+| --- | --- | --- | --- |
+| 監査 | 既存コード | BOM (観測) | 観測者が `unclear` と書ける |
+| 生成 | BOM (人間) | コード (AI) | **AI が「合理的に補完」してしまう** |
+
+AI は不明点を `unclear` と残すよう指示しても、**実装上どこかで決定せざるを得ない**
+(関数の引数順、命名、エラー時の挙動の細部など)。
+この「**断定を強制される箇所**」が、方法論の死角となる。
+
+### 2.2 顕在化した死角
+
+サンプル執筆中、要求仕様・BOM・設計書には書ききれないが AI 実装時に必ず必要な決定:
+
+1. **Repository インターフェースの戻り値が `None` か例外か**
+   → 30-design.md §5.1 では型表記レベルで未確定
+2. **イベントの payload に `snapshot` を含める粒度**
+   → 「全体」とだけ書いたが、参照の循環 (CopyId 経由で ImageCopy 全体まで?) をどこで切るか
+3. **timestamp が UTC か local time か**
+   → どこにも書かれていない (現実の ViewGrid は `DateTimeOffset` を使うが、本サンプルは未規定)
+4. **配置順序の表現が密 (1..N) か疎 (1, 10, 100...) か**
+   → R-09 で「密 (1..N)」を強制したが、UI 上の挿入操作が頻発する設計では非効率の可能性
+5. **重み配列の最大値**
+   → 「正の整数」とだけ書いたが、`int` のオーバーフローや表示計算の精度限界は未規定
+
+これらは AI が **自由に決めてよい** とも、**人間が決めるべき** とも、本サンプルでは
+明示していない。実際の試行では「実装上の細部」として AI が勝手に決め、その結果が
+人間の意図と一致しない可能性が残る。
+
+### 2.3 対策案
+
+- ALLOWED / FORBIDDEN の **第三カテゴリ** として `MUST_DECIDE_AND_DOCUMENT` を導入
+  - AI が決めてよいが、決定内容を実装ノートに明示する義務を負う
+- 監査フェーズ (Phase 3) で「明示されていない決定」を AI に列挙させ、人間がレビュー
+
+---
+
+## 3. サンプル作成中に独自決定した事項 (方法論ドキュメントが規定していない)
+
+| 決定事項 | 本サンプルでの選択 | 方法論側で規定したい候補 |
+| --- | --- | --- |
+| YAML と Markdown でどちらが正準か | YAML が正 | 規定すべき (人間/AI の両ループで参照されるため) |
+| ID 体系 (UC-NN, R-NN) | 2 桁ゼロ詰め | テンプレート化したい |
+| 失敗理由の表現方法 | 文字列 enum (`OutOfBounds` 等) | 規定 (国際化との関係も) |
+| 「読み順」の指定 | README に記載 | 方法論側でテンプレ化 |
+| Capability 境界の図示形式 | ASCII 図 | 推奨形式を方法論側で定義 |
+| イベント payload の正準形式 | キー名で羅列 | スキーマ言語 (JSON Schema 等) の選択 |
+| 「観測可能性 (Audit 要件)」の項目 | 自前で追加 | 方法論側で標準項目化したい |
+| プロンプト雛形における POST_IMPLEMENTATION_SELF_AUDIT | 自前で追加 | 方法論側で必須項目化したい |
+
+これらは Capability BOM Audit 方法論ドキュメント (01〜10) には
+**書かれていない** が、サンプル作成時に必須になった。
+方法論を実運用に乗せるには、これらの **下位テンプレート / 規定** が必要。
+
+---
+
+## 4. 「同じ UI でなくていい」前提が招く別の困難
+
+ユーザーは「UI 同一性は要求しない」と明示した。これは PoC として正しい設定だが、
+別種の困難を生む:
+
+### 4.1 検証の困難
+
+「ユースケースを満たすか」の評価が **自動化困難** になる。
+
+- UI が同じ → スクリーンショット差分・UI 自動テストで定量比較可能
+- UI が違う → 人間が「これでユースケースを満たすか」を主観評価せざるを得ない
+
+> 解決の方向性: 「UI を持たない CLI / API レベルでの UseCase 直接呼び出し」を
+> AI に要求する変種プロンプトを用意し、自動テストで判定可能にする。
+
+### 4.2 「使いやすさ」が消える
+
+ViewGrid の元実装には D&D による直感的な配置編集がある。
+本サンプルはこれを `UC-06 MovePlacement` という抽象操作に還元している。
+AI が CLI / 単純な GUI で実装した場合、**機能としては成立するが UX として劣化する**。
+
+これは Capability BOM Audit が **UX 要件を扱わない** 方法論であることの帰結。
+評価軸として「機能」と「体験」は別物であることを `90-feasibility-notes.md` に
+記録しておく必要がある。
+
+---
+
+## 5. 水平展開コスト見積もり
+
+仮に ViewGrid の全 Capability (6 個) に本サンプル相当のドキュメントを用意する場合の見積もり:
+
+| Capability | 想定難度 | 主な困難 |
+| --- | --- | --- |
+| GRID_COMPOSITION | 中 (本サンプル) | 純度が高い。境界が比較的明確 |
+| IMAGE_VARIANT_MANAGEMENT | 高 | 「論理コピー」「派生物」概念の言語化、AutoCrop/ManualCrop の優先関係 |
+| HISTORY_MANAGEMENT | 高 | Undo 粒度の決定 = 大量の domain_decision を一望する必要 |
+| GRID_LAYOUT_CONTROL | 中 | Fit 動作のアルゴリズム選択肢が複数 |
+| RENDERING_EXPORT | 高 | PhotoBoard / Normal の 2 モード、SkiaSharp 等の選択 |
+| WORKSPACE_MANAGEMENT | 中 | DB / ファイルの物理分離 |
+
+### 5.1 線形以上に膨らむ要素
+
+| 要素 | 線形成長 | 非線形成長 |
+| --- | --- | --- |
+| 個別 Capability のドキュメント | ○ | |
+| Capability 境界の宣言 | | × (n×(n-1)/2 で交差) |
+| 共有概念 (例: ImageCopy) の整合 | | × (全 Capability で参照される) |
+| 用語集の統合 | | × (用語間の関係も) |
+| Decision ownership 表 | | × (境界の交錯で曖昧になる) |
+
+GRID_COMPOSITION 単体で **〜2,500 行 (本サンプル合計)** だった。
+全 6 Capability では **15,000〜25,000 行** が想定される。
+
+### 5.2 維持コスト
+
+機能追加・仕様変更時には:
+
+1. 要求仕様の修正
+2. BOM の修正 (Markdown + YAML)
+3. 設計書の Rule ledger 更新
+4. AI プロンプトの version up
+5. 既存生成コードの再生成 or 部分更新の判断
+
+**「コード修正」より「ドキュメント修正」が高コストになる転倒** が起きる可能性がある。
+これは方法論の本義 (人間は意味設計に集中する) と一致するが、コスト感覚として要注意。
+
+---
+
+## 6. 既存方法論ドキュメント (01〜10) で扱われていない論点
+
+サンプル執筆中に気付いた、方法論本体に追記したい論点:
+
+### 6.1 「人間が書く側」のドキュメント標準が不足
+
+01〜10 は **「監査者 (観測者) としての AI への指示」** が中心。
+**「人間が BOM を新規執筆するとき」のテンプレート** がない。
+本サンプル群がその第 1 案として参考になる。
+
+### 6.2 矛盾解決ルール
+
+複数ドキュメント間 (Markdown / YAML / コード) の矛盾解決ルールが未規定。
+本サンプルでは「YAML が正」と暫定したが、方法論側で固定したい。
+
+### 6.3 識別子の永続性
+
+Rule ID, UseCase ID をリネームしない原則は本サンプルで導入した。
+方法論側に「**ID は永続。表示名はローカライズ可能**」を明文化したい。
+
+### 6.4 自己監査の標準化
+
+POST_IMPLEMENTATION_SELF_AUDIT は本サンプルで導入したが、
+方法論側にテンプレート化したい:
+
+- 各 Rule の保証場所の自己申告
+- 各 Decision の保持場所の自己申告
+- `unclear` / `suspected` 項目の網羅
+
+### 6.5 「人間が書いたが AI が書き直す」のフロー
+
+要求仕様が変わったとき、
+
+- 人間が要求仕様を直す
+- AI が BOM 案を更新
+- 人間が承認
+- AI が設計書を更新
+
+というループの **責任の所在** が方法論側で未規定。本サンプルは静的成果物のみで、
+このループは扱っていない。
+
+---
+
+## 7. PoC として答えるべき問い (今後の評価項目)
+
+このサンプルの先で実施すべき検証:
+
+### 7.1 Phase 2: 実 AI セッションでの生成試行
+
+別 AI セッションを開き、本サンプルだけを渡して `GRID_COMPOSITION` を実装させる。
+評価項目:
+
+- [ ] UC-01 〜 UC-11 全てが実装されるか
+- [ ] R-01 〜 R-09 が宣言された場所で保証されるか
+- [ ] Event が指定された payload と発行タイミングで発火するか
+- [ ] Decision ownership 違反がないか
+- [ ] AI 自身の `unclear` / `suspected` リストが妥当か (人間レビュー)
+- [ ] 必須テストが網羅されているか
+
+### 7.2 Phase 3: 別 AI による事後監査
+
+Phase 2 の生成コードに対し、別 AI に **通常方向の Capability BOM Audit** を実施させ、
+入力 BOM と観測 BOM の差を測定。差が大きい部分が、サンプルの不足箇所。
+
+### 7.3 Phase 4: 機能要件適合性の人間評価
+
+Phase 2 の生成コードが、要求仕様のシナリオ S1〜S6 を満たすかを人間が確認。
+
+---
+
+## 8. 推奨される次の作業
+
+優先度の高い順:
+
+1. **方法論ドキュメントへの追補** (§6 の論点)
+   - 識別子永続性ルール
+   - 矛盾解決ルール
+   - 自己監査テンプレート
+   - 人間執筆者向けドキュメントテンプレート
+
+2. **Phase 2 の実 AI 試行**
+   - 別セッションで `40-ai-implementation-prompt.md` を使い実装させる
+   - 結果を本書 §7 のチェックリストで評価
+
+3. **`MUST_DECIDE_AND_DOCUMENT` 第三カテゴリの導入** (§2.3)
+   - プロンプト雛形に追加し、AI 任意決定の追跡可能性を確保
+
+4. **検証用 CLI / API インターフェース要件の追加** (§4.1)
+   - UI を持たない実装でも UseCase 適合性を自動評価できるよう、要求仕様に追補
+
+5. **隣接 Capability のドラフト着手**
+   - IMAGE_VARIANT_MANAGEMENT が次に困難。これを先に書くことで境界調整の負荷を測れる
+
+---
+
+## 9. 結論
+
+`Capability BOM Audit` を **逆向き (BOM → コード生成)** に使う発想は、
+
+- **純度の高い Capability** (本サンプルのような境界明瞭なもの) では成立する見込み
+- **境界が交錯する Capability** (HISTORY / RENDERING / WORKSPACE) では、本サンプル相当の
+  ドキュメントだけでは不十分で、追加の **「決定追跡レイヤー」** が必要
+- 方法論本体 (01〜10) には **執筆者向けテンプレートと矛盾解決ルールが不足** している
+
+PoC としては、次のステップ:
+
+1. 本サンプルを Phase 2 の AI 試行に投入
+2. 観測された不足を方法論本体に反映
+3. 別 Capability での再実験
+
+を反復する価値がある。
+
+ただし、**「AI に丸投げ」では成立しない**: 人間が BOM を真剣に書き、AI が
+不明点を `unclear` として残し、人間が決定する、という相互ループが前提となる。
+これは Capability BOM Audit の本義 (AI を実装者ではなく測量者・監査者として使う)
+と整合的である。
+
+---
+
+## 10. 関連ドキュメント
+
+- 全成果物: `README.md` の構成参照
+- 方法論本体: `~/OneDrive/ドキュメント/Capability BOM Audit/01-10-*.md` (UTF-8)
+- Phase 2 実装成果物: `experiments/phase2-impl/`
+
+---
+
+# Addendum A — Phase 2 実 AI 試行の結果 (2026-05-25 実施)
+
+本書 §7.1 のチェックリストに従い、別 AI セッションに本サンプル成果物のみを渡して
+`GRID_COMPOSITION` の実装を試行した結果と、本書本文の予測に対する実地検証の所見。
+
+## A.1 実験条件と成果
+
+| 項目 | 値 |
+| --- | --- |
+| 実施日 | 2026-05-25 |
+| 実装者 | 別 AI セッション (Claude general-purpose subagent、worktree 隔離) |
+| 入力 | `docs/capability-bom-sample/` の 7 ファイルのみ |
+| 既存実装の参照 | 禁止 (worktree でも `src/`, `tests/`, `tools/`, repo README は不参照を明示) |
+| 出力先 | `experiments/phase2-impl/` |
+| 所要時間 | ~14 分 (実時間) |
+| 選択言語 | Python 3.11+ / pytest |
+| 実装規模 | Source 7 ファイル + Stubs 3 ファイル + Tests 5 ファイル + Docs 2 ファイル |
+| テスト結果 | **97 件全合格** (Rule 28 / UC 44 / Event 19 / Invariants 6 / Boundary 5) |
+
+実装ノートは `experiments/phase2-impl/IMPLEMENTATION_NOTES.md`。
+
+## A.2 §7.1 チェックリストに対する結果
+
+| チェック項目 | 結果 |
+| --- | --- |
+| UC-01 〜 UC-11 全てが実装されるか | **✓** 全 11 UseCase を実装 |
+| R-01 〜 R-09 が宣言された場所で保証されるか | **△** 7/9 が単一場所。R-02 と R-06 は suspected_overreach あり (詳細は A.5) |
+| Event が指定された payload と発行タイミングで発火するか | **✓** `RecordingBus` で成功時 1 件・失敗時 0 件を独立検証 |
+| Decision ownership 違反がないか | **✓** UI 層を実装しなかったため Forbidden Role 保持なし |
+| AI 自身の `unclear` / `suspected` リストが妥当か | **✓** 6 unclear + 2 overreach + 9 MUST_DECIDE_AND_DOCUMENT を honest に列挙 |
+| 必須テストが網羅されているか | **✓** 30-design.md §6.1 の全カテゴリ + 1000-step random walk |
+
+## A.3 本書本文の予測に対する裏取り
+
+| 予測 (本文 §X) | 実地での結果 | 評価 |
+| --- | --- | --- |
+| §2.1 「AI は `unclear` を残すよう指示しても実装上どこかで決定せざるを得ない」 | AI が "This is direct evidence for the §2.1 thesis" と明示。9 件の MUST_DECIDE_AND_DOCUMENT が発生 | **完全に裏取り** |
+| §2.3 「`MUST_DECIDE_AND_DOCUMENT` 第三カテゴリの導入が必要」 | AI は実装ノートで 9 件を自主的に分類 | **必要性が確定** |
+| §3 「執筆中に独自決定した 8 事項」 | 多くがそのまま AI 側でも独自決定として発生 (timestamp tz、ID 体系、失敗理由名 等) | **横展開で確認** |
+| §6.2 「Markdown / YAML 矛盾解決ルールが必要」 | 今回は実質的矛盾なし。R-08 の `WouldDestroyLockedAxis` 言及で YAML 優先ルールが 1 回だけ発動 | **空振り (ただし機能はした)** |
+| §4.1 「UI 同一性なしでは検証自動化が困難」 | 部分的に反証。pytest による UseCase レベル直接呼び出しで自動評価可能だった | **要修正** (本書本文 §4.1 を緩める材料あり) |
+
+## A.4 顕在化した具体的な仕様穴 (重要)
+
+サンプル成果物 (10/20/21/30) を **次に改訂するなら塞ぐべき箇所**。
+
+### 穴 1: "NotFound" 失敗理由の欠落
+
+| 項目 | 内容 |
+| --- | --- |
+| 発見場所 | UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-08, UC-09, UC-10 |
+| 状況 | YAML の `preconditions: [GridExists]` / `[PlacementExists]` は宣言されているが、それが破られた時の **正準失敗理由名がない** |
+| AI への影響 | FORBIDDEN 「失敗理由を追加してはならない」と矛盾し、AI は (a) `InvalidDimensions` 流用、(b) 素の `KeyError`、(c) `None` 返却 のいずれかを **恣意的に選ばざるを得ない** |
+| 実際の選択 | UC-02 は `InvalidDimensions` 流用 / UC-06〜UC-10 は `KeyError` (UseCaseError 非継承) → **不揃いな API 契約** |
+| 改訂案 | BOM に `NotFound` 失敗理由を追加 (entity_kind を payload に持つ)、または「scope 外」を明示 |
+
+### 穴 2: UC-09 SetOrder の値チャネル未定義
+
+| 項目 | 内容 |
+| --- | --- |
+| 発見場所 | UC-09 ChangePlacementOrder の `SetOrder` operation |
+| 状況 | YAML の `inputs: [placement_id, operation]` だけでは新 order 値をどう渡すか書かれていない |
+| AI への影響 | kwarg `order_value: int \| None` を独自追加 (= MUST_DECIDE_AND_DOCUMENT 化) |
+| 改訂案 | YAML の `inputs:` に `order_value` を追加、もしくは `SetOrder` 操作の専用 sub-schema を切る |
+
+### 穴 3: Swap での自身排除セマンティクスの曖昧さ (実バグ事例)
+
+| 項目 | 内容 |
+| --- | --- |
+| 発見場所 | UC-07 SwapPlacements に対する R-02 適用 |
+| 状況 | R-02 の「UC-07 では双方を衝突対象から除外する」という宣言は、結果的に **A の新位置と B の新位置が互いに重なるケースを R-02 が拾わない** ことを意味する。30-design.md §1 R-02 の「除外対象」表現はこのケースを **暗黙的に scope 外** にしている |
+| AI への影響 | 最初の実装はこれを取り逃がし、**1000 ステップのランダムウォークテストで実バグとして検出**。修正に R-02 ロジックの 2 箇所目化 (overreach O-1) が必要だった |
+| 改訂案 | (a) 30-design.md §2.2 (workflow_decision) の UC-07 内部手順に「post-swap intersection check」を明記する / (b) `30-design.md §6` に **A/B 非対称サイズの swap worked example** を 1 件追加 |
+
+> [!IMPORTANT]
+> 穴 3 は「サンプル文書だけでは仕様が underdetermined だった」ことの **最も明確な証拠** である。
+> AI のランダムウォークテストがなければ本番でバグとして出ていた。
+
+## A.5 suspected_overreach の詳細
+
+| ID | Rule | 場所 | 評価 |
+| --- | --- | --- | --- |
+| O-1 | R-02 | `rules.placement_overlaps` + `use_cases.SwapPlacements` 内 inline check | **正当な overreach**。穴 3 を塞ぐための必然。サンプル改訂で消える可能性あり |
+| O-2 | R-06 | `rules.orders_are_unique` + UC-09 内 post-condition assertion | 防御的 assertion で R-06 の本体は構築的に満たす。strict には除去可 |
+
+O-1 は仕様の不備に起因しており、AI を責めることはできない。
+
+## A.6 検証された有用な実装パターン (方法論本体への昇格候補)
+
+実験で観測された、サンプル/方法論側に **取り込むべき** 実装パターン。
+
+| パターン | 内容 | 効果 |
+| --- | --- | --- |
+| **Random walk / property-based testing** | 任意のグリッドサイズ・任意の操作列で invariant が崩れないことを確認 (1000 step) | 穴 3 のような暗黙仕様穴を検出 |
+| **`RecordingBus`** | テスト用の event 収集 bus を別実装として用意 | event 発行と状態変更の分離テストを容易にする |
+| **`@dataclass(frozen=True)` + `replace()`** | R-07 (Placement の position/occupy_size の不変観測性) の自然な満たし方 | 実装スタイル自由度を保ったままの参考例 |
+| **`MUST_DECIDE_AND_DOCUMENT` の実装ノートでの自己分類** | AI が自主的に 9 件を分類した | サンプル側で項目化していれば最初から構造化可能 |
+
+## A.7 サンプル v0.2 改訂提案 (具体)
+
+優先度高い順:
+
+1. **20-capability-bom.md §2 + 21-yaml**: `NotFound` 失敗理由の追加 (entity_kind を payload に)
+2. **20-capability-bom.md §2 + 21-yaml**: UC-09 `SetOrder` の value 引数明示
+3. **30-design.md §2.2**: UC-07 swap の post-swap intersection check を workflow_decision に追加
+4. **30-design.md §6**: A/B 非対称サイズの swap worked example 追加 (1 ケース)
+5. **30-design.md §6.3**: random walk / property test を **必須テストカテゴリへ格上げ**
+6. **40-ai-implementation-prompt.md**: `MUST_DECIDE_AND_DOCUMENT` を ALLOWED / FORBIDDEN と並ぶ第三カテゴリとして明示
+7. **本書 §4.1**: 「UI 同一性なしでは自動評価困難」を緩める (UseCase レベル直接テストで成立した実証)
+
+## A.8 方法論本体 (01〜10) への追補提案 (具体)
+
+サンプル改訂とは独立に、方法論本体側に新規 11- 以降のドキュメントを起こす候補:
+
+| 提案ドキュメント | 内容 |
+| --- | --- |
+| `11-author-checklist.md` | 人間が BOM を新規執筆するときのチェックリスト (識別子永続性 / 矛盾解決 / NotFound 等の失敗理由網羅性 / anchor tests 同梱) |
+| `12-anchor-test-spec.md` | サンプル成果物に同梱する 5〜10 件の reference test の規範。解釈曖昧さを test で anchor する方法 |
+| `13-must-decide-and-document.md` | AI 任意決定の第三カテゴリの定義と運用 (実装ノートでの分類義務) |
+| `14-inverse-audit-protocol.md` | Phase 2 (BOM → コード生成) の実験プロトコル正典化 |
+
+## A.9 結論
+
+本書本文の予測は **おおむね裏取りされた**。特に §2.1, §2.3 は完全に確認された。
+一方で §4.1 の「UI 同一性なしでは検証自動化困難」は実験で **部分的に反証** された
+(UseCase レベル直接呼び出しで自動テスト可能だった)。
+
+最も重要な発見は **穴 3 (Swap の自身排除セマンティクス)** で、これは
+「書類だけでは仕様が underdetermined になる」という方法論側の限界を、
+**実バグの形で具体化** した最初の事例である。同様の穴は他 Capability の境界部分にも
+存在する可能性が高く、`anchor tests` 同梱と `MUST_DECIDE_AND_DOCUMENT` カテゴリの
+両方が方法論本体に組み込まれるべきである。
+
+PoC として `Capability BOM Audit` を **逆向き** に使う発想は、サンプル v0.2 改訂と
+方法論本体への 4 件の追補を経て、**実運用フェーズに進める段階に到達** している。
+
+---
+
+# Addendum B — サンプル v0.2 改訂結果と Phase 2 再試行 (2026-05-25 実施)
+
+Addendum A で挙げた 7 つの改訂提案のうち、サンプル側 7 件を v0.2 として実施し、
+別 AI セッションに **v0.1 実装と完全独立** に再実装させた結果と評価。
+
+## B.1 v0.2 で実施した改訂
+
+| 改訂 | 対象ファイル | 内容 |
+| --- | --- | --- |
+| #1 | 20-capability-bom.md / 21-yaml | `NotFound` 失敗理由を canonical_failure_reasons セクションに追加 (UC-02..UC-10) |
+| #2 | 20-capability-bom.md / 21-yaml | UC-09 SetOrder の `order_value` を inputs に明示 |
+| #3 | 30-design.md §1 R-02 + §2.2 UC-07 | post-swap intersection check を workflow_decision として明文化 |
+| #4 | 30-design.md §7 (新設) | Worked examples W-1〜W-6 を追加 (W-3 が swap edge case) |
+| #5 | 30-design.md §6.3 | random walk / property-based test を **必須** へ格上げ |
+| #6 | 30-design.md §8 (新設) | Anchor tests AT-01〜AT-10 規範を追加 |
+| #7 | 40-ai-implementation-prompt.md | `MUST_DECIDE_AND_DOCUMENT` を第三カテゴリとして明示 / 自己監査を 4 → 6 項目に拡張 |
+
+## B.2 Phase 2 v0.2 試行の結果概要
+
+| 項目 | v0.1 | v0.2 | 評価 |
+| --- | --- | --- | --- |
+| 実装時間 | ~14 分 | ~12 分 | 同等 |
+| 言語 | Python + pytest | Python + pytest + hypothesis | property-test 必須化の影響 |
+| テスト数 / 合格率 | 97 / 100% | 75 / 100% | テスト構造が引き締まる方向 (重複削減) |
+| **Anchor tests (AT-01〜AT-10)** | 概念なし | **10/10 初回パス** | **v0.2 改訂の中核効果** |
+| `unclear` 件数 | 6 | 5 | 改善 |
+| `suspected_overreach` 件数 | 2 | **0** | **改善** |
+| **Swap edge case バグ** | random walk で事後検出 | **W-3 + AT-03 で事前回避** | **改善 (穴 3 が消えた)** |
+| `MUST_DECIDE_AND_DOCUMENT` | 9 (自主分類) | 7 (明示義務化) | 改善 (構造化により漏れ減少) |
+
+## B.3 v0.1 で観測された 3 つの仕様穴に対する効果
+
+| 穴 (v0.1) | v0.2 対策 | 結果 |
+| --- | --- | --- |
+| 穴 1: NotFound 失敗理由欠落 | canonical_failure_reasons セクション新設 | **完全解消**。AI レポート: 「KeyError vs InvalidDimensions の曖昧さが完全に消えた」 |
+| 穴 2: UC-09 SetOrder の値チャネル | YAML inputs に `order_value` を追加 | **完全解消**。AI は kwarg を独自追加する必要がなく、AT-04 が初回パス |
+| 穴 3: Swap 自身排除セマンティクスの曖昧さ | W-3 worked example + AT-03 anchor test + §2.2 UC-07 step (iv) 明文化 | **完全解消**。AI レポート: 「post-swap intersection check を最初の実装で自然に書いた。random walk で何も検出されなかった」 |
+
+## B.4 v0.2 でも残った / 新規に顕在化した問題
+
+Phase 2 v0.2 で AI が報告した 3 件の新規発見。
+
+### D-1: 30-design.md R-08 と YAML canonical_failure_reasons の不整合 (改訂取りこぼし)
+
+| 項目 | 内容 |
+| --- | --- |
+| 場所 | 30-design.md §1 R-08 の Fit 動作仕様 |
+| 状況 | v0.1 の名残で `WouldDestroyLockedAxis` という失敗理由を雛形コメントに残していたが、v0.2 で新設した `canonical_failure_reasons` には登録されていない |
+| 性質 | **本書執筆者 (改訂作業中の AI) の取りこぼし**。v0.2 改訂時に canonical_failure_reasons を新設した際、§1 R-08 の旧記述を同時に整合させ忘れた |
+| 影響 | AI は MD-6 (silent best-effort shrink) として独自決定で回避 (= MUST_DECIDE_AND_DOCUMENT 経路で安全に処理された) |
+| 対応 | **本 Addendum 追加と同時に 30-design.md §1 R-08 を修正済み**。`WouldOrphanPlacements` / `WouldConflict` で表現する形に変更 |
+
+### D-2: README.md に Addendum B 参照があるが Addendum B が未存在 (改訂取りこぼし)
+
+| 項目 | 内容 |
+| --- | --- |
+| 場所 | docs/capability-bom-sample/README.md L4 |
+| 状況 | v0.2 改訂時に「v0.1 → v0.2 の変更点は Addendum B を参照」と書いたが、Addendum B 本体は Phase 2 v0.2 試行後に書く予定だった |
+| 性質 | **本書執筆者の取りこぼし**。フォワードリファレンスを書いてから本体を書くという順序ミス |
+| 影響 | 致命的ではないが「文書間の前方参照は危険」という方法論側の教訓を残す |
+| 対応 | **本 Addendum B の追加と同時に解消** |
+
+### D-3: Cross-grid swap (異なるグリッド間の Swap) が未定義 (真の新規穴)
+
+| 項目 | 内容 |
+| --- | --- |
+| 場所 | UC-07 SwapPlacements の入力仕様 |
+| 状況 | YAML は `placement_id_a, placement_id_b` のみを入力に取り、両者が同じ GridCanvas に所属しているかは何も規定していない。Placement は `grid_id` を持つので異なるグリッド間の swap は理論上発生しうる |
+| 性質 | **真の新規発見**。v0.1 では他の穴に隠れて顕在化しなかった |
+| AI の対応 | `Conflict` 失敗で返す (= MUST_DECIDE_AND_DOCUMENT MD-7 として明示) |
+| v0.3 候補 | UC-07 の preconditions に `BothPlacementsBelongToSameGrid` を追加し、失敗時の失敗理由を確定する必要がある。`NotFound` payload で表すか別途 `CrossGridSwapNotAllowed` を追加するかは方法論レベルの決定 |
+
+## B.5 v0.2 改訂の核心的成功 — 三層構造による曖昧さ解消
+
+最も重要な発見は AI 自身が報告した次の点:
+
+> "the v0.2 docs alone were sufficient to produce a working implementation
+> without the random walk discovering anything. That's the v0.2 thesis being validated.
+> The W-3 worked example + step-(iv) in §2.2 UC-07 + the AT-03 anchor test form a clean
+> three-layer chain (narrative → algorithmic → executable) that left no room to miss the case."
+
+**三層構造 (narrative → algorithmic → executable) で曖昧さを塞ぐパターン** が
+v0.2 で確立されたと言える:
+
+| 層 | 表現 | 場所 |
+| --- | --- | --- |
+| narrative (物語) | 「除外対象に注意。A の新位置と B の新位置が重なるケースがある」 | 30-design.md §1 R-02 NOTE |
+| algorithmic (手順) | 「workflow_decision 手順 (iv): A の新占有 ∩ B の新占有 が空でないことを検証」 | 30-design.md §2.2 UC-07 |
+| executable (実行可能) | 「AT-03: 1×1 と 2×1 の swap で Conflict」 | 30-design.md §8 + W-3 |
+
+この **三層パターンは方法論本体への昇格候補** である (新規 `15-three-layer-disambiguation.md`
+として明文化したい)。
+
+## B.6 v0.3 候補 (優先順)
+
+1. **D-3 解消**: UC-07 に `BothPlacementsBelongToSameGrid` 前提条件と専用失敗理由を追加
+2. **三層パターン明文化**: 方法論本体へ「narrative + algorithmic + executable の 3 層で曖昧さを塞ぐ」を昇格
+3. **anchor tests 充実**: 現状 10 件だが、全 UseCase × 全 failure_reason の組み合わせをカバーするには ~30 件必要
+4. **MUST_DECIDE_AND_DOCUMENT カタログ整備**: 今回観測された MD-1〜MD-7 を「典型決定パターン集」として方法論本体に収録
+5. **改訂取りこぼし防止**: フォワードリファレンス禁止規範、CHANGELOG.md 運用、改訂チェックリスト
+
+## B.7 反復検証ループとしての評価
+
+Phase 2 v0.1 → v0.2 改訂 → Phase 2 v0.2 のサイクルは、
+
+> **「サンプル v0.X を別 AI 試行に投入 → 穴を観測 → サンプル改訂 → 同条件で再試行 → 穴が消えたか確認」**
+
+という反復検証ループが **実際に機能する** ことを示した。
+
+これは Capability BOM Audit を **逆向き (BOM → コード生成) で実運用に乗せる** ための
+最も重要な手続き的発見である。サンプル文書の品質は「単発の執筆」ではなく
+**「反復試行による磨き込み」** で確保される、というのが PoC の最終的な結論。
+
+## B.8 結論
+
+v0.2 改訂は **3 つの v0.1 穴を完全に塞ぎ**、新規に **3 つの軽微な穴 (うち 2 件は改訂作業の取りこぼし、1 件が真の新規)** を顕在化させた。
+
+| 観点 | 状態 |
+| --- | --- |
+| 純度の高い単一 Capability での運用 | **実用可能** |
+| 反復検証ループ | **機能することを実証** |
+| 三層構造パターン | **確立 (narrative / algorithmic / executable)** |
+| 複数 Capability への水平展開 | 未検証 (次フェーズ) |
+| 方法論本体への昇格 | 11-anchor-test-spec / 13-must-decide / 15-three-layer の 3 文書ドラフトが候補 |
+
+本 PoC は **「単一 Capability では運用可能、複数 Capability への水平展開と方法論本体への昇格が次フェーズ」** の段階に到達した。
+
+---
+
+# Addendum C — 境界調整負荷の実測 (2 Capability ドラフト時、2026-05-25 実施)
+
+GRID_COMPOSITION (v0.2) の隣に IMAGE_VARIANT_MANAGEMENT (v0.1) をドラフトすることで、
+**「複数 Capability のサンプルを揃えるとき、境界・用語・カスケード等の調整作業にどれだけのコストがかかるか」** を実測する。
+
+## C.1 ドラフト規模 (粗い見積もり)
+
+| 項目 | GRID_COMPOSITION (v0.2) | IMAGE_VARIANT_MANAGEMENT (v0.1) | 比 |
+| --- | --- | --- | --- |
+| UseCase 数 | 11 | 17 | 1.5× |
+| Rule 数 | 9 | 11 | 1.2× |
+| Event 数 | 10 | 12 | 1.2× |
+| ドキュメント行数 (概算) | ~2700 | ~2200 | 0.8× |
+| Worked examples | 6 | 6 | 同等 |
+| Anchor tests | 10 | 10 | 同等 |
+
+ドキュメント行数で見ると IMAGE_VARIANT_MANAGEMENT のほうがやや少ない。
+これは **v0.2 で確立した規範を初回から使えた** ためで、執筆効率は明らかに向上した
+(canonical_failure_reasons / MUST_DECIDE_AND_DOCUMENT / 三層構造などの雛形が手元にあった)。
+
+## C.2 境界調整作業として実際に発生したもの
+
+### C.2.1 共有値オブジェクトの取り扱い
+
+`OccupySize` / `PixelSize` は両 Capability で **同じ意味の値オブジェクト** だが、
+どちらかが「権威」になる必要がある。本サンプルでは:
+
+- **権威**: GRID_COMPOSITION (先に書かれたため)
+- **IMAGE_VARIANT_MANAGEMENT 側**: 「GRID_COMPOSITION と共有定義」と明示し、二重定義しない
+
+しかし AI 実装時には **どこにコードが置かれるか** という physical な決定が必要になる:
+
+- (a) GRID_COMPOSITION の Domain Model に置き、IMAGE_VARIANT_MANAGEMENT から参照
+- (b) 共通モジュール `shared/value_objects.py` を切る
+- (c) 各 Capability で同じ型を独立に定義 (ただし意味が同じであることを保証)
+
+本サンプルではこれを **MUST_DECIDE_AND_DOCUMENT** に委ねた。これは方法論的な不完全さ。
+**`shared_concepts` セクション** を Capability BOM スキーマに追加することが v0.3 候補。
+
+### C.2.2 cross-Capability の存在性確認
+
+GRID_COMPOSITION の `ImageCopyExistenceCheck.Exists()` と、
+IMAGE_VARIANT_MANAGEMENT の `UC-16 ImageCopyExists` は **同じことを別の場所で定義** している。
+
+- GRID_COMPOSITION 側 (Repository インターフェース): "アダプタとして UC-16 を呼ぶ" と明記
+- IMAGE_VARIANT_MANAGEMENT 側 (UseCase): "cross-Capability 用" と明記
+
+この二重宣言は冗長に見えるが、各 Capability が **自分の境界条件を自分の言葉で書く** という原則の帰結。
+方法論的にはこれが正しいと思われる (1 箇所だけに書くと「権威がどちらか」が曖昧化する)。
+
+### C.2.3 Cascade decision の三層責任分離
+
+最も興味深かった境界調整。`ImageCopy` 削除時の `Placement` の扱いを誰が決めるか:
+
+| 候補 | 採用 | 理由 |
+| --- | --- | --- |
+| IMAGE_VARIANT_MANAGEMENT が cascade | × | 純度低下、GRID_COMPOSITION を知ってしまう |
+| GRID_COMPOSITION が cascade | △ | 部分採用。Event 購読して **自分の** Placement をどうするかは決める |
+| 上位 Coordinator が cascade | ○ | 全体的な意思決定 (確認ダイアログ等) は外側 |
+
+結果: **3 層に責任が分離**。これは Capability BOM Audit の理論的予測通りだったが、
+**実際にドキュメントへ落とすには両 Capability + 文書外の Coordinator 概念の 3 箇所に対応する記述が必要** だった。
+
+具体的な編集箇所:
+- `image-variant-management/20-capability-bom.md` §6.1 (cascade_decision を別 Capability へ)
+- `image-variant-management/30-design.md` §5.2 (三層責任分離の明文化)
+- `20-capability-bom.md` (GRID_COMPOSITION) §8.1 (購読側の責任を明記、v0.2 で追記)
+
+> [!IMPORTANT]
+> 境界が「2 Capability + 暗黙の Coordinator」になる時、**Coordinator の概念は方法論側に明示されていない**。
+> これは v0.3 で `coordinator_pattern.md` (新規 16-) として方法論本体に昇格すべき。
+
+### C.2.4 Capability 間に跨る Rule (R-08 のような)
+
+`ManualCropOverridesAutoCrop` は IMAGE_VARIANT_MANAGEMENT の Rule ledger に **記載するが保証コードは持たない** という型破りな扱いを採用。
+
+- 本 Capability の責任: 両値の共存を許す
+- RENDERING_EXPORT の責任: 描画時の優先関係を適用
+
+これは方法論本体には説明されていない設計パターン:
+
+> **"Declaration-only Rule"**: ある Rule が複数 Capability に跨るとき、各 Capability の Rule ledger に記載しつつ、保証場所だけ別 Capability に逃がす
+
+このパターンも v0.3 候補で方法論本体に昇格すべき (`14-declaration-only-rules.md` 等)。
+
+### C.2.5 ディレクトリ構造の非対称性
+
+GRID_COMPOSITION は `docs/capability-bom-sample/` 直下、
+IMAGE_VARIANT_MANAGEMENT は `docs/capability-bom-sample/image-variant-management/` 配下。
+
+この非対称性は不格好だが、**全 Capability に対称な構造を採るには既存パスを変更する必要がある**:
+- 全 Capability ファイル参照の更新
+- メモリへの記録の更新
+- Codex review が見るパスの更新
+
+v0.3 で `docs/capability-bom-sample/grid-composition/` への移行を行う想定。
+これも **境界調整負荷の典型例** であり、最初から多 Capability 想定の構造を採るべきだった。
+
+## C.3 v0.3 候補 (Addendum B の続き)
+
+Addendum C で見つかった新たな改訂候補:
+
+| 番号 | 内容 |
+| --- | --- |
+| C-1 | 共有値オブジェクト (`shared_concepts` セクション) を Capability BOM スキーマに追加 |
+| C-2 | Coordinator パターンを方法論本体に明文化 (16-coordinator-pattern.md) |
+| C-3 | Declaration-only Rule を方法論本体に明文化 (14-declaration-only-rules.md) |
+| C-4 | ディレクトリ構造を Capability ごとの subdir に統一 (GRID_COMPOSITION の移行) |
+| C-5 | Cross-Capability の存在性確認インターフェースの命名規範 (`<EntityName>Exists` を統一形に) |
+
+## C.4 「水平展開コスト」§5 の予測値との比較
+
+本書本文 §5.1 では「Capability 境界の宣言は n×(n-1)/2 で交差」と書いた。
+2 Capability の現時点 (n=2) で、実際の境界調整に発生した作業:
+
+| 項目 | 件数 |
+| --- | --- |
+| 両 Capability で重複する用語の宣言 (PixelSize, OccupySize) | 2 |
+| Cross-Capability の UC 呼び出し参照 (UC-16) | 1 (両側に記載) |
+| Capability 間に跨る Rule (R-08) | 1 |
+| Cascade decision の三層責任分離 | 1 (3 箇所に記載) |
+| ディレクトリ構造の非対称性に関する記述 | 親 README + 子 README + 本 Addendum |
+
+n=2 でこの量。**n=6 (ViewGrid 全 Capability)** だと:
+- ペア境界: 15
+- 共有用語の権威決定: 数倍
+- Coordinator パターンの記述: Capability ごとに発生
+
+線形以上の増加が **実際に観測された**。本書本文 §5.1 の予測は正しい方向。
+
+## C.5 主観評価
+
+書き手としての実感:
+
+- **執筆効率は v0.2 規範のおかげで向上**: canonical_failure_reasons / 三層構造 / Anchor tests / MUST_DECIDE_AND_DOCUMENT がテンプレ化されているので、各セクションを「埋める」感覚で書けた
+- **しかし境界調整は別物**: 隣接 Capability 同士の関係を整合させる作業は単純な転記ではなく、**意味的判断 (誰が権威か)** を毎回求められる
+- **方法論本体に上位概念が足りない**: Coordinator / Declaration-only Rule / Shared Concepts といった "Capability 間" を扱う語彙が、現状の 01〜10 にはない
+
+## C.6 結論
+
+2 Capability の同時運用は **執筆効率は向上したが、境界調整コストが新たに顕在化** した。
+これは予想通りだが、**方法論本体に "Capability 間" を扱う上位概念が必要** という追加発見もあった。
+
+v0.3 で次のことを行うべき:
+
+1. ディレクトリ構造の対称化 (`grid-composition/` への移行)
+2. 方法論本体に Coordinator / Declaration-only Rule / Shared Concepts の概念を追加
+3. (オプション) IMAGE_VARIANT_MANAGEMENT v0.1 に対し Phase 2 試行を実施し、本サンプル単体の品質を測定 → **Addendum D で実施済み**
+
+---
+
+# Addendum D — Phase 2 IMAGE_VARIANT_MANAGEMENT v0.1 試行結果 (2026-05-25 実施)
+
+Addendum C §C.6 で「次にやるべき」とした Phase 2 IMAGE_VARIANT v0.1 試行の結果。
+本書の中核仮説:
+
+> **v0.2 規範を初版から継承した v0.1 サンプルは、GRID の "本物の v0.1" より高品質に到達する**
+
+## D.1 試行の概要
+
+| 項目 | 値 |
+| --- | --- |
+| 実施日 | 2026-05-25 |
+| 実装者 | 別 AI セッション (Claude general-purpose subagent) |
+| 入力 | `docs/capability-bom-sample/image-variant-management/` 6 ファイル + 境界参照 (GRID 20/21) |
+| 既存実装の参照 | 禁止 (worktree 隔離 + 明示禁則) |
+| 出力先 | `experiments/phase2-image-variant-impl/` |
+| 所要時間 | ~14 分 |
+| 選択言語 | Python 3.11+ / pytest / Pillow |
+| テスト結果 | **70 件全合格** (Rule 単体 / UC happy/failure / Event / Anchor / Random walk / Boundary) |
+
+## D.2 三回試行の指標比較
+
+| 指標 | GRID v0.1 | GRID v0.2 | **IMAGE_VARIANT v0.1 (規範継承)** |
+| --- | --- | --- | --- |
+| 所要時間 | ~14 分 | ~12 分 | ~14 分 |
+| テスト数 | 97 | 75 | 70 |
+| **unclear** | 6 | 5 | **3** ← **過去最低** |
+| **suspected_overreach** | 2 | 0 | **0** ← v0.2 と同等 |
+| Anchor tests 初回合格 | 概念なし | 10/10 | **10/10** |
+| Random walk 実バグ検出 | 1 (Swap) | 0 | 0 |
+| MUST_DECIDE_AND_DOCUMENT | 9 (自主分類) | 7 | 9 |
+| 重大な仕様穴 | 3 (NotFound / SetOrder / Swap) | 3 軽微 (D-1 / D-2 / D-3) | 4 軽微 (§D.4 参照) |
+
+## D.3 仮説の検証結果
+
+**仮説は完全に裏付けられた**。
+
+最大の根拠:
+
+- **unclear が 3 件で過去最低** — GRID v0.1 (6) / GRID v0.2 (5) / IMAGE_VARIANT v0.1 (**3**)
+- **suspected_overreach 0 件** — v0.2 と同等の精度
+- **Anchor tests AT-01..AT-10 が初回パス** — 三層構造パターンの効果
+- **重大な仕様穴ゼロ** — 1000-step random walk が新たな穴を検出しなかった
+
+特に AI 自身が報告した次の点が決定的:
+
+> "The sample arrived with `canonical_failure_reasons` (with payloads), the third-category
+> `MUST_DECIDE_AND_DOCUMENT` taxonomy, AT-01..AT-10 pre-numbered, and the 1000-step
+> random walk mandated — there was very little to negotiate."
+
+これは **「方法論規範の継承性 (norm inheritance)」** が成立することの直接的実証。
+v0.2 で確立した規範が、別 Capability の v0.1 で **そのまま機能した**。
+
+## D.4 制約遵守の検証 (重要)
+
+### R-08「宣言のみ」制約
+
+AI 報告: **守られた**。`change_auto_crop_settings` と `change_manual_crop_settings` は
+互いの値を null にしない。AT-04 が両値共存を assert。
+
+ただし AI は次の心理状態を報告:
+
+> "Mild R-08 tug — when writing `change_auto_crop_settings` my fingers wanted to
+> 'tidy up' by nulling `manual_crop` when AutoCrop turns off. The explicit non-goal +
+> AT-04 caught it instantly."
+
+これは **三層構造パターン (narrative + algorithmic + executable) の防御効果の実証**。
+プロンプトの明示禁則 + Anchor test の 2 段防御で、AI の局所最適化衝動が捕捉された。
+
+### UC-02 カスケード拒否
+
+AI 報告: **守られた**。「誘惑すら感じなかった」と明示。
+`[!IMPORTANT]` ブロック + 命名された失敗理由 `DependentCopiesExist` が
+「自然な制約」として機能した。
+
+### 境界参照の越境
+
+AI 報告: **~10 分以内に 2 つの YAML セクションのみ参照**。GRID 側の他のドキュメントへ流出せず。
+境界参照を許可する設計が機能している証拠。
+
+### 共有値オブジェクト
+
+`OccupySize` / `PixelSize` は `src/shared/value_objects.py` サブパッケージに配置。
+代替案 (局所複製 / 隣接インポート) を実装ノートに明示して `MUST_DECIDE_AND_DOCUMENT` で記録。
+**Addendum C §C.2.1 の問題提起に対する具体的な解** が AI 側から提示された。
+
+## D.5 新規に顕在化した仕様穴 (v0.3 候補)
+
+### E-1: 40-prompt の `六項目` typo
+
+| 項目 | 内容 |
+| --- | --- |
+| 場所 | `image-variant-management/40-ai-implementation-prompt.md` POST_IMPLEMENTATION_SELF_AUDIT |
+| 状況 | ヘッダーが「六項目」だが本文で 7 項目を列挙 |
+| 性質 | 私の書き間違い (執筆者の取りこぼし) |
+| 対応 | **本 Addendum 追加と同時に修正** |
+
+### E-2: UC-05 failure_reasons に `InvalidCopyName` 欠落
+
+| 項目 | 内容 |
+| --- | --- |
+| 場所 | `image-variant-management/21-yaml` の UC-05 |
+| 状況 | R-11 (`CopyName != ""`) は Domain で保証されるが、UC-05 で `copy_name=""` を渡された時の失敗理由が `InvalidCopyName` で返されるべきところ、UC-05 の `failure_reasons` にこれが入っていない |
+| 性質 | 私の書き取りこぼし。Rule ledger と UseCase failure_reasons の自動 cross-reference 仕組みがあれば防げる |
+| 対応 | **本 Addendum 追加と同時に修正** |
+
+### E-3: Setter UC の no-op semantics 未定義
+
+| 項目 | 内容 |
+| --- | --- |
+| 場所 | UC-09〜UC-15 全般 (値変更系) |
+| 状況 | `change_X(current_X_value)` のように **値が変わらない時に Event を出すか** が未定義 |
+| 性質 | 真の新規発見 (GRID v0.2 試行でも気付かれなかった) |
+| AI の対応 | suppress 選択 (no-op なら event 発行せず) |
+| v0.3 候補 | 方法論本体に「no-op semantics 規範」を追加 |
+
+### E-4: Storage-state invariants の精密化
+
+| 項目 | 内容 |
+| --- | --- |
+| 場所 | 30-design.md §6.2 「no orphaned blob」 |
+| 状況 | 自然言語表現が複数の非等価な形式化を許容する |
+| AI の対応 | 「保守的形式化」を選択し random walk で検証 |
+| v0.3 候補 | invariant predicate を集合論的に厳密化 (`stored_paths ⊆ live_paths at every observable point`) |
+
+### E-5: decoder-error → InvalidImageData mapping 未定義
+
+| 項目 | 内容 |
+| --- | --- |
+| 場所 | UC-01 ImportImageAsset |
+| 状況 | 画像 decoder が例外を投げた時、catch-and-translate するか return-None するかが未定義 |
+| AI の対応 | catch-and-translate (両方を InvalidImageData に正規化) |
+| v0.3 候補 | UseCase 層のエラー境界規範を追加 |
+
+## D.6 方法論本体への昇格候補 (Addendum B/C と合わせて整理)
+
+| ID | 内容 | 由来 |
+| --- | --- | --- |
+| C-1 | `shared_concepts` セクションを BOM スキーマに追加 | Addendum C |
+| C-2 | `16-coordinator-pattern.md` を方法論本体に | Addendum C |
+| C-3 | `14-declaration-only-rules.md` を方法論本体に | Addendum C |
+| C-4 | ディレクトリ構造の対称化 | Addendum C |
+| C-5 | Cross-Capability 存在性確認の命名規範 | Addendum C |
+| D-1 | `canonical_failure_reasons.applies_to` と per-UC `failure_reasons` の machine-checkable cross-reference | Addendum D |
+| D-2 | Setter UC の no-op semantics 規範 | Addendum D |
+| D-3 | Storage-state invariants の集合論的厳密化規範 | Addendum D |
+| D-4 | UseCase 層のエラー境界規範 (catch-and-translate vs propagate) | Addendum D |
+| D-5 | 改訂チェックリスト (フォワードリファレンス禁止 / typo 検出 / Rule × UC matrix の整合) | Addendum B + D |
+
+## D.7 PoC としての到達点
+
+3 回の Phase 2 試行 (GRID v0.1 / GRID v0.2 / IMAGE_VARIANT v0.1) を経て、以下が裏取りされた:
+
+| 性質 | 評価 |
+| --- | --- |
+| 単一 Capability での運用可能性 | **実用可能** |
+| 反復検証ループ (Phase 2 ↔ 改訂) | **機能する** |
+| 三層構造パターン (narrative + algorithmic + executable) | **AI の局所最適化衝動を防御することを実証** |
+| **規範の継承性 (v0.2 → IMAGE_VARIANT v0.1)** | **成立。新 Capability の v0.1 段階で v0.2 と同等品質に到達** |
+| 複数 Capability での境界調整 | コストは線形以上だが管理可能 |
+| 方法論本体への上位概念追加 | 必要 (Coordinator / Declaration-only Rule / Shared Concepts) |
+
+**重要な含意**: PoC は **「方法論ドキュメント群と反復検証プロトコルが整っていれば、新規 Capability は v0.1 段階から実用品質に到達できる」** ことを示した。これは Capability BOM Audit を **逆向き (BOM → コード生成)** で実運用に乗せるための最重要な手続き的発見である。
+
+## D.8 結論
+
+Phase 2 IMAGE_VARIANT_MANAGEMENT v0.1 試行により、**規範継承性の仮説は完全に裏付けられた**。
+unclear 3 件 / overreach 0 件 / 重大バグ 0 件は、過去 3 回の試行のうち最良。
+
+新規発見の穴 (E-1〜E-5) は v0.3 候補として記録された。これらは Addendum B/C で記録済みの C-1〜C-5 と合わせて **10 件の方法論本体への昇格候補** を形成する。
+
+PoC は次のフェーズへ進める段階に到達した:
+- 方法論本体への昇格 (11-coordinator / 12-declaration-only-rules / 13-shared-concepts / 14-norm-inheritance 等)
+- 残り 4 Capability (HISTORY / RENDERING / WORKSPACE / GRID_LAYOUT) のサンプル化
+- 実プロジェクトでの試験運用
