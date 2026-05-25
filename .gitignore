@@ -44,3 +44,10 @@ HANDOFF/
 
 # diffguard (個人用ソース品質管理ツール、 リポジトリ管理対象外)
 .diffguard/
+
+# Python (experiments/ 配下の Capability BOM Audit PoC 実装で使用)
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.hypothesis/
