@@ -995,3 +995,153 @@ IMAGE_VARIANT の `image_copy_exists(copy_id: str) -> Result[bool]` を適合さ
 2. それを前提とした「複数 Capability 同時生成」の Phase 2 試行
 
 である。「独立生成物を後で繋ぐ」アプローチは本実験で否定された。
+
+---
+
+# Addendum F — 契約下の複数 Capability 同時生成 (候補 E ステップ 2 本体、2026-05-29 実施)
+
+Addendum E (ステップ 1) は「規範継承は Capability 間規約を保証しない」を実証し、
+**Codebase Convention Contract (G-1)** の必要性を導いた。
+本 Addendum はその続きとして、**契約を前提に 2 Capability を同時生成し、
+アダプタ 0 行で結線できるか** を実コードで検証する (= ステップ 2 本体)。
+
+> 検証する命題:
+> **Codebase Convention Contract を前提に同時生成すれば、Addendum E で必須だった
+> 境界アダプタを 0 行にできる。**
+
+## F.1 試行の概要
+
+| 項目 | 値 |
+| --- | --- |
+| 実施日 | 2026-05-29 |
+| 実装者 | 別 AI セッション (Claude general-purpose subagent) |
+| 入力 | `00-convention-contract.md` + `41-cocompose-prompt.md` + 両 Capability の 10/20/21/30 (計 10 ファイル) |
+| 既存実装・過去 experiments の参照 | 禁止 (明示禁則。src/ + 過去 4 experiments を読まないこと) |
+| 出力先 | `experiments/phase2-cocompose-impl/` |
+| 方法 | 2 Capability を **1 コードベースに同時生成** (独立生成 → 事後合成ではない) |
+| 選択言語 | Python 3.11+ / pytest / hypothesis |
+| テスト結果 | **101 件全合格** |
+| **境界アダプタ行数** | **0 行** |
+
+## F.2 step 1 → step 2 の設計変更
+
+| 観点 | step 1 (Addendum E) | step 2 (本 Addendum) |
+| --- | --- | --- |
+| 生成方法 | 2 実装を独立生成し事後合成 | **同時生成** (最初から共有契約下) |
+| 契約 | なし (各自由裁量) | `00-convention-contract.md` を横断拘束 |
+| 境界 | 事後にアダプタ手書き (必須だった) | Port 共有でアダプタ 0 行を目標 |
+| 結果 | coexist 可 / compose 不可 | **compose 可 (アダプタ 0 行)** |
+
+## F.3 結果 — Addendum E の 6 衝突がすべて消えた
+
+契約項目が Addendum E の 6 カテゴリ衝突をどう消したか:
+
+| Addendum E の衝突 | 契約項目 | 結果 |
+| --- | --- | --- |
+| #1 モジュールレイアウト (flat vs src/) | C-LAYOUT (src/ 統一) | **解消**。両 Capability が同一 src/ layout |
+| #2 共有値オブジェクト型 (別モジュール = 別型) | C-SHARED-PLACEMENT (1 定義) | **解消**。`OccupySize` が両 Capability で `is` 比較 True |
+| #3 値オブジェクトの bool 検証差 | C-VALUE-SEMANTICS (bool 拒否で統一) | **解消**。両側 `OccupySize(True,1)` を TypeError |
+| #4 identity 表現 (UUID vs str) | C-IDENTITY (uuid.UUID 統一) | **解消**。UUID↔str 変換が消えた |
+| #5 Result ラッパ命名 (Err vs Failure) | C-RESULT (Ok/Err を 1 定義) | **解消**。`Failure` 同義語なし |
+| #6 UC コンテナ命名 | C-UC-CONTAINER (`<Capability>UseCases`) | **解消**。`ImageVariantManagementUseCases` で予測一致 |
+
+特に **境界アダプタ 0 行** の達成機構:
+
+- `ImageVariantManagementUseCases` が `exists(copy_id: uuid.UUID) -> bool` を公開 (内部で UC-16 を実行)
+- これが `shared.ports.ImageCopyExistencePort` を **構造的に満たす** (`isinstance` で True)
+- `GridCompositionUseCases(image_copy_existence=imgvar)` に **そのまま注入**。ラッパなし
+- step 1 で必須だった 2 段変換 (UUID→str / Result→bool) は、契約が両端を揃えたため **発生しない**
+
+## F.4 仮説の検証結果 — 完全に裏付けられた
+
+`00-convention-contract.md §4` の成功判定すべてを満たした:
+
+| 判定項目 | 合格基準 | 結果 |
+| --- | --- | --- |
+| アダプタ行数 | 0 行 | **0 行** |
+| 共有型の同一性 | `OccupySize` が `is` 比較 True | **True** |
+| 境界呼び出し | 変換なしで Port を呼べる | **達成** |
+| 両 Capability のテスト | 必須 + Anchor 全合格 | **101/101** |
+| compose 統合テスト | 存在 → 配置成功 / 不在 → UnknownCopyId | **2 件合格** |
+
+> 命題は実コードで確証された。**Codebase Convention Contract (G-1) の有効性が実証された** —
+> Addendum E で「必要性」を、本 Addendum F で「有効性」を、いずれも実コードで示した。
+
+## F.5 新規に顕在化した発見 (F-1: 契約が招く「死んだ失敗理由」)
+
+契約による値オブジェクト統一の **副作用** が観測された (真の新規発見、step 1 にはなかった):
+
+| 項目 | 内容 |
+| --- | --- |
+| 場所 | IMAGE_VARIANT の UC-05 / UC-14 失敗理由 `InvalidOccupySize` |
+| 状況 | 共有 `OccupySize` が C-VALUE-SEMANTICS で **構築時に自己検証** するため、不正な OccupySize はそもそも構築できず、`InvalidOccupySize` に到達するのは「非 OccupySize 型を渡した」場合に限定される |
+| 性質 | **physical 契約 (厳格な共有値オブジェクト) と semantic カタログ (各 Capability の canonical_failure_reasons) の緊張**。契約で値オブジェクトを強く統一すると、それを弱い前提で書かれたローカル失敗理由が **到達不能 (dead) になり得る** |
+| AI の対応 | 失敗理由名は YAML 通り保存 (削除せず)、透明性メモとして実装ノートに記録 |
+| 含意 | これは Addendum D の D-1 (canonical_failure_reasons と per-UC failure_reasons の machine-checkable cross-reference) と接続する。さらに **「共有値オブジェクトの検証強度 vs Capability ローカル失敗理由の到達可能性」** を照合する規範が要る (v0.3 / methodology 候補) |
+
+> [!IMPORTANT]
+> F-1 は「契約 (physical) を導入すると、Capability ローカルの意味カタログ (semantic) に
+> 死角が生じうる」ことの最初の事例。`21-codebase-convention-contract.md` の
+> 「physical / semantic 層分離」が、分離するだけでなく **層間の整合チェックも要る** ことを示す。
+
+### F-2: 独立監査 (Phase 3) が自己監査の見落としを捕捉 (UC-05 失敗理由の取り違え)
+
+本 Addendum のコミット前 Codex review (= Inverse Audit Protocol の Phase 3 相当の独立監査) が、
+Phase 2 の AI 自己監査が **見落とした** 実装欠陥を捕捉した。
+
+| 項目 | 内容 |
+| --- | --- |
+| 指摘 | [P2] IMAGE_VARIANT `create_image_copy` (UC-05) が `ImageCopy` 構築時の例外を catch-all で **全て `InvalidCopyName` にマップ** している (`use_cases.py:204-206`) |
+| 仕様との不一致 | BOM (21-...yaml:72) は UC-05 の `failure_reasons` に `InvalidTransform` / `InvalidScalingMode` / `InvalidAlignment` / `InvalidOccupySize` を **別々に列挙**。canonical failure reason で分岐するクライアントは誤ったエラーを受け取る |
+| 自己監査の状態 | Phase 2 の自己監査は「canonical failure reasons は保存した」と報告 (§実装ノート 6) → **取り違えを見落としていた** |
+| 性質 | F-1 と同系統 (physical 契約統一が semantic 失敗理由カタログに歪みを生む) + **自己監査の限界**の実証 |
+| 本試行での扱い | 生成物は **as-is で凍結** (過去 experiments と同じ方針)。コードは修正せず本所見として記録 |
+
+> [!IMPORTANT]
+> F-2 は **Inverse Audit Protocol の Phase 3 (独立監査) の価値を実証** した事例。
+> 13-norm-inheritance-and-inverse-audit.md の Phase 構成 (Phase 2 自己監査 → Phase 3 独立監査) が
+> 「自己監査だけでは不十分。独立した第三者監査が別の欠陥を捕捉する」ことを示す。
+> F-1 と合わせ、**失敗理由カタログ (canonical_failure_reasons) と実装/値オブジェクトの
+> machine-checkable 照合** (D-1 の延長) が v0.3 / methodology の優先課題であることを補強する。
+
+## F.6 独立検証の記録 (本 Addendum 執筆者による)
+
+subagent の自己申告 (101 pass / adapter 0) を鵜呑みにせず、執筆者が以下を **独立に実行・精査** した:
+
+- `python -m pytest experiments/phase2-cocompose-impl/ -q` → **101 passed** (自分で実行)
+- `python experiments/phase2-cocompose-impl/compose.py` → 存在=Ok / 不在=UnknownCopyId / `ADAPTER LINE COUNT AT BOUNDARY: 0` (自分で実行)
+- 実コード精査:
+  - `compose.py` / `test_compose.py` で `imgvar` が **ラッパなしで** `image_copy_existence` に注入されている
+  - GRID UC-05 が `self._copies.exists(copy_id)` を直接呼び `UnknownCopyId` を返す
+  - `OccupySize`/`PixelSize`/`Ok`/`Err` は `src/shared/` に **1 定義のみ**、両 Capability が import
+  - identity は全て `uuid.UUID`、`uuid.uuid4()` 直接 (str 変換なし)。`str(...)` の出現は例外メッセージ/enum 値整形のみで境界変換ではない
+  - `conftest.py` の `AlwaysExistsPort` は **GRID 単体テスト用の test double** であり境界アダプタではない (compose は実 imgvar を使用)
+
+検証結果は subagent 報告と一致。**アダプタ 0 行は実態として確認された。**
+
+## F.7 方法論への含意
+
+| 含意 | 内容 |
+| --- | --- |
+| **G-1 の有効性が実証された** | `21-codebase-convention-contract.md` は「必要性は実証済み・有効性は未実証」だった。本 F で **有効性も実証** に昇格 |
+| 同時生成は成立する | 「独立生成 → 事後合成」(step 1 で否定) ではなく「契約下の同時生成」が機能する |
+| 規範継承 + 契約 の二層で複数 Capability が回る | 規範継承 (13) が Capability *内部* 品質を、契約 (21) が Capability *間* 規約を担保 |
+| 新規穴 F-1 | physical 契約と semantic 失敗理由カタログの層間整合チェックが要る |
+
+## F.8 結論
+
+候補 E ステップ 2 本体により、**Codebase Convention Contract を前提とした複数 Capability の
+同時生成は、境界アダプタ 0 行で成立する** ことが実コードで実証された。
+
+| 観点 | 状態 |
+| --- | --- |
+| G-1 (横断規約契約) の必要性 | Addendum E で実証 |
+| G-1 の有効性 (アダプタ 0 行) | **本 Addendum F で実証** |
+| 複数 Capability の同時生成 | **成立** |
+| 規範継承 (内部) + 契約 (間) の二層構造 | 確立 |
+| 新規穴 | F-1 (契約が招く死んだ失敗理由) / F-2 (UC-05 失敗理由取り違えを Phase 3 独立監査が捕捉) |
+
+次フェーズ候補:
+1. **3 Capability への拡張** (RENDERING_EXPORT を加え、契約が n=3 でもスケールするか)
+2. **F-1 / F-2 の解消** — canonical_failure_reasons と実装/共有値オブジェクトの machine-checkable 照合 (D-1 の延長)
+3. 実プロジェクトでの試験運用
