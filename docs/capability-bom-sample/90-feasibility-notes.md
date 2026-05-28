@@ -875,3 +875,123 @@ PoC は次のフェーズへ進める段階に到達した:
 - 方法論本体への昇格 (11-coordinator / 12-declaration-only-rules / 13-shared-concepts / 14-norm-inheritance 等)
 - 残り 4 Capability (HISTORY / RENDERING / WORKSPACE / GRID_LAYOUT) のサンプル化
 - 実プロジェクトでの試験運用
+
+---
+
+# Addendum E — 複数 Capability 合成試行 (候補 E ステップ 1、2026-05-26 実施)
+
+これまでの Phase 2 試行はすべて **単一 Capability を単独で生成** したものだった。
+本 Addendum は、最大の未検証前提 **「複数 Capability の実装は実際に合成できるか」**
+を経験的に検証する。
+
+> 検証する仮説:
+> **規範継承 (Addendum D) は Capability 内部の品質は揃えるが、
+> Capability 間のコード規約整合は保証しない。**
+
+## E.1 試行の概要
+
+| 項目 | 値 |
+| --- | --- |
+| 実施日 | 2026-05-26 |
+| 方法 | 既存 2 実装を 1 プロセスに同居させ、境界結線を試みる (実コード実行) |
+| 対象 | GRID v0.2 (`experiments/phase2-v02-impl`) + IMAGE_VARIANT v0.1 (`experiments/phase2-image-variant-impl`) |
+| 出力先 | `experiments/phase2-composition-test/` (compose.py + RESULTS.md + README.md) |
+| 結果 | **coexist (同居) は可能、compose (直接合成) は不可** — 6 カテゴリの規約衝突 |
+
+## E.2 観測された Capability 間規約不整合 (6 カテゴリ)
+
+各 AI セッションが独立に決めた規約が境界で衝突した:
+
+| # | カテゴリ | GRID v0.2 | IMAGE_VARIANT v0.1 | 衝突 |
+| --- | --- | --- | --- | --- |
+| 1 | モジュールレイアウト | flat (ルート直下 `grid_composition/`) | `src/` layout | sys.path 2 種類が必要 |
+| 2 | 共有値オブジェクト型 | `grid_composition...OccupySize` (`frozen=True`) | `image_variant...shared.OccupySize` (`frozen=True, slots=True`) | **別モジュール = 別型**。`is` も `==` も False |
+| 3 | 値オブジェクトの bool 検証 | `OccupySize(True,1)` を **拒否** | `OccupySize(True,1)` を **許容** | エッジケース契約が異なる |
+| 4 | identity 表現 | `uuid.UUID` オブジェクト | `str` (`str(uuid.uuid4())`) | 境界で UUID↔str 変換が必要 |
+| 5 | Result ラッパ命名 | `Ok` / `Err` | `Ok` / `Failure` | 失敗ラッパ名が違う |
+| 6 | UC コンテナ命名 | `GridCompositionUseCases` | `ImageVariantManagementService` | 「UseCases」vs「Service」 |
+
+これらは **すべて規範継承の外側** にある。サンプル成果物 (10/20/21/30/40) は
+Capability *内部* の品質規範 (canonical_failure_reasons, Anchor tests 等) を継承させたが、
+*横断的なコード規約* は各実装者の自由裁量のままだった。
+
+## E.3 境界結線に要した「接着コード」
+
+GRID の `ImageCopyExistenceCheck.exists(copy_id: UUID) -> bool` に
+IMAGE_VARIANT の `image_copy_exists(copy_id: str) -> Result[bool]` を適合させるには、
+**手書きアダプタが必須**だった (UUID→str 変換 + Result[bool]→bool 変換の 2 段)。
+
+このアダプタは **規範継承では生成されない**。両 Capability の内部規約を知る第三者
+(または上位 Coordinator) が手書きする必要がある。
+
+## E.4 メタ観測 — 第三者は命名を BOM から予測できない
+
+合成スクリプトを書いた際、UC コンテナを `ImageVariantManagementUseCases` と推測したが、
+実際は `ImageVariantManagementService` で **ImportError** が発生した。
+
+これは重要な証拠:
+
+> BOM (20/21) には「UseCase を提供する」と書かれているが、**それを束ねるクラスの命名は
+> 実装者の自由裁量**であり、第三者は BOM だけからは予測できない。
+> cross-Capability 結線には「インターフェースの物理的な形 (型・名前)」の契約が要る。
+
+## E.5 仮説の検証結果 — 完全に裏付けられた
+
+| 観点 | 結果 |
+| --- | --- |
+| 仮説「規範継承は Capability 間規約を保証しない」 | **裏付けられた** (6 カテゴリの衝突を実測) |
+| 合成可能性 | coexist 可 / compose 不可 (アダプタ必須) |
+| 失敗の性質 | 「完全な非互換」ではなく「接着コストが規範継承の外にある」 |
+
+これは Addendum C §C.2.1 (共有値オブジェクトの権威問題) で予感していた懸念の
+**実コードによる確証**である。C では「ドキュメント上で権威を決めた」が、
+**実装は各々が独立に物理型を作った**ため、実行時に交換不能になっていた。
+
+## E.6 方法論への含意 — Codebase Convention Contract の必要性
+
+サンプル成果物 (Capability 単位) より **上位のレイヤ** に、
+**Codebase Convention Contract (横断規約契約)** が必要であることが確定した。
+
+契約すべき項目 (最低限):
+
+| 契約項目 | 規定例 |
+| --- | --- |
+| identity 表現 | 全 Capability で `uuid.UUID` に統一 (or 全て `str`) |
+| 共有値オブジェクトの物理配置 | `shared/` ライブラリに 1 定義、全 Capability が import |
+| Result/失敗ラッパ | `Ok` / `Err` を共有モジュールに 1 定義 |
+| モジュールレイアウト | flat か src/ か統一 |
+| UC コンテナ命名 | `<Capability>UseCases` 等のパターン固定 |
+| 境界インターフェースの型 | 存在確認は `exists(id) -> bool` に統一 (Result でラップしない) |
+
+これは方法論本体への **新規昇格候補 (G-1)** であり、`docs/methodology-extensions/`
+の副候補 18 (Shared Concepts Schema) を拡張する形になる:
+
+- **Shared Concepts** (18) は「どの *概念* を共有するか」を扱う
+- **Codebase Convention Contract** (新 G-1) は「共有する概念を *どう物理表現* するか」を扱う
+
+両者は別レイヤ。後者がないと、前者で「共有する」と宣言しても実装が割れる。
+
+## E.7 ステップ 2 (本格的な合成 Phase 2) への含意
+
+当初ステップ 2 として「RENDERING_EXPORT を加えた 3 Capability 統合 Phase 2」を想定した。
+本ステップ 1 の結果から、ステップ 2 の前に **次の前処理が必須** と判明:
+
+1. **Codebase Convention Contract を先に書く** (上記 G-1)
+2. それを AI 実装プロンプトの FORBIDDEN または新カテゴリに組み込む
+3. その上で「複数 Capability を 1 つの Phase 2 試行で**同時生成**」させる
+   (独立生成 → 後で合成、ではなく、最初から共有契約下で生成)
+
+つまりステップ 2 は「独立生成物の事後合成」ではなく
+「**共有契約下での同時生成**」に設計変更すべき。これが本ステップ 1 の最大の設計示唆。
+
+## E.8 結論
+
+候補 E ステップ 1 により、**複数 Capability の合成は規範継承だけでは成立しない**ことが
+実コードで実証された。失敗は致命的ではなく「接着コストが方法論の外にある」という形で、
+**Codebase Convention Contract** という新しい上位概念の必要性を明確にした。
+
+次の論理的な一手 (ステップ 2) は:
+1. Codebase Convention Contract (G-1) のドラフト
+2. それを前提とした「複数 Capability 同時生成」の Phase 2 試行
+
+である。「独立生成物を後で繋ぐ」アプローチは本実験で否定された。
