@@ -1145,3 +1145,137 @@ subagent の自己申告 (101 pass / adapter 0) を鵜呑みにせず、執筆�
 1. **3 Capability への拡張** (RENDERING_EXPORT を加え、契約が n=3 でもスケールするか)
 2. **F-1 / F-2 の解消** — canonical_failure_reasons と実装/共有値オブジェクトの machine-checkable 照合 (D-1 の延長)
 3. 実プロジェクトでの試験運用
+
+---
+
+# Addendum G — n=3 スケール検証: RENDERING_EXPORT の Incremental 追加 (候補 E ステップ 3、2026-05-29 実施)
+
+Addendum F (n=2) は契約下で 2 Capability がアダプタ 0 行で結線できることを実証した。
+本 Addendum は次の問いに答える:
+
+> 契約 (n=2 で有効) は、**消費側 Capability を 1 つ足したときも 0 アダプタでスケールするか。**
+
+n=2 は producer→consumer の 1 方向境界 (IMGVAR が存在を提供、GRID が消費) だった。
+n=3 では **RENDERING_EXPORT が GRID と IMGVAR の *両方を read する* 消費側** となり、
+新たに 2 本の read 境界が生じる。さらに RENDERING は IMGVAR の **R-08
+(ManualCropOverridesAutoCrop, Declaration-only Rule) の適用点** となる。
+
+## G.1 試行の概要
+
+| 項目 | 値 |
+| --- | --- |
+| 実施日 | 2026-05-29 |
+| 実装者 | 別 AI セッション (Claude general-purpose subagent) |
+| 設計 | **Incremental** (committed n=2 実装をコピーして土台にし RENDERING を追加) + **Focused** (cross-Capability read 面に集中、PhotoBoard/Normal・実ファイル出力は対象外) |
+| 契約 | `00-convention-contract.md` **v0.2** (§1.8 C-CONSUMER-PORTS を追加) |
+| 入力 | 契約 v0.2 + `rendering-export/` (10/20/21/30) + `42-rendering-incremental-prompt.md` + 既存 n=2 実装 |
+| 参照禁止 | src/ + 過去 4 experiments (phase2-cocompose-impl のみ読める) |
+| 出力先 | `experiments/phase2-n3-incremental-impl/` |
+| テスト結果 | **140 件全合格** (うち n=2 由来 101 件すべて green = 非回帰、新規 39 件) |
+| **consumer 結線アダプタ行数** | **0 行** (RENDERING↔GRID / RENDERING↔IMGVAR とも 0) |
+
+## G.2 契約 v0.2 の追加点 (C-CONSUMER-PORTS)
+
+v0.1 の境界 (C-BOUNDARY-IFACE) は **bool を返す存在確認のみ** を想定していた。
+rich な read を表せないため v0.2 で **消費側 read ポート** を新設:
+
+- **中立 DTO** (`src/shared/render_contracts.py`): `PlacementView` / `GridLayout` / `CopyRenderSpec`
+  (producer の enum/domain を持ち込まない。rotation/scaling_mode/alignment は str)
+- **read ポート** (`src/shared/ports.py`): `GridLayoutPort.get_grid_layout(grid_id) -> GridLayout | None` /
+  `CopyRenderSpecPort.get_copy_render_spec(copy_id) -> CopyRenderSpec | None`
+- consumer (RENDERING) は **中立 DTO のみに依存** (producer domain を import しない)
+- producer は read ポートを **native projection** で満たす (standalone アダプタ禁止)
+
+## G.3 結果 — §4.2 成功判定に対して
+
+| 判定項目 | 合格基準 | 結果 |
+| --- | --- | --- |
+| consumer 結線アダプタ行数 | 0 行 | **0 行** (3 境界とも) |
+| consumer の domain 非結合 | RENDERING が Placement/ImageCopy を import しない | **満たす** (実 import は `shared.*` と自パッケージのみ) |
+| producer 追加の種別 | native projection のみ、standalone アダプタ 0 | **満たす** (`get_grid_layout` / `get_copy_render_spec` を追加。既存意味の変更なし) |
+| 既存 n=2 の非回帰 | n=2 全テスト green | **101/101 green** |
+| R-08 適用 | RENDERING が manual 優先で適用 | **満たす** (UC-02 単一適用点、AT-02 パス) |
+| render 統合テスト | z 順 + crop が R-08 通り解決 | **パス** |
+
+## G.4 n=3 の核心的発見 (G-finding: consumer 追加は producer retrofit を要する)
+
+| 観点 | 結果 |
+| --- | --- |
+| consumer 結線アダプタ | **0 を維持** (契約は consumer 側のスケールに成功) |
+| 「producer 追加 0」 | **達成不可**。凍結 producer (GRID/IMGVAR) に native projection を **2 つ後付け** する必要があった (`get_grid_layout` / `get_copy_render_spec`) |
+| retrofit の性質 | standalone アダプタではなく **native port satisfaction** (n=2 で `exists()` が Port を native に満たしたのと同じ思想)。既存 Rule/UseCase/失敗理由は不変更 |
+
+> [!IMPORTANT]
+> **n=3 の本質的所見**: 契約 v0.1 の境界規律は「bool を返す存在確認」しか織り込んでいなかったため、
+> rich な read を要する **消費側 Capability を後から足すと、凍結 producer に projection を retrofit** せざるを得ない。
+> アダプタ 0 (consumer 側) は保てたが、producer は触ることになる。
+>
+> 設計示唆: **Codebase Convention Contract は read 境界 (consumer ポート) を *最初から* 織り込むべき**。
+> producer を生成する段階で「将来 consumer が read しうる射影ポート」を contract に含めれば、
+> incremental 追加時の producer retrofit すら 0 にできる。これは方法論側の
+> **副候補 16 (Coordinator Pattern) / C-CONSUMER-PORTS の前倒し** として記録する。
+
+## G.5 独立検証の記録 (本 Addendum 執筆者による)
+
+subagent 報告 (140 pass / consumer adapter 0) を鵜呑みにせず、執筆者が以下を **独立に実行・精査**:
+
+- `python -m pytest experiments/phase2-n3-incremental-impl/ -q` → **140 passed** (自分で実行)
+- `python experiments/phase2-n3-incremental-impl/compose.py` → 3 Capability 結線、items=1、
+  pixel rect (0,0,50,50)、crop kind "manual"、`ADAPTER LINE COUNT: 0` (GRID↔IMGVAR / RENDERING↔GRID / RENDERING↔IMGVAR すべて 0)
+- **RENDERING の domain 非結合**: `grep -E "^(import|from) "` で `src/rendering_export/` の実 import は
+  `shared.*` (eventbus/ports/render_contracts/result) と自パッケージと stdlib のみ。
+  `grid_composition` / `image_variant_management` への一致は **コメント文のみ** (実 import 0)
+- **producer 追加が additions-only**: `diff` で n=2 の use_cases と比較 → GRID/IMGVAR とも
+  「docstring 追記 + render_contracts import + projection メソッド 1 個」の **追加のみ**。
+  既存行の変更・削除は **ゼロ** (101 carried-over テスト green と整合)
+- **R-08 単一適用点**: `resolve_effective_crop` が manual → auto → none (manual 優先、auto 無視) を 1 箇所で実装
+
+検証結果は subagent 報告と一致。**consumer アダプタ 0 / producer retrofit は native projection 2 個** が実態。
+
+## G.6 方法論への含意
+
+| 含意 | 内容 |
+| --- | --- |
+| **契約は n=3 でもスケールする (consumer 側)** | 消費側 Capability を足しても consumer 結線アダプタ 0 を維持 |
+| **「0 アダプタ」は consumer のみ。producer は触りうる** | rich read を後付けすると producer に native projection retrofit が要る |
+| **契約は read 境界を前倒しすべき** | producer 生成時に consumer 射影ポートを契約へ含めれば retrofit すら 0 にできる |
+| **Declaration-only Rule の適用点は consumer に自然に着地** | R-08 (IMGVAR 宣言のみ) が RENDERING の UC-02 で唯一適用された (三層構造で固定) |
+| 非回帰 | Incremental 追加で既存 n=2 が 1 件も壊れなかった (契約の安定性) |
+
+## G.7 新規発見 (Codex 独立監査): export 境界の identity シリアライズ (F-2 と同系統)
+
+コミット前 Codex review (= Phase 3 独立監査) が、新規 RENDERING コードの欠陥を捕捉した。
+
+| 項目 | 内容 |
+| --- | --- |
+| 指摘 | [P2] `RenderDescriptor` (`RenderItem.to_dict` / `RenderModel.to_descriptor`) が `copy_id` / `grid_id` を **生の `uuid.UUID`** で含むため、docstring が「serializable」と称するのに `json.dumps` が `TypeError` (`rendering_export/domain.py:64,90`) |
+| 性質 | **C-IDENTITY (内部は uuid.UUID、str 禁止) と export/serialization 境界 (シリアライズには str) の緊張**。内部表現は UUID 維持が正しく、export 境界でのみ str 化すべき。F-1 / F-2 と同系統 (physical 契約と境界要件の緊張) |
+| 自己監査の状態 | RENDERING の自己監査は捕捉せず。**F-2 同様、Phase 3 独立監査が捕捉** |
+| 本試行での扱い | 生成物は **as-is で凍結** (過去 experiments と同じ方針)。コードは修正せず本所見として記録 (ユーザー判断) |
+
+> [!IMPORTANT]
+> G.7 は **C-IDENTITY を「内部表現」と「境界 (出力) 表現」の 2 面に分けるべき** ことを示す。
+> 内部は `uuid.UUID` (str 禁止) が正しいが、export/serialization の出力境界では str 化が必要。
+> 契約は **「内部 identity = uuid.UUID」+「出力境界 identity = str」** の両方を規定すべき (v0.3 候補)。
+> F-1 (死んだ失敗理由) / F-2 (失敗理由取り違え) / G.7 (identity 境界) はいずれも
+> **physical 契約と semantic/境界要件の層間整合チェック** という共通課題に収束する。
+
+## G.8 結論
+
+n=3 スケール検証により、**Codebase Convention Contract は消費側 Capability の追加に対しても
+consumer 結線アダプタ 0 を維持してスケールする** ことが実コードで実証された。
+ただし、rich な read を要する consumer を後から足すと **凍結 producer への native projection retrofit** が必要で、
+「producer 追加まで 0」にするには契約が read 境界を **最初から織り込む** 必要がある。
+
+| 観点 | 状態 |
+| --- | --- |
+| 契約の n=2 有効性 (アダプタ 0) | Addendum F で実証 |
+| 契約の n=3 スケール (consumer 側アダプタ 0) | **本 Addendum G で実証** |
+| consumer の domain 非結合 / R-08 適用 / 非回帰 | すべて満たす |
+| 新規所見 (スケール) | consumer 追加は producer retrofit を要する → 契約は read 境界を前倒しすべき (§G.4) |
+| 新規所見 (境界 identity) | G.7: export 境界で identity の str 化が要る → C-IDENTITY を「内部」と「出力境界」の 2 面に分けるべき |
+
+次フェーズ候補:
+1. **契約に consumer read ポートを前倒し** した状態で n=2 を再生成 → n=3 で producer retrofit すら 0 になるか
+2. **F-1 / F-2 / G.7 の解消** — physical 契約と semantic/境界要件の machine-checkable 照合 (D-1 の延長)。C-IDENTITY の内部/出力境界 2 面化を含む
+3. n=4 以降 / 実プロジェクトでの試験運用

@@ -1,0 +1,98 @@
+# 21 — RENDERING_EXPORT machine-readable BOM (focused v0.1)
+# Canonical. Markdown (20/30) と矛盾する場合は本 YAML が正。
+capability:
+  id: RENDERING_EXPORT
+  name_en: Rendering Export
+  scope: focused   # cross-Capability read 面のみ。PhotoBoard/Normal・実ファイル出力は対象外
+  role: consumer   # GRID と IMGVAR の両方を read する消費側
+
+use_cases:
+  - id: UC-01
+    name: BuildRenderModel
+    kind: query
+    inputs: [grid_id]
+    outputs: RenderModel
+    failure_reasons: [NotFound]
+    notes: >
+      GridLayoutPort.get_grid_layout(grid_id) が None なら NotFound(entity_kind="Grid")。
+      各 placement について CopyRenderSpecPort.get_copy_render_spec(copy_id) を read。
+      spec が None の placement は除外 (R-03)。items は placement_order 昇順 (R-01)。
+      各 item のピクセル矩形は行/列ウェイト比例で算出 (R-04)。
+  - id: UC-02
+    name: ResolveEffectiveCrop
+    kind: query
+    inputs: [copy_id]
+    outputs: EffectiveCrop
+    failure_reasons: [NotFound]
+    notes: >
+      CopyRenderSpecPort.get_copy_render_spec(copy_id) が None なら NotFound(entity_kind="ImageCopy")。
+      R-02 を適用: manual_crop 優先 → auto_crop → none。
+  - id: UC-03
+    name: ExportRenderDescriptor
+    kind: command
+    inputs: [grid_id]
+    outputs: RenderDescriptor
+    failure_reasons: [NotFound]
+    notes: UC-01 の RenderModel を dict 形にシリアライズ。
+
+canonical_failure_reasons:
+  - name: NotFound
+    payload: { entity_kind: ["Grid", "ImageCopy"], entity_id: identity }
+    applies_to: [UC-01, UC-02, UC-03]
+
+rules:
+  - id: R-01
+    name: RenderOrderFollowsPlacementOrder
+    kind: invariant
+    enforced_by: UseCase   # UC-01
+    statement: items are ordered by ascending placement_order (z-order)
+  - id: R-02
+    name: ManualCropOverridesAutoCrop
+    kind: policy
+    enforced_by: UseCase   # UC-02 — application site of IMGVAR R-08 (declaration-only there)
+    statement: >
+      manual_crop present -> use manual (ignore auto);
+      else auto_crop present -> use auto;
+      else -> no crop.
+    cross_capability: { declared_in: IMAGE_VARIANT_MANAGEMENT, declared_as: R-08, applied_in: RENDERING_EXPORT }
+  - id: R-03
+    name: OnlyResolvableCopiesAreRendered
+    kind: invariant
+    enforced_by: UseCase   # UC-01
+    statement: a placement whose copy has no render spec (None) is excluded, not an error
+  - id: R-04
+    name: PixelRectComputedFromWeights
+    kind: invariant
+    enforced_by: UseCase   # UC-01
+    statement: >
+      cell rect (x,y,occupy_w,occupy_h) -> pixel rect using col_weights/row_weights
+      proportionally within (canvas_w, canvas_h). Cumulative weight boundaries.
+
+events:
+  - name: RenderModelBuilt
+    emitted_by: UC-01
+    payload: { grid_id: identity, item_count: int }
+  - name: RenderDescriptorExported
+    emitted_by: UC-03
+    payload: { grid_id: identity, item_count: int }
+
+decision_ownership:
+  rendering_decision: RENDERING_EXPORT   # z-order, R-02 crop resolution, R-04 geometry
+  placement_validity: GRID_COMPOSITION   # read only, never re-judged
+  copy_setting_validity: IMAGE_VARIANT_MANAGEMENT  # read only, never re-validated
+
+boundaries:
+  consumes:
+    - port: GridLayoutPort
+      method: "get_grid_layout(grid_id: uuid.UUID) -> GridLayout | None"
+      producer: GRID_COMPOSITION
+    - port: CopyRenderSpecPort
+      method: "get_copy_render_spec(copy_id: uuid.UUID) -> CopyRenderSpec | None"
+      producer: IMAGE_VARIANT_MANAGEMENT
+  forbidden:
+    - import GRID_COMPOSITION.Placement or IMAGE_VARIANT_MANAGEMENT.ImageCopy (use shared neutral DTOs)
+    - mutate placements or copies
+    - re-validate crop values (R-06/R-07 are IMGVAR's authority)
+    - standalone boundary adapter classes
+
+contract_ref: ../00-convention-contract.md   # C-CONSUMER-PORTS (v0.2)

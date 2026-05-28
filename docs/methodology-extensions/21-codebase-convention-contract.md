@@ -121,7 +121,16 @@ Addendum E §E.6 で導出した最低限の契約項目。各 Capability の実
 | **C-RESULT** | Result / 失敗ラッパの命名と配置 | `Ok` / `Err` を共有モジュールに 1 定義。`Failure` 等の同義語を禁止 |
 | **C-LAYOUT** | モジュールレイアウト | `src/` layout か flat か統一。パッケージ発見規約を 1 つに |
 | **C-UC-CONTAINER** | UseCase コンテナの命名パターン | `<Capability>UseCases` 等のパターンを固定 (`Service` 等の揺れを禁止) |
-| **C-BOUNDARY-IFACE** | 境界インターフェースの型 | 存在確認は `exists(id) -> bool` に統一 (`Result` でラップしない等) |
+| **C-BOUNDARY-IFACE** | 境界インターフェースの型 (producer→consumer の存在確認等) | 存在確認は `exists(id) -> bool` に統一 (`Result` でラップしない等) |
+| **C-CONSUMER-PORTS** (n=3 で追加) | 消費側 Capability が producer を **read** する境界 | read ポート + **中立 DTO** を `shared/` に 1 定義。consumer は producer domain を import しない。producer は native projection で満たす |
+
+> [!IMPORTANT]
+> **C-BOUNDARY-IFACE は producer→consumer の 1 方向 (bool 返し) しか想定していなかった**。
+> n=3 (Addendum G) で **消費側 Capability (RENDERING_EXPORT) が 2 つの producer を read** したとき、
+> rich な read を表す **C-CONSUMER-PORTS** が必要になった。
+> 教訓: **契約は read 境界を *最初から* 織り込むべき**。さもないと消費側を後から足したとき、
+> 凍結 producer に projection を retrofit する羽目になる (consumer 結線アダプタは 0 を保てるが producer を触る)。
+> 詳細は `docs/capability-bom-sample/00-convention-contract.md §1.8` と Addendum G。
 
 ### 3.2 横断 MUST_DECIDE_AND_DOCUMENT の昇格先としての役割
 
@@ -292,15 +301,17 @@ Addendum E ではアダプタが必須だった。本契約導入後にアダプ
 | 評価軸 | 結果 |
 | --- | --- |
 | 実証根拠 (必要性) | Addendum E で 6 カテゴリの衝突を実コードで観測。契約の必要性は確定 |
-| 実証根拠 (有効性) | **Addendum F (ステップ 2 本体) でアダプタ 0 行・101 テスト合格を実コードで達成。有効性も確定** |
+| 実証根拠 (有効性 / n=2) | **Addendum F でアダプタ 0 行・101 テスト合格を実コードで達成** |
+| 実証根拠 (スケール / n=3) | **Addendum G で消費側 Capability (RENDERING) を Incremental 追加。consumer 結線アダプタ 0・140 テスト合格 (n=2 由来 101 非回帰)・R-08 適用を実コードで達成** |
 | 適用コスト | 中 (契約 1 ファイルの執筆 + 各 40-prompt への参照追加) |
 | 既存方法論との整合 | 補完関係 (規範継承が届かない範囲を埋める)。18 とセット運用 |
-| 認知負荷 | 低 (契約は 1 ファイル、項目は §3.1 の 7 + §3.2 の横断 MUST_DECIDE) |
-| 残課題 | **F-1: 契約 (physical) が Capability ローカル失敗理由 (semantic) を到達不能にしうる**。層間整合チェックが要る (§2.2 の層分離の続き) |
+| 認知負荷 | 低 (契約は 1 ファイル、項目は §3.1 の 8 + §3.2 の横断 MUST_DECIDE) |
+| 残課題 (F-1) | 契約 (physical) が Capability ローカル失敗理由 (semantic) を到達不能にしうる。層間整合チェックが要る |
+| 残課題 (G) | 契約は **read 境界 (C-CONSUMER-PORTS) を最初から織り込むべき**。さもないと消費側追加時に producer retrofit が要る (consumer アダプタは 0 を保てる) |
 
 > [!NOTE]
-> 本書は **必要性 (Addendum E) と有効性 (Addendum F) の両方が実コードで実証済み** の段階。
-> 残課題は F-1 (physical / semantic 層間の整合チェック) と、n=3 以上でのスケール検証。
+> 本書は **必要性 (E)・有効性 (F)・n=3 スケール (G) が実コードで実証済み** の段階。
+> 残課題は F-1 (physical/semantic 層間整合) と G (read 境界の前倒し)。
 
 ---
 
@@ -311,8 +322,11 @@ Addendum E ではアダプタが必須だった。本契約導入後にアダプ
 - 副候補 18 (Shared Concepts Schema) — 本契約 (physical) と対をなす semantic レイヤ
 - 副候補 16 (Coordinator Pattern) — 境界結線層。本契約が結線対象の物理形を保証
 - 実証根拠 (必要性): `docs/capability-bom-sample/90-feasibility-notes.md` Addendum E
-- 実証根拠 (有効性): 同 Addendum F (アダプタ 0 行・101 テスト合格)
-- 具体契約インスタンス: `docs/capability-bom-sample/00-convention-contract.md`
-- 同時生成プロンプト: `docs/capability-bom-sample/41-cocompose-prompt.md`
+- 実証根拠 (有効性 / n=2): 同 Addendum F (アダプタ 0 行・101 テスト合格)
+- 実証根拠 (スケール / n=3): 同 Addendum G (consumer アダプタ 0・140 テスト合格・R-08 適用)
+- 具体契約インスタンス: `docs/capability-bom-sample/00-convention-contract.md` (v0.2、§1.8 C-CONSUMER-PORTS)
+- 同時生成プロンプト: `docs/capability-bom-sample/41-cocompose-prompt.md` (n=2) / `42-rendering-incremental-prompt.md` (n=3)
+- RENDERING サンプル: `docs/capability-bom-sample/rendering-export/`
 - step 1 の実コード: `experiments/phase2-composition-test/` (compose 不可の実証)
-- step 2 の実コード: `experiments/phase2-cocompose-impl/` (アダプタ 0 行で compose 可)
+- step 2 の実コード: `experiments/phase2-cocompose-impl/` (n=2、アダプタ 0 行で compose 可)
+- step 3 の実コード: `experiments/phase2-n3-incremental-impl/` (n=3、consumer アダプタ 0)
