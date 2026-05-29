@@ -202,11 +202,13 @@ capability:
       payload:
         attempted_value: string
       applies_to: [UC-05, UC-11]
+      guaranteed_by: "Alignment enum construction (R-05, C-VALUE-SEMANTICS) — 無効値は upstream で構築不能"
 
     - name: InvalidScalingMode
       payload:
         attempted_value: string
       applies_to: [UC-05, UC-10]
+      guaranteed_by: "ScalingMode enum construction (R-04, C-VALUE-SEMANTICS) — 無効値は upstream で構築不能"
 
     - name: InvalidTransform
       payload:
@@ -214,12 +216,17 @@ capability:
         attempted_flip_x: bool
         attempted_flip_y: bool
       applies_to: [UC-05, UC-09]
+      guaranteed_by: "ImageTransform construction (R-09, C-VALUE-SEMANTICS) — 無効値は upstream で構築不能"
 
     - name: InvalidOccupySize
       payload:
         attempted_width: int
         attempted_height: int
       applies_to: [UC-05, UC-14]
+      guaranteed_by: "OccupySize construction (R-10, C-VALUE-SEMANTICS) — 無効値は upstream で構築不能"
+      # v0.3 (F-1/F-2 解消): 共有 OccupySize 等が自己検証するため、UC-05 ではこれらの per-field
+      # Invalid* 失敗理由は到達不能 (構築不能)。UC-05 が直接 produce すべきは NotFound と InvalidCopyName のみ。
+      # BOM↔実装 照合 (22-bom-conformance-check) はこれらを coverage 免除し、upstream ガードを検証する。
 
     - name: InvalidAutoCropSettings
       payload:

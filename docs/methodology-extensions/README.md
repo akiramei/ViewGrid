@@ -43,13 +43,14 @@ ViewGrid を題材にした **3 回の Phase 2 試行** (GRID v0.1 / GRID v0.2 /
 | 13 | [`13-norm-inheritance-and-inverse-audit.md`](13-norm-inheritance-and-inverse-audit.md) | 規範継承性 (新 Capability v0.1 が既存 v0.2 と同等品質) + 反復検証プロトコル正典化 | Phase 2 IMAGE_VARIANT |
 | 14 | [`14-author-checklist.md`](14-author-checklist.md) | 人間執筆者向け実運用チェックリスト | Addendum B / C / D |
 
-### 先行ドラフト 1 件 (複数 Capability 合成から導出)
+### 先行ドラフト 2 件 (候補 E の合成・照合検証から導出)
 
 | 番号 | ファイル | 内容 | 由来 |
 | --- | --- | --- | --- |
-| 21 | [`21-codebase-convention-contract.md`](21-codebase-convention-contract.md) | 複数 Capability の合成可能性を保証する横断規約契約 (identity 表現 / 共有型配置 / Result ラッパ / レイアウト / 命名 / 境界型)。規範継承が届かない範囲を補完 | Addendum E (候補 E ステップ 1) |
+| 21 | [`21-codebase-convention-contract.md`](21-codebase-convention-contract.md) | 複数 Capability の合成可能性を保証する横断規約契約 (identity 表現 / 共有型配置 / Result ラッパ / レイアウト / 命名 / 境界型 / 消費側 read ポート前倒し)。規範継承が届かない範囲を補完 | Addendum E〜H |
+| 22 | [`22-bom-conformance-check.md`](22-bom-conformance-check.md) | BOM (canonical_failure_reasons・preconditions) ↔ 実装の machine-checkable 照合 (C3/C1/C2)。残課題 D-1/F-1/F-2/D-3 を検出・解消 | Addendum I |
 
-> **番号について**: 本来は副候補 18 (Shared Concepts Schema) と対になる **物理レイヤ** の文書。18 が未ドラフトのため先行ドラフトとして 21 に置いた。昇格時に 18 とセットで再番号付けしてよい。
+> **番号について**: 21 は本来副候補 18 (Shared Concepts Schema) と対になる **物理レイヤ** の文書。18 が未ドラフトのため先行ドラフトとして 21 に置いた。22 は 21 の physical 契約と semantic カタログ (失敗理由) の整合を照合する。昇格時に再番号付けしてよい。
 
 ### 副候補 6 件 (本ディレクトリでは未着手、将来のドラフト候補)
 

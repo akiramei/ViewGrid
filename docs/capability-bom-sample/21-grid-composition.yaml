@@ -88,14 +88,17 @@ capability:
       name: SwapPlacements
       kind: command
       inputs: [placement_id_a, placement_id_b]
-      preconditions: [BothPlacementsExist]
+      preconditions: [BothPlacementsExist, BothPlacementsBelongToSameGrid]
       postconditions: [PositionsExchanged]
-      failure_reasons: [NotFound, OutOfBounds, Conflict]
+      failure_reasons: [NotFound, OutOfBounds, Conflict, CrossGridSwapNotAllowed]
       notes: |
         両者は互いに「既存配置との衝突」対象から除外する。
         ただし R-02 の標準的な「候補 vs 既存」検査では A の新位置と B の新位置が
         互いに重なるケースが捕捉できないため、追加で「A の新占有セル集合と
         B の新占有セル集合の交差」を検証すること (詳細は 30-design.md §2.2 UC-07)。
+        v0.3 (D-3 解消): A と B が異なる GridCanvas に属する場合は CrossGridSwapNotAllowed
+        を返す (前提条件 BothPlacementsBelongToSameGrid)。順序: まず双方を取得し
+        (不在なら NotFound が先)、その後 grid_id を照合すること。
 
     - id: UC-08
       name: ResizePlacementOccupancy
@@ -163,8 +166,11 @@ capability:
     - name: InvalidWeights
       payload:
         detail: string
-      applies_to: [UC-01, UC-03]
-      notes: "重み配列の長さ不一致 / 非正の整数 (R-04, R-05 違反)"
+      applies_to: [UC-03]
+      notes: |
+        重み配列の長さ不一致 / 非正の整数 (R-04, R-05 違反)。
+        v0.3 (C3 整合): UC-01 は uniform weights を内部生成するため InvalidWeights を返さない
+        → applies_to から UC-01 を除外 (BOM↔実装 照合で検出された drift を修正)。
 
     - name: InvalidIndex
       payload:
@@ -183,13 +189,27 @@ capability:
       payload:
         attempted_position: CellPosition
         occupy_size: OccupySize
-      applies_to: [UC-02, UC-05, UC-06, UC-07, UC-08]
+      applies_to: [UC-05, UC-06, UC-07, UC-08]
+      notes: |
+        v0.3 (C3 整合): UC-02 (ChangeGridDimensions) は WouldOrphanPlacements / WouldConflict
+        で表現するため OutOfBounds を返さない → applies_to から UC-02 を除外。
 
     - name: Conflict
       payload:
         conflicting_placement_ids: "[identity]"
-      applies_to: [UC-02, UC-05, UC-06, UC-07, UC-08]
-      notes: "衝突相手の placement_id を 1 個以上含む。UC-07 の A-B 相互衝突も同じ Conflict で表現する"
+      applies_to: [UC-05, UC-06, UC-07, UC-08]
+      notes: |
+        衝突相手の placement_id を 1 個以上含む。UC-07 の A-B 相互衝突も同じ Conflict で表現する。
+        v0.3 (C3 整合): UC-02 は WouldConflict を使うため applies_to から UC-02 を除外。
+
+    - name: CrossGridSwapNotAllowed
+      payload:
+        grid_id_a: identity
+        grid_id_b: identity
+      applies_to: [UC-07]
+      notes: |
+        v0.3 (D-3 解消): UC-07 SwapPlacements で A と B が異なる GridCanvas に属するときに返す。
+        前提条件 BothPlacementsBelongToSameGrid の違反。Addendum B §B.4 (D-3) / Addendum H.9 由来。
 
     - name: WouldOrphanPlacements
       payload:

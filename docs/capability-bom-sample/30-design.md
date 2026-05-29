@@ -285,7 +285,7 @@ DB アクセス・I/O を含む実装は禁止。
 
 | 操作 | 内部手順 | 備考 |
 | --- | --- | --- |
-| UC-07 (Swap) | (i) 双方の配置を取得 (片方でも存在しなければ `NotFound`) (ii) R-01 を双方の新位置で検証 (iii) R-02 を双方の新位置で検証 (除外: 双方) (iv) **A の新占有セル集合と B の新占有セル集合の交差を検証** (v) 双方の位置を同時に更新 (vi) `PlacementsSwapped` 発行 | 部分的成功を許さない (どちらかが失敗したら両方ロールバック)。**手順 (iv) は v0.2 で明文化。これがないと A-B 相互衝突が捕捉されない (§7 worked example 参照)** |
+| UC-07 (Swap) | (i) 双方の配置を取得 (片方でも存在しなければ `NotFound`) (ii) **双方が同一 GridCanvas か照合 (`a.grid_id != b.grid_id` なら `CrossGridSwapNotAllowed`)** (iii) R-01 を双方の新位置で検証 (iv) R-02 を双方の新位置で検証 (除外: 双方) (v) **A の新占有セル集合と B の新占有セル集合の交差を検証** (vi) 双方の位置を同時に更新 (vii) `PlacementsSwapped` 発行 | 部分的成功を許さない (どちらかが失敗したら両方ロールバック)。**手順 (ii) は v0.3 で明文化 (D-3 解消、前提条件 `BothPlacementsBelongToSameGrid`)。順序は取得 (i) の後 — 不在時は NotFound が先。手順 (v) は v0.2 で明文化** |
 | UC-02 (寸法変更) | (i) 新寸法での既存配置全てを R-01 + R-02 で検証 (ii) 失敗なら拒否 (iii) 重み配列を Fit 動作で調整 (R-05, R-08) (iv) `GridDimensionsChanged` 発行 | 配置の自動移動はしない (失敗時はユーザーに判断を委ねる) |
 | UC-10 (削除) | (i) 配置を削除 (ii) 残り順序を R-09 で詰める (iii) `PlacementRemoved` 発行 | 詰め直しは状態変更だが、`PlacementOrderChanged` は別途発行しない (`PlacementRemoved` に内包) |
 
@@ -573,6 +573,7 @@ ImageCopyExistenceCheck:
 | AT-08 | 反例 | 任意の操作列後に `UC-11 ListPlacements` の結果が z-order 昇順 |
 | AT-09 | 境界 | UC-02 で寸法縮小時、境界外になる配置があれば WouldOrphanPlacements |
 | AT-10 | 境界 | UC-04 ToggleRowColumnLock で index が範囲外なら InvalidIndex |
+| AT-11 | 境界 | **UC-07 で異なる GridCanvas の placement を swap すると `CrossGridSwapNotAllowed` (D-3、v0.3)** |
 
 ### Anchor Tests の運用規範
 

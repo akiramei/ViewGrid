@@ -1409,3 +1409,103 @@ producer-free にできる** という結論に到達した。
 1. F-1 / F-2 の解消 (canonical_failure_reasons の machine-checkable 照合)
 2. n=4 以降 (Coordinator パターンの実体化) / 実プロジェクトでの試験運用
 3. 方法論本体 21 への H 知見の反映 (read ポート前倒しを既定規約に)
+
+---
+
+# Addendum I — BOM ↔ Implementation Conformance Check (残課題 F-1/F-2/D-1/D-3 の機械照合、2026-05-29 実施)
+
+候補 E の残課題 (F-1 / F-2 / G.7 / D-3) はいずれも **「BOM の宣言と実装の実体のズレ」** に収束した。
+本 Addendum は、その **machine-checkable な照合機構** を実装し、残課題を検出・解消した記録。
+
+> 検証する命題:
+> **BOM (canonical_failure_reasons・preconditions) と実装の不一致は、機械的に照合して検出・解消できる。
+> 識別済み spec gap は BOM を直し、照合を回せば再発を防げる。**
+
+## I.1 試行の概要
+
+| 項目 | 値 |
+| --- | --- |
+| 実施日 | 2026-05-29 |
+| 実装 | `experiments/bom-conformance-check/checker.py` (執筆者自作の照合ツール、PyYAML) |
+| 対象 BOM | GRID / IMAGE_VARIANT / RENDERING の 21-*.yaml |
+| 対象実装 | `experiments/phase2-cocompose-impl/` (F-1/F-2/D-3 が実在する n=2 実装) |
+| 方法論側規範 | `../methodology-extensions/22-bom-conformance-check.md` |
+
+## I.2 照合の 3 カテゴリ
+
+| カテゴリ | 内容 | 捕捉残課題 |
+| --- | --- | --- |
+| **C3** (静的) | canonical_failure_reasons.applies_to ↔ 各 UC failure_reasons の双方向一致 | D-1 |
+| **C1** (動的) | UC の宣言失敗理由が producible か / `guaranteed_by` で upstream 保証か | F-1 / F-2 |
+| **C2** (動的) | BOM 宣言の precondition を実装が強制するか | D-3 |
+
+## I.3 結果 — before / after
+
+| | BEFORE (BOM 未修正) | AFTER (BOM 修正後) |
+| --- | --- | --- |
+| C3 | GRID で **3 件の applies_to drift** を FLAG (誰も気づいていなかった) | 全 BOM consistent |
+| C1 (UC-05) | InvalidTransform/ScalingMode/Alignment が `InvalidCopyName` に潰れる **F-2 を 3 件** FLAG | `guaranteed_by` + **upstream ガードの動的検証** (OccupySize(0,0)→ValueError 等) で OK (F-1/F-2 解消) |
+| C2 (UC-07) | BOM が precondition 未宣言 → UNSPECIFIED (D-3 が BOM レベルで開いている) | precondition 宣言後、凍結実装が強制しない **D-3 バグを FLAG** |
+| **FLAGS 合計 / exit** | **6 / exit 1** | **1 / exit 1** (C2 が impl の D-3 バグを正しく検出。CI ガードとして非ゼロ終了) |
+
+最後に残る 1 FLAG は **意図通り**: BOM が precondition を宣言したことで、照合が
+「強制しない実装」を機械的に弾けるようになった。これが Addendum H.9 で観測した
+「識別済み gap は再生成毎に再発」への対策 = **再発防止が効く** ことの実証。
+
+## I.4 顕在化した新発見 (C3 が見つけた latent drift)
+
+照合の副産物として、**GRID v0.2 BOM に 3 件の latent な D-1 級不整合** が見つかった
+(これまでの全試行・全レビューで未検出):
+
+| drift | 内容 | 修正 |
+| --- | --- | --- |
+| `InvalidWeights.applies_to` に UC-01 | UC-01 は uniform weights を内部生成し InvalidWeights を返さない | UC-01 を除外 |
+| `OutOfBounds.applies_to` に UC-02 | UC-02 は WouldOrphanPlacements/WouldConflict を使う | UC-02 を除外 |
+| `Conflict.applies_to` に UC-02 | 同上 | UC-02 を除外 |
+
+> **含意**: 人手の三層構造 (narrative/algorithmic/executable) でも **canonical_failure_reasons の
+> 横断整合までは担保できない**。機械照合 (C3) が独立した防御層として必要。
+
+## I.5 残課題の解消状況
+
+| 残課題 | 解消方法 | 状態 |
+| --- | --- | --- |
+| **D-1** | C3 が drift を検出。GRID BOM の 3 件を修正 | **解消** |
+| **F-1** | per-field Invalid* に `guaranteed_by` 注記 + C1 が upstream ガードを動的検証 (構築 reject を確認) | **解消** (規範化 + 検証) |
+| **F-2** | 同上。UC-05 が直接 produce すべきは NotFound / InvalidCopyName のみと明確化 | **解消** (規範化 + 検証) |
+| **G.7** | C-IDENTITY-BOUNDARY (Addendum H、v0.3) で既に解消 | 解消済み |
+| **D-3** | GRID UC-07 に `BothPlacementsBelongToSameGrid` + `CrossGridSwapNotAllowed` を BOM に追加 (三層: 21-yaml / 30-design §2.2 手順(0) / AT-11)。C2 が以後の強制を検証 | **BOM 解消 + 照合で再発防止** |
+
+## I.6 独立検証の記録 (本 Addendum 執筆者による)
+
+- `python experiments/bom-conformance-check/checker.py` を **修正前後で 2 回実行**し、
+  before 6 FLAGS → after 1 FLAG を自分で確認。
+- C3 の 3 drift は BOM を直接読んで裏取り (UC-01 の failure_reasons に InvalidWeights なし 等)。
+- C1 の F-2 は cocompose UC-05 のソース (catch-all → InvalidCopyName) と probe 結果が一致。
+- C2 の D-3 FLAG は cocompose `swap_placements` が `a.grid_id` のみで検証することと一致
+  (cross-grid swap が `Conflict` を返し `CrossGridSwapNotAllowed` でない)。
+
+## I.7 方法論への含意
+
+| 含意 | 内容 |
+| --- | --- |
+| 機械照合は独立防御層 | 三層構造 (人手) + 規範継承でも canonical_failure_reasons / precondition の横断整合は漏れる。C3/C1/C2 が補う |
+| physical 契約 ↔ semantic カタログ | F-1/F-2 は C-VALUE-SEMANTICS (自己検証 VO) が失敗理由の到達可能性を左右する例。`guaranteed_by` で橋渡し |
+| spec gap の再発防止 | D-3 のように識別済みの gap は、BOM を直し C2 を回せば「強制しない実装」を機械的に弾ける |
+| 昇格候補 | `22-bom-conformance-check.md` を方法論本体へ。14-author-checklist に照合実行を追加 |
+
+## I.8 結論
+
+残課題 F-1 / F-2 / D-1 / D-3 は、**BOM ↔ 実装の machine-checkable 照合** によって
+検出・解消できることが実コードで実証された。照合は C3 (静的) で 3 件の未知の drift を発見し、
+C1 で F-2 を、C2 で D-3 を捕捉した。BOM を修正した結果 FLAGS は 6 → 1 に減り、
+残る 1 は「実装が新規宣言の precondition を強制していない」ことを正しく示す = 再発防止が機能する。
+
+候補 E の全行程 (E 合成不可 → F n=2 アダプタ0 → G n=3 consumer アダプタ0 → H 前倒しで producer-free →
+**I 残課題を機械照合で解消**) を経て、Codebase Convention Contract と
+その周辺規範 (三層構造・規範継承・機械照合) が一通り実証された段階に到達した。
+
+次フェーズ候補:
+1. 照合の汎用ハーネス化 (全 UC への C1・C2 自動展開。`guaranteed_by` の動的ガード検証は本 Addendum で実装済み)
+2. n=4 以降 (Coordinator パターンの実体化) / 実プロジェクトでの試験運用
+3. 方法論本体 (OneDrive 01〜10) への 11〜14 / 21 / 22 の昇格
