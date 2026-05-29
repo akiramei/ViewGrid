@@ -1,9 +1,13 @@
 # 00 — Codebase Convention Contract (横断規約契約) — GRID_COMPOSITION × IMAGE_VARIANT_MANAGEMENT × RENDERING_EXPORT
 
-> **Status: 具体契約インスタンス v0.2** (方法論本体側の規範は `../methodology-extensions/21-codebase-convention-contract.md` を参照)
+> **Status: 具体契約インスタンス v0.3** (方法論本体側の規範は `../methodology-extensions/21-codebase-convention-contract.md` を参照)
 > **Scope**: 本契約は `GRID_COMPOSITION` / `IMAGE_VARIANT_MANAGEMENT` / `RENDERING_EXPORT` を **共有契約の下で生成** する際の横断規約。
 > **由来**: Addendum E (候補 E ステップ 1) の 6 カテゴリ衝突を消すために制定 (v0.1)。Addendum F (ステップ 2) でアダプタ 0 行を実証。
-> **v0.2 の追加**: n=3 スケール検証 (Addendum G) で **消費側 Capability (RENDERING_EXPORT)** が GRID/IMGVAR を read するための **消費側 read ポート (§1.8 C-CONSUMER-PORTS)** を追加。
+> **v0.2 の追加**: n=3 スケール検証 (Addendum G) で **消費側 read ポート (§1.8 C-CONSUMER-PORTS)** を追加。
+> **v0.3 の変更**: Addendum G の教訓を受け、C-CONSUMER-PORTS を **「最初から必須 (前倒し)」** に格上げ。
+> producer は **consumer が存在する前から read 射影を公開** する (= n=2 生成時点で `get_grid_layout` / `get_copy_render_spec` を実装)。
+> 目的: 消費側 Capability を後から足したときの **producer retrofit を 0 にできるか** を検証する (Addendum H)。
+> 併せて G.7 を受け **C-IDENTITY-BOUNDARY** (出力境界での identity str 化) を §1.9 に追加。
 
 ## この契約の目的
 
@@ -98,10 +102,20 @@ Addendum E は、独立生成された 2 実装が **6 カテゴリの規約衝�
 > Result→bool の 2 段アダプタが必須だった。本契約では **両側が同じ Port を共有** するので
 > アダプタは不要になる (はず — これがステップ 2 で実証する命題)。
 
-### C-CONSUMER-PORTS — 消費側 read ポート (v0.2 / n=3 で追加)
+### C-CONSUMER-PORTS — 消費側 read ポート (v0.3: 最初から必須 / 前倒し)
 
-RENDERING_EXPORT のような **消費側 Capability が producer (GRID / IMGVAR) の状態を read** する境界。
-v0.1 の C-BOUNDARY-IFACE (bool 返し) では rich な read を表せないため新設する。
+**消費側 Capability が producer (GRID / IMGVAR) の状態を read** する境界。
+v0.1 の C-BOUNDARY-IFACE (bool 返し) では rich な read を表せないため v0.2 で新設し、
+**v0.3 で「最初から必須」に格上げ** した。
+
+> [!IMPORTANT]
+> **前倒し原則 (v0.3)**: 各 producer Capability は、自分の所有状態の **中立 read 射影** を
+> **生成時点 (n=2) から公開** しなければならない — たとえ現時点で consumer が存在しなくても。
+> これは「全 Capability は自分の read モデルを中立 DTO で公開する」という一般規約であり、
+> 特定 consumer (RENDERING) の都合に合わせるものではない。
+> 効果: 消費側 Capability を後から足すとき **producer を一切触らず (retrofit 0)** に結線できる。
+> コスト: n=2 が consumer 不在のまま read 射影コードを抱える (投機的)。
+> このトレードオフの検証が Addendum H。
 
 **原則**:
 - read ポートは **`src/shared/ports.py` に Protocol で 1 定義**。返す型も **`src/shared/` の中立 DTO** とする。
@@ -155,10 +169,19 @@ class CopyRenderSpecPort(Protocol):
 - **RENDERING 側**: `GridLayoutPort` と `CopyRenderSpecPort` に依存して描画モデルを構築。**R-08 (ManualCropOverridesAutoCrop) の適用点は RENDERING** (manual_crop があれば優先、なければ auto_crop)。
 
 > [!IMPORTANT]
-> Incremental (既存 n=2 実装に RENDERING を追加) では、producer の projection メソッド
-> (`get_grid_layout` / `get_copy_render_spec`) を **既存 UseCases に後付け** する必要が生じうる。
-> これは standalone アダプタではなく **native port satisfaction** だが、「凍結された producer を触る」コストである。
-> **n=3 の検証ポイント**: (a) consumer 結線にアダプタ 0 行を保てるか、(b) producer 追加は native projection のみで済むか、(c) 既存 n=2 テストが全て green のままか。
+> **v0.2 (後付け) と v0.3 (前倒し) の差**:
+> - v0.2: read ポートを後から導入 → n=3 で consumer を足すとき producer に projection を **retrofit** する必要があった (Addendum G。consumer アダプタは 0 だが producer を触る)。
+> - **v0.3 (本版)**: read ポートを n=2 生成時点で producer に組み込む → n=3 で consumer を足すとき **producer を一切触らない (retrofit 0)** はず。これが Addendum H で検証する命題。
+
+### C-IDENTITY-BOUNDARY — 出力境界での identity 表現 (v0.3 / G.7 を受けて)
+
+C-IDENTITY は **内部表現は `uuid.UUID` (str 禁止)** を定める。一方、**export / serialization の
+出力境界** (例: `RenderDescriptor` の dict / JSON) では **identity を `str` 化** しなければならない。
+
+- 内部 (entity / DTO / port の引数戻り): `uuid.UUID`
+- 出力境界 (`to_descriptor()` / JSON 化される dict など): `str(uuid)`
+- 根拠: Addendum G.7 で `RenderDescriptor` が生 `uuid.UUID` を含み `json.dumps` 不可だった defect を受ける。
+- これは C-IDENTITY (内部) と矛盾しない。**「内部=UUID / 出力境界=str」の 2 面** を明示するもの。
 
 ---
 
@@ -184,12 +207,13 @@ class CopyRenderSpecPort(Protocol):
 
 ```yaml
 # 00-convention-contract (machine-readable instance)
-contract_version: "0.2"
+contract_version: "0.3"
 capabilities: [GRID_COMPOSITION, IMAGE_VARIANT_MANAGEMENT, RENDERING_EXPORT]
 
 identity:
-  representation: uuid.UUID          # C-IDENTITY
+  representation: uuid.UUID          # C-IDENTITY (内部表現)
   factory: uuid.uuid4               # str 変換禁止
+  output_boundary: str              # C-IDENTITY-BOUNDARY (v0.3): to_descriptor/JSON 等の出力境界では str(uuid)
 
 shared_value_objects:
   module: src/shared/value_objects.py   # C-SHARED-PLACEMENT
@@ -232,6 +256,7 @@ consumer_ports:                       # C-CONSUMER-PORTS (v0.2 / n=3)
   consumer: RENDERING_EXPORT     # 中立 DTO のみに依存。R-08 適用点はここ
   standalone_adapter: forbidden
   not_found: None                # Result でラップしない
+  baseline_required: true        # v0.3 前倒し: n=2 生成時点で producer が実装する (consumer 不在でも)
 
 cross_cutting_decisions:              # §2
   timestamp: "UTC, tz-aware"          # C-TIMESTAMP
@@ -271,6 +296,22 @@ cross_cutting_decisions:              # §2
 > **n=3 の問い**: 契約 (n=2 で有効) は **消費側 Capability を 1 つ足したときもアダプタ 0 でスケールするか**。
 > producer 側に native projection の後付けが要るなら、それは「契約が read 境界を最初から織り込むべき」という
 > 設計示唆 (Addendum G に記録)。
+
+### 4.3 v0.3 前倒し (read ポートを最初から組み込む、Addendum H で検証)
+
+Addendum G の教訓「契約は read 境界を最初から織り込むべき」を実装し、**producer retrofit が 0 になるか** を検証する。
+
+| 判定項目 | 合格基準 |
+| --- | --- |
+| **n=2 が read ポートを同梱** | 契約 v0.3 下で生成した n=2 (GRID+IMGVAR) が、consumer 不在でも `get_grid_layout` / `get_copy_render_spec` と shared 中立 DTO を **最初から** 持つ |
+| n=2 の非退行 | read ポート前倒しを入れても n=2 の existence 境界はアダプタ 0、テスト全合格 |
+| **n=3 producer retrofit = 0** | v0.3 n=2 に RENDERING を Incremental 追加したとき、**producer (GRID/IMGVAR) と shared のファイルが byte-identical** (diff 0)。新規追加は `src/rendering_export/` + そのテストのみ |
+| consumer 結線アダプタ | RENDERING↔GRID / RENDERING↔IMGVAR とも 0 |
+| C-IDENTITY-BOUNDARY | `RenderDescriptor` が identity を str 化し `json.dumps` 可能 (G.7 の解消) |
+| トレードオフの観測 | n=2 が consumer 不在のまま read 射影を抱える「投機的コスト」を記録 |
+
+> **H の問い**: read ポートを前倒しすれば、n=3 で **producer を一切触らず** に consumer を足せるか。
+> 成立すれば「契約が read 境界を最初から織り込めば、incremental consumer 追加は完全に producer-free」が実証される。
 
 ---
 

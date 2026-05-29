@@ -130,7 +130,12 @@ Addendum E §E.6 で導出した最低限の契約項目。各 Capability の実
 > rich な read を表す **C-CONSUMER-PORTS** が必要になった。
 > 教訓: **契約は read 境界を *最初から* 織り込むべき**。さもないと消費側を後から足したとき、
 > 凍結 producer に projection を retrofit する羽目になる (consumer 結線アダプタは 0 を保てるが producer を触る)。
-> 詳細は `docs/capability-bom-sample/00-convention-contract.md §1.8` と Addendum G。
+>
+> **Addendum H で裏付け済み**: read ポートを契約 v0.3 で **最初から必須化 (前倒し)** し n=2 を再生成すると、
+> n=3 で RENDERING を足しても **producer + shared が byte-identical (retrofit = 0)** になった。
+> = 「全 Capability は自分の read モデルを中立 DTO で公開する」を既定規約にすれば、
+> **incremental consumer 追加は完全に producer-free**。投機的コストは read 射影 ~80 LOC (見合う)。
+> 詳細は `docs/capability-bom-sample/00-convention-contract.md §1.8` と Addendum G / H。
 
 ### 3.2 横断 MUST_DECIDE_AND_DOCUMENT の昇格先としての役割
 
@@ -303,15 +308,16 @@ Addendum E ではアダプタが必須だった。本契約導入後にアダプ
 | 実証根拠 (必要性) | Addendum E で 6 カテゴリの衝突を実コードで観測。契約の必要性は確定 |
 | 実証根拠 (有効性 / n=2) | **Addendum F でアダプタ 0 行・101 テスト合格を実コードで達成** |
 | 実証根拠 (スケール / n=3) | **Addendum G で消費側 Capability (RENDERING) を Incremental 追加。consumer 結線アダプタ 0・140 テスト合格 (n=2 由来 101 非回帰)・R-08 適用を実コードで達成** |
-| 適用コスト | 中 (契約 1 ファイルの執筆 + 各 40-prompt への参照追加) |
+| 実証根拠 (前倒し / producer-free) | **Addendum H で read ポートを契約 v0.3 で前倒し → n=2 再生成 → n=3 追加で producer + shared が byte-identical (retrofit 0)。Phase A 67 / Phase B 95 テスト合格、G.7 も解消** |
+| 適用コスト | 中 (契約 1 ファイルの執筆 + 各 40-prompt への参照追加 + read 射影 ~80 LOC/producer の前倒し) |
 | 既存方法論との整合 | 補完関係 (規範継承が届かない範囲を埋める)。18 とセット運用 |
-| 認知負荷 | 低 (契約は 1 ファイル、項目は §3.1 の 8 + §3.2 の横断 MUST_DECIDE) |
-| 残課題 (F-1) | 契約 (physical) が Capability ローカル失敗理由 (semantic) を到達不能にしうる。層間整合チェックが要る |
-| 残課題 (G) | 契約は **read 境界 (C-CONSUMER-PORTS) を最初から織り込むべき**。さもないと消費側追加時に producer retrofit が要る (consumer アダプタは 0 を保てる) |
+| 認知負荷 | 低 (契約は 1 ファイル、項目は §3.1 の 9 + §3.2 の横断 MUST_DECIDE) |
+| 残課題 (F-1/F-2) | 契約 (physical) が Capability ローカル失敗理由 (semantic) を到達不能/取り違えにしうる。層間整合チェックが要る |
+| 解消済み (G→H) | read ポート前倒し (C-CONSUMER-PORTS を最初から必須) で incremental consumer 追加が producer-free に。G.7 は C-IDENTITY-BOUNDARY で解消 |
 
 > [!NOTE]
-> 本書は **必要性 (E)・有効性 (F)・n=3 スケール (G) が実コードで実証済み** の段階。
-> 残課題は F-1 (physical/semantic 層間整合) と G (read 境界の前倒し)。
+> 本書は **必要性 (E)・有効性 (F)・n=3 スケール (G)・前倒しで producer-free (H) が実コードで実証済み** の段階。
+> 残課題は F-1/F-2 (physical/semantic 層間整合の machine-checkable 照合)。
 
 ---
 
@@ -324,9 +330,11 @@ Addendum E ではアダプタが必須だった。本契約導入後にアダプ
 - 実証根拠 (必要性): `docs/capability-bom-sample/90-feasibility-notes.md` Addendum E
 - 実証根拠 (有効性 / n=2): 同 Addendum F (アダプタ 0 行・101 テスト合格)
 - 実証根拠 (スケール / n=3): 同 Addendum G (consumer アダプタ 0・140 テスト合格・R-08 適用)
-- 具体契約インスタンス: `docs/capability-bom-sample/00-convention-contract.md` (v0.2、§1.8 C-CONSUMER-PORTS)
-- 同時生成プロンプト: `docs/capability-bom-sample/41-cocompose-prompt.md` (n=2) / `42-rendering-incremental-prompt.md` (n=3)
+- 実証根拠 (前倒し / producer-free): 同 Addendum H (producer + shared byte-identical = retrofit 0)
+- 具体契約インスタンス: `docs/capability-bom-sample/00-convention-contract.md` (v0.3、§1.8 C-CONSUMER-PORTS 前倒し + §1.9 C-IDENTITY-BOUNDARY)
+- 同時生成プロンプト: `41-cocompose-prompt.md` (n=2) / `42-rendering-incremental-prompt.md` (n=3 後付け) / `43-preloaded-ports-prompt.md` (n=2 前倒し再生成→n=3)
 - RENDERING サンプル: `docs/capability-bom-sample/rendering-export/`
 - step 1 の実コード: `experiments/phase2-composition-test/` (compose 不可の実証)
 - step 2 の実コード: `experiments/phase2-cocompose-impl/` (n=2、アダプタ 0 行で compose 可)
-- step 3 の実コード: `experiments/phase2-n3-incremental-impl/` (n=3、consumer アダプタ 0)
+- step 3 の実コード: `experiments/phase2-n3-incremental-impl/` (n=3 後付け、consumer アダプタ 0・producer retrofit 2)
+- step 4 の実コード: `experiments/phase2-v03-n2-impl/` + `phase2-v03-n3-impl/` (前倒し、producer retrofit 0)

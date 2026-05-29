@@ -1279,3 +1279,133 @@ consumer 結線アダプタ 0 を維持してスケールする** ことが実�
 1. **契約に consumer read ポートを前倒し** した状態で n=2 を再生成 → n=3 で producer retrofit すら 0 になるか
 2. **F-1 / F-2 / G.7 の解消** — physical 契約と semantic/境界要件の machine-checkable 照合 (D-1 の延長)。C-IDENTITY の内部/出力境界 2 面化を含む
 3. n=4 以降 / 実プロジェクトでの試験運用
+
+---
+
+# Addendum H — read ポート前倒し検証: producer retrofit 0 (候補 E ステップ 4、2026-05-29 実施)
+
+Addendum G の教訓「契約は read 境界を最初から織り込むべき」を実装で確かめる。
+
+> 検証する命題:
+> **契約が consumer read ポートを *最初から必須化* (前倒し) すれば、消費側 Capability を
+> 後から足すとき producer を一切触らずに済む (producer retrofit = 0)。**
+
+## H.1 試行の概要
+
+| 項目 | 値 |
+| --- | --- |
+| 実施日 | 2026-05-29 |
+| 実装者 | 別 AI セッション (Claude general-purpose subagent) |
+| 契約 | `00-convention-contract.md` **v0.3** (C-CONSUMER-PORTS を「最初から必須」に格上げ + §1.9 C-IDENTITY-BOUNDARY) |
+| 方法 | **2 段階**。Phase A: v0.3 下で n=2 を read ポート同梱で **白紙再生成** / Phase B: それを verbatim コピーし RENDERING を **追加するだけ** (producer/shared 不可触) |
+| 参照禁止 | src/ + **過去 experiments 全部** (cocompose / n3-incremental 含む。白紙再生成) |
+| 出力先 | Phase A: `experiments/phase2-v03-n2-impl/` / Phase B: `experiments/phase2-v03-n3-impl/` |
+| テスト結果 | Phase A **67/67** / Phase B **95/95** (67 は Phase A 由来で不変・green、+28 新規 render) |
+| **producer + shared の diff (n2→n3)** | **0 (byte-identical) = retrofit 0** |
+
+## H.2 契約 v0.3 の変更点
+
+| 変更 | 内容 |
+| --- | --- |
+| C-CONSUMER-PORTS を前倒し | 「各 producer は consumer 不在でも read 射影 (`get_grid_layout` / `get_copy_render_spec`) を **生成時点から** 公開する」。特定 consumer 都合ではなく「全 Capability は自分の read モデルを中立 DTO で公開」という一般規約 |
+| C-IDENTITY-BOUNDARY 新設 (§1.9) | G.7 を受け、**内部=`uuid.UUID` / 出力境界 (descriptor/JSON)=`str`** の 2 面を明示 |
+
+## H.3 結果 — §4.3 成功判定に対して
+
+| 判定項目 | 合格基準 | 結果 |
+| --- | --- | --- |
+| n=2 が read ポートを同梱 | consumer 不在でも read ポート + 中立 DTO を最初から持つ | **満たす** (`shared/ports.py` に GridLayoutPort/CopyRenderSpecPort、`shared/render_contracts.py` に 3 DTO、producer に projection 2 個) |
+| n=2 の非退行 | existence 境界アダプタ 0、テスト全合格 | **67/67** |
+| **n=3 producer retrofit = 0** | producer + shared が byte-identical | **diff 空 (0)**。新規は `src/rendering_export/` + render テスト + compose 編集のみ |
+| consumer 結線アダプタ | RENDERING↔GRID / ↔IMGVAR とも 0 | **0** |
+| C-IDENTITY-BOUNDARY | `RenderDescriptor` が json.dumps 可能 | **可能** (len=373、G.7 解消) |
+
+## H.4 v0.2 (後付け) と v0.3 (前倒し) の決定的比較
+
+| 観点 | v0.2 後付け (Addendum G) | v0.3 前倒し (本 Addendum H) |
+| --- | --- | --- |
+| read ポートの導入時期 | consumer 追加時に後付け | **n=2 生成時点で最初から** |
+| consumer 結線アダプタ | 0 | 0 |
+| **producer の変更** | **native projection を 2 個 retrofit** (producer を触る) | **0 (byte-identical、producer を一切触らない)** |
+| 既存テスト非回帰 | green | green |
+| n=2 が抱える余分なコード | なし | read 射影 ~80 LOC (consumer 不在で投機的に保持) |
+
+> [!IMPORTANT]
+> **命題は確証された**: read ポートを前倒しすれば、消費側 Capability の追加は **完全に producer-free** になる。
+> Addendum G で「producer 追加 0 は不可」だったのが、契約に read 境界を織り込むことで **0 に到達**した。
+> これは「**契約は read 境界を最初から織り込むべき**」という G の設計示唆の実コードによる裏付け。
+
+## H.5 G.7 の副次解消 (C-IDENTITY-BOUNDARY)
+
+v0.3 で C-IDENTITY-BOUNDARY を追加した結果、再生成された `RenderDescriptor` は
+identity を出力境界で str 化し、**`json.dumps(descriptor)` が成功** (compose で len=373 を確認)。
+内部表現は `uuid.UUID` のまま。G.7 (Addendum G) の defect が契約改訂で解消された
+= **physical 契約の「内部/出力境界」2 面化が機能する** ことの実証。
+
+## H.6 独立検証の記録 (本 Addendum 執筆者による)
+
+subagent 報告 (diff 0 / 95 pass) を鵜呑みにせず、執筆者が以下を **独立に実行・精査**:
+
+- `pytest experiments/phase2-v03-n2-impl/` → **67 passed** / `pytest experiments/phase2-v03-n3-impl/` → **95 passed** (自分で実行)
+- **`diff -r` (n2 vs n3) を `src/shared` / `src/grid_composition` / `src/image_variant_management` で実行 → すべて空** (byte-identical = retrofit 0)。これが本 Addendum の決定的証拠
+- 全体 dir diff: n3 の新規は `src/rendering_export/` + render テスト 5 本 + `compose.py` 編集のみ。producer/shared/既存テストは無変更
+- Phase A の n=2 が read ポートを最初から持つことを確認 (ports.py に 3 Protocol、render_contracts.py に 3 DTO、producer に get_grid_layout:531 / get_copy_render_spec:466)
+- `compose.py` 実行 → n=2 境界維持 / unknown 拒否 / RenderModel z 順 / EffectiveCrop kind=manual (R-08) / RenderDescriptor json.dumps len=373
+- rendering_export の実 import は `shared.*` と自パッケージのみ (producer 一致は docstring のコメントのみ)
+
+検証結果は subagent 報告と一致。**producer retrofit = 0 は実態として確認された。**
+
+## H.7 投機的コストの評価
+
+前倒しの代償は、n=2 が **consumer 不在のまま read 射影 ~80 LOC** (中立 DTO 1 モジュール +
+Protocol 2 個 + projection メソッド 2 個、いずれも振る舞いのない純粋な read 写像) を抱えること。
+すべてテスト被覆済み。この前払いが n=3 の **producer churn を 100% 削減** した
+(v0.2 後付けは consumer 到来時に producer を編集した)。**小さく、かつ見合う** コストと評価する。
+
+## H.8 方法論への含意
+
+| 含意 | 内容 |
+| --- | --- |
+| **契約は read ポートを既定で前倒しすべき** | 「全 Capability は自分の read モデルを中立 DTO で公開する」を契約の既定規約に。incremental consumer 追加が完全に producer-free になる |
+| 「producer-free な consumer 追加」が成立 | n=2 + 契約前倒し → n=3 で producer/shared 無変更。Addendum G の唯一の残コストが消えた |
+| physical 契約の 2 面性 | C-IDENTITY は「内部=UUID / 出力境界=str」の 2 面 (C-IDENTITY-BOUNDARY)。G.7 を契約で解消 |
+| 副候補との接続 | 「中立 read 射影の前倒し」は副候補 16 (Coordinator Pattern) / 18 (Shared Concepts) と整合。read モデルを Shared Concepts として扱える |
+
+## H.9 既知 spec gap の再顕在 (Codex 独立監査): D-3 cross-grid swap
+
+コミット前 Codex review (= Phase 3 独立監査) が、再生成された GRID コードに **既知の spec gap** を捕捉した。
+
+| 項目 | 内容 |
+| --- | --- |
+| 指摘 | [P2] `swap_placements` が cross-grid swap (`a.grid_id != b.grid_id`) を拒否せず、両者を `a` のグリッドだけで検証 → `b` が自グリッドで境界外/重複になりうる (`use_cases.py:324`) |
+| 既知性 | これは Addendum B §B.4 の **D-3 (Cross-grid swap 未定義)** の再顕在。GRID サンプル (21-yaml UC-07) に `BothPlacementsBelongToSameGrid` 前提条件を足す v0.3 候補が **未適用** のため、AI が実装しなかった |
+| 性質 | F-2 / G.7 と同じく「自己監査が見落とし Phase 3 独立監査が捕捉」。BOM が underdetermined な箇所は **再生成のたびに同じ defect を生む** |
+| 本試行での扱い | 生成物は **as-is で凍結**。本所見として記録。根本解決は GRID サンプルへの D-3 適用 (別作業) |
+
+> [!IMPORTANT]
+> D-3 は Addendum B (GRID v0.2) で識別されながらサンプル未修正のため、v0.3 再生成でも再現した。
+> = **「識別された spec gap は、サンプルを直すまで生成のたびに再発する」** ことの実証。
+> F-1 / F-2 / G.7 / D-3 はいずれも canonical_failure_reasons / preconditions の
+> **machine-checkable 照合** という共通課題に収束する (次フェーズの優先課題)。
+
+## H.10 結論
+
+read ポート前倒し検証により、**契約が consumer read ポートを最初から必須化すれば、
+消費側 Capability の追加は producer を一切触らず (retrofit = 0) に完了する** ことが実コードで実証された。
+
+| 観点 | 状態 |
+| --- | --- |
+| n=2 有効性 (アダプタ 0) | Addendum F |
+| n=3 スケール (consumer アダプタ 0、producer retrofit 要) | Addendum G |
+| **n=3 producer-free (前倒しで retrofit 0)** | **本 Addendum H で実証** |
+| G.7 (identity 出力境界) | C-IDENTITY-BOUNDARY で解消 |
+| 残コスト | 前倒しの投機的 ~80 LOC (見合うと評価) |
+
+候補 E の一連の検証 (E→F→G→H) により、**Codebase Convention Contract は
+複数 Capability を 0 アダプタで結線し、read ポートを前倒しすれば incremental 追加も
+producer-free にできる** という結論に到達した。
+
+次フェーズ候補:
+1. F-1 / F-2 の解消 (canonical_failure_reasons の machine-checkable 照合)
+2. n=4 以降 (Coordinator パターンの実体化) / 実プロジェクトでの試験運用
+3. 方法論本体 21 への H 知見の反映 (read ポート前倒しを既定規約に)
