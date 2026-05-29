@@ -1,6 +1,7 @@
 # 00 — Codebase Convention Contract (横断規約契約) — GRID_COMPOSITION × IMAGE_VARIANT_MANAGEMENT × RENDERING_EXPORT
 
-> **Status: 具体契約インスタンス v0.3** (方法論本体側の規範は `../methodology-extensions/21-codebase-convention-contract.md` を参照)
+> **Status: 具体契約インスタンス v1.0 (baseline / 固定)** (方法論本体側の規範は `../methodology-extensions/21-codebase-convention-contract.md` を参照)
+> 全項目が実コードで実証済み (Addendum E〜I)。以後の実験はこの baseline を起点とし、変更は §6 Impact Policy に従う。
 > **Scope**: 本契約は `GRID_COMPOSITION` / `IMAGE_VARIANT_MANAGEMENT` / `RENDERING_EXPORT` を **共有契約の下で生成** する際の横断規約。
 > **由来**: Addendum E (候補 E ステップ 1) の 6 カテゴリ衝突を消すために制定 (v0.1)。Addendum F (ステップ 2) でアダプタ 0 行を実証。
 > **v0.2 の追加**: n=3 スケール検証 (Addendum G) で **消費側 read ポート (§1.8 C-CONSUMER-PORTS)** を追加。
@@ -207,7 +208,7 @@ C-IDENTITY は **内部表現は `uuid.UUID` (str 禁止)** を定める。一�
 
 ```yaml
 # 00-convention-contract (machine-readable instance)
-contract_version: "0.3"
+contract_version: "1.0"   # baseline (固定)。変更は §6 Impact Policy に従う
 capabilities: [GRID_COMPOSITION, IMAGE_VARIANT_MANAGEMENT, RENDERING_EXPORT]
 
 identity:
@@ -312,12 +313,44 @@ Addendum G の教訓「契約は read 境界を最初から織り込むべき」
 
 > **H の問い**: read ポートを前倒しすれば、n=3 で **producer を一切触らず** に consumer を足せるか。
 > 成立すれば「契約が read 境界を最初から織り込めば、incremental consumer 追加は完全に producer-free」が実証される。
+> → **Addendum H で実証**。
 
 ---
 
-## 5. 関連
+## 5. Changelog
+
+| 版 | 主な内容 | 実証 |
+| --- | --- | --- |
+| v0.1 | 6 契約項目 (C-IDENTITY 〜 C-BOUNDARY-IFACE) + 横断 MUST_DECIDE。Addendum E の 6 衝突を消す | Addendum E |
+| v0.2 | C-CONSUMER-PORTS (消費側 read ポート、後付け) を追加 | Addendum G |
+| v0.3 | C-CONSUMER-PORTS を「最初から必須 (前倒し)」に格上げ + C-IDENTITY-BOUNDARY (出力境界 str 化) | Addendum H |
+| **v1.0 (baseline)** | v0.3 を **安定 baseline として固定**。以後の実験はこれを起点とし、変更は §6 の impact policy に従う | Addendum F/G/H/I で全項目実証済み |
+
+> **v1.0 の意味**: 全契約項目 (C-IDENTITY / -SHARED-PLACEMENT / -VALUE-SEMANTICS / -RESULT /
+> -LAYOUT / -UC-CONTAINER / -BOUNDARY-IFACE / -CONSUMER-PORTS / -IDENTITY-BOUNDARY + 横断 MUST_DECIDE)
+> が実コードで実証され、機械照合 (22) の対象として addressable になった段階。
+> 次フェーズ (Coordinator / 実プロジェクト) はこの baseline を **動かさずに** 上乗せする。
+
+## 6. Impact Policy (契約変更時に再実行すべきこと)
+
+契約は安定 baseline。変更する場合は **変更の波及範囲を宣言し、対応する再実行を行う**:
+
+| 変更する項目 | 再実行すべき検証 |
+| --- | --- |
+| identity / 値オブジェクト / Result / layout / 命名 (C-IDENTITY 〜 C-UC-CONTAINER) | 全 Capability の Phase 2 再生成 (破壊的。既存実装は全て stale 化) |
+| 境界ポート (C-BOUNDARY-IFACE / C-CONSUMER-PORTS) | 関係する producer/consumer の境界結線 + compose 統合テスト + 照合 C2 |
+| C-IDENTITY-BOUNDARY (出力境界) | descriptor/serialization 系のテスト + 照合 |
+| 横断 MUST_DECIDE の固定値 | 該当決定に依存する全 Capability |
+
+**原則**: 契約変更は意味的バージョニング (13 §4.3) に従い、`contract_version` を上げ、
+本 Changelog に追記し、`91-findings-ledger.md` に finding として記録する。
+**生成受け入れゲート (22)** を通らない変更はマージしない。
+
+## 7. 関連
 
 - 方法論側の規範: `../methodology-extensions/21-codebase-convention-contract.md`
-- 衝突の実証: `90-feasibility-notes.md` Addendum E
-- step 1 の実コード: `../../experiments/phase2-composition-test/`
-- 同時生成プロンプト: `41-cocompose-prompt.md`
+- 機械照合 (受け入れゲート): `../methodology-extensions/22-bom-conformance-check.md`
+- findings 索引: `91-findings-ledger.md`
+- 衝突の実証: `90-feasibility-notes.md` Addendum E〜I
+- 実コード: `../../experiments/phase2-composition-test/` (step1) / `phase2-cocompose-impl/` (n=2) / `phase2-v03-n2-impl/`・`phase2-v03-n3-impl/` (前倒し) / `bom-conformance-check/` (照合)
+- 同時生成プロンプト: `41-cocompose-prompt.md` / `42-rendering-incremental-prompt.md` / `43-preloaded-ports-prompt.md`

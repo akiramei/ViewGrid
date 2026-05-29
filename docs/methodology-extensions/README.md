@@ -89,6 +89,19 @@ ViewGrid を題材にした **3 回の Phase 2 試行** (GRID v0.1 / GRID v0.2 /
 
 を選択する想定。
 
+## 昇格ポリシー (draft → promoted、手戻り回避)
+
+**原則: baseline が固定されるまで本体 (OneDrive 01〜10) へは昇格しない。** 新発見が続く段階で昇格すると
+再昇格の手戻りが出る (Addendum F〜I で実際に契約が v0.1→v1.0 と churn した)。
+
+- **draft 状態 (本ディレクトリ)**: 反復改訂の対象。実験で新発見があれば随時更新。
+- **昇格の前提条件 (満たしたら本体へ移動可)**:
+  1. 契約が baseline 固定 (`../capability-bom-sample/00-convention-contract.md` v1.0 = 達成済み)
+  2. 該当 finding が `../capability-bom-sample/91-findings-ledger.md` で ✅/📐 (解消 or 規範化) 済み
+  3. 機械照合 (22) で GATE: PASS、または unverified 項目が ledger で追跡済み
+- 現状: 11〜14 / 21 / 22 は上記をおおむね満たす。**昇格は基盤固定が済んだ本フェーズ以降に実施可能**。
+  ただし Coordinator (16) / Shared Concepts (18) など未実証の副候補は draft のまま据え置く。
+
 ## 関連ドキュメント
 
 - 実証根拠: `../capability-bom-sample/90-feasibility-notes.md` (Addendum A / B / C / D)

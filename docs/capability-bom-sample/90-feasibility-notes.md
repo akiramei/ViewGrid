@@ -1509,3 +1509,48 @@ C1 で F-2 を、C2 で D-3 を捕捉した。BOM を修正した結果 FLAGS �
 1. 照合の汎用ハーネス化 (全 UC への C1・C2 自動展開。`guaranteed_by` の動的ガード検証は本 Addendum で実装済み)
 2. n=4 以降 (Coordinator パターンの実体化) / 実プロジェクトでの試験運用
 3. 方法論本体 (OneDrive 01〜10) への 11〜14 / 21 / 22 の昇格
+
+---
+
+# Addendum J — 基盤固定 + ゲート化 (手戻りを構造的に断つ、2026-05-29 実施)
+
+候補 E (E〜I) で得た知見を **安定 baseline に固定** し、機械照合を **生成の受け入れゲート** に前倒しする
+consolidation マイルストーン。新規実験ではなく proven 結果の synthesis (手戻りリスク最小)。
+
+> 動機: これまでの手戻りは「監査が生成の後段にある (事後発見→凍結/修正)」+「正典が Addendum A〜I に散在 +
+> 契約が v0.1→v0.3 churn」に起因。これを断つため (1) 知見を索引化、(2) 契約を固定、(3) 監査を前倒し。
+
+## J.1 成果物
+
+| 成果物 | 内容 |
+| --- | --- |
+| **findings ledger** (`91-findings-ledger.md`) | Addendum A〜I の全 finding を単一索引化。ID 衝突 (B-D3 vs Dpc-1 等) を Addendum 接頭辞で整理。各 finding に 解決方法 / 現状 (✅解消 / 📐規範化 / 🔍照合で防止 / 🟡オープン) / 機械照合可否 を付与 |
+| **契約 v1.0 baseline** (`00-convention-contract.md`) | v0.3 を **安定 baseline として固定**。§5 Changelog (v0.1→v1.0) + §6 Impact Policy (契約変更時に再実行すべき範囲) を追加 |
+| **受け入れゲート** (`bom-conformance-check/checker.py` + `22 §4.1`) | 照合を Phase 2 生成の **acceptance gate** に前倒し。GATE: PASS/FAIL + coverage manifest + 非ゼロ終了。`14-author-checklist` に項目追加 |
+| **昇格ポリシー** (`methodology-extensions/README`) | baseline 固定までは本体へ昇格しない (再昇格の手戻り回避) という draft→promoted 規範 |
+
+## J.2 手戻り回避の仕組み (どう効くか)
+
+| 仕組み | 断つ手戻り |
+| --- | --- |
+| 受け入れゲート (shift-left) | 「生成→コミット→Codex が P2 発見→凍結/修正」を「生成→ゲートで弾く→修正→コミット」に。事後発見ループを消す |
+| coverage manifest | 「GATE PASS = 全部 OK」の誤読を防止。未検証 (動的 probe 未整備) を可視化し ledger で追跡 |
+| 契約 baseline + Impact Policy | 契約 churn による下流 stale 化を、変更範囲の宣言と再実行で制御 |
+| findings ledger | 次実験が Addendum 9 個を読み直さず、安定した addressable な起点から始められる (知見累積) |
+
+## J.3 現状の GATE 状態
+
+`checker.py` → **GATE: FAIL (exit 1)**。残る 1 FLAG は **意図通り**: 凍結 `phase2-cocompose-impl` が
+B-D3 (cross-grid swap) を強制していない。BOM が precondition を宣言した今、ゲートが
+「強制しない実装」を機械的に弾く = 再発防止が効いている。準拠した再生成実装なら GATE: PASS になる。
+
+## J.4 結論
+
+候補 E の全行程 (E→F→G→H→I) の知見が **baseline 固定 + 受け入れゲート** に集約され、
+以後の実験 (Coordinator / 実プロジェクト) は **動かない土台 + 自動監査** の上で進められる状態になった。
+これにより「基盤が動くたびに再生成」「事後発見で打ち消し履歴」という 2 大手戻り要因が構造的に断たれた。
+
+次フェーズ (固定された基盤の上での新規知見):
+1. Coordinator パターン (cascade / cross-Capability orchestration) を実コード化 — 未検証の相互作用型
+2. 照合の汎用ハーネス化 (BOM が trigger/anchored_by を宣言し全 UC を自動 probe)
+3. baseline を前提に方法論本体 (OneDrive 01〜10) へ 11〜14 / 21 / 22 を昇格

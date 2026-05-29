@@ -199,6 +199,9 @@
 - [ ] **YAML と Markdown の UseCase 一覧 + 失敗理由が一致**
 - [ ] **YAML と Markdown の Rule 一覧 + 保証場所が一致**
 - [ ] **`canonical_failure_reasons.applies_to` と各 UC の `failure_reasons` が一致** (cross-reference)
+  - [ ] 機械照合 **C3** (`22-bom-conformance-check`) を回し、drift 0 を確認 (人手では取りこぼす。I-C3a/b/c の実例)
+- [ ] **自己検証 VO が保証する失敗理由は `guaranteed_by` を注記** (C1 が upstream ガードを検証。F-1/F-2)
+- [ ] **宣言した precondition に対応する失敗理由が canonical にある** (C2 で強制を検証。B-D3)
 - [ ] **用語集の語が Markdown 全体で同じ意味で使われている**
 - [ ] **README の構成説明と実ファイルが一致**
 - [ ] **フォワードリファレンス禁止**: 「§Y を参照」と書いた箇所の §Y が既に存在
@@ -239,6 +242,9 @@ Phase 2 試行 (13-norm-inheritance-and-inverse-audit.md §2) に投入する前
 - [ ] 既存実装参照禁止の制約をプロンプトに記載
 - [ ] 出力先 (`experiments/phase2-<capability-id>-v<X>-impl/`) を指定
 - [ ] 報告期待項目 (unclear / overreach / MUST_DECIDE / 自己監査 / 主観評価) を明示
+- [ ] **受け入れゲートの明示**: プロンプトの POST_IMPLEMENTATION_SELF_AUDIT に
+      「BOM↔実装 照合 (`22`/checker.py) を回し **GATE: PASS (exit 0)** を確認してから完了報告」を含める
+      (= drift を **コミット前** に弾く shift-left。事後発見の手戻りを断つ)
 - [ ] **本チェックリストの §1〜§7 を一通り消化済み**
 
 ---

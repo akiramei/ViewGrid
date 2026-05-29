@@ -119,6 +119,30 @@ Phase 2 実装 (`phase2-cocompose-impl`) に対して実行した結果:
 - **precondition を宣言したら**: 対応失敗理由を canonical に追加し、C2 で強制を検証する。
 - **14-author-checklist.md に 1 項目追加**: 「BOM ↔ 実装 照合 (C3/C1/C2) を回したか」。
 
+### 4.1 生成受け入れゲート (shift-left。手戻りを構造的に断つ)
+
+照合を **生成の後段の事後監査** ではなく **生成の受け入れ条件 (acceptance gate)** に前倒しする:
+
+- **規範**: Phase 2 生成は、`checker.py` が **GATE: PASS (exit 0)** になるまで「完了」と見なさない。
+  生成プロンプト (40 系) の POST_IMPLEMENTATION_SELF_AUDIT に「照合を回し GATE PASS を確認」を含める。
+- **対象の指定 (重要)**: ゲートは **生成物の src を CLI で明示** して回す:
+  `python experiments/bom-conformance-check/checker.py <生成物>/src`。
+  引数なしの既定ターゲットは **デモ用の凍結 impl** (`phase2-cocompose-impl`、B-D3 を持つため意図的に FAIL) であり、
+  これを新生成物のゲートに使ってはならない (古い凍結ツリーを検査してしまう)。
+  BOM は常に正準の `docs/capability-bom-sample/` を参照する。
+- これにより F-2 / B-D3 級の drift を **コミット前** に潰し、「事後発見 → 凍結/修正」の手戻りループを断つ。
+- **GATE 判定**: 概念は 3 種 — **FLAG** (宣言と実装の不一致) / **INCONCLUSIVE** (検証不能。probe 未定義・ガード未定義・対象 UC 不在) / **[C3]** (BOM drift)。
+  いずれか 1 件でも残れば **GATE: FAIL + 非ゼロ終了**。**「検証不能」を OK 扱いして PASS させない** (検証不能 ≠ 検証 OK)。
+- **coverage manifest**: **(UC, failure_reason) ペア単位** で `guaranteed_by` / dynamically-probed /
+  unverified-by-tool に分類して出力。共有失敗理由 (例: NotFound は多数 UC で使用) を probe した UC のみ
+  「probed」と数え、他 UC での使用は unverified とする (reason 単位だと coverage を過大表示する)。
+  **未検証 (動的 probe 未整備) を可視化**し「pass=全部 OK」の誤読を防ぐ。現状の動的 probe は focused
+  (IMGVAR UC-05 / GRID UC-07) なので大半が unverified = C3 静的整合 + 人手 anchor test で担保。
+  未検証項目は `../capability-bom-sample/91-findings-ledger.md` で追跡する。
+- **既知の限界**: 現状 C1/C2 の動的 probe は GRID UC-07 / IMGVAR UC-05 に focused。
+  汎用化 (BOM が trigger / anchored_by を宣言し全 UC を自動 probe) は次フェーズ。
+  それまで unverified 項目は C3 静的整合 + 人手 anchor test で担保する。
+
 ---
 
 ## 5. 既存方法論本体・拡張との接続

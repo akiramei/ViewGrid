@@ -33,11 +33,25 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLE = ROOT / "docs" / "capability-bom-sample"
-# Target the FIRST n=2 implementation (Addendum F), where the residual findings
-# F-2 (UC-05 mis-mapping) and D-3 (cross-grid swap) actually live. The later
-# v0.3 regeneration (phase2-v03-n3-impl) improved UC-05 and would pass C1 -- which
-# is itself the point: the checker distinguishes a buggy impl from a fixed one.
-IMPL_SRC = ROOT / "experiments" / "phase2-cocompose-impl" / "src"
+# Target implementation src. OVERRIDE via CLI so the gate can be pointed at a
+# freshly generated implementation:
+#     python checker.py <path-to-generated/src>
+# Default = the FIRST n=2 impl (Addendum F), where the residual findings F-2
+# (UC-05 mis-mapping) and B-D3 (cross-grid swap) actually live -- so the default
+# run intentionally FAILs. That is the point: the checker distinguishes a buggy
+# impl from a fixed one. As a gate, always pass the *generated* src explicitly.
+_DEFAULT_IMPL = ROOT / "experiments" / "phase2-cocompose-impl" / "src"
+if len(sys.argv) > 1:
+    _arg = Path(sys.argv[1])
+    if _arg.is_absolute():
+        IMPL_SRC = _arg.resolve()
+    else:
+        # Relative target: try cwd-relative first (standard CLI semantics), then
+        # repo-root-relative (so the doc's repo-relative examples also work).
+        _cands = [Path.cwd() / _arg, ROOT / _arg]
+        IMPL_SRC = next((c.resolve() for c in _cands if c.exists()), (Path.cwd() / _arg).resolve())
+else:
+    IMPL_SRC = _DEFAULT_IMPL
 
 BOMS = {
     "GRID_COMPOSITION": SAMPLE / "21-grid-composition.yaml",
@@ -215,7 +229,7 @@ def check_uc05_coverage(bom: dict, mods) -> list[str]:
     findings: list[str] = []
     uc = next((u for u in (_find_key(bom, "use_cases") or []) if u["id"] == "UC-05"), None)
     if uc is None:
-        return ["[C1] UC-05 not found in IMGVAR BOM"]
+        return ["[C1] INCONCLUSIVE: UC-05 not found in IMGVAR BOM"]
     declared = list(uc.get("failure_reasons", []) or [])
 
     # which reasons are annotated as upstream-guaranteed (value-object/enum construction)?
@@ -241,12 +255,14 @@ def check_uc05_coverage(bom: dict, mods) -> list[str]:
             ok, detail = _verify_guard(reason, mods)
             if ok:
                 findings.append(f"[C1] OK '{reason}': guaranteed_by upstream and {detail}")
+            elif "no guard probe" in detail:
+                findings.append(f"[C1] INCONCLUSIVE '{reason}': {detail}")
             else:
                 findings.append(f"[C1] FLAG '{reason}': annotated guaranteed_by but {detail}")
             continue
         kwargs = probes.get(reason)
         if kwargs is None:
-            findings.append(f"[C1] '{reason}': no probe input defined (cannot verify producibility)")
+            findings.append(f"[C1] INCONCLUSIVE '{reason}': no probe input defined (cannot verify producibility)")
             continue
         try:
             res = uc_obj.create_image_copy(**kwargs)
@@ -270,11 +286,14 @@ def check_uc07_precondition(bom: dict, mods) -> list[str]:
     findings: list[str] = []
     uc = next((u for u in (_find_key(bom, "use_cases") or []) if u["id"] == "UC-07"), None)
     if uc is None:
-        return ["[C2] UC-07 not found in GRID BOM"]
+        return ["[C2] INCONCLUSIVE: UC-07 not found in GRID BOM"]
     preconds = uc.get("preconditions", []) or []
     if "BothPlacementsBelongToSameGrid" not in preconds:
-        return ["[C2] UC-07 BOM does not declare BothPlacementsBelongToSameGrid -> "
-                "cross-grid swap is UNSPECIFIED (D-3 still open at the BOM level)"]
+        # This focused check exists to verify the D-3 cross-grid precondition.
+        # Its absence means D-3 is reopened at the BOM level -> cannot verify
+        # enforcement -> INCONCLUSIVE (a gate concern, not a silent pass).
+        return ["[C2] INCONCLUSIVE 'BothPlacementsBelongToSameGrid': UC-07 BOM does not declare it -> "
+                "cross-grid swap UNSPECIFIED (D-3 reopened at BOM level; cannot verify enforcement)"]
 
     CellPosition = mods["grid_dom"].CellPosition
     OccupySize = mods["shared_vo"].OccupySize
@@ -328,31 +347,67 @@ def main() -> int:
 
     mods = _import_impl()
 
+    # A dynamic check is a gate concern when it FLAGs (a real mismatch) OR is
+    # INCONCLUSIVE (could not verify -- unverifiable must not silently PASS).
+    def _is_concern(line: str) -> bool:
+        return "FLAG" in line or "INCONCLUSIVE" in line
+
     print("\n## C1 failure-reason coverage (IMAGE_VARIANT_MANAGEMENT UC-05)")
     imgvar_bom = load_bom(BOMS["IMAGE_VARIANT_MANAGEMENT"])
     for f in check_uc05_coverage(imgvar_bom, mods):
         print(f"  {f}")
-        if "FLAG" in f:
+        if _is_concern(f):
             all_findings.append(f)
 
     print("\n## C2 precondition enforcement (GRID_COMPOSITION UC-07 cross-grid / D-3)")
     grid_bom = load_bom(BOMS["GRID_COMPOSITION"])
     for f in check_uc07_precondition(grid_bom, mods):
         print(f"  {f}")
-        if "FLAG" in f:
+        if _is_concern(f):
             all_findings.append(f)
 
-    flags = [f for f in all_findings if "FLAG" in f or "[C3]" in f]
+    # Coverage manifest at (UC, failure_reason) granularity. A shared reason
+    # (e.g. NotFound, used by many UCs) is only "probed" for the SPECIFIC UC a
+    # focused probe exercises -- counting it probed for every UC would overstate
+    # coverage and hide blind spots. guaranteed_by is reason-level (the upstream
+    # value-object/enum guard holds for any UC taking that value).
+    PROBED_PAIRS = {
+        "IMAGE_VARIANT_MANAGEMENT": {("UC-05", "NotFound"), ("UC-05", "InvalidCopyName")},  # C1 (UC-05)
+        "GRID_COMPOSITION": {("UC-07", "CrossGridSwapNotAllowed")},                          # C2 (UC-07)
+        "RENDERING_EXPORT": set(),                                                           # no probe yet
+    }
+    print("\n## Coverage manifest (per (UC, failure_reason) pair)")
+    for name, path in BOMS.items():
+        bom = load_bom(path)
+        cfrs = {c["name"]: c for c in (_find_key(bom, "canonical_failure_reasons") or [])}
+        ucs = _find_key(bom, "use_cases") or []
+        pairs = [(u["id"], r) for u in ucs for r in (u.get("failure_reasons", []) or [])]
+        guaranteed_reasons = {r for r in cfrs if cfrs[r].get("guaranteed_by")}
+        probed_set = PROBED_PAIRS.get(name, set())
+        guaranteed = [p for p in pairs if p[1] in guaranteed_reasons]
+        probed = [p for p in pairs if p in probed_set and p[1] not in guaranteed_reasons]
+        unverified = [p for p in pairs if p[1] not in guaranteed_reasons and p not in probed_set]
+        print(f"  {name}: {len(pairs)} (UC,reason) pairs | guaranteed_by={len(guaranteed)} "
+              f"| dynamically-probed={len(probed)} | unverified-by-tool={len(unverified)}")
+        if unverified:
+            shown = ", ".join(f"{uc}:{r}" for uc, r in unverified[:12])
+            more = "" if len(unverified) <= 12 else f" (+{len(unverified) - 12} more)"
+            print(f"      unverified (C3 static-consistency only; no dynamic probe yet): {shown}{more}")
+
+    # Gate concerns = C3 drift + C1/C2 FLAG/INCONCLUSIVE (all already in all_findings).
+    concerns = all_findings
     print("\n" + "=" * 72)
-    print(f"FLAGS: {len(flags)}")
-    for f in flags:
+    print(f"GATE CONCERNS: {len(concerns)} (FLAG = mismatch, INCONCLUSIVE = unverifiable, [C3] = BOM drift)")
+    for f in concerns:
         print(f"  - {f}")
+    verdict = "FAIL" if concerns else "PASS"
+    print(f"GATE: {verdict}  (exit {1 if concerns else 0})")
     print("=" * 72)
-    # CI-style guard: non-zero exit when any conformance flag remains, so
-    # automated consumers treat a failed conformance check as a failure.
-    # (The frozen phase2-cocompose-impl legitimately carries the D-3 bug, so the
-    # current after-state exits 1 -- a regenerated, compliant impl would exit 0.)
-    return 1 if flags else 0
+    # CI-style guard: non-zero exit when any concern remains (FLAG or
+    # INCONCLUSIVE or C3 drift), so automated consumers treat a failed/unverifiable
+    # conformance check as a failure. (The frozen phase2-cocompose-impl carries the
+    # D-3 bug, so the current after-state FAILs -- a regenerated, compliant impl PASSes.)
+    return 1 if concerns else 0
 
 
 if __name__ == "__main__":

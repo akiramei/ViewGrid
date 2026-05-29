@@ -7,10 +7,15 @@
 ## 実行
 
 ```bash
+# 既定ターゲット (デモ用の凍結 impl phase2-cocompose-impl。B-D3 を持つため意図的に FAIL):
 python experiments/bom-conformance-check/checker.py
+
+# 受け入れゲートとして使う場合は *生成物の src を CLI で明示* する:
+python experiments/bom-conformance-check/checker.py <生成物>/src
 ```
 
-(cwd 非依存。`checker.py` は絶対パスで BOM と実装を解決する。PyYAML が必要。)
+BOM は常に正準 `docs/capability-bom-sample/` を参照。実装 src は CLI 引数で差し替え可能で、
+**相対パスは cwd → repo root の順で解決**する (絶対パスはそのまま)。PyYAML が必要。
 
 ## 何を照合するか
 
@@ -36,10 +41,15 @@ python experiments/bom-conformance-check/checker.py
 - IMGVAR `21-image-variant-management.yaml`: UC-05 の per-field `Invalid*` に `guaranteed_by` 注記
   (F-1/F-2 解消 — 値オブジェクト/enum が upstream で保証)。
 
-## 終了コード
+## 出力と終了コード (受け入れゲート)
 
-- flag が残れば **非ゼロ終了** (CI ガード)。凍結 `phase2-cocompose-impl` は D-3 バグを持つため
-  現状 after-state でも **exit 1** (C2 の 1 FLAG)。準拠した実装を向ければ exit 0 になる。
+- 末尾に **`GATE: PASS/FAIL`** と **coverage manifest** を出力する。
+  - flag が残れば **`GATE: FAIL` + 非ゼロ終了** (CI / 生成受け入れゲート)。
+    凍結 `phase2-cocompose-impl` は D-3 バグを持つため現状 **exit 1** (C2 の 1 FLAG)。準拠実装なら exit 0。
+  - **coverage manifest**: **(UC, failure_reason) ペア単位**で `guaranteed_by` / dynamically-probed /
+    unverified-by-tool に分類。共有理由 (NotFound 等) は probe した UC のみ probed と数える。
+    **未検証 (動的 probe 未整備) を可視化**し「pass=全 OK」の誤読を防ぐ。
+- 運用規範 (Phase 2 生成の受け入れゲート化) は `../../docs/methodology-extensions/22-bom-conformance-check.md §4.1`。
 
 ## 既知の制約 (将来拡張)
 
