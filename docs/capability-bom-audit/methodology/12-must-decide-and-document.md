@@ -1,6 +1,6 @@
 # 12 — `MUST_DECIDE_AND_DOCUMENT` 第三カテゴリ
 
-> **Status: 方法論本体への昇格候補ドラフト**
+> **Status: canonical (本体拡張、Step 5 で昇格 2026-05-30)**
 > 既存 09-ai-audit-prompt-guide.md を拡張する位置づけ
 
 ## この文書の目的

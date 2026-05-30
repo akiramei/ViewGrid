@@ -374,6 +374,9 @@ Capability BOM Audit の中心概念です。
 - history_decision
 ```
 
+> **第三カテゴリ (Step 5 昇格)**: ALLOWED / FORBIDDEN の二分に加え、AI 実装時に「決めてよいが**記録必須**」の
+> `MUST_DECIDE_AND_DOCUMENT` がある (生成方向で AI が決めざるを得ない実装決定の追跡)。詳細は `12-must-decide-and-document.md`。
+
 ---
 
 ## 例

@@ -175,6 +175,13 @@ Capability BOM Audit v0.1 では、通常次の構造を推奨します。
 8. Confidence policy
 ```
 
+> **Step 5 昇格 (2026-05-30): 第三カテゴリ `MUST_DECIDE_AND_DOCUMENT` で 8 → 9 構造へ**
+> ALLOWED / FORBIDDEN の二分では捉えきれない「AI が実装上どうしても決めざるを得ないが、決定内容を記録すべき」決定がある。
+> これを **Allowed と Forbidden の間に第三カテゴリ** として挿入し、基本構造は 9 項目になる:
+> `… 5. Allowed → (新) Must-decide-and-document = 決めてよいが記録必須 → Forbidden → Output → Confidence`。
+> これは生成方向 (BOM → コード) で AI を実装者として安全に使うための防御。
+> 詳細・運用 (実装ノートでの分類義務、典型決定カタログ) は `12-must-decide-and-document.md` を参照。
+
 ---
 
 # 1. Goal

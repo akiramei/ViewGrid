@@ -1,6 +1,6 @@
 # 11 — 三層構造による曖昧さ解消パターン
 
-> **Status: 方法論本体への昇格候補ドラフト**
+> **Status: canonical (本体拡張、Step 5 で昇格 2026-05-30)**
 > 既存 05-rule-ledger.md / 07-overreach-detection.md を拡張する位置づけ
 
 ## この文書の目的

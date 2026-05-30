@@ -81,7 +81,7 @@
 | 照合の汎用ハーネス化 | C1/C2 を全 UC へ自動展開 (BOM が trigger/anchored_by を宣言) | ゲート化の延長 |
 | no-op / storage / error 境界 (E-3/E-4/E-5, Dpc-2/3/4) | IMAGE_VARIANT 系の残仕様穴 | IMAGE_VARIANT を再訪する実験時にまとめて |
 | ディレクトリ対称化 (Cpc-4) | grid-composition/ subdir 化 | 低優先 (参照更新コスト) |
-| 方法論本体への昇格 | 11-14/21/22 を 本体 01-10 (リポジトリ methodology/) へ | baseline 固定後 (本台帳 + 契約 v1.0 が前提) |
+| 方法論本体への昇格 | 11-14/21/22 を 本体 01-10 へ統合 | ✅ **Step 5 (2026-05-30) 昇格済** (保守的昇格: status canonical 化 + 01/02/05/07/09 への surgical 統合 + 01 に参照ハブ。再番号は延期、23 は draft 据え置き) |
 
 ---
 

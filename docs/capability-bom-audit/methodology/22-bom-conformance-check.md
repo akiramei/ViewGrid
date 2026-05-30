@@ -1,6 +1,6 @@
 # 22 — BOM ↔ Implementation Conformance Check (機械可読 照合)
 
-> **Status: 方法論本体への昇格候補ドラフト**
+> **Status: canonical (本体拡張、Step 5 で昇格 2026-05-30)**
 > 由来: 残課題 F-1 / F-2 / D-1 / D-3 が「BOM の宣言 (canonical_failure_reasons・preconditions) と
 > 実装が実際にすること」のズレに収束したことを受け、その **machine-checkable な照合** を規範化する。
 > 実証: `docs/capability-bom-audit/tools/bom-conformance-check/checker.py` + `90-feasibility-notes.md` Addendum I。

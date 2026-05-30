@@ -1,6 +1,6 @@
 # 21 — Codebase Convention Contract (横断規約契約)
 
-> **Status: 方法論本体への昇格候補ドラフト** (内部候補 ID: G-1)
+> **Status: canonical (本体拡張、Step 5 で昇格 2026-05-30)** (内部候補 ID: G-1)
 > 既存 01〜10 にない新規概念。複数 Capability の **合成可能性** を保証する上位レイヤ
 > 由来: `90-feasibility-notes.md` Addendum E (候補 E ステップ 1 — 複数 Capability 合成試行)
 >

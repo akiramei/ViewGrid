@@ -626,6 +626,24 @@ ViewModel が placement validity を保証
 
 ---
 
+# 三層構造による Rule の曖昧さ解消 (narrative + algorithmic + executable)
+
+Rule を Ledger に記録するだけでは、**実装者 (特に AI) が複数の妥当な解釈の間で揺れる** 余地が残る。
+これを塞ぐため、曖昧になりやすい Rule は **三層** で冗長に表現する:
+
+| 層 | 表現 | 例 (配置の重なり判定) |
+| --- | --- | --- |
+| narrative | 物語・注記 (なぜ / どの境界か) | 「移動対象自身は衝突検査から除外する」 |
+| algorithmic | 手順 (workflow_decision の段取り) | 「候補占有セル集合 ∩ 既存占有セル集合 が空か検証」 |
+| executable | テスト (Anchor Test) | 「1×1 と 2×1 の swap で Conflict」 |
+
+単層 (narrative のみ) で一意に解釈できる Rule は単層でよい。**境界に跨る Rule・エッジケースで実装が分かれる
+不変条件・「直感的に綺麗そう」が誤実装になる Rule** にのみ三層を適用する。
+
+詳細・適用判定・実証は `11-three-layer-disambiguation.md` を参照 (Step 5 で canonical 昇格)。
+
+---
+
 # Rule Leakage
 
 ## 定義

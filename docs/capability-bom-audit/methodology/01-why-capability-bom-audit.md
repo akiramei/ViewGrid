@@ -475,3 +475,23 @@ Capability BOM Audit は、
 > ソフトウェアの意味構造を測量するための方法論
 
 として位置づけられます。
+
+---
+
+# 関連拡張 (生成方向 — Step 5 で昇格)
+
+本体 01〜10 は **監査方向 (コード → BOM 観測)** を定義する。これに対し、**生成方向 (BOM → コード生成) で
+AI を実装者として安全に使う** ための拡張が Step 5 で canonical に昇格した
+(実証: `../evaluation/90-feasibility-notes.md` Addendum A〜J / `../evaluation/91-findings-ledger.md`):
+
+| 拡張 | 内容 | 本体との関係 |
+| --- | --- | --- |
+| `11-three-layer-disambiguation.md` | narrative + algorithmic + executable の三層で曖昧さを塞ぐ | 05 / 07 を拡張 |
+| `12-must-decide-and-document.md` | 第三カテゴリ (決めてよいが記録必須) | 09 の 8 → 9 構造 |
+| `13-norm-inheritance-and-inverse-audit.md` | 規範継承性 + Inverse Audit Protocol (BOM → コードの試行→改訂ループ) | 新規 |
+| `14-author-checklist.md` | 人間執筆者向けチェックリスト | 01〜10 を補完 |
+| `21-codebase-convention-contract.md` | 複数 Capability 合成のための横断規約契約 | 新規 (上位レイヤ) |
+| `22-bom-conformance-check.md` | BOM ↔ 実装の機械照合 (受け入れゲート) | 新規 (検証) |
+
+> `23-authoring-and-operating-model.md` (人間資料 → 意味設計コンパイラ → AI 実装 の運用層) は **draft 据え置き**
+> (活発な frontier のため Step 5 では昇格しない)。

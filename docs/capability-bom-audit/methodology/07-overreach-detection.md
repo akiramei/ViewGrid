@@ -170,6 +170,9 @@ Overreach Detection の目的は、
 
 です。
 
+> **事前防御との補完 (Step 5 昇格)**: 本章は overreach の **事後検出**。実装前の **事前防御** は
+> 三層構造 (`11-three-layer-disambiguation.md`) が担う。両者は補完関係 (事前に塞ぎ、事後に観測する)。
+
 ---
 
 # Capability BOM Audit は設計警察ではない
