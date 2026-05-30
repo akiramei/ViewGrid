@@ -17,6 +17,27 @@ python docs/capability-bom-audit/tools/bom-conformance-check/checker.py <生成�
 BOM は常に正準 `docs/capability-bom-audit/samples/` を参照。実装 src は CLI 引数で差し替え可能で、
 **相対パスは cwd → repo root の順で解決**する (絶対パスはそのまま)。PyYAML が必要。
 
+### authoring モード (① 前倒し検査、コード不要)
+
+```bash
+# 任意の BOM yaml 1 枚に static 検査だけを回す (意味設計コンパイラの決定的検査器パート)
+python docs/capability-bom-audit/tools/bom-conformance-check/checker.py --authoring <bom.yaml>
+```
+
+`22`/§ の動的ゲート (C1/C2) はコードが要るので生成後にしか回せない。authoring モードは
+**実コードが無い BOM 執筆段階**で回せる static 部分集合 (`methodology/23 §3.6` の shift-left)。検査:
+
+| 検査 | 内容 | 由来 (ledger) |
+| --- | --- | --- |
+| SCHEMA | 必須セクション/フィールドの存在 | 14 |
+| C3 | canonical_failure_reasons ↔ per-UC failure_reasons (動的ゲートと同一関数) | D-1 |
+| PRECOND | 各 precondition に被覆する failure reason があるか (規約マップ。マップ外は INCONCLUSIVE) | A-1 |
+| REF | applies_to の dangling 参照 | — |
+| PROV | AI 抽出器が付けた `provenance: unresolved`/`proposal` を **機械的に block** (意味的ギャップの enforcement) | 23 §3.7 |
+
+`AUTHORING GATE: PASS / FAIL / NEEDS-AI` と非ゼロ終了を出す。実測は
+`experiments/authoring-compiler-prototype/RESULTS.md` (分界点: 意図の不完全性=AI / 内部整合=決定的 / 橋=PROV)。
+
 ## 何を照合するか
 
 | カテゴリ | 内容 | 捕捉する残課題 |

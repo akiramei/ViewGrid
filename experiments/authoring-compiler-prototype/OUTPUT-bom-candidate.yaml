@@ -1,0 +1,274 @@
+# =============================================================================
+# Capability BOM 候補 (AI 抽出器による lift 結果)
+# source prose: experiments/authoring-compiler-prototype/INPUT-human-requirements.md
+#
+# provenance の意味:
+#   human-confirmed : prose に明示的に書かれている (人間が確定済み)
+#   info            : prose に書かれた補足的な確定事項
+#   inferred        : prose の文面から妥当に推論したが、人間の確認が必要
+#   proposal        : prose に無く、AI が「あるべき」と提案した (人間が決めるべき)
+#   unresolved      : prose から決められず、診断で停止を要求している
+#
+# 注意: prose が underdetermined な箇所は埋めずに unresolved/proposal にし、
+#       OUTPUT-diagnostics.md で対応する診断 (ID) を起票している。
+# =============================================================================
+
+capability:
+  id: GRID_COMPOSITION
+  name:
+    ja: 画像配置グリッド
+    en: Image Placement Grid
+  purpose: >-
+    行×列のグリッドを台紙として、外部生成済みの画像派生物を
+    位置・占有サイズ・重なり順を指定して配置・編集する。画像の中身は編集しない。
+  # provenance: human-confirmed (背景 / 用語 節に明記)
+  # source: "## 背景 / ## 用語"
+
+  use_cases:
+    - id: UC-01
+      name: CreateGrid
+      kind: command
+      inputs: [name, rows, cols]
+      preconditions: [RowsAtLeastOne, ColsAtLeastOne]
+      postconditions: [GridCreated]
+      failure_reasons: [RowsOutOfRange, ColsOutOfRange]
+      provenance: human-confirmed
+      source: "## やりたいこと > グリッドを作る: 「名前と、行数・列数を指定して新しいグリッドを作る。行数・列数は 1 以上の整数。」"
+
+    - id: UC-02
+      name: PlaceImage
+      kind: command
+      inputs: [gridId, imageId, position, occupiedSize]
+      preconditions: [GridExists, ImageSelectable, WithinGridBounds, NoOverlapWithExisting]
+      postconditions: [PlacementCreated]
+      failure_reasons: [GridNotFound, ImageNotSelectable, OutOfBounds, Overlap]
+      provenance: human-confirmed
+      source: "## やりたいこと > 画像をマスに置く: 「既存のグリッドに対して、使える画像を 1 つ選び、置きたいマス(左上を 0,0 とする座標)と、占有する大きさ(幅×高さ、マス単位)を指定して置く。」/「外にはみ出してはいけない」/「重なってはいけない」"
+
+    - id: UC-03
+      name: MovePlacement
+      kind: command
+      inputs: [gridId, placementId, newPosition]
+      preconditions: [GridExists, PlacementExists, WithinGridBounds, NoOverlapExcludingSelf]
+      postconditions: [PlacementMoved]
+      failure_reasons: [GridNotFound, PlacementNotFound, OutOfBounds, Overlap]
+      provenance: human-confirmed
+      source: "## やりたいこと > 配置を動かす: 「置いた画像を別のマスへ動かす。…領域外に出てはいけないし、他の配置と重なってもいけない(動かしている自分自身は重なり判定から除く)。」"
+
+    - id: UC-04
+      name: SwapPlacements
+      kind: command
+      inputs: [gridId, placementIdA, placementIdB]
+      preconditions: [GridExists, PlacementExists, WithinGridBounds, NoOverlapAfterSwap]
+      postconditions: [PlacementsSwapped]
+      failure_reasons: [GridNotFound, PlacementNotFound, OutOfBounds, Overlap]
+      provenance: human-confirmed
+      source: "## やりたいこと > 2 つの配置を入れ替える: 「2 つの配置を選んで、互いの位置を入れ替える。入れ替えた結果、どちらもグリッド内に収まり、かつ他と重ならないこと。」"
+      # NOTE: 占有サイズが異なる 2 配置の swap が「位置の交換」で意味をなすか、
+      #       swap の重なり判定が「互いを除外して計算するのか」は prose 未定義。診断 SWAP-001 / SWAP-002 参照。
+
+    - id: UC-05
+      name: ChangeStackingOrder
+      kind: command
+      inputs: [gridId, placementId, orderOperation]
+      preconditions: [GridExists, PlacementExists]
+      postconditions: [StackingOrderChanged]
+      failure_reasons: [GridNotFound, PlacementNotFound]
+      provenance: human-confirmed
+      source: "## やりたいこと > 重なり順を変える: 「最前面に持ってくる/最背面に送る/1 つ前へ/1 つ後ろへ…各配置には『順番』を表す値が付く。」"
+      # NOTE: 端での「1 つ前へ/後ろへ」の挙動、順番値の表現・一意性は prose 未定義。診断 ORDER-001 / ORDER-002 参照。
+
+    - id: UC-06
+      name: DeletePlacement
+      kind: command
+      inputs: [gridId, placementId]
+      preconditions: [GridExists, PlacementExists]
+      postconditions: [PlacementDeleted]
+      failure_reasons: [GridNotFound, PlacementNotFound]
+      provenance: human-confirmed
+      source: "## やりたいこと > 配置を消す: 「不要な配置を 1 つ消す。」"
+      # NOTE: 削除で重なり順に空きが生じた場合の詰め直し有無は prose 未定義。診断 ORDER-003 参照。
+
+  canonical_failure_reasons:
+    - name: RowsOutOfRange
+      payload: { rows: int }
+      applies_to: [UC-01]
+      provenance: inferred
+      source: "「行数・列数は 1 以上の整数」から不正値を拒否すると推論。失敗『理由』の表現方法・分割(行と列を別理由にするか)は prose 未定義 → 診断 FAIL-001。"
+
+    - name: ColsOutOfRange
+      payload: { cols: int }
+      applies_to: [UC-01]
+      provenance: inferred
+      source: "同上 (列について)。FAIL-001 参照。"
+
+    - name: GridNotFound
+      payload: { gridId: GridId }
+      applies_to: [UC-02, UC-03, UC-04, UC-05, UC-06]
+      provenance: inferred
+      source: "「既存のグリッドに対して」という前提から、存在しないグリッド指定時の失敗を推論。prose は明示せず → 診断 FAIL-002。"
+
+    - name: PlacementNotFound
+      payload: { placementId: PlacementId }
+      applies_to: [UC-03, UC-04, UC-05, UC-06]
+      provenance: inferred
+      source: "「置いた画像/配置を…」という前提から、存在しない配置指定時の失敗を推論。prose は明示せず → 診断 FAIL-002。"
+
+    - name: ImageNotSelectable
+      payload: { imageId: ImageId }
+      applies_to: [UC-02]
+      provenance: proposal
+      source: "「使える画像を 1 つ選び」とあるが、選べない画像(存在しない/権限外)を渡した場合の失敗を prose は規定していない → 診断 FAIL-003。"
+
+    - name: OutOfBounds
+      payload: { gridId: GridId, position: Position, occupiedSize: Size }
+      applies_to: [UC-02, UC-03, UC-04]
+      provenance: human-confirmed
+      source: "「外にはみ出してはいけない」「領域外に出てはいけない」「グリッド内に収まり」。ただし失敗を例外/結果値どちらで返すかは未定義 → 診断 FAIL-004。"
+
+    - name: Overlap
+      payload: { gridId: GridId, conflictingPlacementId: PlacementId }
+      applies_to: [UC-02, UC-03, UC-04]
+      provenance: human-confirmed
+      source: "「重なってはいけない」「他と重ならないこと」。payload に競合相手 ID を含めるかは proposal(prose 未規定) → 診断 FAIL-005。"
+
+  rules:
+    - id: R-01
+      name: GridDimensionsAtLeastOne
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-01]
+      provenance: human-confirmed
+      source: "「行数・列数は 1 以上の整数」"
+
+    - id: R-02
+      name: PlacementWithinGridBounds
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-02, UC-03, UC-04]
+      provenance: human-confirmed
+      source: "「外にはみ出してはいけない」「領域外に出てはいけない」「グリッド内に収まり」"
+
+    - id: R-03
+      name: NoOverlapBetweenPlacements
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-02, UC-03, UC-04]
+      provenance: human-confirmed
+      source: "「重なってはいけない」「他と重ならないこと」"
+
+    - id: R-04
+      name: MoveExcludesSelfFromOverlapCheck
+      kind: consistency
+      enforced_at: domain
+      applies_to: [UC-03]
+      provenance: human-confirmed
+      source: "「動かしている自分自身は重なり判定から除く」"
+
+    - id: R-05
+      name: SwapExcludesParticipantsFromMutualOverlap
+      kind: consistency
+      enforced_at: domain
+      applies_to: [UC-04]
+      provenance: unresolved
+      source: "swap で『自身/相手を重なり判定から除外するか』を prose は規定していない。Move (R-04) との整合のため必要だが断定不可 → 診断 SWAP-002。"
+
+    - id: R-06
+      name: StackingOrderPerPlacement
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-05]
+      provenance: human-confirmed
+      source: "「各配置には『順番』を表す値が付く」。値の型・一意性・連続性・初期値は未定義 → 診断 ORDER-002。"
+
+    - id: R-07
+      name: OccupiedSizeAtLeastOneCell
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-02]
+      provenance: proposal
+      source: "占有サイズ(幅×高さ)の下限を prose は規定していない(0 や負を拒否すべきか不明) → 診断 SIZE-001。"
+
+    - id: R-08
+      name: CoordinateOriginTopLeftZeroBased
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-02, UC-03, UC-04]
+      provenance: human-confirmed
+      source: "「左上を 0,0 とする座標」"
+
+  entities:
+    owned:
+      - name: Grid
+        fields: [id, name, rows, cols]
+        # provenance: human-confirmed (## 用語: グリッド = 行×列のマス目の台紙)。id/name は inferred。
+      - name: Placement
+        fields: [id, gridId, imageId, position, occupiedSize, stackingOrder]
+        # provenance: human-confirmed (## 用語: 配置 = 位置・占有サイズ・重なり順を持つ)。id/gridId/imageId は inferred な命名。
+    referenced:
+      - name: Image
+        # provenance: human-confirmed (## 用語: 別仕組みで作られた画像派生物。中身は編集しない = この capability の外部参照)
+        # source: "## 背景 / ## 用語"
+    value_objects:
+      - name: Position
+        fields: [row, col]
+        # provenance: inferred ("置きたいマス(左上を 0,0 とする座標)" を row/col の VO と推論。フィールド名は proposal)
+      - name: Size
+        fields: [width, height]
+        # provenance: inferred ("占有する大きさ(幅×高さ、マス単位)" を width/height の VO と推論)
+      - name: StackingOrder
+        fields: [value]
+        # provenance: proposal (順番値の表現方法は prose 未定義 → 診断 ORDER-002)
+
+  events: []
+  # provenance: unresolved
+  # source: "absent from prose"
+  # prose はドメインイベント(配置された/動かされた等の通知)に一切言及していない。
+  # 履歴・通知が必要かは決定の所在が不明 → 診断 EVT-001 / DEC-007 (history) 参照。
+
+  decision_ownership:
+    # prose は「誰がどの決定を持つか」をほとんど書いていない。
+    # 明記があるのはレイアウト(見た目)のみ。残りは inferred/unresolved にして診断で停止を要求する。
+    domain_decision:
+      owned_by: []
+      provenance: unresolved
+      source: "prose はバリデーション(はみ出し/重なり)の『所在(どの層が拒否を所有するか)』を明示していない。ドメイン不変条件として置くのが妥当だが断定不可 → 診断 DEC-001。"
+    validation_decision:
+      owned_by: []
+      provenance: unresolved
+      source: "「不正な配置は受け付けない」とあるが、受け付けないのが UI なのかドメインなのかを prose は決めていない → 診断 DEC-002。"
+    workflow_decision:
+      owned_by: []
+      provenance: unresolved
+      source: "操作間の順序・複合ワークフロー(例: 入れ替えの一括成否)について prose は記述していない → 診断 DEC-003。"
+    ui_interaction_decision:
+      owned_by: [designer]
+      provenance: human-confirmed
+      source: "「レイアウト(見た目)の細部はデザイナーに任せる」/「画像をマスにドラッグして置く。置いたものはドラッグで動かせる」(配置画面の相互作用は明示)。ただしドラッグ↔操作の対応は inferred → 診断 UI-001。"
+    persistence_decision:
+      owned_by: []
+      provenance: unresolved
+      source: "保存・永続化・同時編集について prose は一切触れていない → 診断 DEC-005。"
+    rendering_decision:
+      owned_by: [designer]
+      provenance: inferred
+      source: "「レイアウト(見た目)の細部はデザイナーに任せる」を rendering 決定の委譲と解釈。だが描画責務の境界は明示されていない → 診断 DEC-006。"
+    history_decision:
+      owned_by: []
+      provenance: unresolved
+      source: "undo/redo・編集履歴について prose は言及なし。シナリオの「動かしたり入れ替えたり」は履歴示唆と読めるが断定不可 → 診断 DEC-007。"
+
+  boundaries:
+    depends_on:
+      - name: ImageDerivativeSource
+        provenance: human-confirmed
+        source: "「別の仕組みで作られた画像派生物(トリミングや拡縮の済んだもの)」"
+    depended_on_by: []
+    # provenance: unresolved / source: "absent from prose" (この機能を誰が呼ぶかは未記述)
+    excluded:
+      - name: ImageContentEditing
+        provenance: human-confirmed
+        source: "「このグリッド機能は画像の中身そのものは編集しない」"
+      - name: VisualLayoutStyling
+        provenance: human-confirmed
+        source: "「レイアウト(見た目)の細部はデザイナーに任せる」"

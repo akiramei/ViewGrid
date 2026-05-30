@@ -71,6 +71,7 @@
 | 執筆者チェックリスト | 14 | 改訂事故の防止 |
 | Codebase Convention Contract (横断規約) | 21 | n=2 アダプタ0 (F) / n=3 producer-free (H) |
 | BOM↔実装 機械照合 (C1/C2/C3) | 22 | D-1/F-1/F-2/B-D3 を検出・解消 (I) |
+| Authoring 層 (人間資料→意味設計コンパイラ→AI実装) + 分界点 | 23 | prototype 実測 (2026-05-30): AI=意図の不完全性 / 決定的ツール=内部整合 / provenance タグ=橋。AI が prose から旧 `A-3` を再発見。`experiments/authoring-compiler-prototype/` |
 
 ## 5. オープン項目の優先度 (次フェーズの入力)
 

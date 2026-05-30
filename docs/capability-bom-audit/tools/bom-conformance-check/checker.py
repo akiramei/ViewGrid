@@ -122,6 +122,189 @@ def check_static(name: str, bom: dict) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
+# Authoring-mode static rules (BOM-only, NO implementation).
+#
+# These are the STATIC subset of the conformance gate, usable at BOM-authoring
+# time -- the shift-left "compiler" of methodology/23 §3.6. The dynamic checks
+# (C1/C2) need real code and stay in the generation gate; only static checks can
+# run before any code exists. The diagnostic rules are harvested from the
+# findings ledger (91), NOT invented:
+#     A-1  -> precondition declared without a covering failure reason   [PRECOND]
+#     D-1  -> applies_to drift (reuses check_static / C3)               [C3]
+#     14   -> required section / required field missing                [SCHEMA]
+#     dangling cross-references (applies_to / rules.applies_to)         [REF]
+#
+# Severity: ERROR (blocks the authoring gate) / INCONCLUSIVE (unverifiable -- the
+# 分界点: the tool cannot decide, so it must not silently pass) / INFO.
+# --------------------------------------------------------------------------- #
+REQUIRED_SECTIONS = ["use_cases", "canonical_failure_reasons", "rules",
+                     "decision_ownership", "boundaries"]
+
+# Convention registry: a precondition -> the failure reason(s) whose declaration
+# covers its violation. Harvested from the BOM convention (e.g. NotFound.notes:
+# "前提条件 GridExists / PlacementExists が破れたとき"). A precondition NOT in this
+# map cannot be verified deterministically -> reported INCONCLUSIVE. This map +
+# "what the AI lifted into structure" jointly bound the deterministic tool's
+# reach; everything outside is the AI extractor's territory (the 分界点).
+PRECOND_REASON_MAP = {
+    "GridExists": {"NotFound"},
+    "PlacementExists": {"NotFound"},
+    "BothPlacementsExist": {"NotFound"},
+    "ImageCopyExists": {"UnknownCopyId", "NotFound"},
+    "IndexInRange": {"InvalidIndex"},
+    "BothPlacementsBelongToSameGrid": {"CrossGridSwapNotAllowed"},
+}
+
+
+def check_schema(bom: dict) -> list[str]:
+    """[SCHEMA] required sections / required fields present (harvested from 14)."""
+    findings: list[str] = []
+    cap = _find_key(bom, "capability")
+    if not cap or not cap.get("id"):
+        findings.append("[SCHEMA][ERROR] top-level `capability.id` missing")
+    for sec in REQUIRED_SECTIONS:
+        val = _find_key(bom, sec)
+        if val is None or (isinstance(val, (list, dict)) and len(val) == 0):
+            findings.append(f"[SCHEMA][ERROR] required section `{sec}` missing or empty")
+    for uc in (_find_key(bom, "use_cases") or []):
+        uid = uc.get("id", "<no-id>")
+        for field in ("id", "name"):
+            if not uc.get(field):
+                findings.append(f"[SCHEMA][ERROR] {uid}: required field `{field}` missing")
+        if uc.get("kind") != "query" and "failure_reasons" not in uc:
+            findings.append(f"[SCHEMA][ERROR] {uid}: command UC has no `failure_reasons` key")
+    for c in (_find_key(bom, "canonical_failure_reasons") or []):
+        if not c.get("name"):
+            findings.append("[SCHEMA][ERROR] a canonical_failure_reason has no `name`")
+        elif "applies_to" not in c:
+            findings.append(f"[SCHEMA][ERROR] failure reason '{c['name']}' has no `applies_to`")
+    return findings
+
+
+def check_precondition_coverage(bom: dict) -> list[str]:
+    """[PRECOND] every declared precondition must have a covering failure reason
+    (catches A-1). Unknown preconditions -> INCONCLUSIVE (the deterministic
+    tool's reach ends where the convention map ends)."""
+    findings: list[str] = []
+    for uc in (_find_key(bom, "use_cases") or []):
+        uid = uc.get("id", "<no-id>")
+        reasons = set(uc.get("failure_reasons", []) or [])
+        for pre in (uc.get("preconditions", []) or []):
+            expected = PRECOND_REASON_MAP.get(pre)
+            if expected is None:
+                findings.append(
+                    f"[PRECOND][INCONCLUSIVE] {uid}: precondition '{pre}' not in convention map "
+                    f"-> cannot verify it has a covering failure reason (AI-extractor territory)")
+            elif not (reasons & expected):
+                findings.append(
+                    f"[PRECOND][ERROR] {uid}: precondition '{pre}' declared but NO covering failure "
+                    f"reason among {sorted(expected)} (impl will improvise -- A-1 class)")
+    return findings
+
+
+def check_dangling_refs(bom: dict) -> list[str]:
+    """[REF] applies_to / rules.applies_to must reference existing UC ids."""
+    findings: list[str] = []
+    uc_ids = {uc.get("id") for uc in (_find_key(bom, "use_cases") or [])}
+    for c in (_find_key(bom, "canonical_failure_reasons") or []):
+        for u in (c.get("applies_to", []) or []):
+            if u not in uc_ids:
+                findings.append(f"[REF][ERROR] failure reason '{c.get('name')}'.applies_to references unknown UC '{u}'")
+    for r in (_find_key(bom, "rules") or []):
+        for u in (r.get("applies_to", []) or []):
+            if u not in uc_ids:
+                findings.append(f"[REF][ERROR] rule '{r.get('id')}'.applies_to references unknown UC '{u}'")
+    return findings
+
+
+def _walk_provenance(obj, label, out):
+    if isinstance(obj, dict):
+        if "provenance" in obj:
+            name = obj.get("id") or obj.get("name") or label
+            out.append((name, obj.get("provenance"), obj.get("source", "")))
+        for k, v in obj.items():
+            if k != "provenance":  # provenance value is a scalar; don't recurse into it
+                _walk_provenance(v, k, out)
+    elif isinstance(obj, list):
+        for v in obj:
+            _walk_provenance(v, label, out)
+
+
+def check_provenance(bom: dict) -> list[str]:
+    """[PROV] mechanically enforce the provenance gate (methodology/23 §3.5/§3.7).
+
+    The AI extractor DETECTS semantic gaps and TAGS them; the deterministic tool
+    only has to ENFORCE the tags -- it need not understand the gap. This is the
+    bridge across the 分界点: blocking stays reproducible (no AI judgement at the
+    gate) while semantic gaps still block, via the tag.
+        unresolved / proposal -> ERROR  (human must harden before implementation)
+        inferred              -> WARNING (advisory: needs human confirmation)
+        human-confirmed / info-> ok
+    """
+    items: list[tuple] = []
+    _walk_provenance(bom, "(root)", items)
+    findings: list[str] = []
+    for name, prov, _src in items:
+        if prov in ("unresolved", "proposal"):
+            findings.append(f"[PROV][ERROR] '{name}': provenance={prov} -- AI-flagged gap, human must harden before impl")
+        elif prov == "inferred":
+            findings.append(f"[PROV][WARNING] '{name}': provenance=inferred -- AI guessed, needs human confirmation")
+    return findings
+
+
+def _resolve_bom_path(arg: str | None) -> Path:
+    if not arg:
+        raise SystemExit("usage: checker.py --authoring <bom.yaml>")
+    p = Path(arg)
+    if p.is_absolute():
+        return p.resolve()
+    for cand in (Path.cwd() / p, ROOT / p):
+        if cand.exists():
+            return cand.resolve()
+    return (Path.cwd() / p).resolve()
+
+
+def main_authoring(bom_arg: str | None) -> int:
+    """Authoring-time static gate: run static checks on a single BOM yaml, no impl."""
+    path = _resolve_bom_path(bom_arg)
+    print("=" * 72)
+    print("BOM Authoring-time Static Check (shift-left of the conformance gate)")
+    print(f"target BOM: {path}")
+    print("=" * 72)
+    bom = load_bom(path)
+
+    sections = [
+        ("SCHEMA  (required sections/fields)", check_schema(bom)),
+        ("C3      (canonical <-> per-UC failure_reasons)", check_static("(authoring)", bom)),
+        ("PRECOND (precondition has covering failure reason)", check_precondition_coverage(bom)),
+        ("REF     (no dangling applies_to references)", check_dangling_refs(bom)),
+        ("PROV    (provenance gate: unresolved/proposal block)", check_provenance(bom)),
+    ]
+    concerns: list[str] = []
+    for title, fs in sections:
+        print(f"\n## {title}")
+        if not fs:
+            print("  OK")
+            continue
+        for f in fs:
+            print(f"  {f}")
+            if "ERROR" in f or "INCONCLUSIVE" in f or f.startswith("[C3]"):
+                concerns.append(f)
+
+    errors = [c for c in concerns if "ERROR" in c or c.startswith("[C3]")]
+    inconclusive = [c for c in concerns if "INCONCLUSIVE" in c]
+    print("\n" + "=" * 72)
+    print(f"AUTHORING GATE CONCERNS: {len(concerns)} "
+          f"(blocking ERROR/[C3]: {len(errors)} | INCONCLUSIVE -> AI-extractor: {len(inconclusive)})")
+    for f in concerns:
+        print(f"  - {f}")
+    verdict = "FAIL" if errors else ("NEEDS-AI" if inconclusive else "PASS")
+    print(f"AUTHORING GATE: {verdict}  (exit {1 if (errors or inconclusive) else 0})")
+    print("=" * 72)
+    return 1 if (errors or inconclusive) else 0
+
+
+# --------------------------------------------------------------------------- #
 # dynamic import of the frozen v0.3 n=3 implementation
 # --------------------------------------------------------------------------- #
 def _import_impl():
@@ -413,4 +596,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--authoring":
+        raise SystemExit(main_authoring(sys.argv[2] if len(sys.argv) > 2 else None))
     raise SystemExit(main())

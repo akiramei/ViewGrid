@@ -1,4 +1,4 @@
-# Capability BOM Audit — 方法論 (本体 01〜10 + 拡張 11〜14 / 21 / 22)
+# Capability BOM Audit — 方法論 (本体 01〜10 + 拡張 11〜14 / 21 / 22 / 23)
 
 > **Encoding: UTF-8** (BOM なし、LF)。
 > **構成**: `01〜10` = 方法論本体 (canonical)、`11〜14 / 21 / 22` = PoC で得た拡張 (status: draft)。
@@ -56,6 +56,14 @@ Capability BOM Audit の **方法論一式** を 1 箇所に集約する:
 | 22 | [`22-bom-conformance-check.md`](22-bom-conformance-check.md) | BOM (canonical_failure_reasons・preconditions) ↔ 実装の machine-checkable 照合 (C3/C1/C2)。残課題 D-1/F-1/F-2/D-3 を検出・解消 | Addendum I |
 
 > **番号について**: 21 は本来副候補 18 (Shared Concepts Schema) と対になる **物理レイヤ** の文書。18 が未ドラフトのため先行ドラフトとして 21 に置いた。22 は 21 の physical 契約と semantic カタログ (失敗理由) の整合を照合する。昇格時に再番号付けしてよい。
+
+### 統合ブループリント 1 件 (Authoring/Operating 層、候補 E 完了後の方向づけ)
+
+| 番号 | ファイル | 内容 | 由来 |
+| --- | --- | --- | --- |
+| 23 | [`23-authoring-and-operating-model.md`](23-authoring-and-operating-model.md) | 既存 01〜22 の **上に乗る運用モデル**。人間の意味資料 → 意味設計コンパイラ → AI実装 の二層化、全工程 × 人間/AI 主従 × ツール × Gate のワークフロー、UI 意味契約層、shift-left 連続体 (① authoring compiler / ② 照合ゲート 22 / ③ 事後監査 01-10)。コンパイラの診断カタログは findings ledger (91) から収穫する | 候補 E 完了後の方向づけ議論 |
+
+> **位置づけ**: 23 は内側の方法論 (01〜22 = AI に BOM から実装させ監査する) の **外側のオーケストレーション**。新規の (b) 意味設計コンパイラ仕様 / (d) UI 意味契約 は本ブループリント確定後に個別文書へ分割する想定 (§7 未確定論点)。
 
 ### 副候補 6 件 (本ディレクトリでは未着手、将来のドラフト候補)
 

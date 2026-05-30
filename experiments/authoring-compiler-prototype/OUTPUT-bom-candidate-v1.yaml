@@ -1,0 +1,281 @@
+# Capability BOM 候補 (AI 抽出器 lift v1)
+# 入力 prose: experiments/authoring-compiler-prototype/INPUT-human-requirements.md
+# 注意: 本ファイルは AI 抽出器が prose から lift した「候補」。human-confirmed は prose に明示のものだけ。
+#       proposal/unresolved/inferred は人間決定/確認待ち。下流: checker.py --authoring がパース。
+
+capability:
+  id: IMAGE_PLACEMENT_GRID
+  name:
+    ja: 画像配置グリッド
+    en: ImagePlacementGrid
+  purpose: 行×列のグリッド上に画像派生物を位置・占有サイズ・重なり順で配置し、レイアウトを編集する。
+  # purpose 自体は prose「背景」「やりたいこと」から構造化したもの (info)
+
+  use_cases:
+    - id: UC-01
+      name: CreateGrid
+      kind: command
+      inputs: [name, rows, cols]
+      preconditions: []
+      postconditions: [GridExists]
+      failure_reasons: [InvalidDimensions]
+      provenance: human-confirmed
+      source: "やりたいこと>グリッドを作る『名前と、行数・列数を指定して新しいグリッドを作る。行数・列数は 1 以上の整数。』"
+
+    - id: UC-02
+      name: PlaceImage
+      kind: command
+      inputs: [grid_id, image_copy_id, position, occupy_size]
+      preconditions: [GridExists, ImageCopyExists]
+      postconditions: [PlacementExists]
+      failure_reasons: [NotFound, UnknownCopyId, OutOfBounds, Conflict, InvalidDimensions]
+      provenance: human-confirmed
+      source: "やりたいこと>画像をマスに置く『既存のグリッドに対して、使える画像を1つ選び、置きたいマス(左上を0,0とする座標)と、占有する大きさ(幅×高さ、マス単位)を指定して置く。外にはみ出してはいけない。重なってはいけない。』"
+
+    - id: UC-03
+      name: MovePlacement
+      kind: command
+      inputs: [grid_id, placement_id, new_position]
+      preconditions: [GridExists, PlacementExists]
+      postconditions: [PlacementMoved]
+      failure_reasons: [NotFound, OutOfBounds, Conflict]
+      provenance: human-confirmed
+      source: "やりたいこと>配置を動かす『置いた画像を別のマスへ動かす。領域外に出てはいけないし、他の配置と重なってもいけない(動かしている自分自身は重なり判定から除く)。』"
+
+    - id: UC-04
+      name: SwapPlacements
+      kind: command
+      inputs: [grid_id, placement_id_a, placement_id_b]
+      preconditions: [GridExists, PlacementExists]
+      postconditions: [PlacementsSwapped]
+      failure_reasons: [NotFound, OutOfBounds, Conflict]
+      provenance: human-confirmed
+      source: "やりたいこと>2つの配置を入れ替える『2つの配置を選んで、互いの位置を入れ替える。どちらもグリッド内に収まり、かつ他と重ならないこと。』"
+
+    - id: UC-05
+      name: ChangeZOrder
+      kind: command
+      inputs: [grid_id, placement_id, z_operation]
+      # z_operation: bring_to_front | send_to_back | move_forward | move_backward
+      # 1 UC + operation 種別か、4 UC へ分割かは未確定 → DEC-/RUL- 診断参照
+      preconditions: [GridExists, PlacementExists]
+      postconditions: [ZOrderChanged]
+      failure_reasons: [NotFound, InvalidIndex]
+      # InvalidIndex: 既に最前面なのに move_forward 等の端での扱いが未定義 (proposal)
+      provenance: proposal
+      source: "やりたいこと>重なり順を変える『最前面に持ってくる/最背面に送る/1つ前へ/1つ後ろへ、で重なり順を変えられる。各配置には順番を表す値が付く。』(操作粒度・端での挙動・順序値の妥当性が prose で未確定のため proposal)"
+
+    - id: UC-06
+      name: RemovePlacement
+      kind: command
+      inputs: [grid_id, placement_id]
+      preconditions: [GridExists, PlacementExists]
+      postconditions: [PlacementRemoved]
+      failure_reasons: [NotFound]
+      provenance: human-confirmed
+      source: "やりたいこと>配置を消す『不要な配置を1つ消す。』"
+
+  canonical_failure_reasons:
+    - name: NotFound
+      payload: { entity_kind: string, entity_id: string }
+      applies_to: [UC-02, UC-03, UC-04, UC-05, UC-06]
+      provenance: inferred
+      # RULE A 正規化: GridNotFound/PlacementNotFound を作らず NotFound + entity_kind で表現
+      source: "preconditions GridExists/PlacementExists の破れ。prose は失敗理由名を明示しないため不在系の表現は inferred (RULE A canonical 名へ正規化)"
+
+    - name: UnknownCopyId
+      payload: { copy_id: string }
+      applies_to: [UC-02]
+      provenance: proposal
+      # 画像は『別仕組みで作られた画像派生物』= 外部 Capability の実体。NotFound と区別 (RULE A baseline)
+      source: "背景『別の仕組みで作られた画像派生物』+ 画像をマスに置く『使える画像を1つ選び』。外部参照不在を NotFound と分けるかは境界判断 → proposal (BND 診断参照)"
+
+    - name: OutOfBounds
+      payload: { attempted_position: object, occupy_size: object }
+      applies_to: [UC-02, UC-03, UC-04]
+      provenance: human-confirmed
+      source: "画像をマスに置く『外にはみ出してはいけない』/ 配置を動かす『領域外に出てはいけない』/ 入れ替える『どちらもグリッド内に収まり』"
+
+    - name: Conflict
+      payload: { conflicting_ids: array }
+      applies_to: [UC-02, UC-03, UC-04]
+      provenance: human-confirmed
+      source: "画像をマスに置く『重なってはいけない』/ 配置を動かす『他の配置と重なってもいけない』/ 入れ替える『他と重ならないこと』"
+
+    - name: InvalidDimensions
+      payload: { detail: string }
+      applies_to: [UC-01, UC-02]
+      provenance: inferred
+      # UC-01: rows/cols が 1 以上(下限のみ明示)。UC-02: occupy_size の 1 以上等は未明示 → 下記診断
+      source: "グリッドを作る『行数・列数は 1 以上の整数』(下限のみ)。occupy_size の妥当範囲は prose に無い。失敗理由名は inferred (RULE A)"
+
+    - name: InvalidIndex
+      payload: { axis: string, index: integer }
+      applies_to: [UC-05]
+      provenance: proposal
+      source: "重なり順操作の端(最前面で更に前へ等)の扱い。prose に無く、操作の成否を左右するため proposal"
+
+  rules:
+    - id: R-01
+      name: PlacementWithinGridBounds
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-02, UC-03, UC-04]
+      provenance: human-confirmed
+      source: "『外にはみ出してはいけない』『領域外に出てはいけない』『どちらもグリッド内に収まり』"
+
+    - id: R-02
+      name: NoPlacementOverlap
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-02, UC-03, UC-04]
+      provenance: human-confirmed
+      source: "『重なってはいけない』『他の配置と重なってもいけない』『他と重ならないこと』"
+
+    - id: R-03
+      name: MoveExcludesSelfFromOverlap
+      kind: policy
+      enforced_at: domain
+      applies_to: [UC-03]
+      provenance: human-confirmed
+      source: "配置を動かす『動かしている自分自身は重なり判定から除く』"
+
+    - id: R-04
+      name: SwapExcludesSwappedPairFromOverlap
+      kind: policy
+      enforced_at: domain
+      applies_to: [UC-04]
+      provenance: proposal
+      # Move は自身排除を明示。Swap は入れ替える2者を互いの重なり判定から除くか未明示 → 操作の成否を左右
+      source: "入れ替える『他と重ならないこと』。Move の自己排除に相当する規律(入替2者を互いに除外するか)が Swap では未記述 → proposal"
+
+    - id: R-05
+      name: GridDimensionsAtLeastOne
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-01]
+      provenance: human-confirmed
+      source: "グリッドを作る『行数・列数は 1 以上の整数』"
+
+    - id: R-06
+      name: ZOrderTotalAndContiguous
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-05]
+      provenance: proposal
+      # 『各配置には順番を表す値が付く』の不変条件(全順序か/連続か/重複可否/初期値)が未定義
+      source: "重なり順『各配置には順番を表す値が付く』。順序値の不変条件(一意/連続/初期割当)が未定義 → 重なり順操作の結果を左右するため proposal"
+
+    - id: R-07
+      name: OccupySizeAtLeastOne
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-02]
+      provenance: proposal
+      # 占有サイズの下限/正値要件が未明示。0 や負を受け付けるかが配置の成否を左右
+      source: "画像をマスに置く『占有する大きさ(幅×高さ、マス単位)』。下限・正値要件が prose に無い → proposal"
+
+  entities:
+    owned:
+      - name: Grid
+        provenance: human-confirmed
+        source: "用語『グリッド: 行×列のマス目の台紙』"
+      - name: Placement
+        provenance: human-confirmed
+        source: "用語『配置: グリッド上に置かれた画像1つ分。位置と占有サイズと重なり順を持つ』"
+    referenced:
+      - name: ImageCopy
+        provenance: inferred
+        # prose の『画像派生物』を外部参照実体として写したもの。名称は表現上の選択
+        source: "背景『別の仕組みで作られた画像派生物(トリミングや拡縮の済んだもの)』。外部 Capability の実体として参照 (名称は inferred)"
+    value_objects:
+      - name: GridDimensions
+        fields: { rows: integer, cols: integer }
+        provenance: inferred
+        source: "グリッドを作る『行数・列数』。VO 化とフィールド名は表現上の選択 (inferred)"
+      - name: CellPosition
+        fields: { x: integer, y: integer }
+        provenance: inferred
+        source: "画像をマスに置く『置きたいマス(左上を0,0とする座標)』。座標の VO 化・フィールド名は inferred"
+      - name: OccupySize
+        fields: { width: integer, height: integer }
+        provenance: inferred
+        source: "画像をマスに置く『占有する大きさ(幅×高さ、マス単位)』。VO 化・フィールド名は inferred"
+
+  events:
+    - name: PlacementCreated
+      emitted_by: UC-02
+      payload: [grid_id, placement_id, position, occupy_size]
+      provenance: inferred
+      source: "UC-02 の結果。イベント化・payload 内訳は prose に無く表現上の選択 (inferred)"
+    - name: PlacementMoved
+      emitted_by: UC-03
+      payload: [grid_id, placement_id, new_position]
+      provenance: inferred
+      source: "UC-03 の結果。イベント化は inferred"
+    - name: PlacementsSwapped
+      emitted_by: UC-04
+      payload: [grid_id, placement_id_a, placement_id_b]
+      provenance: inferred
+      source: "UC-04 の結果。イベント化は inferred"
+    - name: ZOrderChanged
+      emitted_by: UC-05
+      payload: [grid_id, placement_id]
+      provenance: inferred
+      source: "UC-05 の結果。イベント化は inferred"
+    - name: PlacementRemoved
+      emitted_by: UC-06
+      payload: [grid_id, placement_id]
+      provenance: inferred
+      source: "UC-06 の結果。イベント化は inferred"
+
+  decision_ownership:
+    domain_decision:
+      owned_by: [R-01, R-02, R-03, R-05]
+      provenance: human-confirmed
+      source: "はみ出し・重なり・自己排除・寸法下限は prose が明示する不変条件 → domain 所有"
+    validation_decision:
+      owned_by: [R-05, R-07]
+      provenance: inferred
+      # 入力値検証(寸法>=1, 占有サイズ正値)を domain と validation のどちらが所有するか未確定
+      source: "『1以上の整数』等の入力検証。domain/validation 層配分は prose に無い (inferred)"
+    workflow_decision:
+      owned_by: []
+      provenance: proposal
+      # 入れ替え・重なり順が単一操作か複合ワークフローか未確定
+      source: "prose に複数ステップを束ねるワークフロー記述なし。重なり順の操作粒度次第で要再訪 → proposal"
+    ui_interaction_decision:
+      owned_by: []
+      provenance: proposal
+      # ドラッグ操作・配置画面の意味契約をこの Capability が所有するか、別レイヤか未確定
+      source: "使う人と典型シナリオ『配置画面でドラッグして置く』『レイアウトの細部はデザイナーに任せる』→ UI 所有の所在が未確定 (UI 診断参照)"
+    persistence_decision:
+      owned_by: []
+      provenance: unresolved
+      # グリッド/配置の永続化有無・所有が prose に一切無い
+      source: "prose に永続化・保存の記述なし → 案も出せず unresolved"
+    rendering_decision:
+      owned_by: []
+      provenance: proposal
+      source: "重なり順=描画前後関係。描画(rendering)の決定をこの Capability が所有するか別 Capability か未確定 → proposal"
+    history_decision:
+      owned_by: []
+      provenance: unresolved
+      # 『動かしたり入れ替えたり』の undo/履歴有無が prose に無い
+      source: "典型シナリオ『気に入る配置になるまで動かしたり入れ替えたり』。undo/履歴の有無が prose に無い → unresolved"
+
+  boundaries:
+    depends_on:
+      - name: ImageDerivation
+        provenance: inferred
+        source: "背景『別の仕組みで作られた画像派生物』。依存先 Capability の正式名は prose に無い (inferred)"
+    depended_on_by: []
+    excluded:
+      - name: ImageContentEditing
+        provenance: human-confirmed
+        source: "背景『このグリッド機能は画像の中身そのものは編集しない。どこに、どの大きさで置くかだけを扱う』"
+      - name: LayoutVisualStyling
+        provenance: proposal
+        source: "典型シナリオ『レイアウト(見た目)の細部はデザイナーに任せる』→ 視覚スタイリングを excluded とするか境界が未確定 (proposal)"
+
+  ui_contracts: []   # Step 0 §7.2-d 予約。配置画面の意味契約(ドラッグ/binding/feedback)は UI 診断で提起、本候補では未記述
