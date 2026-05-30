@@ -50,7 +50,7 @@
 
 | ID | 内容 | 由来 | 現状 |
 | --- | --- | --- | --- |
-| `Cpc-1` | shared_concepts スキーマを BOM に追加 | Add. C | 🟡 (副候補 18。21 と対) |
+| `Cpc-1` | shared_concepts スキーマを BOM に追加 | Add. C | 🟡 (副候補 18。21 と対)。**検出: 22 `--authoring-set` の XSHARED が authoring 時に OccupySize/PixelSize の authority 未宣言を flag (Step 4)** |
 | `Cpc-2` | Coordinator パターン (16) | Add. C | 🟡 (次フェーズ候補) |
 | `Cpc-3` | Declaration-only Rules (17) | Add. C | 📐 部分 (R-08 を RENDERING が適用、20/30 に記載) |
 | `Cpc-4` | ディレクトリ構造の Capability 別 subdir 対称化 | Add. C | 🟡 (GRID は直下のまま) |

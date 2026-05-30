@@ -309,7 +309,7 @@ UI も **見た目のレイアウト** と **意味的に必要な affordance** 
 
 > **2 つの罠**: ① 正規化 (抽出器) と registry の family 化 は **競合する代替案** → 先に正規化を正と決め family 化を捨てる (§7.2-a)。② UI のスキーマ追加を後づけにすると抽出器/検査器が churn → スキーマ予約だけ Step 0 に繰り上げ (§7.2-d)。
 
-> **進捗 (2026-05-30)**: Step 0 (基盤) / 1 (抽出器 spec v1.0 + re-run 実証) / 2 (決定的ルール整理 — 存在前提パターン化) / **3 (UI トラック — §4.1 archetype ライブラリを `check_ui_contracts` で実装、H7 を決定的に捕捉)** 完了。次は Step 4 (複数 Capability authoring 検査)。
+> **進捗 (2026-05-30)**: Step 0 (基盤) / 1 (抽出器 spec v1.0 + re-run 実証) / 2 (存在前提パターン化) / 3 (UI トラック、H7 を決定的に捕捉) / **4 (複数 Capability authoring 検査 — `--authoring-set` の XREF/XSYM/XSHARED、precond を BOM 宣言化、Cpc-1 を surface)** 完了。残るは Step 5 (本体 01-10 へ昇格 + 再番号、baseline 固定後)。
 
 ### 7.2 Step 0 で確定した基盤 (fixed baseline)
 
@@ -353,7 +353,7 @@ UI 意味契約 (§4) 用のセクションを **今スキーマに予約**す�
 | --- | --- | --- |
 | 推定 (`inferred`) の積極性・severity 方針 | Step 1 | ✅ **完了** — `../tools/authoring-compiler/extractor-spec.md` RULE B (成否/境界/不変条件/所有権を左右する未定義は proposal-ERROR) + RULE C (provenance↔診断 severity 結合、prototype 不整合の修正) |
 | UI アーキタイプ辞書の具体 (種類・精度・各契約の必須項目) | Step 3 | ✅ **完了** — §4.1 ライブラリ (login/search/edit/list/confirm) を `checker.py UI_ARCHETYPES` + `check_ui_contracts` で実装。抽出器は RULE E で `ui_contracts` へ lift。H7 (login パスワード欠落) を `[UI][ERROR]` で決定的に捕捉 (smoke-test) |
-| 複数 Capability の authoring 検査の具体 (共有概念 / 境界参照の前倒し検査) | Step 4 | 🟡 |
+| 複数 Capability の authoring 検査の具体 (共有概念 / 境界参照の前倒し検査) | Step 4 | ✅ **完了** — `checker.py --authoring-set` (cross-BOM) に XREF (参照解決) / XSYM (境界の双方向宣言) / XSHARED (共有値オブジェクトの authority) を実装。capability 固有 precond は BOM の `precondition_coverage` 宣言へ (ツールのハードコード除去)。3 サンプル実測: 境界整合は成立、XSHARED が Cpc-1 (OccupySize/PixelSize の共有 authority 未宣言) を surface |
 
 ---
 
@@ -377,7 +377,7 @@ UI 意味契約 (§4) 用のセクションを **今スキーマに予約**す�
 
 **calibration 発見** (RESULTS §5): C-1 PRECOND の命名感受性 (→ AI が canonical 名へ正規化、§3.6 に反映済み) / C-2 SCHEMA の存在チェックだけでは不十分 (→ PROV が補完) / C-3 provenance が分界点を渡る橋 (→ §3.7 に反映済み)。
 
-**残課題** (順序は §7.1): ✅ 正規化を抽出器責務化 (Step 1/2) → ✅ UI 意味契約ルールの決定的化 (Step 3、§4.1) → 複数 Capability での authoring 検査 (Step 4、未着手)。
+**残課題** (順序は §7.1): ✅ 正規化を抽出器責務化 (Step 1/2) → ✅ UI 意味契約ルールの決定的化 (Step 3、§4.1) → ✅ 複数 Capability authoring 検査 (Step 4、`--authoring-set`)。Step 0〜4 完了。残るは **Step 5 (本体 01-10 への昇格 + 再番号)** のみ。
 
 ---
 

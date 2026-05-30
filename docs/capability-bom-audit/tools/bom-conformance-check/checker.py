@@ -157,23 +157,24 @@ EXISTENCE_REASONS = {"NotFound", "UnknownCopyId"}
 
 # (2) Non-existence preconditions whose covering reason is fixed by convention.
 #     BASELINE (cross-capability): IndexInRange -> InvalidIndex.
-#     CAPABILITY-SPECIFIC (GRID): BothPlacementsBelongToSameGrid ->
-#       CrossGridSwapNotAllowed. Step 4 (multi-capability) will move capability-
-#       specific entries to BOM-declared per-precondition coverage instead of
-#       hardcoding them in the tool.
+#     CAPABILITY-SPECIFIC entries are NOT hardcoded here (Step 4): the BOM declares
+#     them in a top-level `precondition_coverage: { <precondition>: [<reason>...] }`
+#     map, keeping the tool capability-agnostic.
 PRECOND_REASON_MAP = {
-    "IndexInRange": {"InvalidIndex"},                              # baseline
-    "BothPlacementsBelongToSameGrid": {"CrossGridSwapNotAllowed"},  # capability-specific (GRID)
+    "IndexInRange": {"InvalidIndex"},   # baseline (cross-capability)
 }
 
 
-def _expected_reasons_for(precondition: str) -> set[str] | None:
-    """Covering failure reasons for a precondition, or None if unverifiable."""
+def _expected_reasons_for(precondition: str, declared: dict | None = None) -> set[str] | None:
+    """Covering failure reasons for a precondition, or None if unverifiable.
+    `declared` = the BOM's own `precondition_coverage` map (capability-specific)."""
     # (1) pattern-based existence family. Handle both "<Entity>Exists" and the
     # plural-subject "<Entities>Exist" (e.g. BothPlacementsExist).
     if precondition.endswith(("Exists", "Exist")):
         return EXISTENCE_REASONS
-    return PRECOND_REASON_MAP.get(precondition)  # (2) fixed-convention entries
+    if declared and precondition in declared:        # (2) BOM-declared (capability-specific)
+        return set(declared[precondition] or [])
+    return PRECOND_REASON_MAP.get(precondition)      # (3) baseline fixed-convention
 
 
 def check_schema(bom: dict) -> list[str]:
@@ -206,11 +207,12 @@ def check_precondition_coverage(bom: dict) -> list[str]:
     (catches A-1). Unknown preconditions -> INCONCLUSIVE (the deterministic
     tool's reach ends where the convention map ends)."""
     findings: list[str] = []
+    declared = _find_key(bom, "precondition_coverage") or {}
     for uc in (_find_key(bom, "use_cases") or []):
         uid = uc.get("id", "<no-id>")
         reasons = set(uc.get("failure_reasons", []) or [])
         for pre in (uc.get("preconditions", []) or []):
-            expected = _expected_reasons_for(pre)
+            expected = _expected_reasons_for(pre, declared)
             if expected is None:
                 findings.append(
                     f"[PRECOND][INCONCLUSIVE] {uid}: precondition '{pre}' not in convention registry "
@@ -371,6 +373,164 @@ def main_authoring(bom_arg: str | None) -> int:
         print(f"  - {f}")
     verdict = "FAIL" if errors else ("NEEDS-AI" if inconclusive else "PASS")
     print(f"AUTHORING GATE: {verdict}  (exit {1 if (errors or inconclusive) else 0})")
+    print("=" * 72)
+    return 1 if (errors or inconclusive) else 0
+
+
+# --------------------------------------------------------------------------- #
+# Multi-capability authoring checks (Step 4). Cross-BOM static rules harvested
+# from candidate-E findings: the n=2/n=3 composition only worked under a shared
+# Codebase Convention Contract (21). These run BEFORE any code, across 2+ BOMs:
+#   XREF    -- cross-capability references resolve (referenced entity is owned by
+#              the referenced capability). E-comp / Cpc-5.
+#   XSYM    -- a declared dependency A->B is acknowledged on B's side
+#              (depended_on_by). Addendum C "each capability writes its own boundary".
+#   XSHARED -- a value object defined in 2+ BOMs must have a structured
+#              `shared_concepts` authority, not just a prose note. Cpc-1 (the
+#              shared-type authority gap that caused the E-comp conflict).
+# The BOMs here are heterogeneous (GRID/IMGVAR use depends_on/depended_on_by;
+# RENDERING uses consumes/producer), so the extractors tolerate both shapes.
+# --------------------------------------------------------------------------- #
+def _capability_id(bom: dict) -> str | None:
+    return (_find_key(bom, "capability") or {}).get("id")
+
+
+def _value_object_names(bom: dict) -> set[str]:
+    return {v.get("name") for v in (_find_key(bom, "value_objects") or [])
+            if isinstance(v, dict) and v.get("name")}
+
+
+def _owned_entity_names(bom: dict) -> set[str]:
+    ents = _find_key(bom, "entities") or {}
+    owned = ents.get("owned", []) if isinstance(ents, dict) else []
+    return {e.get("name") for e in owned if isinstance(e, dict) and e.get("name")}
+
+
+def _declared_shared_concepts(bom: dict) -> set[str]:
+    return {s.get("name") for s in (_find_key(bom, "shared_concepts") or [])
+            if isinstance(s, dict) and s.get("name")}
+
+
+def _depended_on_by(bom: dict) -> set[str]:
+    b = _find_key(bom, "boundaries") or {}
+    return {d.get("capability") for d in (b.get("depended_on_by") or [])
+            if isinstance(d, dict) and d.get("capability")}
+
+
+def _outgoing_deps(bom: dict) -> list[tuple[str, str]]:
+    """(kind, target_capability) for depends_on / consumes (both boundary shapes)."""
+    b = _find_key(bom, "boundaries") or {}
+    out = []
+    for d in (b.get("depends_on") or []):
+        if isinstance(d, dict) and d.get("capability"):
+            out.append(("depends_on", d["capability"]))
+    for c in (b.get("consumes") or []):
+        if isinstance(c, dict) and c.get("producer"):
+            out.append(("consumes", c["producer"]))
+    return out
+
+
+def _external_entity_refs(bom: dict):
+    """yield 'CAP.Entity' strings from owned entity fields' references_external."""
+    ents = _find_key(bom, "entities") or {}
+    for e in (ents.get("owned", []) if isinstance(ents, dict) else []):
+        for f in (e.get("fields") or []):
+            ext = f.get("references_external") if isinstance(f, dict) else None
+            if ext:
+                yield ext
+
+
+def check_cross_refs(boms_by_id: dict) -> list[str]:
+    findings: list[str] = []
+    present = set(boms_by_id)
+    owned = {cid: _owned_entity_names(b) for cid, b in boms_by_id.items()}
+    for cid, bom in boms_by_id.items():
+        for kind, target in _outgoing_deps(bom):
+            if target not in present:
+                findings.append(f"[XREF][INFO] {cid} {kind} '{target}' (not in set -- skipped)")
+        for ext in _external_entity_refs(bom):
+            tcap, sep, tent = ext.partition(".")
+            if not sep or not tent:   # malformed: not "<CAP>.<Entity>" -> don't silently pass
+                findings.append(f"[XREF][INCONCLUSIVE] {cid} references_external '{ext}' malformed "
+                                f"(expected '<CAP>.<Entity>') -- cannot verify")
+            elif tcap not in present:
+                findings.append(f"[XREF][INFO] {cid} references external '{ext}' (capability not in set -- skipped)")
+            elif tent not in owned.get(tcap, set()):
+                findings.append(f"[XREF][ERROR] {cid} references '{ext}' but {tcap} does not own '{tent}'")
+    return findings
+
+
+def check_cross_symmetry(boms_by_id: dict) -> list[str]:
+    # NOTE: reciprocity is checked only via the target's `depended_on_by`. A target
+    # that declares consumers another way (e.g. a pure-consumer BOM) won't list
+    # `depended_on_by`, so this can over-warn; XSYM findings are WARNING (advisory),
+    # never blocking, precisely because of this heterogeneity.
+    findings: list[str] = []
+    present = set(boms_by_id)
+    for cid, bom in boms_by_id.items():
+        for kind, target in _outgoing_deps(bom):
+            if target in present and cid not in _depended_on_by(boms_by_id[target]):
+                findings.append(
+                    f"[XSYM][WARNING] {cid} {kind} {target}, but {target} does not list {cid} "
+                    f"in depended_on_by (boundary not declared on both sides)")
+    return findings
+
+
+def check_shared_concepts(boms_by_id: dict) -> list[str]:
+    findings: list[str] = []
+    vo_defs: dict[str, set[str]] = {}
+    declared_shared: set[str] = set()
+    for cid, bom in boms_by_id.items():
+        for name in _value_object_names(bom):
+            vo_defs.setdefault(name, set()).add(cid)
+        declared_shared |= _declared_shared_concepts(bom)
+    for name, caps in sorted(vo_defs.items()):
+        if len(caps) >= 2 and name not in declared_shared:
+            findings.append(
+                f"[XSHARED][WARNING] value object '{name}' defined in {sorted(caps)} but no structured "
+                f"`shared_concepts` authority declared (Cpc-1; authority currently only in prose notes)")
+    return findings
+
+
+def main_authoring_set(paths: list[str]) -> int:
+    """Multi-capability authoring gate: cross-BOM static checks across 2+ BOMs."""
+    if paths:
+        boms_by_id = {}
+        for p in paths:
+            bom = load_bom(_resolve_bom_path(p))
+            boms_by_id[_capability_id(bom) or p] = bom
+    else:
+        boms_by_id = {name: load_bom(path) for name, path in BOMS.items()}
+
+    print("=" * 72)
+    print("Multi-capability Authoring Static Check (cross-BOM, no impl)")
+    print(f"capabilities: {sorted(boms_by_id)}")
+    print("=" * 72)
+
+    concerns: list[str] = []
+    for title, fs in [
+        ("XREF    (cross-capability references resolve)", check_cross_refs(boms_by_id)),
+        ("XSYM    (dependencies declared on both sides)", check_cross_symmetry(boms_by_id)),
+        ("XSHARED (shared value objects have declared authority)", check_shared_concepts(boms_by_id)),
+    ]:
+        print(f"\n## {title}")
+        if not fs:
+            print("  OK")
+            continue
+        for f in fs:
+            print(f"  {f}")
+            if "ERROR" in f or "INCONCLUSIVE" in f:
+                concerns.append(f)
+
+    errors = [c for c in concerns if "ERROR" in c]
+    inconclusive = [c for c in concerns if "INCONCLUSIVE" in c]
+    print("\n" + "=" * 72)
+    print(f"CROSS-CAP CONCERNS: {len(concerns)} (blocking ERROR: {len(errors)} | INCONCLUSIVE: {len(inconclusive)})")
+    for f in concerns:
+        print(f"  - {f}")
+    verdict = "FAIL" if errors else ("NEEDS-AI" if inconclusive else "PASS")
+    print(f"CROSS-CAP GATE: {verdict}  (exit {1 if (errors or inconclusive) else 0})")
+    print("  (XSHARED/XSYM WARNING is advisory; only ERROR/INCONCLUSIVE blocks)")
     print("=" * 72)
     return 1 if (errors or inconclusive) else 0
 
@@ -669,4 +829,6 @@ def main() -> int:
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--authoring":
         raise SystemExit(main_authoring(sys.argv[2] if len(sys.argv) > 2 else None))
+    if len(sys.argv) > 1 and sys.argv[1] == "--authoring-set":
+        raise SystemExit(main_authoring_set(sys.argv[2:]))
     raise SystemExit(main())

@@ -39,6 +39,30 @@ python docs/capability-bom-audit/tools/bom-conformance-check/checker.py --author
 `AUTHORING GATE: PASS / FAIL / NEEDS-AI` と非ゼロ終了を出す。実測は
 `experiments/authoring-compiler-prototype/RESULTS.md` (分界点: 意図の不完全性=AI / 内部整合=決定的 / 橋=PROV)。
 
+capability 固有の precondition→failure_reason 対応は BOM が `precondition_coverage: { <precond>: [<reason>...] }` で宣言する
+(ツールは存在系 `*Exists`/`*Exist` と `IndexInRange` だけを baseline として内蔵。Step 2/4)。
+
+### 複数 Capability モード (`--authoring-set`、cross-BOM、Step 4)
+
+```bash
+# 引数なし = 正準 3 サンプル (GRID / IMAGE_VARIANT / RENDERING) を横断検査
+python docs/capability-bom-audit/tools/bom-conformance-check/checker.py --authoring-set
+# 任意の BOM 群を指定も可
+python docs/capability-bom-audit/tools/bom-conformance-check/checker.py --authoring-set <bom1.yaml> <bom2.yaml> ...
+```
+
+候補 E (n=2/n=3 合成) の知見を **コード生成前** に前倒しする横断 static 検査。BOM 形が不均一 (GRID/IMGVAR は
+`depends_on`/`depended_on_by`、RENDERING は `consumes`/`producer`) でも両対応:
+
+| 検査 | 内容 | 由来 |
+| --- | --- | --- |
+| XREF | cross-capability 参照が解決するか (参照先 entity を参照先 Capability が owned か)。set 外は INFO スキップ | E-comp / Cpc-5 |
+| XSYM | 宣言した依存 A→B が B 側 (`depended_on_by`) でも宣言されているか | Addendum C |
+| XSHARED | 2+ BOM で定義された値オブジェクトに構造化 `shared_concepts` authority があるか (prose 注記だけでは WARNING) | **Cpc-1** |
+
+実測 (3 サンプル): XREF/XSYM クリーン (境界整合は成立)、**XSHARED が `OccupySize`/`PixelSize` の共有 authority 未宣言 (Cpc-1) を 2 件 surface**。
+WARNING は advisory なので `CROSS-CAP GATE: PASS` (ERROR のみ block)。
+
 ## 何を照合するか
 
 | カテゴリ | 内容 | 捕捉する残課題 |

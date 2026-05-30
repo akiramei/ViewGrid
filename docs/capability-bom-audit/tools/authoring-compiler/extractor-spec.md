@@ -178,6 +178,15 @@ prose が画面/UI に言及するなら、`ui_contracts` に lift する:
 - archetype がライブラリ (login/search/edit/list/confirm) に無い画面は、その旨を `UI-` 診断で出す (決定的検査器では INCONCLUSIVE になる)。
 - 例: prose が「ログイン画面」と言うがパスワードに触れていない → `archetype: login` で lift し、`interactions` に `secret_input` を **入れない** (prose に無いから)。決定的検査器が「login に secret_input が無い」を `[UI][ERROR]` で捕捉する。あなたは捏造せず、認識とタグ付けに徹する。
 
+## 7.6 RULE F — 横断 (複数 Capability) awareness (Step 4)
+
+複数 Capability を同時に扱うとき、抽出器は cross-BOM の整合も意識する (後段 `--authoring-set` が XREF/XSYM/XSHARED で照合):
+
+- **共有値オブジェクト**: 他 Capability と同じ意味の値オブジェクト (例 `OccupySize`/`PixelSize`) を使うなら、prose 注記任せにせず **`shared_concepts`** で authority を構造宣言する (`{ name, authority: <CAP>, used_by: [...] }`)。宣言が無いと XSHARED が WARNING を出す (Cpc-1)。
+- **capability 固有 precondition**: 存在系 (`*Exists`) 以外の自前 precondition は **`precondition_coverage: { <precond>: [<reason>...] }`** で被覆失敗理由を宣言する (例 `BothPlacementsBelongToSameGrid: [CrossGridSwapNotAllowed]`)。ツールはこれを読んで PRECOND を検証する。
+- **境界の双方向宣言**: 他 Capability に依存する (`depends_on`/`consumes`) なら、相手側が `depended_on_by` で自分を挙げているか整合させる (片側だけだと XSYM WARNING)。
+- **外部参照**: `references_external: "<CAP>.<Entity>"` の `<Entity>` が参照先 Capability の owned entity であること (XREF が ERROR で弾く)。
+
 ## 8. 返す前の自己チェック
 
 - [ ] すべての UC/Rule/失敗理由/decision に `provenance` と `source` がある

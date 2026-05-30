@@ -230,6 +230,16 @@ capability:
       notes: "foreign reference (ImageCopy) 不在。NotFound とは別扱い"
 
   # ============================================================
+  # Precondition coverage (capability-specific; baseline existence/index
+  # conventions are built into the authoring checker, Step 2/4)
+  # ============================================================
+  # 各 precondition を破ったときに返す canonical failure reason。
+  # 存在系 (GridExists / PlacementExists / BothPlacementsExist / ImageCopyExists) は
+  # checker の baseline パターンが NotFound/UnknownCopyId を要求するため宣言不要。
+  precondition_coverage:
+    BothPlacementsBelongToSameGrid: [CrossGridSwapNotAllowed]
+
+  # ============================================================
   # Rules
   # ============================================================
   rules:
