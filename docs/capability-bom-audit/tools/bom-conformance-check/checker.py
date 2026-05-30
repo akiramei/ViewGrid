@@ -141,19 +141,39 @@ REQUIRED_SECTIONS = ["use_cases", "canonical_failure_reasons", "rules",
                      "decision_ownership", "boundaries"]
 
 # Convention registry: a precondition -> the failure reason(s) whose declaration
-# covers its violation. Harvested from the BOM convention (e.g. NotFound.notes:
-# "前提条件 GridExists / PlacementExists が破れたとき"). A precondition NOT in this
-# map cannot be verified deterministically -> reported INCONCLUSIVE. This map +
-# "what the AI lifted into structure" jointly bound the deterministic tool's
-# reach; everything outside is the AI extractor's territory (the 分界点).
+# covers its violation. A precondition NOT covered here -> INCONCLUSIVE (cannot be
+# verified deterministically; AI-extractor territory). The registry + "what the AI
+# lifted into structure" jointly bound the deterministic tool's reach (the 分界点).
+#
+# Names are CANONICAL ONLY (methodology/23 Step 0 §7.2-a / T2): the AI extractor
+# normalizes failure-reason names to the baseline vocabulary, so the deterministic
+# side stays simple (no family-aware / alias matching here).
+#
+# (1) BASELINE, PATTERN-BASED (cross-capability): any precondition named
+#     "<Entity>Exists" is covered by the existence-failure family -- NotFound for
+#     owned entities, UnknownCopyId for foreign references. Pattern (not per-name)
+#     so it generalises across capabilities with zero hardcoded entity names.
+EXISTENCE_REASONS = {"NotFound", "UnknownCopyId"}
+
+# (2) Non-existence preconditions whose covering reason is fixed by convention.
+#     BASELINE (cross-capability): IndexInRange -> InvalidIndex.
+#     CAPABILITY-SPECIFIC (GRID): BothPlacementsBelongToSameGrid ->
+#       CrossGridSwapNotAllowed. Step 4 (multi-capability) will move capability-
+#       specific entries to BOM-declared per-precondition coverage instead of
+#       hardcoding them in the tool.
 PRECOND_REASON_MAP = {
-    "GridExists": {"NotFound"},
-    "PlacementExists": {"NotFound"},
-    "BothPlacementsExist": {"NotFound"},
-    "ImageCopyExists": {"UnknownCopyId", "NotFound"},
-    "IndexInRange": {"InvalidIndex"},
-    "BothPlacementsBelongToSameGrid": {"CrossGridSwapNotAllowed"},
+    "IndexInRange": {"InvalidIndex"},                              # baseline
+    "BothPlacementsBelongToSameGrid": {"CrossGridSwapNotAllowed"},  # capability-specific (GRID)
 }
+
+
+def _expected_reasons_for(precondition: str) -> set[str] | None:
+    """Covering failure reasons for a precondition, or None if unverifiable."""
+    # (1) pattern-based existence family. Handle both "<Entity>Exists" and the
+    # plural-subject "<Entities>Exist" (e.g. BothPlacementsExist).
+    if precondition.endswith(("Exists", "Exist")):
+        return EXISTENCE_REASONS
+    return PRECOND_REASON_MAP.get(precondition)  # (2) fixed-convention entries
 
 
 def check_schema(bom: dict) -> list[str]:
@@ -190,10 +210,10 @@ def check_precondition_coverage(bom: dict) -> list[str]:
         uid = uc.get("id", "<no-id>")
         reasons = set(uc.get("failure_reasons", []) or [])
         for pre in (uc.get("preconditions", []) or []):
-            expected = PRECOND_REASON_MAP.get(pre)
+            expected = _expected_reasons_for(pre)
             if expected is None:
                 findings.append(
-                    f"[PRECOND][INCONCLUSIVE] {uid}: precondition '{pre}' not in convention map "
+                    f"[PRECOND][INCONCLUSIVE] {uid}: precondition '{pre}' not in convention registry "
                     f"-> cannot verify it has a covering failure reason (AI-extractor territory)")
             elif not (reasons & expected):
                 findings.append(
@@ -217,10 +237,60 @@ def check_dangling_refs(bom: dict) -> list[str]:
     return findings
 
 
+# --------------------------------------------------------------------------- #
+# UI semantic contract (methodology/23 §4). Visual layout is free; the
+# interaction / usecase-binding / feedback / state contract is mandatory per
+# screen archetype. The deterministic tool holds the ARCHETYPE LIBRARY (required
+# affordances per archetype) and checks that a DECLARED screen provides them --
+# template conformance, same shape as C3. The 分界点: which archetype a screen IS
+# (and screen-specific needs beyond the archetype) is the AI extractor's call;
+# verifying a declared archetype's required affordances is deterministic.
+# --------------------------------------------------------------------------- #
+UI_ARCHETYPES = {
+    # archetype -> required interaction roles / required feedback kinds
+    "login":   {"interactions": {"identifier_input", "secret_input", "submit", "cancel"},
+                "feedback": {"auth_failure"}},
+    "search":  {"interactions": {"query_input", "submit", "clear"},
+                "feedback": {"empty_result"}},
+    "edit":    {"interactions": {"load", "save", "discard"},
+                "feedback": {"validation_error", "unsaved_warning"}},
+    "list":    {"interactions": {"display", "select"},
+                "feedback": {"empty_state"}},
+    "confirm": {"interactions": {"affirm", "deny"},
+                "feedback": set()},
+}
+
+
+def check_ui_contracts(bom: dict) -> list[str]:
+    """[UI] a declared screen must provide its archetype's required affordances.
+    Unknown archetype -> INCONCLUSIVE (AI-extractor territory). Absent/empty
+    ui_contracts is fine (a capability may have no UI; whether the prose implies a
+    screen the extractor failed to lift is the AI's job, not structurally visible)."""
+    findings: list[str] = []
+    for c in (_find_key(bom, "ui_contracts") or []):
+        screen = c.get("screen") or c.get("name") or "<no-screen>"
+        arch = c.get("archetype") or "<no-archetype>"
+        spec = UI_ARCHETYPES.get(arch)
+        if spec is None:
+            findings.append(
+                f"[UI][INCONCLUSIVE] '{screen}': archetype '{arch}' not in archetype library "
+                f"-> cannot verify required affordances (AI-extractor territory)")
+            continue
+        missing_i = spec["interactions"] - set(c.get("interactions", []) or [])
+        if missing_i:
+            findings.append(
+                f"[UI][ERROR] '{screen}' (archetype '{arch}'): missing required interactions {sorted(missing_i)}")
+        missing_f = spec["feedback"] - set(c.get("feedback", []) or [])
+        if missing_f:
+            findings.append(
+                f"[UI][ERROR] '{screen}' (archetype '{arch}'): missing required feedback {sorted(missing_f)}")
+    return findings
+
+
 def _walk_provenance(obj, label, out):
     if isinstance(obj, dict):
         if "provenance" in obj:
-            name = obj.get("id") or obj.get("name") or label
+            name = obj.get("id") or obj.get("name") or obj.get("screen") or label
             out.append((name, obj.get("provenance"), obj.get("source", "")))
         for k, v in obj.items():
             if k != "provenance":  # provenance value is a scalar; don't recurse into it
@@ -278,6 +348,7 @@ def main_authoring(bom_arg: str | None) -> int:
         ("C3      (canonical <-> per-UC failure_reasons)", check_static("(authoring)", bom)),
         ("PRECOND (precondition has covering failure reason)", check_precondition_coverage(bom)),
         ("REF     (no dangling applies_to references)", check_dangling_refs(bom)),
+        ("UI      (declared screen archetype has required affordances)", check_ui_contracts(bom)),
         ("PROV    (provenance gate: unresolved/proposal block)", check_provenance(bom)),
     ]
     concerns: list[str] = []

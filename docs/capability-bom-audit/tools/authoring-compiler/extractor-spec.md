@@ -64,7 +64,15 @@ capability:
     domain_decision: { owned_by: [...], provenance: ... }
     ...
   boundaries: { depends_on: [...], depended_on_by: [...], excluded: [...] }
-  ui_contracts: []                  # Step 0 §7.2-d で予約。画面アーキタイプの意味契約 (現状は空でよい)
+  ui_contracts:                     # RULE E。prose が画面に言及するなら lift。UI が無い Capability は [] でよい
+    - screen: <ScreenName>
+      archetype: login | search | edit | list | confirm   # 認識した種別
+      interactions: [<role. 例 identifier_input/secret_input/submit/cancel>]
+      feedback: [<kind. 例 auth_failure>]
+      usecase_bindings: { <interaction>: <UC-id> }
+      states: [<例 submitting/error>]
+      provenance: ...   # archetype 認識の確信度に応じて (RULE C と整合)
+      source: "..."
 ```
 
 ## 3. 出力 2 — 診断レポート (`{{OUT_DIAG}}`)
@@ -160,6 +168,15 @@ capability 固有の失敗理由 (例 `InvalidOrderValue`) は作ってよいが
 - すべての項目に `source` (= source map) を付ける。要求変更時に「どの BOM 項目を再訪すべきか」を辿る PLM 台帳になる。
 
 ---
+
+## 7.5 RULE E — UI 画面の archetype lift (Step 3)
+
+prose が画面/UI に言及するなら、`ui_contracts` に lift する:
+
+- **どの archetype か**を認識して `archetype` に宣言する (login/search/edit/list/confirm)。これは **あなたの意味判断**なので provenance を付ける (確信があれば `human-confirmed`、推定なら `inferred`、不明なら `proposal`/`unresolved` + `UI-` 診断)。
+- `interactions` / `feedback` には **prose が実際に述べた affordance だけ**を lift する。**archetype の必須 affordance を勝手に補完しない** — 欠けている必須項目は後段の決定的検査器 (`check_ui_contracts`) が archetype テンプレートと照合して `[UI][ERROR]` で弾く (分界点: archetype 認識=AI / 必須充足照合=決定的ツール)。
+- archetype がライブラリ (login/search/edit/list/confirm) に無い画面は、その旨を `UI-` 診断で出す (決定的検査器では INCONCLUSIVE になる)。
+- 例: prose が「ログイン画面」と言うがパスワードに触れていない → `archetype: login` で lift し、`interactions` に `secret_input` を **入れない** (prose に無いから)。決定的検査器が「login に secret_input が無い」を `[UI][ERROR]` で捕捉する。あなたは捏造せず、認識とタグ付けに徹する。
 
 ## 8. 返す前の自己チェック
 

@@ -7,7 +7,7 @@
 | 半身 | 実体 | 役割 |
 | --- | --- | --- |
 | **AI 抽出器** (前段) | [`extractor-spec.md`](extractor-spec.md) | prose → BOM 候補 へ lift + 正規化 + provenance/source タグ + 意味的ギャップの診断 (proposal-ERROR/WARNING/INFO) |
-| **決定的検査器** (後段) | [`../bom-conformance-check/checker.py --authoring <bom.yaml>`](../bom-conformance-check/) | 構造ルール (SCHEMA/C3/PRECOND/REF) + AI タグの機械的 enforcement (PROV) |
+| **決定的検査器** (後段) | [`../bom-conformance-check/checker.py --authoring <bom.yaml>`](../bom-conformance-check/) | 構造ルール (SCHEMA/C3/PRECOND/REF/UI) + AI タグの機械的 enforcement (PROV) |
 
 ## 分界点 (どちらが何を捕捉するか)
 

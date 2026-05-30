@@ -209,24 +209,33 @@ UI も **見た目のレイアウト** と **意味的に必要な affordance** 
 | **Feedback Contract** (成功/失敗/検証エラーの返し方) | 意味契約 | **欠落で ERROR** |
 | **State Contract** (disabled / loading / error / authenticated) | 意味契約 | 欠落で WARNING〜ERROR |
 
-**画面種別アーキタイプ**は最小契約を持つ。コンパイラはこれをテンプレートとして保持し、人間資料が契約を満たすか検査する:
+### 4.1 アーキタイプ・ライブラリ (決定的ツールが保持。Step 3 で実装)
 
-| 画面種別 | 最小 interaction / usecase-binding (例) |
+**画面種別アーキタイプ**は最小契約 (必須 affordance) を持つ。決定的検査器がこれをテンプレートとして保持し
+(`checker.py` の `UI_ARCHETYPES`)、BOM が宣言した画面 (`ui_contracts`、Step 0 §7.2-d で予約) が必須を満たすか照合する:
+
+| archetype | 必須 interaction (role) | 必須 feedback |
+| --- | --- | --- |
+| `login` | `identifier_input` / `secret_input` / `submit` / `cancel` | `auth_failure` |
+| `search` | `query_input` / `submit` / `clear` | `empty_result` |
+| `edit` | `load` / `save` / `discard` | `validation_error` / `unsaved_warning` |
+| `list` | `display` / `select` | `empty_state` |
+| `confirm` | `affirm` / `deny` | — |
+
+### 4.2 分界点 (失敗理由と同型)
+
+| 検出対象 | 捕捉者 |
 | --- | --- |
-| login | ユーザー識別子入力 / パスワード入力 (秘匿表示) / ログイン実行 / 中止 (キャンセル・戻る) / 認証失敗フィードバック |
-| search | 検索条件入力 / 検索実行 / 結果0件のフィードバック / クリア |
-| edit | 編集対象ロード / 保存 / 破棄 / 検証エラー表示 / 未保存状態の警告 |
-| list | 一覧表示 / 選択 / 空状態 / ページング or 全件方針 |
-| confirm | 肯定 / 否定 / 破壊的操作の明示 |
+| 宣言された archetype の**必須 affordance 欠落** (例: login にパスワード入力なし) | **決定的ツール** (`[UI][ERROR]`、テンプレート照合) |
+| この画面は **どの archetype か** の認識 / archetype を超える画面固有要件 | **AI 抽出器** (provenance タグ + `UI-` 診断) |
+| archetype がライブラリに無い | INCONCLUSIVE → AI 領域 |
 
-診断例:
+→ 失敗理由 (H1) と同じ「**AI が意味判断で構造化 → 決定的ツールがテンプレ照合**」構造。
+診断例 `UI-LOGIN-001`「ログイン画面にパスワード入力が未定義」は、`ui_contracts` に `archetype: login` を宣言し
+`secret_input` を欠くと **`[UI][ERROR]` として決定的に捕捉される** (Step 3 で smoke-test 実証)。
 
-```text
-ERROR UI-LOGIN-001: 「ログイン画面」と宣言されていますが、パスワード入力が定義されていません。
-ERROR UI-LOGIN-002: ログインを中止する操作が未定義です。キャンセル/戻る/閉じる いずれかの意味を明記してください。
-```
-
-> UI の見た目は自由。しかし **UseCase を成立させる意味的部品とフィードバックは必須**。欠ければコンパイルエラー。
+> UI の見た目は自由。しかし **UseCase を成立させる意味的部品とフィードバックは必須**。
+> AI は「この画面は login だ」と認識して `ui_contracts` に lift し、決定的ツールが login テンプレの欠落を弾く。
 
 ---
 
@@ -300,6 +309,8 @@ ERROR UI-LOGIN-002: ログインを中止する操作が未定義です。キャ
 
 > **2 つの罠**: ① 正規化 (抽出器) と registry の family 化 は **競合する代替案** → 先に正規化を正と決め family 化を捨てる (§7.2-a)。② UI のスキーマ追加を後づけにすると抽出器/検査器が churn → スキーマ予約だけ Step 0 に繰り上げ (§7.2-d)。
 
+> **進捗 (2026-05-30)**: Step 0 (基盤) / 1 (抽出器 spec v1.0 + re-run 実証) / 2 (決定的ルール整理 — 存在前提パターン化) / **3 (UI トラック — §4.1 archetype ライブラリを `check_ui_contracts` で実装、H7 を決定的に捕捉)** 完了。次は Step 4 (複数 Capability authoring 検査)。
+
 ### 7.2 Step 0 で確定した基盤 (fixed baseline)
 
 以後の Step 1〜4 の前提。変更は §6 (UI なら §4) と整合させ、churn を避けるため安易に動かさない。
@@ -341,7 +352,7 @@ UI 意味契約 (§4) 用のセクションを **今スキーマに予約**す�
 | 項目 | 詰める Step | 状態 |
 | --- | --- | --- |
 | 推定 (`inferred`) の積極性・severity 方針 | Step 1 | ✅ **完了** — `../tools/authoring-compiler/extractor-spec.md` RULE B (成否/境界/不変条件/所有権を左右する未定義は proposal-ERROR) + RULE C (provenance↔診断 severity 結合、prototype 不整合の修正) |
-| UI アーキタイプ辞書の具体 (種類・精度・各契約の必須項目) | Step 3 | 🟡 |
+| UI アーキタイプ辞書の具体 (種類・精度・各契約の必須項目) | Step 3 | ✅ **完了** — §4.1 ライブラリ (login/search/edit/list/confirm) を `checker.py UI_ARCHETYPES` + `check_ui_contracts` で実装。抽出器は RULE E で `ui_contracts` へ lift。H7 (login パスワード欠落) を `[UI][ERROR]` で決定的に捕捉 (smoke-test) |
 | 複数 Capability の authoring 検査の具体 (共有概念 / 境界参照の前倒し検査) | Step 4 | 🟡 |
 
 ---
@@ -366,7 +377,7 @@ UI 意味契約 (§4) 用のセクションを **今スキーマに予約**す�
 
 **calibration 発見** (RESULTS §5): C-1 PRECOND の命名感受性 (→ AI が canonical 名へ正規化、§3.6 に反映済み) / C-2 SCHEMA の存在チェックだけでは不十分 (→ PROV が補完) / C-3 provenance が分界点を渡る橋 (→ §3.7 に反映済み)。
 
-**残課題** (順序は §7.1): 正規化を抽出器責務化 (§7.2-a。T1=registry family 化は却下) → UI 意味契約ルールの決定的化 (Step 3) → 複数 Capability での authoring 検査 (Step 4)。
+**残課題** (順序は §7.1): ✅ 正規化を抽出器責務化 (Step 1/2) → ✅ UI 意味契約ルールの決定的化 (Step 3、§4.1) → 複数 Capability での authoring 検査 (Step 4、未着手)。
 
 ---
 

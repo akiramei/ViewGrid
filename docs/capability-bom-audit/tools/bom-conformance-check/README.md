@@ -31,8 +31,9 @@ python docs/capability-bom-audit/tools/bom-conformance-check/checker.py --author
 | --- | --- | --- |
 | SCHEMA | 必須セクション/フィールドの存在 | 14 |
 | C3 | canonical_failure_reasons ↔ per-UC failure_reasons (動的ゲートと同一関数) | D-1 |
-| PRECOND | 各 precondition に被覆する failure reason があるか (規約マップ。マップ外は INCONCLUSIVE) | A-1 |
+| PRECOND | 各 precondition に被覆する failure reason があるか。存在前提 `*Exists`/`*Exist` はパターンで NotFound/UnknownCopyId を要求 (baseline・cross-capability)、`IndexInRange` 等は規約 registry、capability 固有 (例 `BothPlacementsBelongToSameGrid`) は明示登録。registry 外は INCONCLUSIVE (AI 領域)。名前は **canonical のみ** (正規化は抽出器 = Step 0 §7.2-a) | A-1 |
 | REF | applies_to の dangling 参照 | — |
+| UI | 宣言された画面 archetype (login/search/edit/list/confirm) の必須 affordance (interaction/feedback) 充足を照合。login のパスワード欠落等を `[UI][ERROR]` で捕捉。未知 archetype は INCONCLUSIVE | 23 §4 |
 | PROV | AI 抽出器が付けた `provenance: unresolved`/`proposal` を **機械的に block** (意味的ギャップの enforcement) | 23 §3.7 |
 
 `AUTHORING GATE: PASS / FAIL / NEEDS-AI` と非ゼロ終了を出す。実測は
