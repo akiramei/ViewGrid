@@ -1181,4 +1181,45 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         item.EffectiveCropFraction!.Value.Y.Should().BeApproximately(0.20, 1e-6);
         item.EffectiveCropFraction!.Value.Height.Should().BeApproximately(0.60, 1e-6);
     }
+
+    [Fact]
+    public async Task AutoCrop_NotLost_After_SwitchAway_And_Back_Then_AutoSave()
+    {
+        // ユーザー報告の再現: (0,0)/(0,1) の 2 セル。 (0,1) で AutoCrop を有効化して保存 →
+        // (0,0) をアクティブ → (0,1) を再アクティブ → 自動保存が走ると AutoCrop が消える、 という不具合。
+        await _fx.AppSettings.UpdateAsync(s => s with { EnableAutoSave = true });
+
+        var asset = await _fx.SeedAssetAsync(width: 100, height: 100);
+        var copyA = await _fx.SeedCopyAsync(asset.Id, copyName: "A");
+        var copyB = await _fx.SeedCopyAsync(asset.Id, copyName: "B");
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copyA.Id, new CellPosition(0, 0));
+        await place.ExecuteAsync(grid.Id, copyB.Id, new CellPosition(0, 1));
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        var cell00 = _vm.Placements.Single(p => p.GridX == 0 && p.GridY == 0);
+        var cell01 = _vm.Placements.Single(p => p.GridX == 0 && p.GridY == 1);
+
+        // (0,1) を選択し AutoCrop を有効化
+        await _vm.SelectPlacementAsync(cell01);
+        _vm.Inspector.CopyProperties.HasCopy.Should().BeTrue();
+        _vm.Inspector.CopyProperties.AutoCropEnabled = true;
+        _vm.Inspector.CopyProperties.AutoCropPreset = AutoCropPreset.White;
+        _vm.Inspector.CopyProperties.AutoCropThreshold = 10;
+        (await _vm.Inspector.TrySaveAllAsync()).Should().BeTrue();
+        (await _fx.CopyRepository.FindByIdAsync(copyB.Id))!.AutoCrop
+            .Should().NotBeNull("保存直後は AutoCrop が DB にあるべき");
+
+        // (0,0) をアクティブ → (0,1) を再アクティブ
+        await _vm.SelectPlacementAsync(cell00);
+        await _vm.SelectPlacementAsync(cell01);
+
+        // ここで自動保存が走る (別セル選択で flush + 直接 commit される経路を模す)
+        await _vm.SelectPlacementAsync(cell00);
+        await _vm.Inspector.FlushAutoSaveAsync();
+
+        (await _fx.CopyRepository.FindByIdAsync(copyB.Id))!.AutoCrop
+            .Should().NotBeNull("セル切替後の自動保存で AutoCrop が消えてはならない");
+    }
 }

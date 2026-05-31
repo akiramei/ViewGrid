@@ -14,6 +14,7 @@
         <conv:ScalingModeLabelConverter x:Key="ScalingModeLabel" />
         <conv:AutoCropPresetLabelConverter x:Key="AutoCropPresetLabel" />
         <conv:FilePathToBitmapConverter x:Key="FilePathToBitmap" />
+        <conv:EnumToBoolConverter x:Key="EnumBool" />
     </UserControl.Resources>
 
     <!--
@@ -241,19 +242,24 @@
                 <StackPanel Grid.Row="1"
                             Classes="FormGroup"
                             IsVisible="{Binding #CopyPropertiesRoot.IsCropTabSelected}">
-                            <!-- ラジオ 3 択（GroupName で排他化、VM 側でも排他連動） -->
+                            <!--
+                                ラジオ 3 択。 単一の CropMode (tri-state) へ EnumToBoolConverter 経由で
+                                two-way バインドする。 未チェック側へグループ排他が書き戻す false は
+                                コンバータが握りつぶすため、 DataContext 切替時に AutoCrop/ManualCrop が
+                                誤って OFF 化されて保存で消えるデータ消失が起きない。
+                            -->
                             <StackPanel Classes="FormSection">
                                 <TextBlock Classes="FieldLabel" Text="{loc:Tr CopyProps_TrimMode}" />
                                 <StackPanel Spacing="4">
                                     <RadioButton GroupName="CropMode"
                                                  Content="{loc:Tr CopyProps_TrimMode_Off}"
-                                                 IsChecked="{Binding IsCropOff}" />
+                                                 IsChecked="{Binding CropMode, Converter={StaticResource EnumBool}, ConverterParameter=Off}" />
                                     <RadioButton GroupName="CropMode"
                                                  Content="{loc:Tr CopyProps_TrimMode_Auto}"
-                                                 IsChecked="{Binding AutoCropEnabled}" />
+                                                 IsChecked="{Binding CropMode, Converter={StaticResource EnumBool}, ConverterParameter=Auto}" />
                                     <RadioButton GroupName="CropMode"
                                                  Content="{loc:Tr CopyProps_TrimMode_Manual}"
-                                                 IsChecked="{Binding ManualCropEnabled}" />
+                                                 IsChecked="{Binding CropMode, Converter={StaticResource EnumBool}, ConverterParameter=Manual}" />
                                 </StackPanel>
                             </StackPanel>
 

@@ -95,7 +95,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
 
     /// <summary>単色余白の自動トリミング機能の ON/OFF。OFF なら <see cref="AutoCropPreset"/> /
     /// <see cref="AutoCropThreshold"/> は無視され、保存時に AutoCrop=null となる。</summary>
-    [ObservableProperty] public partial bool AutoCropEnabled { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CropMode))]
+    public partial bool AutoCropEnabled { get; set; }
 
     /// <summary>対象色プリセット（白/黒/透明/カスタム）。<see cref="AutoCropPreset.Custom"/> 選択時は
     /// <see cref="AutoCropCustomColorHex"/> の値（または画像クリックピッカーで採取した色）を使う。</summary>
@@ -115,7 +117,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
 
     /// <summary>任意矩形トリミング機能の ON/OFF。OFF なら永続化時に ManualCrop=null（OFF）となる。
     /// AutoCrop と排他で、こちらを ON にすると AutoCropEnabled が自動的に OFF になる。</summary>
-    [ObservableProperty] public partial bool ManualCropEnabled { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CropMode))]
+    public partial bool ManualCropEnabled { get; set; }
 
     // ManualCropPixel* は int? で保持。 編集 UI 内の真実をピクセル整数に揃え、
     // 永続化形式 (ManualCropFraction) との境界だけで分数 / 整数を変換する責務分離。
@@ -248,20 +252,40 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// 「OFF / 自動 / 手動」ラジオの「OFF」用バインド。両方 OFF なら true。
-    /// setter で true をセットされると AutoCrop / ManualCrop を両方 OFF にする
-    /// （RadioButton の IsChecked にバインドして OFF ラジオをユーザーが選んだ時の挙動）。
+    /// 「OFF / 自動 / 手動」ラジオ 3 択の単一バインド先（tri-state）。<see cref="CropMode"/> 参照。
+    /// 各ラジオは <c>EnumToBoolConverter</c> 経由でこの 1 プロパティに two-way バインドし、
+    /// 未チェック側への <c>false</c> 書き戻しはコンバータが握りつぶす。これにより、 3 つのラジオを
+    /// 別々の bool（旧 <c>IsCropOff</c> / AutoCropEnabled / ManualCropEnabled）へ直接バインドした際に
+    /// RadioButton グループの排他制御が DataContext 切替時に AutoCrop/ManualCrop を誤って OFF 化し、
+    /// 保存で永続化済みトリミングが消えるデータ消失を防ぐ。
+    /// <para>
+    /// getter は現在の AutoCrop/ManualCrop の状態から導出。setter は既存の排他連動
+    /// （<see cref="OnAutoCropEnabledChanged"/> / <see cref="OnManualCropEnabledChanged"/>）に委ね、
+    /// ユーザーが選んだモードだけを反映する。
+    /// </para>
     /// </summary>
-    public bool IsCropOff
+    public CropMode CropMode
     {
-        get => !AutoCropEnabled && !ManualCropEnabled;
+        get => ManualCropEnabled ? CropMode.Manual
+             : AutoCropEnabled ? CropMode.Auto
+             : CropMode.Off;
         set
         {
-            if (value)
+            switch (value)
             {
-                AutoCropEnabled = false;
-                ManualCropEnabled = false;
+                case CropMode.Auto:
+                    AutoCropEnabled = true; // OnAutoCropEnabledChanged が ManualCrop を OFF にする
+                    break;
+                case CropMode.Manual:
+                    ManualCropEnabled = true; // OnManualCropEnabledChanged が AutoCrop を OFF にする
+                    break;
+                default:
+                    AutoCropEnabled = false;
+                    ManualCropEnabled = false;
+                    break;
             }
+            // bool 側の変化に NotifyPropertyChangedFor(CropMode) が付いているため通知は自動だが、
+            // 値変化が無い経路（例: 既に Off で再度 Off）でもラジオ表示を確定させるため明示通知。
             OnPropertyChanged();
         }
     }
@@ -332,7 +356,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         {
             ManualCropEnabled = false;
         }
-        OnPropertyChanged(nameof(IsCropOff));
+        // CropMode への通知は AutoCropEnabled の NotifyPropertyChangedFor が行う。
         TriggerAutoCropPreviewUpdate();
     }
 
@@ -352,7 +376,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         {
             AutoCropEnabled = false;
         }
-        OnPropertyChanged(nameof(IsCropOff));
+        // CropMode への通知は ManualCropEnabled の NotifyPropertyChangedFor が行う。
     }
 
     // XAML バインディング用の選択肢
@@ -1038,10 +1062,13 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         // ここを除外しないと「セル選択しただけで未保存」になる回帰が出る。
         // SelectedRegion は ListBox の選択状態のみで永続化対象ではないので、 単なるリスト選択で
         // dirty が立って auto-save が走らないよう除外する。
+        // CropMode は AutoCropEnabled / ManualCropEnabled の導出ファサードで、 実際の編集は bool 側の
+        // 変化が dirty を駆動する。 CropMode の通知エコーで二重に dirty 化しないよう除外する。
         if (e.PropertyName is nameof(IsDirty) or nameof(HasCopy)
             or nameof(StatusMessage) or nameof(MultiSelectMessage)
             or nameof(AutoCropPreviewFraction) or nameof(AutoCropPreviewMessage)
             or nameof(HasAutoCropPreview)
+            or nameof(CropMode)
             or nameof(SelectedRegion))
             return;
 

@@ -921,4 +921,57 @@ public sealed class CopyPropertiesViewModelTests : IAsyncLifetime
         reloaded.Regions[0].SortOrder.Should().Be(0);
         reloaded.Regions[1].SortOrder.Should().Be(1);
     }
+
+    [Fact]
+    public async Task CropMode_Reflects_And_Switches_Crop_State()
+    {
+        // CropMode は AutoCrop/ManualCrop の tri-state ファサード。 ラジオ 3 択が単一プロパティに
+        // バインドされることで、 グループ排他の false 書き戻しによる AutoCrop 消失を防ぐ。
+        var source = await SeedSourceAsync();
+        _vm.Attach(source);
+        _vm.CropMode.Should().Be(CropMode.Off);
+
+        _vm.CropMode = CropMode.Auto;
+        _vm.AutoCropEnabled.Should().BeTrue();
+        _vm.ManualCropEnabled.Should().BeFalse();
+
+        _vm.CropMode = CropMode.Manual;
+        _vm.AutoCropEnabled.Should().BeFalse();
+        _vm.ManualCropEnabled.Should().BeTrue();
+        _vm.CropMode.Should().Be(CropMode.Manual);
+
+        _vm.CropMode = CropMode.Off;
+        _vm.AutoCropEnabled.Should().BeFalse();
+        _vm.ManualCropEnabled.Should().BeFalse();
+        _vm.CropMode.Should().Be(CropMode.Off);
+    }
+
+    [Fact]
+    public async Task ReAttach_AutoCrop_Copy_Then_Save_Keeps_AutoCrop()
+    {
+        // 回帰防止 (データ消失): AutoCrop 有効の copy を再 attach → CropMode は Auto を反映し、
+        // 続く保存で AutoCrop が DB に残ること。 旧実装ではラジオグループの false 書き戻しが
+        // AutoCrop を OFF 化し、 自動保存で消えていた。
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id, copyName: "ac");
+
+        // AutoCrop を有効化して保存
+        _vm.Attach(new CopyItemViewModel(copy));
+        _vm.CropMode = CropMode.Auto;
+        _vm.AutoCropPreset = AutoCropPreset.White;
+        _vm.AutoCropThreshold = 10;
+        (await _vm.TrySaveAsync()).Should().BeTrue();
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id))!.AutoCrop.Should().NotBeNull();
+
+        // DB から再取得して再 attach (= 別セルから戻ってきた状況)
+        var fromDb = (await _fx.CopyRepository.FindByIdAsync(copy.Id))!;
+        _vm.Attach(new CopyItemViewModel(fromDb));
+        _vm.CropMode.Should().Be(CropMode.Auto, "AutoCrop 付きで再 attach したら CropMode は Auto");
+        _vm.IsDirty.Should().BeFalse("再 attach 直後は未編集なので dirty にならない");
+
+        // この状態で保存が走っても AutoCrop は消えない
+        await _vm.TrySaveAsync();
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id))!.AutoCrop
+            .Should().NotBeNull("再 attach 後の保存で AutoCrop が消えてはならない");
+    }
 }
