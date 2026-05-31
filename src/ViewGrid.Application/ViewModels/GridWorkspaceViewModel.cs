@@ -254,24 +254,37 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             var previous = lastCopyId;
             lastCopyId = currentCopyId;
             if (previous is Guid old)
-                _ = RollbackPlacementsForCopyAsync(old, CancellationToken.None);
+                _pendingRollbackTask = RollbackPlacementsForCopyAsync(old, CancellationToken.None);
         }
 
         if (cp.IsAttaching) return;
-        if (!IsLivePreviewSharedProperty(propertyName)) return;
         if (currentCopyId is not Guid copyId) return;
-        PushSharedPropertyLivePreview(cp, copyId, propertyName);
+        if (IsLivePreviewSharedProperty(propertyName))
+            PushSharedPropertyLivePreview(cp, copyId, propertyName);
+        else if (IsLivePreviewCropProperty(propertyName))
+            PushCropLivePreview(cp, copyId);
     }
 
     private void OnVariantPropertiesDraftReverted(object? sender, Guid copyId)
-        => _ = RollbackPlacementsForCopyAsync(copyId, CancellationToken.None, skipIfStillAttached: false);
+        => _pendingRollbackTask = RollbackPlacementsForCopyAsync(copyId, CancellationToken.None, skipIfStillAttached: false);
 
     private void OnInspectorCopyPropertiesDraftReverted(object? sender, Guid copyId)
-        => _ = RollbackPlacementsForCopyAsync(copyId, CancellationToken.None, skipIfStillAttached: false);
+        => _pendingRollbackTask = RollbackPlacementsForCopyAsync(copyId, CancellationToken.None, skipIfStillAttached: false);
+
+    /// <summary>
+    /// 直近の <see cref="RollbackPlacementsForCopyAsync"/> (attach 切替 / Revert 起点の DB 巻き戻し) の Task。
+    /// 本来は fire-and-forget だが、 EffectiveCropFraction の resolver 再解決が非同期なため、
+    /// テストが巻き戻し完了を確定的に待てるよう退避する。
+    /// </summary>
+    private Task _pendingRollbackTask = Task.CompletedTask;
+
+    /// <summary>テスト専用: 直近の attach 切替 / Revert に伴う placement 巻き戻しの完了を待つ。</summary>
+    internal Task WaitPendingRollbackForTests() => _pendingRollbackTask;
 
     /// <summary>
     /// <see cref="CopyPropertiesViewModel"/> の編集バッファのうち、 canvas 表示に即時反映できる軽量な
-    /// 共有プロパティかどうか。 AutoCrop / ManualCrop / ProtectedRegions は Phase 2 以降。
+    /// 共有プロパティかどうか。 クロップ系は <see cref="IsLivePreviewCropProperty"/> で別扱い
+    /// (EffectiveCropFraction の再解決が必要なため push 経路が異なる)。
     /// </summary>
     private static bool IsLivePreviewSharedProperty(string? propertyName) => propertyName is
         nameof(CopyPropertiesViewModel.Rotation) or
@@ -280,6 +293,22 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         nameof(CopyPropertiesViewModel.ScalingMode) or
         nameof(CopyPropertiesViewModel.AlignX) or
         nameof(CopyPropertiesViewModel.AlignY);
+
+    /// <summary>
+    /// 任意矩形 (ManualCrop) / 自動 (AutoCrop) トリミングの編集バッファ変更かどうか。 該当するときは
+    /// <see cref="PushCropLivePreview"/> で実効クロップ比率 (EffectiveCropFraction) を placement に push し、
+    /// canvas のトリミング表示を draft 編集に即時追従させる。 AutoCrop の preset/threshold/色は
+    /// <see cref="CopyPropertiesViewModel.AutoCropPreviewFraction"/> の走査完了通知経由で反映されるので、
+    /// ここでは走査結果プロパティだけを見れば足りる。
+    /// </summary>
+    private static bool IsLivePreviewCropProperty(string? propertyName) => propertyName is
+        nameof(CopyPropertiesViewModel.ManualCropEnabled) or
+        nameof(CopyPropertiesViewModel.ManualCropPixelX) or
+        nameof(CopyPropertiesViewModel.ManualCropPixelY) or
+        nameof(CopyPropertiesViewModel.ManualCropPixelWidth) or
+        nameof(CopyPropertiesViewModel.ManualCropPixelHeight) or
+        nameof(CopyPropertiesViewModel.AutoCropEnabled) or
+        nameof(CopyPropertiesViewModel.AutoCropPreviewFraction);
 
     /// <summary>
     /// draft 中の共有プロパティ値を、 当該 CopyId を使う全 <see cref="PlacementItemViewModel"/> に push する。
@@ -314,6 +343,27 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     }
 
     /// <summary>
+    /// draft 中のトリミング設定 (ManualCrop / AutoCrop) と、 そこから解決した実効クロップ比率
+    /// (<see cref="CopyPropertiesViewModel.EffectiveCropPreview"/>) を、 当該 CopyId を使う全
+    /// <see cref="PlacementItemViewModel"/> に push する。 canvas は <see cref="PlacementItemViewModel.EffectiveCropFraction"/>
+    /// を真理値としてトリミングを焼き込むため、 これにより Save 前の draft 編集が即座に反映される。
+    /// 切替・Revert 時は <see cref="RollbackPlacementsForCopyAsync"/> が DB 値から再解決して巻き戻す。
+    /// </summary>
+    private void PushCropLivePreview(CopyPropertiesViewModel cp, Guid copyId)
+    {
+        var manual = cp.DraftManualCrop;
+        var auto = cp.DraftAutoCrop;
+        var effective = cp.EffectiveCropPreview;
+        foreach (var p in Placements)
+        {
+            if (p.CopyId != copyId) continue;
+            p.ManualCrop = manual;
+            p.AutoCrop = auto;
+            p.EffectiveCropFraction = effective;
+        }
+    }
+
+    /// <summary>
     /// 指定 CopyId を使う全 <see cref="PlacementItemViewModel"/> を DB の最新 <see cref="ImageCopy"/> 値に
     /// 巻き戻す。 ライブプレビューで push した未保存値を canvas から取り除くために、 attach 切替や Revert
     /// のタイミングで呼ばれる。 DB 読込失敗は黙って続行 (次の <see cref="LoadPlacementsAsync"/> で整合される)。
@@ -332,14 +382,30 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         {
             var copy = await _copyRepository.FindByIdAsync(copyId, ct);
             if (copy is null) return;
+
+            // EffectiveCropFraction は ManualCrop / AutoCrop から resolver で解決される派生値であり、
+            // ApplyCopyChanges は raw 設定しか戻さない。 ライブプレビューで push 済みの実効クロップ比率を
+            // DB 値へ巻き戻すため、 LoadPlacementsAsync と同じく resolver 経由で再解決する。
+            // 走査 (await) は skipIfStillAttached 判定の前に済ませ、 判定〜apply は同期で完結させる
+            // (判定後に await を挟むと、 その間にユーザーが再 attach した draft を消す race が生じるため)。
+            var asset = await _assetRepository.FindByIdAsync(copy.AssetId, ct);
+            CropFraction? effectiveCrop = null;
+            if (asset is not null)
+            {
+                try { effectiveCrop = await _cropResolver.ResolveAsync(copy, asset, ct); }
+                catch (OperationCanceledException) { throw; }
+                catch { effectiveCrop = null; }
+            }
+
             if (skipIfStillAttached &&
                 (Inspector.CopyProperties.AttachedCopyId == copyId ||
                  VariantProperties.AttachedCopyId == copyId))
                 return;
+
             foreach (var p in Placements)
             {
                 if (p.CopyId == copyId)
-                    p.ApplyCopyChanges(copy);
+                    p.ApplyCopyChanges(copy, effectiveCrop);
             }
         }
         catch (OperationCanceledException) { }

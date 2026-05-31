@@ -211,6 +211,43 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         (ManualCropPixelWidth ?? 0) > 0 && (ManualCropPixelHeight ?? 0) > 0;
 
     /// <summary>
+    /// 編集バッファ上の ManualCrop（永続化と同じ判定 = 「手動 ON + 矩形確定 + 元画像サイズ既知」の
+    /// ときだけ非 null）。canvas のライブプレビュー push 用に <see cref="GridWorkspaceViewModel"/> が参照する。
+    /// </summary>
+    public ManualCropFraction? DraftManualCrop => BuildAfterManualCrop();
+
+    /// <summary>編集バッファ上の AutoCrop 設定。OFF なら null。ライブプレビュー push 用。</summary>
+    public AutoCropSettings? DraftAutoCrop => AutoCropEnabled ? BuildAutoCropFromInputs() : null;
+
+    /// <summary>
+    /// 編集バッファ上の実効クロップ比率。<see cref="ViewGrid.Application.Services.ImageCropResolver"/> と
+    /// 同じ優先順位（ManualCrop 優先、次に AutoCrop の走査結果 <see cref="AutoCropPreviewFraction"/>）で
+    /// 解決する。<see cref="PlacementItemViewModel.EffectiveCropFraction"/> へ push してライブプレビューに
+    /// 即時反映するための値。full（全領域）は無効として <c>null</c> を返す。
+    /// <para>
+    /// AutoCrop は走査（ピクセル外周検出）が非同期で完了してから <see cref="AutoCropPreviewFraction"/> に
+    /// 入るため、ON 直後は <c>null</c>（クロップなし）を返し、走査完了の通知で改めて push される。
+    /// </para>
+    /// </summary>
+    public CropFraction? EffectiveCropPreview
+    {
+        get
+        {
+            if (DraftManualCrop is { } mc)
+            {
+                var cf = CropFraction.From(mc);
+                return cf.IsFull() ? null : cf;
+            }
+            if (AutoCropEnabled && AutoCropPreviewFraction is { } af)
+            {
+                var cf = CropFraction.From(af);
+                return cf.IsFull() ? null : cf;
+            }
+            return null;
+        }
+    }
+
+    /// <summary>
     /// 「OFF / 自動 / 手動」ラジオの「OFF」用バインド。両方 OFF なら true。
     /// setter で true をセットされると AutoCrop / ManualCrop を両方 OFF にする
     /// （RadioButton の IsChecked にバインドして OFF ラジオをユーザーが選んだ時の挙動）。

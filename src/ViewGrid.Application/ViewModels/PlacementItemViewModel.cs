@@ -115,7 +115,12 @@ public sealed partial class PlacementItemViewModel : ObservableObject
     }
 
     /// <summary>編集後の <see cref="ImageCopy"/> から共有特性を反映する。
-    /// OccupySize は配置単位なのでここでは更新しない（配置別の更新ルートで個別に反映する）。</summary>
+    /// OccupySize は配置単位なのでここでは更新しない（配置別の更新ルートで個別に反映する）。
+    /// <para>
+    /// <see cref="EffectiveCropFraction"/> は AutoCrop の場合ピクセル走査を伴う派生値なので、
+    /// ここでは更新しない。 呼び出し側 (<see cref="ViewGrid.Core.Services.IImageCropResolver"/> 経由で
+    /// LoadPlacements / Rollback) が ApplyCopyChanges の直後に必ず再解決して代入する責務を持つ。
+    /// </para></summary>
     public void ApplyCopyChanges(ImageCopy copy)
     {
         ArgumentNullException.ThrowIfNull(copy);
@@ -126,5 +131,19 @@ public sealed partial class PlacementItemViewModel : ObservableObject
         Alignment = copy.Alignment;
         AutoCrop = copy.AutoCrop;
         ManualCrop = copy.ManualCrop;
+    }
+
+    /// <summary>
+    /// <see cref="ApplyCopyChanges(ImageCopy)"/> に加えて、 resolver で再解決済みの実効クロップ比率も
+    /// 同一呼び出しで反映する。 raw な crop 設定と派生値 (<see cref="EffectiveCropFraction"/>) を 1 メソッドに
+    /// まとめることで、 「ApplyCopyChanges 後に EffectiveCropFraction の代入を忘れて不整合になる」 経路を
+    /// 構造的に塞ぐ。 <see cref="EffectiveCropFraction"/> を最後に代入するため、 canvas (描画は
+    /// EffectiveCropFraction を真理値とし、 GridCanvasView 側で 1 ディスパッチに rebuild を debounce する) には
+    /// 確定後の値だけが反映され、 中間状態は描画されない。
+    /// </summary>
+    public void ApplyCopyChanges(ImageCopy copy, CropFraction? effectiveCrop)
+    {
+        ApplyCopyChanges(copy);
+        EffectiveCropFraction = effectiveCrop;
     }
 }

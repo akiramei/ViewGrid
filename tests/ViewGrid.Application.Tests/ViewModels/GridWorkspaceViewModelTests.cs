@@ -1079,4 +1079,106 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         stored!.ScalingMode.Should().Be(ScalingMode.UniformCover);
         _vm.Placements.Single().ScalingMode.Should().Be(ScalingMode.UniformCover);
     }
+
+    [Fact]
+    public async Task LivePreview_ManualCrop_Pushes_EffectiveCropFraction_To_Matching_Placements()
+    {
+        // 任意矩形トリミング (ManualCrop) を draft 編集すると、 同じ CopyId を使う placement の
+        // EffectiveCropFraction (canvas 描画が参照する実効クロップ比率) が即時更新されること。
+        var asset = await _fx.SeedAssetAsync(width: 100, height: 100);
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        var item = _vm.Placements.Single();
+        item.EffectiveCropFraction.Should().BeNull();
+
+        var copyItem = new CopyItemViewModel(copy, null, null, asset.Size.Width, asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItem);
+
+        _vm.VariantProperties.ManualCropEnabled = true;
+        _vm.VariantProperties.ManualCropPixelX = 10;
+        _vm.VariantProperties.ManualCropPixelY = 10;
+        _vm.VariantProperties.ManualCropPixelWidth = 50;
+        _vm.VariantProperties.ManualCropPixelHeight = 50;
+
+        item.EffectiveCropFraction.Should().NotBeNull("ManualCrop の draft 編集が canvas に即時反映されるべき");
+        item.EffectiveCropFraction!.Value.X.Should().BeApproximately(0.10, 1e-6);
+        item.EffectiveCropFraction!.Value.Y.Should().BeApproximately(0.10, 1e-6);
+        item.EffectiveCropFraction!.Value.Width.Should().BeApproximately(0.50, 1e-6);
+        item.EffectiveCropFraction!.Value.Height.Should().BeApproximately(0.50, 1e-6);
+
+        // DB は Save 前なので未変更
+        var stored = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        stored!.ManualCrop.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task LivePreview_ManualCrop_Rollback_On_Switch_Restores_EffectiveCropFraction()
+    {
+        // ManualCrop を draft 編集 (EffectiveCropFraction が push される) → 別 variant に切替 →
+        // 旧 variant の placement は DB 値 (= クロップなし) に巻き戻る。 EffectiveCropFraction も追従すること。
+        var asset = await _fx.SeedAssetAsync(width: 100, height: 100);
+        var copyA = await _fx.SeedCopyAsync(asset.Id, copyName: "A");
+        var copyB = await _fx.SeedCopyAsync(asset.Id, copyName: "B");
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copyA.Id, new CellPosition(0, 0));
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        var item = _vm.Placements.Single(p => p.CopyId == copyA.Id);
+
+        var copyItemA = new CopyItemViewModel(copyA, null, null, asset.Size.Width, asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItemA);
+        _vm.VariantProperties.ManualCropEnabled = true;
+        _vm.VariantProperties.ManualCropPixelX = 10;
+        _vm.VariantProperties.ManualCropPixelY = 10;
+        _vm.VariantProperties.ManualCropPixelWidth = 50;
+        _vm.VariantProperties.ManualCropPixelHeight = 50;
+        item.EffectiveCropFraction.Should().NotBeNull();
+
+        // 別 variant (B) に attach → 旧 variant (A) の placement を rollback
+        var copyItemB = new CopyItemViewModel(copyB, null, null, asset.Size.Width, asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItemB);
+        await _vm.WaitPendingRollbackForTests();
+
+        item.EffectiveCropFraction.Should().BeNull("切替で DB 値 (クロップなし) に戻るべき");
+    }
+
+    [Fact]
+    public async Task LivePreview_ManualCrop_Save_Then_Reload_Keeps_EffectiveCropFraction()
+    {
+        // ManualCrop を編集 → Save → CopyLibraryChangedMessage 経由の reload で
+        // EffectiveCropFraction が DB のクロップ比率を保持し続けること (= セルがトリミング表示のまま)。
+        var asset = await _fx.SeedAssetAsync(width: 100, height: 100);
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = await SeedActiveGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        var copyItem = new CopyItemViewModel(copy, null, null, asset.Size.Width, asset.Size.Height);
+        _vm.VariantProperties.Attach(copyItem);
+        _vm.VariantProperties.ManualCropEnabled = true;
+        _vm.VariantProperties.ManualCropPixelX = 10;
+        _vm.VariantProperties.ManualCropPixelY = 20;
+        _vm.VariantProperties.ManualCropPixelWidth = 50;
+        _vm.VariantProperties.ManualCropPixelHeight = 60;
+
+        var ok = await _vm.VariantProperties.TrySaveAsync();
+        ok.Should().BeTrue();
+        await _vm.ReloadFromMessageAsyncForTests();
+
+        // DB に保存されている
+        var stored = await _fx.CopyRepository.FindByIdAsync(copy.Id);
+        stored!.ManualCrop.Should().NotBeNull();
+
+        // reload 後も placement の EffectiveCropFraction がトリミングを反映している
+        var item = _vm.Placements.Single();
+        item.EffectiveCropFraction.Should().NotBeNull("Save + reload 後もセルはトリミング表示を保つべき");
+        item.EffectiveCropFraction!.Value.Y.Should().BeApproximately(0.20, 1e-6);
+        item.EffectiveCropFraction!.Value.Height.Should().BeApproximately(0.60, 1e-6);
+    }
 }
