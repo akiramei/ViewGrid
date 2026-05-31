@@ -8,8 +8,8 @@ using ViewGrid.Core.Entities;
 namespace ViewGrid.Application.Tests.History.Commands;
 
 /// <summary>
-/// 配置系 5 Command（Place/Remove/Move/Swap/UpdatePlacementOffset）の Execute → Undo → Redo
-/// round-trip を実 EF Core in-memory SQLite で検証する。
+/// 配置系 6 Command（Place/Remove/Move/Swap/UpdatePlacementOffset/UpdatePlacementOccupySize）の
+/// Execute → Undo → Redo round-trip を実 EF Core in-memory SQLite で検証する。
 /// </summary>
 public sealed class PlacementCommandTests : IAsyncLifetime
 {
@@ -19,6 +19,7 @@ public sealed class PlacementCommandTests : IAsyncLifetime
     private MovePlacementUseCase _move = null!;
     private SwapPlacementsUseCase _swap = null!;
     private UpdatePlacementOffsetUseCase _offset = null!;
+    private UpdatePlacementOccupySizeUseCase _occupy = null!;
     private UndoRedoService _history = null!;
 
     public async Task InitializeAsync()
@@ -29,6 +30,7 @@ public sealed class PlacementCommandTests : IAsyncLifetime
         _move = new MovePlacementUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
         _swap = new SwapPlacementsUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
         _offset = new UpdatePlacementOffsetUseCase(_fx.PlacementRepository);
+        _occupy = new UpdatePlacementOccupySizeUseCase(_fx.PlacementRepository, _fx.GridRepository);
         _history = new UndoRedoService();
     }
 
@@ -181,6 +183,44 @@ public sealed class PlacementCommandTests : IAsyncLifetime
         var afterRedo = await _fx.PlacementRepository.FindByIdAsync(placement.Id);
         afterRedo!.PixelOffsetX.Should().Be(100);
         afterRedo.PixelOffsetY.Should().Be(-50);
+    }
+
+    // AR-07 undo 対称性 anchor (Capability BOM governance pilot, F-P5):
+    // 配置 (GridPlacement) 固有 OccupySize の Execute→Undo→Redo 対称性を検証する。
+    // BOM の AR-07 (fragile) は Move/UpdateOffset/UpdateOccupy を before/after 対称と宣言するが、
+    // 兄弟 5 Command に round-trip テストがある一方、UpdatePlacementOccupySizeCommand だけ未被覆だった。
+    // 注意: GridAndCopyCommandTests に "OccupySize" の undo/redo テストはあるが、あれは ImageCopy
+    // (コピー層 = 新規配置の初期値) の OccupySize であり、配置層の OccupySize ではない
+    // (BOM の D-1 / audit_focus「OccupySize 二層」の取り違え)。表面的なカバレッジ走査では
+    // 「OccupySize undo テストはある」と誤認するが、GRID_COMPOSITION 自身の不変条件は無防備だった。
+    [Fact]
+    public async Task UpdatePlacementOccupySizeCommand_RoundTrip()
+    {
+        var grid = await SeedGridAsync();
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);   // 配置の初期 OccupySize は 1×1 を継承
+        var placement = (await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0))).Value;
+
+        // 前提を明示: 配置は copy から 1×1 を継承している (fixture 既定が変わったら気づけるように)。
+        placement.OccupySize.Should().Be(OccupySize.OneByOne);
+
+        var before = OccupySize.OneByOne;        // 1×1
+        var after = new OccupySize(2, 2);        // 拡張 (3×3 グリッドの (0,0) に収まり、他配置なし → 検証 OK)
+        var command = new UpdatePlacementOccupySizeCommand(_occupy, grid.Id, placement.Id,
+            before: before, after: after,
+            description: "占有セル: テスト");
+
+        // Execute → 拡張 (AR-04: 拡張は境界+重複を検証)
+        await _history.ExecuteAsync(command);
+        (await _fx.PlacementRepository.FindByIdAsync(placement.Id))!.OccupySize.Should().Be(after);
+
+        // Undo → 縮小して before に戻る (AR-07 before/after 対称。Undo が after を再適用する退行を捕捉)
+        await _history.UndoAsync();
+        (await _fx.PlacementRepository.FindByIdAsync(placement.Id))!.OccupySize.Should().Be(before);
+
+        // Redo → 再拡張
+        await _history.RedoAsync();
+        (await _fx.PlacementRepository.FindByIdAsync(placement.Id))!.OccupySize.Should().Be(after);
     }
 
     [Fact]
