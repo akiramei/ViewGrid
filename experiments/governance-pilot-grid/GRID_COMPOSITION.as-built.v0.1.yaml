@@ -136,6 +136,7 @@ rules:
     enforced_at: [PlacementValidator.cs, SwapPlacementsUseCase.cs L63-71]
     applies_to: [Place, Move, Swap, UpdateOccupySize]
     fragile: true   # ★ AI が (3) を削ると 1000-step random walk でのみ出る実バグになる (旧 ledger A-3 と同型)
+    anchor_test: "tests/ViewGrid.Application.Tests/UseCases/SwapPlacementsUseCaseTests.cs::Returns_Conflict_When_Swap_Would_Make_AB_Mutually_Overlap (F-P3 で追加。stage-3 削除を決定的に捕捉: 実コード=PASS / 削除版=FAIL を dotnet test で実証。既存 6 swap テストはこの盲点を未被覆だった)"
   - id: AR-03
     name: SwapOnlyWithinSameGrid
     as_built: "a.GridId != b.GridId なら Error.Validation('Placement.DifferentGrid')。別グリッド間 swap 不可。"

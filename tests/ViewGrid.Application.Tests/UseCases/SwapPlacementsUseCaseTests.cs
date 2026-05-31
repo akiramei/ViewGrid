@@ -134,6 +134,37 @@ public sealed class SwapPlacementsUseCaseTests : IAsyncLifetime
         result.FirstError.Type.Should().Be(ErrorOr.ErrorType.Conflict);
     }
 
+    // AR-02 stage-3 anchor (Capability BOM governance pilot, F-P3):
+    // swap 後に a と b の *新位置* が互いに重なる (第三の配置とは重ならない) ケース。
+    // 検証 1/2 は相手を others から除外するため原理的に捕捉できず、stage-3
+    // (post-swap A/B 相互占有重複チェック) のみが捕捉する。この不変条件は
+    // as-built BOM の AR-02 (fragile) が指す盲点で、本テスト追加まで既存スイート未被覆だった
+    // (stage-3 を削除した実装は本テスト以外の全 swap テストを通過してしまう)。
+    [Fact]
+    public async Task Returns_Conflict_When_Swap_Would_Make_AB_Mutually_Overlap()
+    {
+        var grid = await SeedGridAsync(3, 3);
+        var asset = await _fx.SeedAssetAsync();
+        var copyA = await _fx.SeedCopyAsync(asset.Id, copyName: "1x1");                  // {(0,0)}
+        var copyB = await SeedCopyWithSizeAsync(asset.Id, "2x1", new OccupySize(2, 1));  // {(1,0),(2,0)}
+
+        var a = await _placeUseCase.ExecuteAsync(grid.Id, copyA.Id, new CellPosition(0, 0));
+        var b = await _placeUseCase.ExecuteAsync(grid.Id, copyB.Id, new CellPosition(1, 0));
+
+        // swap: a → (1,0) で {(1,0)}、b → (0,0) で {(0,0),(1,0)} → セル (1,0) で相互重複。
+        // 第三の配置は無いので検証 1/2 は通過。stage-3 のみが Conflict を返すべき。
+        var result = await _swapUseCase.ExecuteAsync(a.Value.Id, b.Value.Id);
+
+        result.IsError.Should().BeTrue();
+        result.FirstError.Type.Should().Be(ErrorOr.ErrorType.Conflict);
+
+        // 拒否されたので両配置は元位置のまま (重複が永続化されていないこと)。
+        var reloadA = await _fx.PlacementRepository.FindByIdAsync(a.Value.Id);
+        var reloadB = await _fx.PlacementRepository.FindByIdAsync(b.Value.Id);
+        reloadA!.Position.Should().Be(new CellPosition(0, 0));
+        reloadB!.Position.Should().Be(new CellPosition(1, 0));
+    }
+
     private async Task<ImageCopy> SeedCopyWithSizeAsync(Guid assetId, string copyName, OccupySize size)
     {
         var now = DateTimeOffset.UtcNow;

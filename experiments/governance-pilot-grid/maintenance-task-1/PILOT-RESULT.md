@@ -35,4 +35,29 @@
 - **F-P4 (positive)**: BOM 駆動監査はコメント上の意味縮小も捕捉 = コード差分だけでなく宣言/意図の侵食も拾う。
 
 ## pilot スコープ (この round でやらないこと、再掲)
-ViewGrid 全体 BOM 化 / 全再生成 / UI 網羅監査 / EF 完全一致は対象外。次の自然な一手は F-P2 (列挙外逸脱) か F-P3 (AR-02 を決定的 anchor test 化)。
+ViewGrid 全体 BOM 化 / 全再生成 / UI 網羅監査 / EF 完全一致は対象外。
+
+---
+
+## F-P3 — AR-02 stage-3 を決定的 anchor test 化 (2026-05-31、実施・実証済)
+
+ガバナンスの価値連鎖を「AI 監査(非決定的)」から「決定的 CI ガード」へ落とし込んだ。
+
+### 発見した盲点 (BOM 由来)
+実 `tests/ViewGrid.Application.Tests/UseCases/SwapPlacementsUseCaseTests.cs` の既存 6 swap テストを精査 → **AR-02 stage-3 (a/b の *相互* 占有重複) を被覆するテストが無い**。`Returns_Conflict_When_Swap_NxM_Hits_Other_Placement` は第三の配置 (blocker) との衝突 (= 検証 1/2) を見ており、stage-3 ではない (テスト作者がコメントで衝突シナリオ構築に苦労した跡あり)。→ as-built BOM の `AR-02 fragile` 指摘が **実コードの欠落 anchor test を特定**。
+
+### 追加した anchor test
+`Returns_Conflict_When_Swap_Would_Make_AB_Mutually_Overlap` — a=1×1@(0,0) / b=2×1@(1,0)、swap で a→{(1,0)}・b→{(0,0),(1,0)} がセル (1,0) で相互重複 (第三配置なし)。`Conflict` を期待 + 拒否で両配置が元位置のままを確認。
+
+### 決定的実証 (dotnet test)
+| 対象 SwapPlacementsUseCase | 既存 6 件 | 新 anchor test |
+| --- | --- | --- |
+| **実コード** (stage-3 あり) | PASS | **PASS** (合計 7 pass) |
+| **deviation** (stage-3 削除) | **全 PASS** | **FAIL** (失敗 1 / 合格 6) |
+
+→ **既存スイートは stage-3 を未被覆 (deviation が 6 件素通り)。新 anchor test だけが決定的に捕捉。** deviation は一時差し込み後 `git checkout` で復元 (src clean)。
+
+### 含意
+- **価値連鎖が end-to-end で完成**: as-built BOM の `fragile` 指摘 → AI 監査が逸脱を catchable と確認 → 既存テストの盲点を特定 → 決定的 anchor test で恒久ガード化 (AI 判断不要・CI で再現可能)。
+- 一般原則: **BOM の `rules.fragile` は「決定的 anchor test を持つべき不変条件」の優先リスト**になる。次の自然な展開は AR-07 (undo 対称性) 等、他の fragile に同手順を適用。
+- F-P2 (列挙外逸脱で BOM 汎化力テスト) は未実施 (別ラウンド候補)。
