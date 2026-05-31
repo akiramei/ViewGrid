@@ -1,0 +1,296 @@
+# GRID_COMPOSITION — as-built Capability BOM v0.1
+#
+# 目的: パターン2 (保守ガバナンス) pilot の基盤。「理想仕様」ではなく、実 ViewGrid が
+#       *今まさに体現している意味境界* を地図化し、AI 保守時に破ってはいけないものを明示する。
+#       機械検査用ではなく **監査用の意味地図** (status: as-built-draft)。
+#
+# 突合した 3 ソース:
+#   - prior_bom : docs/capability-bom-audit/samples/grid-composition/21-grid-composition.yaml (理想化 v0.2)
+#   - code      : 実 C# (.NET10/Avalonia) — 下記 sources.code
+#   - manual    : docs/user-manual/{01-concepts,03-grids,04-placements,08-history}.md
+#
+# 重要: 本 BOM の価値は §as_built_divergences (理想 BOM と実コードのズレ) と §audit_focus に集約される。
+#       AI 保守の diff を、ここで宣言した意味境界に照らして「越境・破壊・取り違え」を検出するのが pilot の狙い。
+
+capability:
+  id: GRID_COMPOSITION
+  status: as-built-draft
+  version: v0.1
+  name: { ja: グリッド配置構成, en: Grid Composition }
+  purpose: >
+    グリッド (N行×M列のセル格子) 上にバリアント (ImageCopy) を配置し、境界内・非重複を保証しつつ
+    編成する。配置の妥当性に関する唯一の権威。実コードでは配置操作が History Command で包まれ
+    undo/redo の意味保存まで含む。
+
+sources:
+  code:
+    domain:
+      - src/ViewGrid.Core/Entities/GridCanvas.cs
+      - src/ViewGrid.Core/Entities/GridPlacement.cs
+      - src/ViewGrid.Core/Entities/CellPosition.cs
+      - src/ViewGrid.Core/Entities/OccupySize.cs
+      - src/ViewGrid.Core/Entities/PixelSize.cs
+      - src/ViewGrid.Core/UseCases/PlacementValidator.cs   # ★ 配置妥当性の唯一の権威 (純関数)
+    application_usecases:
+      - src/ViewGrid.Application/UseCases/PlaceImageCopyUseCase.cs
+      - src/ViewGrid.Application/UseCases/MovePlacementUseCase.cs
+      - src/ViewGrid.Application/UseCases/SwapPlacementsUseCase.cs
+      - src/ViewGrid.Application/UseCases/RemovePlacementUseCase.cs
+      - src/ViewGrid.Application/UseCases/UpdatePlacementOffsetUseCase.cs
+      - src/ViewGrid.Application/UseCases/UpdatePlacementOccupySizeUseCase.cs
+      - src/ViewGrid.Application/UseCases/CreateGridCanvasUseCase.cs
+      - src/ViewGrid.Application/UseCases/DeleteGridCanvasUseCase.cs
+      - src/ViewGrid.Application/UseCases/RenameGridCanvasUseCase.cs
+      - src/ViewGrid.Application/UseCases/ForkPlacementVariantUseCase.cs   # GRID と IMAGE_VARIANT を跨ぐ
+    history:   # 実コードでは配置操作が undo 可能 Command で包まれる (sample では別 Capability 扱い = 乖離 D-5)
+      - src/ViewGrid.Application/History/IUndoableCommand.cs
+      - src/ViewGrid.Application/History/UndoRedoService.cs
+      - src/ViewGrid.Application/History/Commands/{Place,MovePlacement,SwapPlacements,RemovePlacement,UpdatePlacementOffset,UpdatePlacementOccupySize}Command.cs
+    viewmodel:
+      - src/ViewGrid.Application/ViewModels/GridWorkspaceViewModel.cs       # ★ FindFirstFreeCell = overreach 兆候 (§audit O-1)
+      - src/ViewGrid.Application/ViewModels/PlacementInspectorViewModel.cs  # 編集バッファ (適切)
+    persistence:
+      - src/ViewGrid.Infrastructure/Persistence/* (EfGridPlacementRepository 等)  # 所有しない
+  manual:
+    - docs/user-manual/01-concepts.md   # §1.1 データモデル / §1.2 共有 vs 配置固有特性 / 履歴全消去表
+    - docs/user-manual/03-grids.md      # §3.6-3.9 グリッド作成・重み・ロック・キャンバスサイズ
+    - docs/user-manual/04-placements.md # §4.9 作成/移動/入替/削除 / §4.10 占有セル・PixelOffset / §4.13 フィット / §4.14 Fork
+    - docs/user-manual/08-history.md    # §8.24-8.26 Undo 対象 / 履歴全消去 / 履歴は非永続
+  prior_bom:
+    - docs/capability-bom-audit/samples/grid-composition/21-grid-composition.yaml
+
+# ────────────────────────────────────────────────────────────────────────
+# intent (マニュアルからの意図。引用・要約)
+# ────────────────────────────────────────────────────────────────────────
+intent:
+  - "グリッド = 出力単位の NxM キャンバス。配置 = バリアントを特定グリッドの特定セルに置いた実体 (manual §1.1)。"
+  - "占有セル(W×H)/ピクセル微調整(ΔX,ΔY)/位置 は *配置固有特性* (その配置のみ)。スケーリング/回転/トリミング等は *共有特性* (同じバリアントを参照する全配置に反映) (manual §1.2)。"
+  - "占有セル拡張は『グリッド外』『他配置と重複』で拒否、メッセージ表示し変更しない。縮小は常に成功 (manual §4.10.1)。"
+  - "移動=空セルへドラッグ、入替=別配置上にdrop で両者の位置交換 (manual §4.9.2)。Enter で最初の空きセルに自動配置。"
+  - "配置の 作成/移動/入替/削除/占有セル/ピクセル微調整 は Undo 可能。アセット/バリアント/グリッドの 作成/削除 と ワークスペース操作は cascade 影響が大きく **履歴全消去** で扱う (manual §1.1 / §8.26)。"
+  - "履歴はメモリのみ・非永続 (アプリ終了で消える)。別グリッドの操作を undo すると自動でそのグリッドへ切替 (manual §8.25/§8.26)。"
+  - "ロック列/行は境界ドラッグ・フィットで不変。キャンバスサイズ変更は比率維持の等倍拡縮で占有割合は不変 (manual §3.7/§3.9)。"
+
+# ────────────────────────────────────────────────────────────────────────
+# owns / does_not_own (意味境界)
+# ────────────────────────────────────────────────────────────────────────
+owns:
+  - グリッドへの配置作成 (Place) と境界内・非重複の検証
+  - 配置の移動 (Move) ・入れ替え (Swap、同一グリッド内・占有重複の相互検証含む)
+  - 配置の削除 (Remove)
+  - 配置固有特性の更新: 占有セル (OccupySize) ・ピクセル微調整 (PixelOffset)
+  - グリッド (GridCanvas) の作成/削除/改名/寸法/重み/ロック
+  - 配置順序 (PlacementOrder = 重なり順) の保持のみ (作成時 max+1 / Fork 複製。変更操作は未実装 — §D-8)
+  - 上記配置操作の undo/redo 意味保存 (History Command として、実コードでは本層に同居)
+
+does_not_own:
+  - 画像デコード (Infrastructure.Imaging / SkiaSharp)
+  - 画像の最終レンダリング・PNG 出力 (RENDERING_EXPORT / Presentation の Skia 描画)
+  - EF Core 永続化スキーマ・マイグレーション (Infrastructure.Persistence)
+  - Avalonia コントロールのレイアウト (Presentation)
+  - バリアント(ImageCopy)の *意味解釈* — 共有特性 (Scaling/Crop/Transform/Alignment/Regions) の生成・適用 (IMAGE_VARIANT_MANAGEMENT)
+  - 画像同一性・重複検出 (ImageAsset.FileHash = IMAGE_VARIANT/Asset 側)
+
+# ────────────────────────────────────────────────────────────────────────
+# core_entities (実コードの実体)
+# ────────────────────────────────────────────────────────────────────────
+core_entities:
+  owned:
+    - name: GridCanvas
+      file: Core/Entities/GridCanvas.cs
+      fields: [Id, Name, GridRows, GridCols, ColWeights, RowWeights, ColLocked, RowLocked, CanvasSize, CreatedAt, UpdatedAt]
+      invariants: [rows/cols 1..20, canvas 100..8192px, weights 正・長さ=次元, locked 長さ=次元]
+    - name: GridPlacement
+      file: Core/Entities/GridPlacement.cs
+      fields: [Id(init), GridId(init), CopyId(init・fork で変更), Position(set), OccupySize(set), PixelOffsetX(set), PixelOffsetY(set), PlacementOrder(set), CreatedAt(init)]
+      note: >
+        Position/OccupySize/PixelOffset/PlacementOrder は mutable setter。実コードは in-place 変更
+        (placement.Position = newPosition)。← sample R-07「immutable」と乖離 (D-3)。
+        OccupySize は *配置固有* (新規配置時に copy.OccupySize を初期値継承、以後独立)。
+  referenced:
+    - name: ImageCopy   # = バリアント / 論理コピー
+      provided_by: IMAGE_VARIANT_MANAGEMENT
+      reference_via: CopyId
+      access_policy: existence_check_only   # 実コード: copyRepository.FindByIdAsync で存在確認のみ
+      note: "本 Capability は ImageCopy の共有特性 (Scaling/Crop/Transform) を解釈しない。境界。"
+  value_objects:
+    - { name: CellPosition, file: Core/Entities/CellPosition.cs, fields: [X(0-base), Y(0-base)], kind: readonly record struct }
+    - { name: OccupySize,   file: Core/Entities/OccupySize.cs,   fields: [Width>0, Height>0],     kind: readonly record struct }
+    - { name: PixelSize,    file: Core/Entities/PixelSize.cs,    fields: [Width>0, Height>0] }
+
+# ────────────────────────────────────────────────────────────────────────
+# rules (実コードが現に強制している意味制約 = 破ってはいけない不変条件)
+# ────────────────────────────────────────────────────────────────────────
+rules:
+  - id: AR-01
+    name: PlacementMustFitWithinGrid
+    as_built: "PlacementValidator.Validate が position+occupySize <= grid 範囲を検証。違反は Error.Validation('Placement.OutOfBounds')。"
+    enforced_at: Core/UseCases/PlacementValidator.cs
+    applies_to: [Place, Move, Swap, UpdateOccupySize]
+  - id: AR-02
+    name: PlacementsMustNotOverlap
+    as_built: >
+      占有セル集合の交差禁止。対象自身は除外 (excludePlacementId)。Swap は 3 段検証:
+      (1)A を B 位置に置けるか (2)B を A 位置に置けるか (3)A新位置とB新位置の占有が相互に重ならないか。
+      標準の「候補 vs 既存」検査では (3) を捕捉できないため SwapPlacementsUseCase が明示検査する。
+    enforced_at: [PlacementValidator.cs, SwapPlacementsUseCase.cs L63-71]
+    applies_to: [Place, Move, Swap, UpdateOccupySize]
+    fragile: true   # ★ AI が (3) を削ると 1000-step random walk でのみ出る実バグになる (旧 ledger A-3 と同型)
+  - id: AR-03
+    name: SwapOnlyWithinSameGrid
+    as_built: "a.GridId != b.GridId なら Error.Validation('Placement.DifferentGrid')。別グリッド間 swap 不可。"
+    enforced_at: SwapPlacementsUseCase.cs L26-27
+    applies_to: [Swap]
+    note: "sample では CrossGridSwapNotAllowed と命名。実コードは DifferentGrid (D-9 命名乖離)。"
+  - id: AR-04
+    name: OccupyShrinkAlwaysOk_ExpandValidated
+    as_built: "占有セル縮小は常に成功、拡張は境界+重複を PlacementValidator で検証 (manual §4.10.1 と一致)。"
+    enforced_at: UpdatePlacementOccupySizeUseCase.cs
+    applies_to: [UpdateOccupySize]
+  - id: AR-05
+    name: PixelOffsetHasNoBoundsCheck
+    as_built: "UpdatePlacementOffsetUseCase は境界検証しない (セル外はみ出しは意図設計、Renderer もクリップしない)。極端値の丸めは VM 側。"
+    enforced_at: UpdatePlacementOffsetUseCase.cs
+    applies_to: [UpdateOffset]
+    note: "★ これは『バグでなく仕様』。AI が『安全のため』境界チェックを足すと意図を壊す。"
+  - id: AR-06
+    name: MoveAndOccupyNoOpOnSameValue
+    as_built: "同位置への Move / 同値への UpdateOccupy は no-op で early return (永続化しない)。"
+    applies_to: [Move, UpdateOccupySize]
+  - id: AR-07
+    name: UndoRedoRestoresSemanticState
+    as_built: >
+      各 History Command が意味状態を復元する。PlaceCommand=Id保持で Undo は Remove・Redo は同Id再INSERT。
+      RemovePlacementCommand=全フィールド snapshot で再INSERT。Swap=冪等 (Undo は同じ Swap 呼び出し)。
+      Move/UpdateOffset/UpdateOccupy=before/after 対称。UndoRedoService は NotFound 等の依存破綻で
+      Undo/Redo スタックを全クリア (整合保証)。MaxStackSize=50。SemaphoreSlim で直列化。
+    enforced_at: [History/UndoRedoService.cs, History/Commands/*]
+    applies_to: [Place, Move, Swap, Remove, UpdateOffset, UpdateOccupySize]
+    fragile: true   # ★ 配置 UseCase を変えると対応 Command の undo 対称性/Id 安定性が壊れうる
+  - id: AR-08
+    name: CascadeOpsClearHistory
+    as_built: "アセット/バリアント/グリッドの 作成/削除・ワークスペース操作は cascade 整合のため履歴全消去 (manual §8.26)。"
+    applies_to: [DeleteGridCanvas, "asset/variant/workspace (他 Capability 由来)"]
+    note: "履歴は非永続 (メモリのみ)。"
+
+# ────────────────────────────────────────────────────────────────────────
+# decision_ownership (意味判断の所在。as-built)
+# ────────────────────────────────────────────────────────────────────────
+decision_ownership:
+  domain_decision:
+    owner: GRID_COMPOSITION (PlacementValidator + UseCase 層)
+    decides: [配置妥当性 (境界/重複), 占有セル制約, swap 成立条件]
+    forbidden_in: [ViewModel, Repository, Rendering]
+  image_identity:
+    owner: IMAGE_VARIANT_MANAGEMENT
+    note: "ImageCopy(バリアント)の同一性・共有特性。本 Capability は CopyId 存在確認のみ。"
+  rendering_output:
+    owner: RENDERING_EXPORT / Presentation
+  persistence_schema:
+    owner: INFRASTRUCTURE_PERSISTENCE (EF Core)
+  ui_interaction_flow:
+    owner: PRESENTATION_VIEWMODEL
+    appropriate_examples: [PlacementInspectorViewModel の編集バッファ (PixelOffset/Occupy ドラフト値), D&D→UseCase 束ね]
+  undo_redo_integrity:
+    owner: GRID_COMPOSITION (実コードでは History Command が同居)
+    note: "★ sample は HISTORY_MANAGEMENT を別 Capability・out_of_scope としたが、実コードは配置 UseCase に密結合。保守では in-scope。"
+
+# 観測された overreach / 注意点 (as-built audit findings)
+audit_findings:
+  - id: O-1
+    severity: suspected_overreach
+    where: GridWorkspaceViewModel.FindFirstFreeCell (Application/ViewModels)
+    what: >
+      「最初の空きセル探索」という配置ドメイン判断が ViewModel に在る (PlacementValidator.OccupiedCells を VM が呼ぶ)。
+      UI フロー (Enter→自動配置) の一部ではあるが、本来 Core.UseCases/Domain Service 寄り。
+    guard: "AI 保守で『空きセル/配置可否の判定ロジック』を VM 側で増殖させない。検証は PlacementValidator を唯一源に。"
+  - id: O-2
+    severity: appropriate
+    where: PlacementInspectorViewModel (PixelOffsetX/Y, OccupyWidth/Height の編集バッファ)
+    what: "UI 編集中の一時値を VM が持つのは適切 (永続化は UseCase 経由)。overreach ではない。"
+
+# ────────────────────────────────────────────────────────────────────────
+# boundaries
+# ────────────────────────────────────────────────────────────────────────
+boundaries:
+  depends_on:
+    - { capability: IMAGE_VARIANT_MANAGEMENT, interface: "ImageCopy existence check by CopyId", access: read_only }
+  straddles:
+    - capability_pair: [GRID_COMPOSITION, IMAGE_VARIANT_MANAGEMENT]
+      via: ForkPlacementVariantUseCase
+      what: "配置の参照 ImageCopy を複製(新バリアント)し、その配置の CopyId だけ付け替え。GRID(配置更新)と IMAGE_VARIANT(コピー生成)を跨ぐ。失敗時は新コピー削除でロールバック。"
+      guard: "Fork 変更時、配置側(CopyId 付け替え)とコピー側(複製・命名)の責任分離を保つ。片方だけ壊すと孤児/取り違え。"
+  depended_on_by:
+    - { capability: RENDERING_EXPORT, interface: "GridCanvas + Placement list (論理情報のみ)", access: read_only }
+
+# ────────────────────────────────────────────────────────────────────────
+# audit_focus (AI 保守 diff を照らす質問。pilot の検査軸。具体化済み)
+# ────────────────────────────────────────────────────────────────────────
+audit_focus:
+  - "[validity 単一源] 配置妥当性の判定を PlacementValidator 以外に新設していないか? (二重検証 = drift)"
+  - "[swap 3 段検証] SwapPlacementsUseCase の検証 (3)=A新位置とB新位置の相互占有重複チェック (L63-71) を削っていないか? (AR-02 fragile)"
+  - "[same-grid] swap の a.GridId!=b.GridId 拒否 (AR-03) を残しているか?"
+  - "[OccupySize 二層] copy の OccupySize 変更を『既存配置にも波及する』と誤解していないか? (= 新規配置の初期値のみ。既存は UpdatePlacementOccupySizeUseCase)"
+  - "[copy/variant/placement 取り違え] ImageCopy(バリアント) と GridPlacement(配置) と ImageAsset を混同していないか? CopyId は存在確認のみで意味解釈していないか?"
+  - "[UseCase 迂回] 配置の Position/OccupySize/PixelOffset/Order を UseCase を通さず直接エンティティ代入 or 直接リポジトリ書込で変更していないか? (検証スキップ)"
+  - "[undo 整合] 配置 UseCase の変更が、対応 History Command の undo 対称性 (before/after, Swap 冪等, Place の Id 安定, Remove の全 snapshot 復元) を壊していないか? (AR-07 fragile)"
+  - "[履歴全消去] cascade 操作 (グリッド削除等) で履歴全消去 (AR-08) を維持しているか? 履歴を勝手に永続化していないか?"
+  - "[ViewModel overreach] 配置ドメイン判断 (検証/空きセル探索/妥当性) を ViewModel へ移していないか? FindFirstFreeCell(O-1) を増殖させていないか?"
+  - "[PixelOffset 仕様] PixelOffset の『境界チェックなし』(AR-05) を『安全のため』勝手に制約していないか?"
+  - "[境界跨ぎ] Fork の GRID/IMAGE_VARIANT 責任分離を崩していないか?"
+
+# ────────────────────────────────────────────────────────────────────────
+# as_built_divergences (★ 本 BOM の核心: 理想化 sample BOM と実コードのズレ。
+#   = 保守が守るべき『現実の意味状態』であり、sample をそのまま信じると誤る点)
+# ────────────────────────────────────────────────────────────────────────
+as_built_divergences:
+  - id: D-1
+    topic: OccupySize は Place の入力でない
+    sample: "UC-05 PlaceImageCopy inputs: [grid_id, copy_id, position, occupy_size]"
+    as_built: "PlaceImageCopyUseCase 入力は (gridId, copyId, position)。OccupySize は copy.OccupySize を初期値継承。"
+  - id: D-2
+    topic: PixelOffset 機能が sample BOM に無い
+    sample: "Placement に pixel_offset フィールド・UC ともに無し"
+    as_built: "GridPlacement.PixelOffsetX/Y + UpdatePlacementOffsetUseCase (境界チェックなし) + ドラフト編集/即時ドラッグ (manual §4.10.2)"
+  - id: D-3
+    topic: Placement は in-place mutable
+    sample: "R-07 CellPositionAndOccupySizeAreImmutableInOnePlacement (entity_immutability)"
+    as_built: "Position/OccupySize は set 可能、UseCase は placement.Position=new で in-place 変更。論理的には観測可能だが実装は mutation。"
+  - id: D-4
+    topic: PlacementValidator は Core.UseCases
+    as_built: "ViewGrid.Core/UseCases/PlacementValidator.cs (純関数・DB非依存)。配置妥当性の唯一源。sample の enforced_at(use_case_layer) と整合だが、物理的所在を明示。"
+  - id: D-5
+    topic: undo/redo は別 Capability でなく密結合
+    sample: "history_decision owned_by HISTORY_MANAGEMENT, out_of_scope。本 Capability は Event 発行のみ。"
+    as_built: "実コードに Event 発行は見当たらず、History/Commands が配置 UseCase を直接 wrap。undo 整合は配置保守の in-scope 課題。"
+    impact: "★ 保守で配置 UseCase を変えると undo が静かに壊れうる。sample の『out_of_scope』を信じると見落とす。"
+  - id: D-6
+    topic: ViewModel に配置判断の漏れ (overreach)
+    as_built: "GridWorkspaceViewModel.FindFirstFreeCell が空きセル探索を持つ (O-1)。sample role_taxonomy では ui_layer owns = suspicious。"
+  - id: D-7
+    topic: Fork が境界を跨ぐ
+    as_built: "ForkPlacementVariantUseCase が ImageCopy 複製(IMAGE_VARIANT)+配置 CopyId 付け替え(GRID)。sample には無い。"
+  - id: D-8
+    topic: z-order 変更操作は未実装 (確認済)
+    sample: "UC-09 ChangePlacementOrder (BringToFront/SendToBack/SetOrder) + R-06 (一意) / R-09 (compaction)"
+    as_built: >
+      grep 確認: BringToFront/SendToBack/SetOrder/ChangePlacementOrder はコード上に存在しない。
+      PlacementOrder は PlaceImageCopyUseCase で作成時に max+1 設定、ForkPlacementVariantUseCase で複製、
+      以外で変更されない。→ **sample の UC-09/R-06/R-09 は spec のみで実装なし**。重なり順は実質「作成順」。
+    impact: "★ AI に『重なり順を変えたい』と頼むのは *新機能追加* であって既存改修ではない。sample を実装済と誤認しない。"
+  - id: D-9
+    topic: cross-grid swap の命名
+    sample: "CrossGridSwapNotAllowed (canonical failure reason)"
+    as_built: "Error.Validation('Placement.DifferentGrid')。意味同じ、表現/命名が異なる。"
+
+# pilot 運用メモ
+pilot:
+  success_condition: >
+    AI に小さな保守タスクを与えたとき、本 BOM (特に audit_focus + rules.fragile + as_built_divergences) で
+    「壊してはいけない意味」の越境・破壊・取り違えを検出・指摘できるか。完全再生成は目標でない。
+  not_yet:
+    - ViewGrid 全体の BOM 化
+    - BOM からの全再生成
+    - C# dynamic conformance harness の先行実装 (検出したい破壊パターンを観測してから落とす)
+    - UI 全体の網羅監査 / EF migration 完全一致検査
+  next_step: "本 BOM を対応 C# にマッピング済 (sources.code)。次は小さな保守タスクを与え diff を本 BOM で監査する (P2)。"
