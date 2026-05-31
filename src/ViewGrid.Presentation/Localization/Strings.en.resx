@@ -141,6 +141,10 @@
   <data name="Preview_ZoomFit_Tooltip" xml:space="preserve"><value>Fit to window</value></data>
   <data name="Preview_Zoom100_Tooltip" xml:space="preserve"><value>1:1 pixel (same size as the output file)</value></data>
   <data name="Preview_ZoomIn_Tooltip" xml:space="preserve"><value>Zoom in (Ctrl + scroll up)</value></data>
+  <data name="Preview_ZoomPercent_Tooltip" xml:space="preserve"><value>Type a zoom level directly (10–1600%). Press Enter to apply</value></data>
+  <data name="Preview_ZoomPreset_Tooltip" xml:space="preserve"><value>Select a preset zoom level</value></data>
+  <data name="Preview_Map" xml:space="preserve"><value>Map</value></data>
+  <data name="Preview_Map_Tooltip" xml:space="preserve"><value>Navigator map (for panning while zoomed). Click / drag to move the view</value></data>
   <data name="Preview_SaveAsPng" xml:space="preserve"><value>Save as PNG</value></data>
 
   <!-- Grid list bar -->

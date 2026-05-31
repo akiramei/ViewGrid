@@ -31,9 +31,51 @@
                               Click="OnZoom100Clicked" ToolTip.Tip="{loc:Tr Preview_Zoom100_Tooltip}" />
                 <Button x:Name="ZoomInButton" Content="＋" MinWidth="32"
                         Click="OnZoomInClicked" ToolTip.Tip="{loc:Tr Preview_ZoomIn_Tooltip}" />
-                <TextBlock x:Name="ZoomLabel" Text="100%"
-                           VerticalAlignment="Center" MinWidth="56" Margin="8,0,0,0"
-                           FontFamily="Consolas,monospace" />
+
+                <!--
+                    倍率の入力 + プリセット選択を 1 つの枠に兼ねる (MS ペイント方式)。
+                    Avalonia の ComboBox は編集不可のため、 TextBox + ▾ドロップダウンボタンの複合で実現。
+                    1600% 等の高倍率へ「＋連打」せず 1 操作で到達できる。 −/＋/Ctrl+ホイールも併用可。
+                    数値は確定時 (Enter / フォーカス喪失) に自前パースし、 ブランクや不正文字は黙って
+                    現在値へ戻す (例外メッセージを出さない)。
+                -->
+                <Border BorderBrush="{DynamicResource SystemBaseLowColor}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        MinWidth="96"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox x:Name="ZoomTextBox"
+                                 Grid.Column="0"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Padding="6,3"
+                                 MinWidth="52"
+                                 VerticalContentAlignment="Center"
+                                 PlaceholderText="100%"
+                                 GotFocus="OnZoomTextGotFocus"
+                                 KeyDown="OnZoomTextKeyDown"
+                                 LostFocus="OnZoomTextLostFocus"
+                                 ToolTip.Tip="{loc:Tr Preview_ZoomPercent_Tooltip}" />
+                        <Button x:Name="ZoomDropdownButton"
+                                Grid.Column="1"
+                                Content="▾"
+                                BorderThickness="0"
+                                Background="Transparent"
+                                Padding="6,0"
+                                VerticalAlignment="Stretch"
+                                ToolTip.Tip="{loc:Tr Preview_ZoomPreset_Tooltip}" />
+                    </Grid>
+                </Border>
+
+                <!-- 縮小マップ表示トグル: 拡大時に自動表示、 ここで明示的に隠せる -->
+                <ToggleButton x:Name="MapToggleButton"
+                              Content="{loc:Tr Preview_Map}"
+                              IsChecked="True"
+                              Margin="8,0,0,0"
+                              IsCheckedChanged="OnMapToggleChanged"
+                              ToolTip.Tip="{loc:Tr Preview_Map_Tooltip}" />
             </StackPanel>
             <TextBlock x:Name="InfoText"
                        Grid.Column="1"
@@ -55,17 +97,45 @@
         <Border Grid.Row="1"
                 Background="{DynamicResource SystemChromeMediumLowColor}"
                 Margin="12,6,12,6">
-            <ScrollViewer x:Name="PreviewScrollViewer"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Auto"
-                          Cursor="Hand">
-                <Grid x:Name="PreviewContainer"
-                      HorizontalAlignment="Center"
-                      VerticalAlignment="Center"
-                      Margin="8">
-                    <Image x:Name="PreviewImage" Stretch="Fill" />
-                </Grid>
-            </ScrollViewer>
+            <Grid>
+                <ScrollViewer x:Name="PreviewScrollViewer"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              Cursor="Hand">
+                    <Grid x:Name="PreviewContainer"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          Margin="8">
+                        <Image x:Name="PreviewImage" Stretch="Fill" />
+                    </Grid>
+                </ScrollViewer>
+
+                <!--
+                    縮小マップ (ナビゲータ): 画像が表示領域をはみ出す拡大時のみ右下に重ねて表示。
+                    MinimapImage は全体像、 MinimapViewport は現在の可視範囲を示す枠。
+                    クリック / ドラッグで該当位置へスクロールする (ハンドラは MinimapRoot)。
+                -->
+                <Border x:Name="MinimapPanel"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,16,16"
+                        Padding="2"
+                        IsVisible="False"
+                        BorderBrush="{DynamicResource SystemAccentColor}"
+                        BorderThickness="1"
+                        Background="#B0202020"
+                        BoxShadow="0 2 8 0 #80000000">
+                    <Grid x:Name="MinimapRoot" Background="Transparent" Cursor="Hand">
+                        <Image x:Name="MinimapImage" Stretch="Fill" />
+                        <Canvas x:Name="MinimapCanvas" IsHitTestVisible="False">
+                            <Border x:Name="MinimapViewport"
+                                    BorderBrush="{DynamicResource SystemAccentColor}"
+                                    BorderThickness="2"
+                                    Background="#30FFFFFF" />
+                        </Canvas>
+                    </Grid>
+                </Border>
+            </Grid>
         </Border>
 
         <Grid Grid.Row="2"

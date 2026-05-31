@@ -141,6 +141,10 @@
   <data name="Preview_ZoomFit_Tooltip" xml:space="preserve"><value>ウィンドウに収める</value></data>
   <data name="Preview_Zoom100_Tooltip" xml:space="preserve"><value>物理ピクセル等倍 (出力ファイルと同じサイズ)</value></data>
   <data name="Preview_ZoomIn_Tooltip" xml:space="preserve"><value>拡大 (Ctrl + ホイール上)</value></data>
+  <data name="Preview_ZoomPercent_Tooltip" xml:space="preserve"><value>倍率を直接入力 (10〜1600%)。Enter で確定</value></data>
+  <data name="Preview_ZoomPreset_Tooltip" xml:space="preserve"><value>プリセット倍率を選択</value></data>
+  <data name="Preview_Map" xml:space="preserve"><value>マップ</value></data>
+  <data name="Preview_Map_Tooltip" xml:space="preserve"><value>縮小マップ (拡大時のナビゲーション)。クリック / ドラッグで表示位置を移動</value></data>
   <data name="Preview_SaveAsPng" xml:space="preserve"><value>PNG として保存</value></data>
 
   <!-- グリッド一覧バー -->

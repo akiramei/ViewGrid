@@ -1,3 +1,4 @@
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -13,11 +14,18 @@ public partial class PreviewWindow : Window
     private const double DragThreshold = 3.0;
 
     /// <summary>
-    /// 離散ズーム段階。 ManualCropEditorWindow と同じ系列で、 Ctrl+ホイール / ＋ / − ボタン
-    /// で隣の段階へ移動する。 1.0 = 物理ピクセル等倍 (= 出力 PNG と同じサイズ)。
+    /// 離散ズーム段階。 ＋ / − ボタンと Ctrl+ホイールで隣の段階へ移動する。 1.0 = 物理ピクセル等倍
+    /// (= 出力 PNG と同じサイズ)。 上限 16.0 (1600%) は ManualCropEditorWindow と揃える。
     /// </summary>
     private static readonly double[] ZoomLevels =
-        [0.10, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0];
+        [0.10, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0];
+
+    /// <summary>倍率プリセット (%)。 ComboBox から 1 操作で任意倍率へ到達するための選択肢。</summary>
+    private static readonly int[] ZoomPresets =
+        [10, 25, 50, 75, 100, 150, 200, 400, 800, 1200, 1600];
+
+    /// <summary>縮小マップ (ナビゲータ) の最長辺のピクセル上限。</summary>
+    private const double MinimapMaxSize = 180.0;
 
     private byte[]? _bytes;
     private GridWorkspaceViewModel? _workspace;
@@ -35,13 +43,43 @@ public partial class PreviewWindow : Window
     private Point _panPressPoint;
     private Vector _panStartOffset;
 
+    /// <summary>倍率 UI (NumericUpDown / ComboBox) を内部値から同期している間 true。
+    /// ValueChanged / SelectionChanged のフィードバックループを防ぐ。</summary>
+    private bool _syncingZoomUi;
+
+    /// <summary>縮小マップを表示してよいか (トグル ON)。 実表示は「拡大ではみ出し」かつこれが true のとき。</summary>
+    private bool _mapEnabled = true;
+
+    /// <summary>縮小マップ上の 1px が原寸 DIP 何 px に対応するか (= minimap px / image DIP)。 移動計算に使う。</summary>
+    private double _minimapScale = 1.0;
+
+    /// <summary>縮小マップ上でドラッグ中か。</summary>
+    private bool _minimapDragging;
+
     public PreviewWindow()
     {
         InitializeComponent();
+        // 倍率ドロップダウン (▾) を "1600%".."10%" のプリセットメニューで初期化 (高い順、 MS ペイント風)。
+        var presetFlyout = new MenuFlyout();
+        foreach (var p in ZoomPresets.Reverse())
+        {
+            var item = new MenuItem { Header = $"{p}%" };
+            item.Click += (_, _) => ApplyZoomPercent(p);
+            presetFlyout.Items.Add(item);
+        }
+        ZoomDropdownButton.Flyout = presetFlyout;
+
         PreviewScrollViewer.PointerPressed += OnPreviewPointerPressed;
         PreviewScrollViewer.PointerMoved += OnPreviewPointerMoved;
         PreviewScrollViewer.PointerReleased += OnPreviewPointerReleased;
         PreviewScrollViewer.PointerCaptureLost += OnPreviewPointerCaptureLost;
+        // スクロール (Offset / Extent / Viewport の変化) で縮小マップの枠を追従させる。
+        PreviewScrollViewer.ScrollChanged += OnScrollChanged;
+        // 縮小マップ上のクリック / ドラッグで該当位置へスクロール。
+        MinimapRoot.PointerPressed += OnMinimapPointerPressed;
+        MinimapRoot.PointerMoved += OnMinimapPointerMoved;
+        MinimapRoot.PointerReleased += OnMinimapPointerReleased;
+        MinimapRoot.PointerCaptureLost += OnMinimapPointerCaptureLost;
         // Wheel は Tunnel 段階で取る。 ScrollViewer 内部の class handler が bubble 途中で
         // Handled=true を立てると、 通常の `+= PointerWheelChanged` (= bubble + handledEventsToo=false)
         // では画像はみ出し時に handler が呼ばれず Ctrl+ホイールがスクロールに飲まれる。
@@ -147,6 +185,8 @@ public partial class PreviewWindow : Window
         using var stream = new MemoryStream(pngBytes);
         var bitmap = new Bitmap(stream);
         PreviewImage.Source = bitmap;
+        // 縮小マップは同じビットマップを縮図表示する。
+        MinimapImage.Source = bitmap;
         InfoText.Text = $"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} px / {pngBytes.Length:N0} bytes";
     }
 
@@ -163,9 +203,10 @@ public partial class PreviewWindow : Window
         var scale = this.RenderScaling > 0 ? this.RenderScaling : 1.0;
         PreviewImage.Width = bmp.PixelSize.Width * _zoom / scale;
         PreviewImage.Height = bmp.PixelSize.Height * _zoom / scale;
-        ZoomLabel.Text = $"{_zoom * 100:F0}%";
         _isFitMode = false;
         UpdateActiveModeButtons();
+        SyncZoomUi();
+        UpdateMinimap();
     }
 
     /// <summary>
@@ -188,8 +229,9 @@ public partial class PreviewWindow : Window
             var s = this.RenderScaling > 0 ? this.RenderScaling : 1.0;
             PreviewImage.Width = bmp.PixelSize.Width / s;
             PreviewImage.Height = bmp.PixelSize.Height / s;
-            ZoomLabel.Text = $"フィット ({_zoom * 100:F0}%)";
             UpdateActiveModeButtons();
+            SyncZoomUi();
+            UpdateMinimap();
             return;
         }
 
@@ -205,8 +247,9 @@ public partial class PreviewWindow : Window
         _zoom = fit;
         PreviewImage.Width = imgDipW * _zoom;
         PreviewImage.Height = imgDipH * _zoom;
-        ZoomLabel.Text = $"フィット ({_zoom * 100:F0}%)";
         UpdateActiveModeButtons();
+        SyncZoomUi();
+        UpdateMinimap();
     }
 
     /// <summary>
@@ -351,6 +394,203 @@ public partial class PreviewWindow : Window
     private void OnScrollViewerSizeChanged(object? sender, SizeChangedEventArgs e)
     {
         if (_isFitMode) ApplyFitZoom();
+    }
+
+    // -------------------- 倍率 UI (直接入力 / プリセット) --------------------
+
+    /// <summary>
+    /// 現在の <see cref="_zoom"/> を倍率入力欄に "NN%" 形式で反映する。 プログラム更新中は
+    /// <see cref="_syncingZoomUi"/> を立てる (TextBox の場合 Text 代入では確定イベントは飛ばないが、
+    /// 将来の取り回しと意図明示のためガードを維持)。
+    /// </summary>
+    private void SyncZoomUi()
+    {
+        _syncingZoomUi = true;
+        try
+        {
+            ZoomTextBox.Text = $"{(int)Math.Round(_zoom * 100)}%";
+        }
+        finally
+        {
+            _syncingZoomUi = false;
+        }
+    }
+
+    /// <summary>倍率入力欄にフォーカスが入ったら全選択して上書き入力しやすくする (MS ペイント風)。</summary>
+    private void OnZoomTextGotFocus(object? sender, RoutedEventArgs e) => ZoomTextBox.SelectAll();
+
+    /// <summary>Enter で確定、 Esc で現在値へ復帰。</summary>
+    private void OnZoomTextKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitZoomText();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            SyncZoomUi();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>フォーカスが外れたら入力を確定する。</summary>
+    private void OnZoomTextLostFocus(object? sender, RoutedEventArgs e) => CommitZoomText();
+
+    /// <summary>
+    /// 倍率入力欄の文字列を確定する。 数字だけ抽出して解析し、 妥当なら [10, 1600]% にクランプして
+    /// ズーム。 ブランク / 非数値 / 0 以下なら例外を出さず、 黙って現在値の表示へ戻す
+    /// (NumericUpDown 等の自動パースで起きがちな入力途中の検証例外を構造的に回避)。
+    /// </summary>
+    private void CommitZoomText()
+    {
+        if (_syncingZoomUi) return;
+        var raw = ZoomTextBox.Text;
+        var digits = raw is null ? string.Empty : new string(raw.Where(char.IsDigit).ToArray());
+        if (int.TryParse(digits, out var pct) && pct > 0)
+        {
+            // 値が現在倍率と同じ (= フォーカスしただけで未編集) なら ZoomAt を呼ばない。
+            // 呼ぶと _isFitMode が解除され、 フィット中の「リサイズ追従」が失われるため
+            // (フィット中はその時点の実倍率が表示されており、 そのまま離れても倍率は不変)。
+            var currentPct = (int)Math.Round(_zoom * 100);
+            if (pct == currentPct)
+            {
+                SyncZoomUi();
+                return;
+            }
+            var z = Math.Clamp(pct / 100.0, ZoomLevels[0], ZoomLevels[^1]);
+            ZoomAt(ViewportCenter(), z);
+        }
+        else
+        {
+            // 不正入力は現在値へ戻すだけ (エラー表示なし)
+            SyncZoomUi();
+        }
+    }
+
+    /// <summary>プリセット倍率 (%) をビューポート中心基準で適用する。 ドロップダウンメニューから呼ばれる。</summary>
+    private void ApplyZoomPercent(int percent)
+        => ZoomAt(ViewportCenter(), Math.Clamp(percent / 100.0, ZoomLevels[0], ZoomLevels[^1]));
+
+    // -------------------- 縮小マップ (ナビゲータ) --------------------
+
+    /// <summary>マップ表示トグル。 OFF にすると拡大中でもマップを隠す。</summary>
+    private void OnMapToggleChanged(object? sender, RoutedEventArgs e)
+    {
+        _mapEnabled = MapToggleButton.IsChecked == true;
+        UpdateMinimap();
+    }
+
+    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e) => UpdateMinimap();
+
+    /// <summary>
+    /// 縮小マップの表示要否・縮図サイズ・可視範囲枠を現在のズーム / スクロール状態から再計算する。
+    /// 画像が表示領域に収まっている (はみ出していない) ときはマップ不要なので隠す。
+    /// </summary>
+    private void UpdateMinimap()
+    {
+        if (PreviewImage.Source is not Bitmap)
+        {
+            MinimapPanel.IsVisible = false;
+            return;
+        }
+
+        var sv = PreviewScrollViewer;
+        var imgW = PreviewImage.Width;   // 現在の表示 DIP サイズ (= pixel × zoom / scale)
+        var imgH = PreviewImage.Height;
+        if (double.IsNaN(imgW) || double.IsNaN(imgH) || imgW <= 0 || imgH <= 0)
+        {
+            MinimapPanel.IsVisible = false;
+            return;
+        }
+
+        var vw = sv.Viewport.Width;
+        var vh = sv.Viewport.Height;
+        const double eps = 1.0;
+        var overflow = imgW > vw + eps || imgH > vh + eps;
+        var show = overflow && _mapEnabled;
+        MinimapPanel.IsVisible = show;
+        if (!show) return;
+
+        // 縮図サイズ (最長辺 MinimapMaxSize、 アスペクト維持)
+        var aspect = imgW / imgH;
+        double mw, mh;
+        if (aspect >= 1.0) { mw = MinimapMaxSize; mh = MinimapMaxSize / aspect; }
+        else { mh = MinimapMaxSize; mw = MinimapMaxSize * aspect; }
+
+        _minimapScale = mw / imgW;
+        MinimapImage.Width = mw;
+        MinimapImage.Height = mh;
+        MinimapCanvas.Width = mw;
+        MinimapCanvas.Height = mh;
+
+        // 画像左上が viewport のどこにあるか (スクロール / 中央寄せ / Margin を TranslatePoint が吸収)。
+        var origin = PreviewImage.TranslatePoint(new Point(0, 0), sv);
+        if (origin is not { } o) return;
+
+        // 画像座標系での可視範囲 [vx0,vx1]×[vy0,vy1] を縮図スケールへ。
+        var vx0 = Math.Max(0, -o.X);
+        var vy0 = Math.Max(0, -o.Y);
+        var vx1 = Math.Min(imgW, -o.X + vw);
+        var vy1 = Math.Min(imgH, -o.Y + vh);
+
+        Canvas.SetLeft(MinimapViewport, vx0 * _minimapScale);
+        Canvas.SetTop(MinimapViewport, vy0 * _minimapScale);
+        MinimapViewport.Width = Math.Max(0, (vx1 - vx0) * _minimapScale);
+        MinimapViewport.Height = Math.Max(0, (vy1 - vy0) * _minimapScale);
+    }
+
+    private void OnMinimapPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(MinimapImage).Properties.IsLeftButtonPressed) return;
+        _minimapDragging = true;
+        e.Pointer.Capture(MinimapRoot);
+        NavigateToMinimapPoint(e.GetPosition(MinimapImage));
+        e.Handled = true;
+    }
+
+    private void OnMinimapPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_minimapDragging) return;
+        NavigateToMinimapPoint(e.GetPosition(MinimapImage));
+        e.Handled = true;
+    }
+
+    private void OnMinimapPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_minimapDragging) return;
+        _minimapDragging = false;
+        e.Handled = true;
+    }
+
+    private void OnMinimapPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+        => _minimapDragging = false;
+
+    /// <summary>
+    /// 縮小マップ上の座標 (縮図 px) を中心に据えるよう ScrollViewer をスクロールする。
+    /// 縮図 px → 原寸 DIP へ戻し、 その点を viewport 中心へ寄せる Offset 補正を行う
+    /// (<see cref="ZoomAt"/> と同じ TranslatePoint ベースの座標変換)。
+    /// </summary>
+    private void NavigateToMinimapPoint(Point pointInMinimap)
+    {
+        if (_minimapScale <= 0) return;
+        var sv = PreviewScrollViewer;
+
+        // 縮図 px → 画像 DIP 座標 (縮図の範囲外クリックは端にクランプ)
+        var imgX = Math.Clamp(pointInMinimap.X, 0, MinimapImage.Width) / _minimapScale;
+        var imgY = Math.Clamp(pointInMinimap.Y, 0, MinimapImage.Height) / _minimapScale;
+
+        var origin = PreviewImage.TranslatePoint(new Point(0, 0), sv);
+        if (origin is not { } o) return;
+
+        // 画像点 (imgX, imgY) の現在の viewport 位置を viewport 中心へ寄せる。
+        var pointInViewportX = o.X + imgX;
+        var pointInViewportY = o.Y + imgY;
+        var deltaX = pointInViewportX - sv.Viewport.Width / 2.0;
+        var deltaY = pointInViewportY - sv.Viewport.Height / 2.0;
+
+        // Offset 範囲外は ScrollViewer 側で自動クランプされる。
+        sv.Offset = new Vector(sv.Offset.X + deltaX, sv.Offset.Y + deltaY);
     }
 
     // -------------------- 保存 / 閉じる --------------------
