@@ -256,6 +256,12 @@ UI_ARCHETYPES = {
                 "feedback": {"empty_result"}},
     "edit":    {"interactions": {"load", "save", "discard"},
                 "feedback": {"validation_error", "unsaved_warning"}},
+    # form/set: a screen that SETS a new value (no existing value to load) -- the
+    # discriminator vs edit is "no load". Minimal contract on purpose, so it does
+    # NOT raise edit's load/discard/unsaved_warning false-errors on set screens
+    # (F-R2-B1; verified on password-set / permission-set in dry-run 2/3).
+    "form":    {"interactions": {"primary_action"},
+                "feedback": {"validation_error"}},
     "list":    {"interactions": {"display", "select"},
                 "feedback": {"empty_state"}},
     "confirm": {"interactions": {"affirm", "deny"},

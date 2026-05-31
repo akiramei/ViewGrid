@@ -66,7 +66,7 @@ capability:
   boundaries: { depends_on: [...], depended_on_by: [...], excluded: [...] }
   ui_contracts:                     # RULE E。prose が画面に言及するなら lift。UI が無い Capability は [] でよい
     - screen: <ScreenName>
-      archetype: login | search | edit | list | confirm   # 認識した種別
+      archetype: login | search | edit | list | confirm | form   # 認識した種別 (form=新値 set・load なし / edit=既存値 load→編集→save)
       interactions: [<role. 例 identifier_input/secret_input/submit/cancel>]
       feedback: [<kind. 例 auth_failure>]
       usecase_bindings: { <interaction>: <UC-id> }
@@ -116,6 +116,7 @@ ID は **固定接頭辞 (§7.2-b)** を使う:
 | `InvalidDimensions` | 寸法・サイズの値違反 | `detail` |
 | `InvalidIndex` | 添字範囲外 | `axis`, `index` |
 | `UnknownCopyId` | 外部参照 (別 Capability の実体) 不在。`NotFound` と区別 | `copy_id` |
+| `Forbidden` | 認可違反 (actor が許可されない: owner/role/membership 等の前提破れ)。dry-run 3 で baseline 昇格 | `actor`, `action`, `required` ※payload 形は要人間確定 |
 
 capability 固有の失敗理由 (例 `InvalidOrderValue`) は作ってよいが、**必ず `canonical_failure_reasons` に宣言**し、UC の `failure_reasons` と双方向一致させる。横断語と意味が同じものは独自名を作らず baseline 名へ寄せる。
 
@@ -173,9 +174,21 @@ capability 固有の失敗理由 (例 `InvalidOrderValue`) は作ってよいが
 
 prose が画面/UI に言及するなら、`ui_contracts` に lift する:
 
-- **どの archetype か**を認識して `archetype` に宣言する (login/search/edit/list/confirm)。これは **あなたの意味判断**なので provenance を付ける (確信があれば `human-confirmed`、推定なら `inferred`、不明なら `proposal`/`unresolved` + `UI-` 診断)。
+- **どの archetype か**を認識して `archetype` に宣言する (login/search/edit/list/confirm/**form**)。これは **あなたの意味判断**なので provenance を付ける (確信があれば `human-confirmed`、推定なら `inferred`、不明なら `proposal`/`unresolved` + `UI-` 診断)。
 - `interactions` / `feedback` には **prose が実際に述べた affordance だけ**を lift する。**archetype の必須 affordance を勝手に補完しない** — 欠けている必須項目は後段の決定的検査器 (`check_ui_contracts`) が archetype テンプレートと照合して `[UI][ERROR]` で弾く (分界点: archetype 認識=AI / 必須充足照合=決定的ツール)。
-- archetype がライブラリ (login/search/edit/list/confirm) に無い画面は、その旨を `UI-` 診断で出す (決定的検査器では INCONCLUSIVE になる)。
+- **`feedback` は「画面が結果を表示する」affordance に限る — 結果セマンティクスと区別する (F-R2-C、dry-run 2 の calibration)**。「失敗したら入れない」のような**操作の結果**を述べた文は `failure_reasons` (意味層) へ lift するのであって、それだけを根拠に `feedback` に `auth_failure` 等を入れてはならない。`feedback` に lift してよいのは **prose が「画面に失敗/エラー/結果をどう表示するか」に言及した時だけ**。結果が起きうること (`failure_reasons`) と 画面がそれを表示すること (`feedback` affordance) は**別層**で、後者を prose 根拠なく埋めると、決定的検査器が出すはずの必須 feedback 欠落 `[UI][ERROR]` を**マスク**する (dry-run 2 で `auth_failure` がこれでマスクされた)。
+- **interaction ロールを canonical 語彙へ正規化する (F-R2-B2、RULE A の UI 版。dry-run 3 で確定)**。prose の表現は canonical role 名へ寄せる。**決定的検査器は canonical 名のみを持ち同義語を受理しない** — 受理すると F-R2-C と同じ「ツールが欠落をマスク」を再発させるので、正規化は **AI 側のここだけ**で行う。確定済みの安全な正規化 (closed・exact-token):
+
+  | prose 表現 | canonical role |
+  | --- | --- |
+  | 行選択 / item 選択 (`row_select`/`item_select`) | `select` |
+  | 内容表示 / テキスト表示 (`content_display`/`text_display`) | `display` |
+  | メール入力 / ID 入力 (`email_input`/`identifier`) | `identifier_input` |
+
+  **主操作 (確定ボタン) は archetype ローカルの主操作ロールへ**正規化する (global な `primary` に潰さない): `login`→`submit` / `search`→`submit` / `edit`→`save` / `form`→`primary_action` / `confirm`→`affirm`。
+  **禁止 2 つ**: ① 否定操作 `cancel` と `deny` を統合しない — `confirm.deny` (破壊操作の拒否=「やめる」) と `login/form.cancel` (入力の中止) は別 affordance。統合すると confirm.deny が cancel で誤充足され「やめる」の安全記録を失う。② すべてを global `primary` に潰さない (archetype ローカル主操作を保つ。dry-run 2 で confirm「削除する」→`affirm` が成功したのは affirm を潰さなかったため)。
+- **`form` archetype** = 「既存値を load せず**新値を set する**フォーム」(パスワード設定 / 権限の保存など)。必須は `primary_action` のみ + feedback `validation_error`。`edit` (既存値を load→編集→save、`load`/`discard`/`unsaved_warning` 必須) と区別する — **load の要否が判別基準**。set 画面に `edit` を当てると不適合 ERROR を生むので `form` を使う (F-R2-B1 解決)。
+- archetype がライブラリ (login/search/edit/list/confirm/form) に無い画面 (例: 表示専用の detail、招待+役割選択+リンク発行のような複合 dialog) は、**archetype を捏造せず** `unresolved` + `UI-` 診断で出す (決定的検査器では INCONCLUSIVE)。複合画面は単一の新 archetype を作らず、既知 archetype (form + list + confirm 等) の**複数 `ui_contracts` エントリへ分解**できないか試みる (view/detail・dialog 専用 archetype は意図的に未追加=defer、限界効用が低く空テンプレ/catch-all になるため)。
 - 例: prose が「ログイン画面」と言うがパスワードに触れていない → `archetype: login` で lift し、`interactions` に `secret_input` を **入れない** (prose に無いから)。決定的検査器が「login に secret_input が無い」を `[UI][ERROR]` で捕捉する。あなたは捏造せず、認識とタグ付けに徹する。
 
 ## 7.6 RULE F — 横断 (複数 Capability) awareness (Step 4)
@@ -184,12 +197,14 @@ prose が画面/UI に言及するなら、`ui_contracts` に lift する:
 
 - **共有値オブジェクト**: 他 Capability と同じ意味の値オブジェクト (例 `OccupySize`/`PixelSize`) を使うなら、prose 注記任せにせず **`shared_concepts`** で authority を構造宣言する (`{ name, authority: <CAP>, used_by: [...] }`)。宣言が無いと XSHARED が WARNING を出す (Cpc-1)。
 - **capability 固有 precondition**: 存在系 (`*Exists`) 以外の自前 precondition は **`precondition_coverage: { <precond>: [<reason>...] }`** で被覆失敗理由を宣言する (例 `BothPlacementsBelongToSameGrid: [CrossGridSwapNotAllowed]`)。ツールはこれを読んで PRECOND を検証する。
+- **認可 precondition** (actor の許可を問う `Actor*`/`*May*`/`*Is*Owner`/`*HasRole` 等) は存在系と別扱い。違反失敗理由は通常 `Forbidden`。**認可基準が prose で確定**しているなら `precondition_coverage: { <precond>: [Forbidden] }` を宣言し、**かつ UC の `failure_reasons` に `Forbidden` を載せる** (両方揃って PRECOND が PASS)。**prose で未確定**なら被覆を**捏造せず未宣言のまま**にし、`[PRECOND][INCONCLUSIVE]` / proposal-ERROR として人間に差し戻す (ツールに穴を埋めさせない = F-R2-C と同原則。dry-run 3 で検証: 宣言済 UC は PASS、未確定 UC は ERROR で正しく停止)。
 - **境界の双方向宣言**: 他 Capability に依存する (`depends_on`/`consumes`) なら、相手側が `depended_on_by` で自分を挙げているか整合させる (片側だけだと XSYM WARNING)。
 - **外部参照**: `references_external: "<CAP>.<Entity>"` の `<Entity>` が参照先 Capability の owned entity であること (XREF が ERROR で弾く)。
 
 ## 8. 返す前の自己チェック
 
 - [ ] すべての UC/Rule/失敗理由/decision に `provenance` と `source` がある
+- [ ] 出力 YAML が**パース可能** — `inputs` 等の flow sequence に `?` 等の YAML 特殊文字を生で入れない (任意項目はコメントで示す。dry-run 4 で `category_filter?` がパースを壊した)
 - [ ] 失敗理由は RULE A で canonical 名へ正規化済み (独自接頭辞名なし)
 - [ ] UC の `failure_reasons` と `canonical_failure_reasons.applies_to` が **双方向一致**
 - [ ] proposal-ERROR を出した項目は provenance が `proposal`/`unresolved` (RULE C)。WARNING は `inferred`

@@ -1,0 +1,353 @@
+# Capability BOM 候補 — 意味設計コンパイラ AI 抽出器 出力
+# 入力 prose: experiments/operating-model-dryrun-2/INPUT-prose.md
+# ドメイン: チーム文書共有・権限管理 (認可・役割・共有リンク)
+# 注記: 各項目に provenance / source。失敗理由は RULE A で canonical 化。
+#       決められない意味的決定は proposal / unresolved とし、診断 (OUTPUT-diagnostics.md) で停止要求。
+
+capability:
+  id: DOCUMENT_SHARING_PERMISSION
+  name:
+    ja: 文書共有・権限管理
+    en: Document Sharing and Permission Management
+  purpose: チームで文書を共有し、メンバーに役割を与え、外部共有リンクを発行しつつ認可境界を守る。
+  source: "prose §背景・やりたいこと / §用語"
+  provenance: human-confirmed
+
+  use_cases:
+    # ------------------------------------------------------------------
+    - id: UC-01
+      name: CreateDocument
+      kind: command
+      inputs: [actor_id]            # 作成者 = 持ち主
+      preconditions: []             # prose は作成の前提条件を述べていない
+      postconditions:
+        - DocumentExists
+        - OwnerIsActor              # 「作成した人」が持ち主
+      failure_reasons: []           # prose は作成失敗条件に言及なし → 診断 FAIL-005
+      provenance: inferred          # 文書に「持ち主(作成した人)がいる」とあるので作成 UC の存在は妥当推論
+      source: "prose §背景 '文書には持ち主(作成した人)がいて' / §用語 '持ち主が 1 人いる'"
+
+    # ------------------------------------------------------------------
+    - id: UC-02
+      name: InviteMember
+      kind: command
+      inputs: [document_id, invitee_email, role]
+      preconditions:
+        - DocumentExists            # 招待対象の文書が存在する
+        - ActorMayManageMembers     # 誰が招待できるかは prose 未定義 → 診断 DEC-02 / PRE-02
+      postconditions:
+        - MemberInvited
+        - MemberHasRole             # 役割(閲覧/編集)が付与される
+      failure_reasons:
+        - NotFound                  # 文書不在 (RULE A: DocumentNotFound でなく NotFound)
+      provenance: human-confirmed
+      source: "prose §背景 '他のメンバーを招待して一緒に使える' / §画面 '共有ダイアログ … メールアドレスで招待 … 役割(閲覧/編集)を選ぶ'"
+
+    # ------------------------------------------------------------------
+    - id: UC-03
+      name: ChangeMemberRole
+      kind: command
+      inputs: [document_id, member_id, new_role]
+      preconditions:
+        - DocumentExists
+        - MemberExists              # 役割変更の対象メンバーが存在する
+        - ActorMayManageMembers     # 誰が役割を変えられるか prose 未定義 → 診断 DEC-02
+      postconditions:
+        - MemberRoleChanged
+      failure_reasons:
+        - NotFound                  # 文書 or メンバー不在 (RULE A)
+      provenance: human-confirmed
+      source: "prose §背景 'あとから役割を変えたり' / §画面 '権限設定画面 … 役割を変えたり'"
+
+    # ------------------------------------------------------------------
+    - id: UC-04
+      name: RemoveMember
+      kind: command
+      inputs: [document_id, member_id]
+      preconditions:
+        - DocumentExists
+        - MemberExists
+        - ActorMayManageMembers     # prose 未定義 → 診断 DEC-02
+      postconditions:
+        - MemberRemoved
+      failure_reasons:
+        - NotFound
+      provenance: human-confirmed
+      source: "prose §背景 'メンバーを外したりもできる' / §画面 '権限設定画面 … 外したりする操作'"
+
+    # ------------------------------------------------------------------
+    - id: UC-05
+      name: IssueShareLink
+      kind: command
+      inputs: [document_id]
+      preconditions:
+        - DocumentExists
+        - ActorMayShareExternally   # 誰が外部リンクを発行できるか prose 未定義 → 診断 DEC-03 / SEC
+      postconditions:
+        - ShareLinkIssued           # 社外向け URL が発行される
+      failure_reasons:
+        - NotFound
+      provenance: human-confirmed
+      source: "prose §背景 '共有リンクを発行する機能も欲しい' / §画面 '共有リンクを発行するボタン' / §用語 '共有リンク: 社外向けに発行する URL'"
+
+    # ------------------------------------------------------------------
+    - id: UC-06
+      name: DeleteDocument
+      kind: command
+      inputs: [document_id, actor_id]
+      preconditions:
+        - DocumentExists
+        - ActorIsOwner              # 「削除できるのは持ち主だけ」(R-01 で強制)
+      postconditions:
+        - DocumentDeleted
+      failure_reasons:
+        - NotFound                  # 文書不在
+        - Forbidden                 # 持ち主でない (RULE A: capability 固有。canonical_failure_reasons で宣言)
+      provenance: human-confirmed
+      source: "prose §守りたいこと '文書を削除できるのは持ち主だけにしたい' / §画面 '削除確認ダイアログ'"
+
+    # ------------------------------------------------------------------
+    - id: UC-07
+      name: OpenDocument
+      kind: query
+      inputs: [document_id, actor_id]
+      preconditions:
+        - DocumentExists
+        - ActorIsMemberOrOwner      # 「招待されていない人は開けない」(R-03 で強制)
+      postconditions:
+        - DocumentContentReturned
+      failure_reasons:
+        - NotFound
+        - Forbidden                 # 招待されていない (RULE A)
+      provenance: human-confirmed
+      source: "prose §守りたいこと '招待されていない人は文書を開けない' / §画面 '文書詳細画面: 文書の中身を表示'"
+
+    # ------------------------------------------------------------------
+    - id: UC-08
+      name: EditDocumentContent
+      kind: command
+      inputs: [document_id, actor_id, content_change]
+      preconditions:
+        - DocumentExists
+        - ActorHasEditRole          # 「役割が閲覧のメンバーは編集できない」(R-02 で強制)
+      postconditions:
+        - DocumentContentUpdated
+      failure_reasons:
+        - NotFound
+        - Forbidden                 # 閲覧役割 / 非メンバー (RULE A)
+      provenance: inferred          # 編集 UC 自体は prose の「編集もできる」から導けるが、編集の中身(何を保存するか)は未定義 → 診断 AC-02
+      source: "prose §背景 'メンバーがそれぞれ閲覧したり編集したり' / §画面 '文書詳細画面 … 編集権限があれば編集もできる' / §守りたいこと '役割が閲覧のメンバーは編集できない'"
+
+    # ------------------------------------------------------------------
+    - id: UC-09
+      name: ListDocuments
+      kind: query
+      inputs: [actor_id]
+      preconditions: []
+      postconditions:
+        - RelatedDocumentsReturned  # 「自分が関われる文書」 — 関与の定義は prose 未定義 → 診断 AC-03
+      failure_reasons: []           # 一覧の失敗条件は prose に無い (空でも成功)
+      provenance: human-confirmed
+      source: "prose §画面 '文書一覧画面: 自分が関われる文書がリストで並ぶ'"
+
+  # ====================================================================
+  canonical_failure_reasons:
+    - name: NotFound                # RULE A baseline 語彙へ正規化 (DocumentNotFound/MemberNotFound を作らない)
+      payload: { entity_kind: string, entity_id: string }
+      applies_to: [UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-08]
+      provenance: inferred          # prose は「不在時にどうなるか」を明示していない (RULE B: 存在前提の破れは安全な構造化だが、失敗として返るか否かは未確定) → 診断 FAIL-001
+      source: "prose は存在系前提 (文書/メンバー) に言及するが、不在時の失敗を明示しない。RULE A の存在前提破れに正規化。"
+
+    - name: Forbidden               # capability 固有。認可違反 (持ち主のみ削除 / 閲覧役割は編集不可 / 非メンバーは開けない)
+      payload: { reason_code: string }   # reason_code の値域は未確定 → 診断 FAIL-003
+      applies_to: [UC-06, UC-07, UC-08]
+      provenance: proposal          # prose は「〜できない」と述べるが、失敗理由名・payload を定めていない。認可は成否を左右する意味的決定 → 診断 FAIL-002 (proposal-ERROR)
+      source: "prose §守りたいこと 3 件 (持ち主のみ削除 / 閲覧は編集不可 / 非招待は開けない)。失敗理由として表現するのは AI 提案。"
+
+  # ====================================================================
+  rules:
+    - id: R-01
+      name: OnlyOwnerMayDelete
+      kind: policy
+      enforced_at: domain           # 認可ポリシー。層は prose 未定義だが domain が最も近い → 診断 RUL-01 / DEC-01
+      applies_to: [UC-06]
+      provenance: human-confirmed
+      source: "prose §守りたいこと '文書を削除できるのは持ち主だけにしたい'"
+
+    - id: R-02
+      name: ViewerRoleCannotEdit
+      kind: policy
+      enforced_at: domain
+      applies_to: [UC-08]
+      provenance: human-confirmed
+      source: "prose §守りたいこと '役割が閲覧のメンバーは編集できない'"
+
+    - id: R-03
+      name: OnlyMembersMayOpen
+      kind: policy
+      enforced_at: domain
+      applies_to: [UC-07]
+      provenance: human-confirmed
+      source: "prose §守りたいこと '招待されていない人は文書を開けない'"
+
+    - id: R-04
+      name: OwnerIsSingleAndImmutable
+      kind: invariant
+      enforced_at: domain           # 「持ち主が 1 人いる」。所有権移譲の可否は prose 未定義 → 診断 RUL-02
+      applies_to: [UC-01]
+      provenance: inferred          # 「持ち主が 1 人」は明示だが、不変か(移譲可能か)は未確定
+      source: "prose §用語 '文書: … 持ち主が 1 人いる'"
+
+  # ====================================================================
+  entities:
+    owned:
+      - Document          # 文書 (持ち主 1 人)
+      - Membership        # メンバー = 文書に招待された人 + 役割。id 有無は inferred → 診断 AC-04
+      - ShareLink         # 社外向け URL
+    referenced:
+      - Actor             # 操作者 / 招待された人 / 持ち主。User 概念は prose 外 → 診断 BND-01
+    value_objects:
+      - Role              # 閲覧 | 編集 (列挙)。値域は prose で確定
+      - EmailAddress      # 招待に使う識別子。形式制約は prose 未定義 → 診断 AC-01
+
+  # ====================================================================
+  events:
+    # prose は「観測可能な事象」を述べていない。以下はすべて inferred / proposal。
+    - name: MemberInvited
+      emitted_by: UC-02
+      payload: [document_id, invitee_email, role]
+    - name: MemberRoleChanged
+      emitted_by: UC-03
+      payload: [document_id, member_id, old_role, new_role]
+    - name: MemberRemoved
+      emitted_by: UC-04
+      payload: [document_id, member_id]
+    - name: ShareLinkIssued
+      emitted_by: UC-05
+      payload: [document_id, link_id]
+    - name: DocumentDeleted
+      emitted_by: UC-06
+      payload: [document_id]
+    # 注: events の存在自体が proposal。prose に監査/通知要求は無い → 診断 EVT-01
+
+  # ====================================================================
+  decision_ownership:
+    # 7 種: domain / validation / workflow / ui_interaction / persistence / rendering / history
+    domain_decision:
+      # 認可・役割・所有権の判断。prose の「守りたいこと」3 件はここに置いた (最も近い)。
+      owned_by: [R-01, R-02, R-03, R-04, UC-06, UC-07, UC-08]
+      provenance: proposal          # 「認可が domain 所有か」は AI 判断。prose は所有者を述べない → 診断 DEC-01 (proposal-ERROR)
+      source: "prose §守りたいこと (持ち主のみ削除 / 閲覧は編集不可 / 非招待は開けない) を domain (認可ポリシー) に置いた。所有者明示は無い。"
+    validation_decision:
+      owned_by: [UC-02]             # invitee_email の妥当性 (形式) — 値域未定義
+      provenance: proposal          # email 検証を validation に置くのは妥当だが、ルール自体が prose に無い → 診断 AC-01
+      source: "prose §画面 'メールアドレスで招待' のみ。検証ルールは未記述。"
+    workflow_decision:
+      # 招待→役割付与→変更→外す のライフサイクル順序。prose は順序制約を述べない。
+      owned_by: []
+      provenance: unresolved        # 招待の承諾(承認フロー)が要るか等、ワークフローが未定義 → 診断 DEC-04 (proposal-ERROR)
+      source: "absent from prose"
+    ui_interaction_decision:
+      owned_by: [UC-09, UC-02, UC-03, UC-04, UC-05, UC-06]   # 各画面の操作束ね
+      provenance: inferred
+      source: "prose §画面イメージ 5 画面"
+    persistence_decision:
+      owned_by: []
+      provenance: unresolved        # 共有リンクの失効・保存・再発行など永続化判断は prose 未定義 → 診断 SEC-02
+      source: "absent from prose"
+    rendering_decision:
+      owned_by: []
+      provenance: info              # prose 'デザインは別途' / '見た目は普通でよい' で明示的に範囲外
+      source: "prose §画面イメージ '見た目は普通でよい。デザインは別途。'"
+    history_decision:
+      owned_by: []
+      provenance: unresolved        # 権限変更の監査履歴が要るか不明 ('間違えると事故' とあるが履歴要求は無い) → 診断 EVT-02 (proposal-ERROR)
+      source: "absent from prose (§まだ決めきれていないこと '間違えると事故' は履歴要求を含意しうるが未確定)"
+
+  # ====================================================================
+  boundaries:
+    depends_on: []                  # 認証 (Actor/User) を提供する Capability に依存しうるが prose 未宣言 → 診断 BND-01
+    depended_on_by: []
+    excluded:
+      - VisualDesign                # 'デザインは別途' で明示的に除外
+      - Authentication              # 「誰がログインしているか」の確立は本 prose の範囲外 (Actor は referenced) — ただし prose 未宣言 → 診断 BND-01
+
+  # ====================================================================
+  # RULE F: 共有値オブジェクト / 外部参照。本 prose は単一ドメインだが
+  # Actor (認証主体) は外部 Capability の概念になりうる。prose に宣言が無いため shared_concepts は空。
+  shared_concepts: []               # → 診断 BND-01 (Actor/User の authority 未宣言)
+
+  # ====================================================================
+  ui_contracts:
+    # --- 画面 1: 文書一覧画面 -----------------------------------------
+    - screen: DocumentListScreen
+      archetype: list
+      interactions:
+        - row_select                # 「クリックすると詳細に行ける」
+      feedback: []                  # prose は一覧の結果表示(空状態/エラー)に言及なし → 補完しない (RULE E)
+      usecase_bindings:
+        row_select: UC-07           # 詳細(開く)へ遷移
+      states: []                    # prose 未言及 → 補完しない
+      list_source_uc: UC-09         # 一覧データ取得
+      provenance: human-confirmed   # 「リストで並ぶ … クリックで詳細」は list archetype と明確に一致
+      source: "prose §画面 '文書一覧画面: 自分が関われる文書がリストで並ぶ。クリックすると詳細に行ける。'"
+
+    # --- 画面 2: 文書詳細画面 -----------------------------------------
+    - screen: DocumentDetailScreen
+      archetype: unresolved         # 表示 + 条件付き編集。library (login/search/edit/list/confirm) に該当 archetype 無し → 診断 UI-01
+      interactions:
+        - content_display           # 「文書の中身を表示」
+        - content_edit              # 「編集権限があれば編集もできる」(条件付き)
+      feedback: []
+      usecase_bindings:
+        content_display: UC-07
+        content_edit: UC-08
+      states: []
+      provenance: unresolved        # archetype を当てられない (read/view + conditional-edit はライブラリに無い)
+      source: "prose §画面 '文書詳細画面: 文書の中身を表示する。編集権限があれば編集もできる。'"
+
+    # --- 画面 3: 共有ダイアログ ---------------------------------------
+    - screen: ShareDialog
+      archetype: unresolved         # 招待入力 + 役割選択 + リンク発行 の複合。library に単一該当 archetype 無し → 診断 UI-02
+      interactions:
+        - email_input               # 「メールアドレスで招待する欄」
+        - role_select               # 「役割(閲覧/編集)を選ぶところ」
+        - issue_link                # 「共有リンクを発行するボタン」(主操作候補だが archetype 不明のため正規化先なし → 診断 UI-02)
+      feedback: []                  # prose は招待失敗/リンク発行結果の表示に言及なし → 補完しない (RULE E)
+      usecase_bindings:
+        email_input: UC-02
+        role_select: UC-02
+        issue_link: UC-05
+      states: []
+      provenance: unresolved
+      source: "prose §画面 '共有ダイアログ: メンバーをメールアドレスで招待する欄、役割(閲覧/編集)を選ぶところ、共有リンクを発行するボタン。'"
+
+    # --- 画面 4: 権限設定画面 -----------------------------------------
+    - screen: PermissionSettingScreen
+      archetype: unresolved         # メンバー一覧(list) + 役割編集(edit) + 「保存」 の複合。単一 library archetype 無し → 診断 UI-03
+      interactions:
+        - member_list_display       # 「招待済みメンバーの一覧」(list 的)
+        - role_change               # 「役割を変えたり」(edit 的)
+        - member_remove             # 「外したりする操作」
+        - save                      # 「保存する」(確定操作。archetype 不明のため主操作ロール正規化先が確定できない → 診断 UI-03)
+      feedback: []                  # 保存結果の表示は prose 未言及 → 補完しない (RULE E)
+      usecase_bindings:
+        role_change: UC-03
+        member_remove: UC-04
+        save: UC-03                 # 「保存」がどの操作を確定するか曖昧 (役割変更/外す両方?) → 診断 UI-04
+      states: []
+      provenance: unresolved
+      source: "prose §画面 '権限設定画面: 招待済みメンバーの一覧と、それぞれの役割を変えたり外したりする操作。「保存」する。'"
+
+    # --- 画面 5: 削除確認ダイアログ -----------------------------------
+    - screen: DeleteConfirmDialog
+      archetype: confirm
+      interactions:
+        - affirm                    # 「削除する」(RULE E: confirm の主操作ロール affirm へ正規化)
+        - cancel                    # 「やめる」
+      feedback: []                  # prose は削除失敗(権限なし)の画面表示に言及なし → 補完しない (RULE E)。失敗は failure_reasons (Forbidden) に lift 済
+      usecase_bindings:
+        affirm: UC-06
+      states: []
+      provenance: human-confirmed   # 「本当に削除しますか? 削除する/やめる」は confirm archetype と明確に一致
+      source: "prose §画面 '削除確認ダイアログ: 文書を削除しようとしたとき「本当に削除しますか?」と聞く。削除する/やめる。'"

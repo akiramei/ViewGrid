@@ -1,0 +1,450 @@
+# Capability BOM 候補 — 備品・社用品の貸し出し管理
+# 意味設計コンパイラ AI 抽出器 (extractor-spec v1.0) による prose → BOM lift。
+# 読んだファイルは extractor-spec.md と INPUT-prose.md の 2 つのみ。
+# 各項目に provenance / source。RULE A で失敗理由を canonical 化。RULE E で UI を lift。
+# prose は意味的に underdetermined な箇所が多い → proposal / unresolved で正直に停止 (診断と severity 整合)。
+
+capability:
+  id: EQUIPMENT_LOAN_MANAGEMENT
+  name:
+    ja: 備品・社用品の貸し出し管理
+    en: Equipment Loan Management
+  purpose: 社用備品の貸出・返却・在庫を記録し、今どの備品が誰の手元にあり いつ返るかを可視化し、承認・督促・履歴を支える。
+  # ── source: prose「背景」全体 + 「今どの備品が誰の手元にあって、いつ返ってくる予定かが一目でわかって、貸し借りの記録が自然に残るツールがほしい」
+  provenance: human-confirmed
+  source: "prose 背景・やりたいこと 全体"
+
+  use_cases:
+    # ───────────────────────────── 検索/閲覧 (query) ─────────────────────────────
+    - id: UC-01
+      name: BrowseAvailableEquipment
+      kind: query
+      inputs: [actor, category_filter?]
+      preconditions: []
+      postconditions: [空き/貸出中の備品がカテゴリ別に列挙される]
+      failure_reasons: []
+      provenance: human-confirmed
+      source: "prose やりたいこと『空いてる備品を探して』, 画面イメージ 1『いま空いてる／貸出中の備品がカテゴリ別に並ぶ』"
+
+    - id: UC-02
+      name: ViewMyLoans
+      kind: query
+      inputs: [actor]
+      preconditions: []
+      postconditions: [自分が借りている備品・返却予定日・承認待ち申請が表示される]
+      failure_reasons: []
+      provenance: human-confirmed
+      source: "prose 役割『自分が借りているもの・これから借りるものが見られればいい』, 画面イメージ 2"
+
+    - id: UC-03
+      name: ViewEquipmentHistory
+      kind: query
+      inputs: [equipment_id]
+      preconditions: [EquipmentExists]
+      postconditions: [当該備品の貸出/返却履歴 (誰がいつ借りていつ返したか) が時系列で得られる]
+      failure_reasons: [NotFound]
+      provenance: human-confirmed
+      source: "prose やりたいこと『備品ごとの履歴を後から追えるように』, 守りたいこと『過去の貸出履歴は勝手に書き換えられない』"
+
+    # ───────────────────────────── 貸出ライフサイクル (command) ─────────────────────────────
+    - id: UC-04
+      name: RequestLoan
+      kind: command
+      inputs: [actor, equipment_id, expected_return_date]
+      # 承認要否は equipment の属性で分岐するが、その判定基準 (金額/台数/カテゴリ) が prose 未確定 → 下記 R-01 / 診断 RUL-001
+      preconditions: [EquipmentExists, EquipmentAvailable]
+      postconditions: [貸出申請が作成される。承認要なら ApprovalPending、不要なら即 Loaned]
+      failure_reasons: [NotFound, AlreadyLoaned]
+      provenance: human-confirmed
+      source: "prose やりたいこと『空いてる備品を探して「これ借ります」と予約・貸出申請できる』『安いものはその場でサッと借りられていい』"
+
+    - id: UC-05
+      name: ApproveLoanRequest
+      kind: command
+      inputs: [actor, loan_request_id]
+      # 誰が承認できるか (上長 or 総務、他部署またぎの承認者) が prose 未確定 → ActorMayApprove は被覆未宣言。診断 DEC-/PRE-/RUL-
+      preconditions: [LoanRequestExists, RequestIsPending, ActorMayApprove]
+      postconditions: [申請が承認され貸出状態 (Loaned) へ遷移する]
+      failure_reasons: [NotFound, NotPending, Forbidden]
+      provenance: human-confirmed
+      source: "prose やりたいこと『総務か上長の承認をはさみたい』, 画面イメージ 3『承認待ちの申請がたまる。承認・却下する』"
+
+    - id: UC-06
+      name: RejectLoanRequest
+      kind: command
+      inputs: [actor, loan_request_id, reason?]
+      preconditions: [LoanRequestExists, RequestIsPending, ActorMayApprove]
+      postconditions: [申請が却下され貸出は成立しない]
+      failure_reasons: [NotFound, NotPending, Forbidden]
+      provenance: human-confirmed
+      source: "prose 画面イメージ 3『承認・却下する』"
+
+    - id: UC-07
+      name: MarkReturnedByBorrower
+      kind: command
+      inputs: [actor, loan_id]
+      preconditions: [LoanExists, LoanIsActive]
+      # 「返しました」だけで完了か 総務の現物確認まで必須か prose 未確定 → 後続状態が分岐。診断 DEC-/RUL-
+      postconditions: [借用者が返却を申告。完了か ReturnPendingConfirmation かは未確定 (R-02)]
+      failure_reasons: [NotFound, NotActive]
+      provenance: human-confirmed
+      source: "prose やりたいこと『返却したら「返しました」を記録』, 画面イメージ 2『「返しました」を押す画面』"
+
+    - id: UC-08
+      name: ConfirmPhysicalReturn
+      kind: command
+      inputs: [actor, loan_id]
+      # 総務が現物を見て確認。必須化するかは prose 未確定 (「ほしい気がする」)。
+      preconditions: [LoanExists, ReturnPendingConfirmation, ActorIsOfficeAdmin]
+      postconditions: [現物確認済みとなり備品が再び Available へ戻る]
+      failure_reasons: [NotFound, NotPendingConfirmation, Forbidden]
+      provenance: proposal
+      source: "prose やりたいこと『総務側が現物を見て「確かに返ってきた」と確認するステップもほしい気がする』(必須性が未確定=proposal)"
+
+    # ───────────────────────────── 備品マスタ管理 (command, 総務専有) ─────────────────────────────
+    - id: UC-09
+      name: RegisterEquipment
+      kind: command
+      inputs: [actor, name, category, quantity]
+      preconditions: [ActorIsOfficeAdmin]
+      postconditions: [新しい備品 (および台数) が登録される]
+      failure_reasons: [Forbidden]
+      provenance: human-confirmed
+      source: "prose 画面イメージ 4『新しい備品を登録』, 守りたいこと『備品の登録や廃棄、台数の変更みたいな大元の操作は、総務以外が触れないように』"
+
+    - id: UC-10
+      name: RetireEquipment
+      kind: command
+      inputs: [actor, equipment_id]
+      preconditions: [EquipmentExists, ActorIsOfficeAdmin]
+      postconditions: [備品が「貸出不可」状態になり 以後貸出対象から外れる]
+      failure_reasons: [NotFound, Forbidden]
+      provenance: human-confirmed
+      source: "prose 画面イメージ 4『壊れて廃棄したものを「貸出不可」に』, 守りたいこと『総務以外が触れないように』"
+
+    - id: UC-11
+      name: AdjustEquipmentQuantity
+      kind: command
+      inputs: [actor, equipment_id, new_quantity]
+      preconditions: [EquipmentExists, ActorIsOfficeAdmin]
+      postconditions: [備品の台数が更新される]
+      failure_reasons: [NotFound, Forbidden, InvalidDimensions]
+      provenance: human-confirmed
+      source: "prose 役割『台数管理をやる』, 画面イメージ 4『台数管理』, まだ決めきれていない『台数の変更みたいな大元の操作は総務以外が触れない』"
+
+  canonical_failure_reasons:
+    - name: NotFound
+      payload: { entity_kind: string, entity_id: string }
+      applies_to: [UC-03, UC-04, UC-05, UC-06, UC-07, UC-08, UC-10, UC-11]
+      provenance: inferred
+      # 存在前提 (EquipmentExists/LoanExists/LoanRequestExists) の破れを canonical NotFound で表現 (RULE A)
+      source: "prose は明示的失敗理由を述べないが、存在前提のある操作には不在失敗が必然。RULE A で NotFound に正規化 (inferred)"
+
+    - name: AlreadyLoaned
+      payload: { equipment_id: string, current_holder: string }
+      applies_to: [UC-04]
+      # 「貸出中のまま埋まってる」= 空きでないものは借りられない。capability 固有失敗だが Conflict より意味が明確なので固有名で宣言。
+      # ただし current_holder を payload に出すかはプライバシー方針 (守りたいこと) と衝突 → 診断 FAIL-/DEC-
+      provenance: proposal
+      source: "prose 背景『「貸出中」のまま埋まってる』, やりたいこと『空いてる備品を探して』(空きでないと借りられない、という失敗の存在は推測=proposal)"
+
+    - name: Forbidden
+      payload: { actor: string, action: string, required: string }
+      applies_to: [UC-05, UC-06, UC-08, UC-09, UC-10, UC-11]
+      # 認可違反 (承認権限/総務専有操作)。baseline 昇格語 (RULE A)。payload 形は要人間確定 (spec 注記)。
+      provenance: proposal
+      source: "prose 守りたいこと『総務以外が触れないように』, やりたいこと『総務か上長の承認』(認可の基準=誰が許可されるかは未確定=proposal)"
+
+    - name: NotPending
+      payload: { loan_request_id: string, current_state: string }
+      applies_to: [UC-05, UC-06]
+      # 既に承認/却下済みの申請を再度処理できない (状態前提 RequestIsPending の破れ)。capability 固有・宣言済み。
+      provenance: inferred
+      source: "prose『承認・却下する』から、二重処理防止の状態前提が導ける (表現上の補完=inferred)"
+
+    - name: NotActive
+      payload: { loan_id: string, current_state: string }
+      applies_to: [UC-07]
+      # 既に返却済み/未貸出の loan に「返しました」を打てない (LoanIsActive の破れ)。
+      provenance: inferred
+      source: "prose『返却したら「返しました」を記録』から、active な貸出にのみ適用される前提が導ける (inferred)"
+
+    - name: NotPendingConfirmation
+      payload: { loan_id: string, current_state: string }
+      applies_to: [UC-08]
+      # 現物確認待ちでない loan を確認できない。UC-08 自体が proposal なので連動して proposal。
+      provenance: proposal
+      source: "prose『現物を見て確認するステップもほしい気がする』(現物確認フロー自体が未確定=proposal)"
+
+    - name: InvalidDimensions
+      payload: { detail: string }
+      applies_to: [UC-11]
+      # 台数に負数/非整数等の不正値。canonical 寸法値違反語 (RULE A)。prose は値域を述べないので inferred。
+      provenance: inferred
+      source: "prose は台数の値域制約を述べない。負数等の不正値拒否は機械的に安全な補完 (inferred)。値域の確定は要人間 → 診断 FAIL-005"
+
+  rules:
+    - id: R-01
+      name: HighValueOrScarceEquipmentRequiresApproval
+      kind: policy
+      enforced_at: domain
+      applies_to: [UC-04]
+      # 承認要否の分岐。判定基準 (金額? 台数? カテゴリ?) が prose で未確定 → 操作の成否を左右する意味的決定。
+      provenance: proposal
+      source: "prose やりたいこと『高価なものや台数が少ないものは…承認をはさみたい。安いものはその場で。ここの線引きはまだふわっとしてる』, まだ決めきれていない 第1項"
+
+    - id: R-02
+      name: ReturnCompletionRequiresPhysicalConfirmation
+      kind: lifecycle
+      enforced_at: domain
+      applies_to: [UC-07, UC-08]
+      # 「返しました」だけで完了か、総務の現物確認まで必須か。ライフサイクル遷移の終端が変わる意味的決定。
+      provenance: proposal
+      source: "prose やりたいこと『現物確認するステップもほしい気がする』, まだ決めきれていない 第3項『現物確認を必須にするか、本人の「返しました」だけで完了にしていいか』"
+
+    - id: R-03
+      name: EquipmentMasterOperationsAreOfficeAdminOnly
+      kind: policy
+      enforced_at: domain
+      applies_to: [UC-09, UC-10, UC-11]
+      # 登録/廃棄/台数変更は総務専有。これは prose で明示確定している数少ない認可不変条件。
+      provenance: human-confirmed
+      source: "prose 守りたいこと『備品の登録や廃棄、台数の変更みたいな大元の操作は、総務以外が触れないようにしたい』, 画面イメージ 4『総務だけがいじれればいい』"
+
+    - id: R-04
+      name: LoanHistoryIsImmutable
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-03, UC-07, UC-08]
+      # 過去履歴は書き換え不可。prose で明示確定 (トラブル記録)。append-only な history 決定を支える。
+      provenance: human-confirmed
+      source: "prose 守りたいこと『過去の貸出履歴は勝手に書き換えられないようにしたい。トラブルのときの記録なので』"
+
+    - id: R-05
+      name: HolderIdentityVisibilityIsRestricted
+      kind: policy
+      enforced_at: domain
+      applies_to: [UC-01, UC-02, UC-03]
+      # 「モノの空き状況」は全員可視、「借りている人が誰か」は本人/上長/総務に限定。
+      # 区別の意図は明示だが 具体的な可視範囲 (誰にどこまで) が未確定 → 操作の出力 (query 結果) を左右する意味的決定。
+      provenance: proposal
+      source: "prose 守りたいこと『借りている“モノ”の空き状況と、借りている“人”が誰かは、見せる範囲を分けて考えたい』, まだ決めきれていない 第2項"
+
+    - id: R-06
+      name: OnlyAvailableEquipmentCanBeLoaned
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-04]
+      # 貸出中/貸出不可の備品は借りられない。空き状態の不変条件。
+      provenance: human-confirmed
+      source: "prose 画面イメージ 1『空いてるものに「借りる」ボタン』, 背景『「貸出中」のまま埋まってる』"
+
+  entities:
+    owned:
+      - name: Equipment       # 備品マスタ (名称/カテゴリ/台数/貸出可否)
+        provenance: human-confirmed
+        source: "prose 役割『備品そのものの登録・台数管理』, 画面イメージ 4"
+      - name: LoanRequest     # 貸出申請 (承認待ち/承認済/却下)
+        provenance: human-confirmed
+        source: "prose やりたいこと『予約・貸出申請』, 画面イメージ 3『承認待ちの申請』"
+      - name: Loan            # 成立した貸出 (借用者/貸出日/返却予定日/返却状態)
+        provenance: human-confirmed
+        source: "prose 背景『誰が今借りてるのか』, やりたいこと『返却予定日』"
+      - name: LoanHistoryEntry # 不変の履歴レコード
+        provenance: inferred
+        source: "prose『備品ごとの履歴を後から追えるように』。履歴を独立 entity とするか Loan の派生かは表現上の選択 (inferred) → 診断 EVT-/DEC-"
+    referenced:
+      - name: Actor           # 社員/上長/総務/情シス。所属部署・役割を持つが、本 Capability では参照のみ
+        provenance: proposal
+        source: "prose 登場する人・役割。Actor の役割・部署が別 Capability か本体内かは未確定 (情シスの範囲も未整理) → 診断 BND-001"
+    value_objects:
+      - name: ReturnDate      # 返却予定日
+        provenance: inferred
+        source: "prose『返却予定日』。日付型/タイムゾーン等は表現上の選択 (inferred)"
+      - name: Quantity        # 台数
+        provenance: inferred
+        source: "prose『台数管理』。値域 (>=0 等) は未確定 → 診断 FAIL-005"
+      - name: Category        # 備品カテゴリ
+        provenance: inferred
+        source: "prose『カテゴリ別に並ぶ』。カテゴリの語彙集合は prose 未定義"
+
+  events:
+    - name: LoanRequested
+      emitted_by: UC-04
+      payload: [loan_request_id, equipment_id, actor, expected_return_date]
+    - name: LoanApproved
+      emitted_by: UC-05
+      payload: [loan_request_id, approver]
+    - name: LoanRejected
+      emitted_by: UC-06
+      payload: [loan_request_id, approver, reason]
+    - name: ReturnDeclared
+      emitted_by: UC-07
+      payload: [loan_id, actor]
+    - name: ReturnConfirmed
+      emitted_by: UC-08
+      payload: [loan_id, confirmer]
+    - name: EquipmentRetired
+      emitted_by: UC-10
+      payload: [equipment_id, actor]
+    # 督促 (返却予定日が近づいたら本人へ、過ぎたら総務へ) は「時間経過」で発火する。
+    # これは UC (actor 起動の操作) ではなく スケジュール起動。emitted_by を UC に結べない → 観測モデル未確定。診断 EVT-001
+    - name: ReturnDueSoonNotified
+      emitted_by: SCHEDULER   # ← UC ではない。prose 未確定のため擬似値
+      payload: [loan_id, borrower]
+    - name: ReturnOverdueNotified
+      emitted_by: SCHEDULER
+      payload: [loan_id, office_admin]
+
+  decision_ownership:
+    # 7 種: domain / validation / workflow / ui_interaction / persistence / rendering / history
+    domain_decision:
+      # 何が「貸出可能」か、承認要否、認可、可視範囲、履歴不変性 — 意味の核。prose で大半が未確定。
+      owned_by: [EQUIPMENT_LOAN_MANAGEMENT]
+      decides:
+        - 承認要否の線引き (R-01, 未確定)
+        - 返却完了の終端 (R-02, 未確定)
+        - 総務専有操作 (R-03, 確定)
+        - 履歴不変性 (R-04, 確定)
+        - 保有者可視範囲 (R-05, 未確定)
+      provenance: proposal
+      source: "prose 守りたいこと/まだ決めきれていないこと。確定は R-03/R-04 のみ、他は人間決定待ち=proposal"
+    validation_decision:
+      # 入力値の妥当性 (台数値域、返却予定日の妥当性等)。prose はほぼ言及せず。
+      owned_by: [EQUIPMENT_LOAN_MANAGEMENT]
+      decides: [台数値域 (未確定 FAIL-005), 返却予定日の制約 (未確定)]
+      provenance: inferred
+      source: "prose は入力検証規則を述べない。値域の存在は機械的だが具体値は未確定 (inferred)"
+    workflow_decision:
+      # 申請→承認→貸出→返却申告→現物確認 の状態遷移。承認者と現物確認の必須性が未確定 → 遷移グラフが分岐。
+      owned_by: [EQUIPMENT_LOAN_MANAGEMENT]
+      decides: [貸出ライフサイクルの状態遷移, 承認ステップの有無 (R-01), 現物確認ステップの有無 (R-02)]
+      provenance: proposal
+      source: "prose やりたいこと/画面イメージ 3/まだ決めきれていないこと。終端と分岐条件が未確定=proposal"
+    ui_interaction_decision:
+      # 各画面の affordance (借りるボタン/承認・却下/返しました 等) は誰が決めるか。本 Capability が UI 契約を持つ。
+      owned_by: [EQUIPMENT_LOAN_MANAGEMENT]
+      decides: [各画面の操作と UC 束縛 (ui_contracts 参照)]
+      provenance: inferred
+      source: "prose 画面イメージ 1-4 が affordance を述べる。詳細 (確認ダイアログ等) は RULE E で prose 根拠分のみ lift"
+    persistence_decision:
+      # 何を永続化するか (申請/貸出/履歴)。owner が prose で未指定。
+      owned_by: []
+      decides: []
+      provenance: unresolved
+      source: "absent from prose — prose は保存方式・永続化責務を一切述べない。owner 空 + unresolved"
+    rendering_decision:
+      # 一覧の見せ方 (カテゴリ別表示/空き状況の見え方/保有者を出すか)。R-05 と絡むが描画固有部分。
+      owned_by: [EQUIPMENT_LOAN_MANAGEMENT]
+      decides: [一覧のカテゴリ別レンダリング, 保有者表示の出し分け (R-05 依存・未確定)]
+      provenance: proposal
+      source: "prose 画面イメージ 1『カテゴリ別に並ぶ』, 守りたいこと『誰が借りてるかまで全員に見せるか迷い中』=描画の出し分けが未確定=proposal"
+    history_decision:
+      # 履歴の append-only・改ざん不可。prose で確定。誰が所有するかも本 Capability。
+      owned_by: [EQUIPMENT_LOAN_MANAGEMENT]
+      decides: [履歴の append-only 性 (R-04), 履歴の保持範囲 (誰がいつ借りていつ返したか)]
+      provenance: human-confirmed
+      source: "prose 守りたいこと『過去の貸出履歴は勝手に書き換えられないように』, やりたいこと『誰がいつ借りていつ返したか』"
+
+  boundaries:
+    depends_on:
+      - name: ACTOR_DIRECTORY   # 社員/役割/部署の権威 (推測上の別 Capability)
+        provenance: proposal
+        source: "prose 登場する人・役割 (社員/上長/総務/情シス・所属部署)。役割・部署の権威が別 Capability か未確定=proposal → 診断 BND-001"
+    depended_on_by: []
+    excluded:
+      - キッティング (初期設定) の実体管理 — 情シスが PC/社用スマホで行うが、本 Capability の範囲外か未整理
+      - 督促メール/通知の送信チャネル実装 (本 Capability は発火意図のみ、送信手段は範囲外候補)
+    provenance: proposal
+    source: "prose 役割『情シスは…別途把握する必要がある。総務とは見たい範囲が少し違う』, まだ決めきれていないこと 第4項『情シスが…総務と完全には一致しない気がして整理がまだ』 → 診断 BND-002"
+
+  # ── RULE F: 認可 precondition の被覆宣言 ──
+  # 認可基準が prose で確定しているもののみ宣言する。未確定なものは捏造せず未宣言で残し proposal-ERROR で差し戻す。
+  precondition_coverage:
+    # 確定: 総務専有操作 (R-03 が prose 明示)。ActorIsOfficeAdmin 違反 → Forbidden。
+    ActorIsOfficeAdmin: [Forbidden]
+    # 未確定なので意図的に未宣言:
+    #   ActorMayApprove (UC-05/06) — 誰が承認できるか (上長/総務/他部署またぎ) が prose 未確定 → 診断 PRE-001 / proposal-ERROR
+    # 存在系 (EquipmentExists/LoanExists/LoanRequestExists/EquipmentAvailable/RequestIsPending/LoanIsActive/ReturnPendingConfirmation)
+    #   は *Exists 系扱いで NotFound/状態失敗が被覆 (上の canonical_failure_reasons で表現)。
+    provenance: proposal
+    source: "prose 守りたいこと (R-03 確定) のみ被覆宣言。承認権限は未確定のため捏造せず未宣言 (RULE F・F-R2-C 原則)"
+
+  ui_contracts:
+    # 画面イメージ 1-4 を RULE E で lift。prose が述べた affordance のみ。必須充足は決定的検査器に委ねる。
+    - screen: EquipmentBrowseList
+      archetype: list
+      interactions: [select]   # 「借りる」ボタンは行から RequestLoan へ遷移する select 的操作
+      # 「借りる」ボタン自体を list 行アクションとして select に正規化 (RULE A UI 版)。affordance は prose 記載分のみ。
+      feedback: []             # prose は一覧での結果表示 affordance に言及しない → 捏造せず空
+      usecase_bindings: { select: UC-04 }
+      states: []
+      provenance: human-confirmed
+      source: "prose 画面イメージ 1『空いてる／貸出中がカテゴリ別に並ぶ。空いてるものに「借りる」ボタン。貸出中は「いつ返却予定か」が見える』"
+
+    - screen: MyLoansList
+      archetype: list
+      interactions: [select]   # 「返しました」を押す行アクション → MarkReturnedByBorrower
+      feedback: []
+      usecase_bindings: { select: UC-07 }
+      states: []
+      provenance: human-confirmed
+      source: "prose 画面イメージ 2『自分が今借りているもの、返却予定日、承認待ちの申請。「返しました」を押す画面もここ』"
+
+    # ── 承認・管理画面 = 複合画面。単一 archetype に押し込まず複数エントリへ分解 (RULE E) ──
+    # 承認待ち一覧 (list) + 承認/却下/現物確認 (confirm) + 返却遅れリスト (list)。
+    - screen: ApprovalQueueList
+      archetype: list
+      interactions: [select]   # 承認待ち申請を選んで処理へ
+      feedback: []
+      usecase_bindings: { select: UC-05 }
+      states: []
+      provenance: inferred
+      source: "prose 画面イメージ 3『承認待ちの申請がたまる』。複合画面を list+confirm に分解した list 部 (分解判断=inferred)"
+
+    - screen: ApprovalDecisionConfirm
+      archetype: confirm
+      interactions: [affirm, deny]   # affirm=承認, deny=却下 (破壊的拒否=「却下する」を deny に。cancel と統合しない RULE E)
+      feedback: []
+      usecase_bindings: { affirm: UC-05, deny: UC-06 }
+      states: []
+      provenance: inferred
+      source: "prose 画面イメージ 3『承認・却下する』。承認=affirm/却下=deny へ正規化 (RULE A UI 版・分解=inferred)"
+
+    - screen: OverdueReturnsList
+      archetype: list
+      interactions: []   # prose は「リストに出したい」のみで行 affordance を述べない → 捏造せず空
+      feedback: []
+      usecase_bindings: {}
+      states: []
+      provenance: inferred
+      source: "prose 画面イメージ 3『督促が必要な「返却遅れ」リストもここに出したい』。督促アクションの affordance は prose 未記載"
+
+    # 現物確認 (総務が「確かに返ってきた」と確認) — 承認・管理画面に同居するが別 affordance。
+    - screen: PhysicalReturnConfirm
+      archetype: confirm
+      interactions: [affirm]   # 「確かに返ってきた」= 確認の affirm。やめる (deny) は prose 未記載なので入れない
+      feedback: []
+      usecase_bindings: { affirm: UC-08 }
+      states: []
+      provenance: proposal     # UC-08 自体が proposal (必須性未確定) なので連動
+      source: "prose 画面イメージ 3『総務はここで返却の現物確認もする』, やりたいこと『現物を見て確認するステップもほしい気がする』(未確定=proposal)"
+
+    # ── 備品の登録・台数管理画面 = 複合。新規登録 (form) + 既存編集/廃棄 (edit) ──
+    - screen: EquipmentRegisterForm
+      archetype: form          # 新値を set する (既存値 load なし) → form (RULE E、edit と区別)
+      interactions: [primary_action]   # 「登録」= form の主操作。prose 記載分のみ
+      feedback: []             # prose はバリデーション表示 affordance に言及しない → 捏造せず空 (決定的検査器が validation_error 欠落を捕捉)
+      usecase_bindings: { primary_action: UC-09 }
+      states: []
+      provenance: inferred
+      source: "prose 画面イメージ 4『新しい備品を登録』。新値 set なので form (archetype 認識=inferred)"
+
+    - screen: EquipmentMaintenanceEdit
+      archetype: edit          # 既存備品を load して 台数変更/「貸出不可」化 → 既存値 load→編集→save = edit
+      interactions: [save]     # 主操作=save。load/discard/unsaved_warning は prose 未記載なので捏造せず、決定的検査器の必須照合に委ねる
+      feedback: []
+      usecase_bindings: { save: UC-11 }   # 廃棄 (UC-10) と台数変更 (UC-11) が同画面。主束縛は台数変更
+      states: []
+      provenance: inferred
+      source: "prose 画面イメージ 4『壊れて廃棄したものを「貸出不可」に』『台数管理』。既存値編集なので edit (archetype 認識=inferred)"

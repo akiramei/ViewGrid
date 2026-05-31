@@ -1,0 +1,242 @@
+# Capability BOM 候補 — 意味設計コンパイラ AI 抽出器の出力 (lift)
+# 入力: experiments/operating-model-dryrun-1/INPUT-prose.md (アカウントアクセス: ログイン/パスワード変更)
+# 各項目に provenance + source。RULE A で失敗理由 canonical 化。RULE E で UI 画面を lift。
+# !! 未決定の意味的決定は proposal/unresolved で止め、診断 (OUTPUT-diagnostics.md) に対応 ID を出している。
+
+capability:
+  id: ACCOUNT_ACCESS
+  name: { ja: アカウントアクセス, en: AccountAccess }
+  purpose: 利用者がメールアドレスとパスワードでログインし、自分のパスワードを変更できるようにする。
+  # purpose は prose §背景 から構造化 (表現上の写し)。
+
+  use_cases:
+    - id: UC-01
+      name: Login
+      kind: command
+      inputs: [email, password]
+      preconditions:
+        - UserExists          # 「正しいメールアドレス…の組み合わせのときだけ」が存在前提を含意
+        - UserNotWithdrawn    # 「退会した利用者はログインできない」 (RULE F: *Exists 以外の自前 precond)
+        - NotLockedOut        # 「5 回連続で失敗したらしばらくログインできない」 (自前 precond)
+      postconditions:
+        - SessionEstablished  # 「成功すると…作業している状態 (セッション)」
+      failure_reasons:
+        - NotFound            # メール該当ユーザー不在 (RULE A: UserNotFound でなく NotFound)
+        - InvalidCredentials  # メールはあるがパスワード不一致 (capability 固有, 下で宣言)
+        - AccountWithdrawn     # 退会済み (capability 固有, 下で宣言)
+        - AccountLockedOut     # ロックアウト中 (capability 固有, 下で宣言)
+      provenance: human-confirmed
+      source: "§背景 'メールアドレスとパスワードでログインする' / §守りたいこと '正しいメールアドレスとパスワードの組み合わせのときだけ'"
+
+    - id: UC-02
+      name: ChangePassword
+      kind: command
+      inputs: [new_password, new_password_confirmation]
+      preconditions:
+        - UserExists          # 自分のパスワードを変えるので対象ユーザーが居る前提
+        - Authenticated       # proposal: 「利用者が自分で変更」=本人=ログイン済みを含意するが、prose は明示せず (DEC-/RUL- 参照)
+      postconditions:
+        - PasswordUpdated      # 「保存する」
+      failure_reasons:
+        - PasswordTooShort     # 「短すぎるのはダメ。ある程度の長さは要る」 (capability 固有)
+        - PasswordConfirmationMismatch  # 「確認用…が一致していないと保存させない」 (capability 固有)
+        - NotFound             # 対象ユーザー不在 (RULE A)
+      provenance: human-confirmed
+      source: "§背景 '利用者が自分でパスワードを変更できるように…新しいパスワードを 2 回入れて保存' / §守りたいこと"
+
+  canonical_failure_reasons:
+    # --- baseline (横断 canonical) へ寄せたもの ---
+    - name: NotFound
+      payload: { entity_kind: string, entity_id: string }   # entity_kind 例: User
+      applies_to: [UC-01, UC-02]
+      provenance: inferred
+      source: "RULE A 正規化。prose は 'ユーザー不在' を明示しないが、存在前提 (UserExists) の破れには canonical NotFound が必要 (表現上の写し)"
+
+    # --- capability 固有 (RULE A: baseline と意味が異なるので独自宣言。双方向一致を保つ) ---
+    - name: InvalidCredentials
+      payload: { detail: string }
+      applies_to: [UC-01]
+      provenance: proposal
+      # proposal: メール一致だがパスワード不一致を別失敗にするか、NotFound に畳むかは「成否境界 + セキュリティ」決定。FAIL-001 参照。
+      source: "§守りたいこと '正しいメールアドレスとパスワードの組み合わせのときだけ' (不一致時の失敗理由名・粒度は prose 未定義)"
+
+    - name: AccountWithdrawn
+      payload: {}
+      applies_to: [UC-01]
+      provenance: human-confirmed
+      source: "§守りたいこと '退会した利用者はログインできないようにしたい'"
+
+    - name: AccountLockedOut
+      payload: { retry_after: duration }   # 'しばらく' の具体値は未定義 (RUL-/MD- 参照)
+      applies_to: [UC-01]
+      provenance: proposal
+      # proposal: ロックは成否を左右する状態。retry_after の意味・粒度・解除条件が未定義のため案として提示。
+      source: "§背景 '5 回連続で失敗したらしばらくログインできないようにしたい'"
+
+    - name: PasswordTooShort
+      payload: { min_length: int }   # 最小長の値は未定義
+      applies_to: [UC-02]
+      provenance: proposal
+      # proposal: '短すぎ' の閾値は保存の成否を左右する意味的決定。FAIL-002 参照。
+      source: "§守りたいこと 'パスワードが短すぎるのはダメ。ある程度の長さは要る'"
+
+    - name: PasswordConfirmationMismatch
+      payload: {}
+      applies_to: [UC-02]
+      provenance: human-confirmed
+      source: "§守りたいこと '確認用に入れたパスワードが、新しいパスワードと一致していないと保存させない'"
+
+  rules:
+    - id: R-01
+      name: WithdrawnUserCannotLogin
+      kind: policy
+      enforced_at: domain
+      applies_to: [UC-01]
+      provenance: human-confirmed
+      source: "§守りたいこと '退会した利用者はログインできないようにしたい'"
+
+    - id: R-02
+      name: CredentialPairMustMatch
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-01]
+      provenance: human-confirmed
+      source: "§守りたいこと 'ログインできるのは正しいメールアドレスとパスワードの組み合わせのときだけ'"
+
+    - id: R-03
+      name: LockoutAfterConsecutiveFailures
+      kind: policy
+      enforced_at: domain        # proposal: domain/workflow/persistence のどの層が失敗回数を数え保持するか未定義 (RUL-001)
+      applies_to: [UC-01]
+      provenance: proposal
+      # proposal: '5 回連続' の連続判定の範囲 (同一メール? IP?)・カウントのリセット条件・ロック解除条件が未定義。成否を左右する。
+      source: "§背景 '5 回連続で失敗したらしばらくログインできないようにしたい'"
+
+    - id: R-04
+      name: PasswordMinimumLength
+      kind: invariant
+      enforced_at: domain        # proposal: validation/domain どちらが所有するか (DEC-002)
+      applies_to: [UC-02]
+      provenance: proposal
+      # proposal: 最小長の値が未定義のため不変条件として確定できない (FAIL-002 と対応)。
+      source: "§守りたいこと 'パスワードが短すぎるのはダメ'"
+
+    - id: R-05
+      name: PasswordConfirmationMustEqual
+      kind: invariant
+      enforced_at: domain
+      applies_to: [UC-02]
+      provenance: human-confirmed
+      source: "§守りたいこと '確認用…が一致していないと保存させない'"
+
+    - id: R-06
+      name: OnlySelfCanChangeOwnPassword
+      kind: policy
+      enforced_at: domain        # 本人性の検査層も未定義
+      applies_to: [UC-02]
+      provenance: proposal
+      # proposal: 「利用者が自分で」=本人のみ、を不変条件にするかは所有権・認可の意味的決定。prose は明示せず (DEC-001)。
+      source: "§背景 'パスワードを忘れたり…利用者が自分でパスワードを変更できるように' (本人性・認可は未明示)"
+
+  entities:
+    owned: [User]              # 'メールアドレスで一人ひとりを区別' = User が owned
+    referenced: []
+    value_objects: [EmailAddress, Password]   # inferred: 区別キー=EmailAddress, 秘密=Password を VO 化 (表現上の選択)
+
+  events:
+    # prose は観測可能イベントを明示しない。以下は proposal (監査/セキュリティ観点で 'あるべき' 提案)。EVT- 診断参照。
+    - name: LoginSucceeded
+      emitted_by: UC-01
+      payload: [user_id]
+    - name: LoginFailed
+      emitted_by: UC-01
+      payload: [email, reason]     # ロック判定の前提として失敗を観測する必要がある (proposal)
+    - name: AccountLockedOut
+      emitted_by: UC-01
+      payload: [email]
+    - name: PasswordChanged
+      emitted_by: UC-02
+      payload: [user_id]
+
+  decision_ownership:
+    domain_decision:
+      owned_by: [UC-01, UC-02]
+      provenance: human-confirmed
+      source: "§守りたいこと一覧 (退会/組み合わせ/最小長/確認一致) はドメイン規則"
+    validation_decision:
+      owned_by: []               # proposal: 最小長・確認一致を validation 層に置くか domain に置くか未定義 (DEC-002)
+      provenance: proposal
+      source: "absent from prose (層の割当は未定義)"
+    workflow_decision:
+      owned_by: []               # proposal: ロックアウトの状態遷移を誰が所有するか未定義 (DEC-003)
+      provenance: proposal
+      source: "§背景 'しばらくログインできない' の状態遷移所有者が未定義"
+    ui_interaction_decision:
+      owned_by: [LoginScreen, ChangePasswordScreen]
+      provenance: inferred
+      source: "§画面イメージ (画面が存在するので UI 操作決定は UI 層) — 表現上の写し"
+    persistence_decision:
+      owned_by: []               # unresolved: パスワードの保存形式 (ハッシュ等)・失敗回数の保持先が未定義 (DEC-004, セキュリティ)
+      provenance: unresolved
+      source: "absent from prose (保存方式は未記載。§まだ決めきれていない 'セキュリティ的に気をつける点' に該当)"
+    rendering_decision:
+      owned_by: []
+      provenance: inferred
+      source: "absent from prose ('色や配置はデザイナーに任せる' = rendering は本 Capability 外)"
+    history_decision:
+      owned_by: []               # proposal: ログイン履歴/パスワード変更履歴を残すか未定義 (EVT-/history)
+      provenance: proposal
+      source: "absent from prose (履歴の要否は未記載だがセキュリティ上論点)"
+
+  boundaries:
+    depends_on: []
+    depended_on_by: [WorkArea]   # inferred: 'ログイン成功で自分専用の作業画面に入れる' = 下流に作業画面 Capability があるが本メモ外
+    excluded:
+      - PasswordReset            # 'パスワードを忘れたり' に触れるが、忘れた場合のリセット (本人確認/再発行) フローは prose に手順が無い → 除外宣言 (BND-001)
+      - Rendering                # '色や配置はデザイナーに任せる'
+      - WorkArea                 # 'ログイン後の作業画面' の中身は本 Capability 外
+
+  shared_concepts: []            # 単一 Capability のため横断共有 VO の宣言なし (RULE F)
+
+  precondition_coverage:
+    # RULE F: *Exists 以外の自前 precondition は被覆失敗理由を宣言する
+    UserNotWithdrawn: [AccountWithdrawn]
+    NotLockedOut: [AccountLockedOut]
+    Authenticated: []            # proposal: Authenticated 破れ時の失敗理由が未定義 (UC-02 の未認証時挙動が prose に無い) — DEC-001
+
+  references_external: []        # 外部 Capability 参照なし
+
+  ui_contracts:
+    - screen: LoginScreen
+      archetype: login
+      # RULE E: archetype 認識は AI の意味判断。確信あり ('ログイン画面' と明記) → human-confirmed。
+      interactions:
+        - identifier_input    # 'メールアドレスを入れる欄'
+        - secret_input        # 'パスワードを入れる欄'
+        - submit              # '「ログイン」ボタン'
+      feedback:
+        - auth_failure        # §背景 '失敗したら入れない' (失敗の通知。具体表示は未定義 → UI- 診断)
+      usecase_bindings:
+        submit: UC-01
+      states:
+        - submitting          # inferred (RULE E: prose に状態語は無い。captures: 後段検査に委ねる目的で最小限)
+        - error
+      provenance: human-confirmed   # archetype 認識のみ。affordance は prose 由来のみ。
+      source: "§画面イメージ 'ログイン画面: メールアドレスを入れる欄、パスワードを入れる欄、「ログイン」ボタン' / §背景 '失敗したら入れない'"
+
+    - screen: ChangePasswordScreen
+      archetype: edit
+      # RULE E: 'パスワード変更画面' は edit archetype と認識。確信あり。
+      # 注意: prose は新パスワード欄/確認欄/保存ボタンのみ言及。'現在のパスワード入力欄' は prose に無いので入れない (捏造禁止)。
+      interactions:
+        - secret_input              # '新しいパスワードの欄'
+        - secret_input_confirmation # '確認用にもう一度入れる欄'
+        - submit                    # '「保存」ボタン'
+      feedback: []                  # prose は変更失敗時の表示に言及せず → 空。UI- 診断で指摘。
+      usecase_bindings:
+        submit: UC-02
+      states:
+        - submitting
+        - error
+      provenance: human-confirmed
+      source: "§画面イメージ 'パスワード変更画面: 新しいパスワードの欄、確認用にもう一度入れる欄、「保存」ボタン'"

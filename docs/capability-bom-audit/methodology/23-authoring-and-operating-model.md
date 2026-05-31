@@ -3,6 +3,10 @@
 > **Status: draft (統合ブループリント)**。既存 01〜22 の **上に乗る Authoring/Operating 層** の全体像を 1 枚に固定する。
 > 本書で骨格を確定したのち、(b) 意味設計コンパイラ仕様 / (d) UI 意味契約 等は個別の詳細文書へ分割する想定 (番号は §7 で扱う)。
 > **由来**: 候補 E 完了 (Addendum E〜J) 後の方向づけ議論。「人間はコードを管理せず、意味の BOM を管理する」という分業を **工程・ツール・責任** のレベルまで具体化する。
+>
+> **枯らし状況 (2026-05-31)**: 実運用ドライランで本書を検証中 (`../../../experiments/operating-model-dryrun-1/`、findings ledger 同梱)。frontier ゆえ「churning draft は昇格しない」ポリシーで **draft 据え置き**。本書は **実装済みで実証された部分** と **notional/未実装の部分** の双方を含む — 混同を避けるため各節で実装状況を明示する (§3.6 / §4.1 / §5.1)。
+> - **実装済・実証済**: 意味設計コンパイラ = `checker.py --authoring` (SCHEMA/C3/PRECOND/REF/UI/PROV の 6 static 検査) + cross-set `--authoring-set` (XREF/XSYM/XSHARED)。dry-run 2 (アカウントアクセス・ドメイン) で **画像外ドメインでも機能** + **UI seam を end-to-end 実証**。
+> - **notional/未実装**: Human Requirements Template (工程1) / Implementation Prompt Generator (工程6) / 命名規約・数値-項目数整合の static ルール。(F-R2-B の `form` archetype・F-R2-D の decision taxonomy 被覆は §8.2/§8.3 で**解決済** — 前者は実装、後者は「7 種で足る」と決着し canonical 不変。)
 
 ---
 
@@ -161,10 +165,12 @@ WARNING MD-004: "Repository not found" の表現が未指定です。AI 実装�
 
 | 検査 | ② 生成ゲート | ① authoring (本書) |
 | --- | --- | --- |
-| **C3** static cross-reference (`applies_to` ↔ per-UC `failure_reasons`) | 実装済 | **そのまま BOM 単体で回せる** |
-| precondition 宣言 ↔ canonical_failure_reason の存在 | — | **新規 static ルール** (`A-1`/`B-D3` を authoring 時に弾く) |
-| スキーマ/必須セクション/命名規約/forward-ref/数値-項目数整合 | 一部 | **新規 static ルール** (`14`/`Dpc-5` を機械化) |
-| **PROV** provenance ゲート (AI の `unresolved`/`proposal` タグを block) | — | **新規 static ルール** — 意味的ギャップを AI タグ経由で機械 block (§3.7 の橋。prototype で実証) |
+| **C3** static cross-reference (`applies_to` ↔ per-UC `failure_reasons`) | 実装済 | **実装済** — そのまま BOM 単体で回せる (`check_static`) |
+| **PRECOND** precondition 宣言 ↔ canonical_failure_reason の存在 | — | **実装済** static ルール (`A-1`/`B-D3` を authoring 時に弾く。`*Exists`/`*Exist` パターン + BOM の `precondition_coverage` 宣言) |
+| **SCHEMA** 必須セクション/フィールドの存在 + **REF** forward-ref (dangling `applies_to`) | 一部 | **実装済** static ルール (`14` を機械化) |
+| **UI** 宣言画面 archetype の必須 affordance 充足 (§4) | — | **実装済** static ルール (`check_ui_contracts`。dry-run 2 で end-to-end 実証) |
+| **PROV** provenance ゲート (AI の `unresolved`/`proposal` タグを block) | — | **実装済** static ルール — 意味的ギャップを AI タグ経由で機械 block (§3.7 の橋。prototype で実証) |
+| 命名規約 (naming regex) / 数値-項目数整合 (`Dpc-5` を機械化) | — | **未実装 (将来)** — 現 `checker.py` は持たない (混同回避のため明示) |
 | **C1/C2** dynamic (失敗理由の到達性 / precondition 強制) | 実装済 (実コード probe) | **不可** (コード未生成) → ② に残す |
 
 > dynamic 検査 (C1/C2) は実コードが要るので ② に残り、static 検査だけが ① に前倒しできる。
@@ -193,7 +199,7 @@ WARNING MD-004: "Repository not found" の表現が未指定です。AI 実装�
 
 **実装機構 (prototype で実証、2026-05-30)**: proposal-ERROR は「AI が provenance を `proposal`/`unresolved` でタグ → 決定的ツールが **provenance ゲート (PROV)** でそれを機械的に block」として実装する。
 **決定的ツールは意味的ギャップを理解しなくてよい。AI が付けたタグを enforce するだけ**で、構造に現れない意図の欠落 (cross-grid swap / decision ownership 欠落など) も再現可能に block できる。
-これが「**検出は AI / enforcement は決定的ツール**」という分界点を渡す橋であり、§3.6「ブロックは決定的ツール (再現可能)」と本節「AI は所有しない」を同時に満たす (実測詳細: `../../experiments/authoring-compiler-prototype/RESULTS.md`)。
+これが「**検出は AI / enforcement は決定的ツール**」という分界点を渡す橋であり、§3.6「ブロックは決定的ツール (再現可能)」と本節「AI は所有しない」を同時に満たす (実測詳細: `../../../experiments/authoring-compiler-prototype/RESULTS.md`)。
 
 ---
 
@@ -221,6 +227,13 @@ UI も **見た目のレイアウト** と **意味的に必要な affordance** 
 | `edit` | `load` / `save` / `discard` | `validation_error` / `unsaved_warning` |
 | `list` | `display` / `select` | `empty_state` |
 | `confirm` | `affirm` / `deny` | — |
+| `form` | `primary_action` | `validation_error` |
+
+> [!NOTE]
+> **archetype ライブラリと UI ロール語彙のギャップ (F-R2-B、dry-run 2/3 で発見 → dry-run 3 + 敵対的レビューで設計確定)**:
+> 1. **set 系 archetype**: ✅ **`form` を追加** (上表)。「既存値を load せず新値を set する」画面 (パスワード設定/権限保存) に `edit` を当てると `load`/`discard`/`unsaved_warning` の偽 ERROR が出ていた (信号純度を汚す)。`form` (必須 `primary_action` のみ + `validation_error`) で解消。判別基準は **load の要否** (edit=既存値 load→編集→save / form=新値 set)。実証: edit→form で偽 ERROR 4 件が消え、残るは prose が本当に欠く `validation_error` のみ。
+> 2. **UI ロール正規化**: ✅ **extractor-spec RULE E に正規化表を追加** (RULE A の UI 版)。正規化は **AI 側のみ**で行い、決定的ツールは canonical 名のみ受理 (同義語受理は F-R2-C のマスクを再発させるため禁止)。主操作は archetype ローカルロールへ (`login`→`submit`/`edit`→`save`/`form`→`primary_action`/`confirm`→`affirm`)。**`cancel`↔`deny` の統合と global `primary` への平坦化は禁止** (affordance の区別を失うため)。
+> 3. **view/detail・dialog 系 archetype**: **意図的に未追加 (defer)**。表示専用 detail は必須 affordance が `display` のみで空テンプレ化し INCONCLUSIVE→silent-PASS 機になる。複合 dialog は catch-all 化し決定的性を壊す。→ 複合画面は既知 archetype (form+list+confirm) の**複数 `ui_contracts` エントリへ分解**で表現し、専用 archetype は作らない。
 
 ### 4.2 分界点 (失敗理由と同型)
 
@@ -232,7 +245,7 @@ UI も **見た目のレイアウト** と **意味的に必要な affordance** 
 
 → 失敗理由 (H1) と同じ「**AI が意味判断で構造化 → 決定的ツールがテンプレ照合**」構造。
 診断例 `UI-LOGIN-001`「ログイン画面にパスワード入力が未定義」は、`ui_contracts` に `archetype: login` を宣言し
-`secret_input` を欠くと **`[UI][ERROR]` として決定的に捕捉される** (Step 3 で smoke-test 実証)。
+`secret_input` を欠くと **`[UI][ERROR]` として決定的に捕捉される** (Step 3 で hand-built BOM の smoke-test、**dry-run 2 で AI 抽出器が prose から lift した `ui_contracts` に対し end-to-end 実証** — login の `cancel` 欠落を決定的に捕捉、F-R2-A)。
 
 > UI の見た目は自由。しかし **UseCase を成立させる意味的部品とフィードバックは必須**。
 > AI は「この画面は login だ」と認識して `ui_contracts` に lift し、決定的ツールが login テンプレの欠落を弾く。
@@ -245,18 +258,23 @@ UI も **見た目のレイアウト** と **意味的に必要な affordance** 
 
 | 工程 | 主担当 | 支援 | ツール | 成果物 / Gate |
 | --- | --- | --- | --- | --- |
-| 1. 人間向け要求を書く | **人間主** | AI 補助 | Human Requirements Template *(新)* | 要求 / シナリオ / 用語 / 画面意図 |
-| 2. 意味設計へ compile | **AI主** | 人間確認 | Meaning Design Compiler *(新)* | Capability / Rule / Decision 候補 + 診断 |
-| 3. コンパイルエラー修正 | **人間主** | AI 診断 | Diagnostic Reporter *(新)* | 欠落・矛盾を **人間資料側で** 修正 → 再 compile |
-| 4. AI向け BOM 生成 | **AI主** | 人間承認 | BOM Compiler *(新)* | Capability BOM / Rule Ledger / Decision Ownership (+ source map) |
-| 5. UI 意味契約チェック | **AI主** | 人間判断 | UI Semantic Contract Checker *(新)* | 必須入力・操作・フィードバックの欠落検出 |
-| 6. 実装プロンプト生成 | **AI主** | 人間承認 | Implementation Prompt Generator *(新, 09/12/40 ベース)* | AI-facing prompt / MUST_DECIDE list |
+| 1. 人間向け要求を書く | **人間主** | AI 補助 | Human Requirements Template **(未実装)** | 要求 / シナリオ / 用語 / 画面意図 |
+| 2. 意味設計へ compile | **AI主** | 人間確認 | Meaning Design Compiler **(実装済 = `checker.py --authoring` + extractor-spec)** | Capability / Rule / Decision 候補 + 診断 |
+| 3. コンパイルエラー修正 | **人間主** | AI 診断 | Diagnostic Reporter **(コンパイラ診断出力に統合)** | 欠落・矛盾を **人間資料側で** 修正 → 再 compile |
+| 4. AI向け BOM 生成 | **AI主** | 人間承認 | BOM Compiler **(= 工程2 と同一コンパイラの再 run)** | Capability BOM / Rule Ledger / Decision Ownership (+ source map) |
+| 5. UI 意味契約チェック | **AI主** | 人間判断 | UI Semantic Contract Checker **(実装済 = `check_ui_contracts`、コンパイラに統合)** | 必須入力・操作・フィードバックの欠落検出 |
+| 6. 実装プロンプト生成 | **AI主** | 人間承認 | Implementation Prompt Generator **(未実装。手書き prompt `40-43` のみ)** | AI-facing prompt / MUST_DECIDE list |
 | 7. AI 実装 | **AI主** | 人間は原則コード非介入 | Implementation Agent | 生成コード / テスト / 実装ノート |
 | 8. 照合ゲート | **ツール主** | 人間確認 | BOM Conformance Checker *(実証済: `22` + `checker.py`)* | **GATE: PASS / FAIL** |
 | 9. BOM視点レビュー | **人間主** | AI 監査 | Capability BOM Auditor *(実証済: `01-10` / `09`)* | unclear / overreach / findings |
 | 10. PLM 保守 | **人間主** | AI 補助 | Findings Ledger *(`91`)* / 契約版 (`21`) / source map | BOM 改訂履歴 / 契約バージョン / 根拠追跡 |
 
-工程 1〜6 が本書で新たに体系化する Authoring 層 (うち多くがコンパイラ系の新ツール)。7〜10 は既存 PoC で実証済み。
+> [!IMPORTANT]
+> **実装状況の正直な境界 (2026-05-31、R1-c/d で整理)**: 工程 1〜6 は本書が体系化する Authoring 層だが、**実体は実質 1 つのコンパイラ** (= `checker.py --authoring` + extractor-spec) に集約される:
+> - **工程 2 / 4 / 5 = 同一コンパイラ**。工程2 (compile→候補+診断) と工程4 (人間が prose 修正後の再 run で clean BOM) は**別ツールでなく同一コンパイラを工程3 を挟んで 2 回 run** したもの。工程5 (UI 契約) もそのコンパイラの `check_ui_contracts` 検査。
+> - **工程 3** = 独立ツールでなくコンパイラの診断出力そのもの。
+> - **工程 1 (要求テンプレート) / 工程 6 (実装プロンプト生成器) は未実装** — 現状それぞれ「free prose + 任意の軽量ガイド」「手書き prompt `40-43`」で代替。
+> - **工程 7〜10 は既存 PoC で実証済み** (`22`/`checker.py`、`01-10`/`09`、`91`/`21`)。
 
 ### 5.2 責任の所在 (誤解防止の核)
 
@@ -271,6 +289,14 @@ UI も **見た目のレイアウト** と **意味的に必要な affordance** 
 > BOM に矛盾 / Rule と failure reason が対応しない / Decision ownership 未定義 / 実装上どうしても決める必要がある /
 > 横断規約 (21) に無い物理表現が必要 / 照合ゲートが落ちる / unclear が実装継続に影響する。
 > このとき AI は補完して進まず、**人間が BOM 側を修正し、再度 compile/実装させる**。手戻りは BOM 改訂として蓄積される。
+
+> [!NOTE]
+> **decision taxonomy のセキュリティ被覆 — 3 ドメイン + unconfounded round で決着 (2026-05-31、F-R2-D、✅ 解決: 新 kind 不要)**:
+> セキュリティ判断 (認可 who-may / 情報開示 what-to-reveal / 資格情報保存) が 7 種 (domain/validation/workflow/persistence/ui_interaction/rendering/history) に収まるかを枯らした。当初「散る/所有者なし」とした仮説は **敵対的レビュー (`harden-bodyside-design`) + BOM 精査 + unconfounded dry-run で反証**:
+> - **認可 (who-may) は一貫して `domain_decision` に着地** (dry-run 2 = human-confirmed / dry-run 3 = proposal / **dry-run 4 = 7 種を伏せた独立執筆でも R-03 総務専有=human-confirmed・R-01 承認要否=proposal**)。未確定の認可基準 (誰が承認可) は `precondition_coverage` 未宣言で `proposal-ERROR`/INCONCLUSIVE として human へ差し戻る (= 所有者なしで沈黙しない)。
+> - **情報開示 (disclosure) も policy として framing されれば `domain_decision`(+`rendering_decision`) に収まる** (dry-run 4 の R-05 可視範囲)。dry-run 2/3 で owner 無しに落ちたのは、**執筆交絡 (taxonomy 認識 + authz 飽和 + 答えキー) の人工物**だった (unconfounded round で確認)。
+> - **資格情報保存** は `persistence_decision` で素直に収まる (taxonomy ギャップでない)。
+> → **canonical 04 への kind 追加は却下** (`authorization_decision`/`disclosure_decision` とも)。**7 種で足りる**。残る実観測は `domain_decision` の**過積載** (可用性/承認方針/総務専有認可/可視範囲/履歴不変性/返却終端を一手に持つ)。必要なら canonical を動かさず **`domain_decision` への security/authz 監査タグ (非 canonical)** で専用レンズを得られる (最小主義レンズの結論、unconfounded round が支持)。事前登録 falsifier・実測は `../../../experiments/operating-model-dryrun-3/PREREGISTER.md`。
 
 ---
 
@@ -309,7 +335,7 @@ UI も **見た目のレイアウト** と **意味的に必要な affordance** 
 
 > **2 つの罠**: ① 正規化 (抽出器) と registry の family 化 は **競合する代替案** → 先に正規化を正と決め family 化を捨てる (§7.2-a)。② UI のスキーマ追加を後づけにすると抽出器/検査器が churn → スキーマ予約だけ Step 0 に繰り上げ (§7.2-d)。
 
-> **進捗 (2026-05-30)**: Step 0 (基盤) / 1 (抽出器 spec v1.0 + re-run 実証) / 2 (存在前提パターン化) / 3 (UI トラック、H7 を決定的に捕捉) / **4 (複数 Capability authoring 検査 — `--authoring-set` の XREF/XSYM/XSHARED、precond を BOM 宣言化、Cpc-1 を surface)** 完了。残るは Step 5 (本体 01-10 へ昇格 + 再番号、baseline 固定後)。
+> **進捗 (2026-05-30)**: Step 0 (基盤) / 1 (抽出器 spec v1.0 + re-run 実証) / 2 (存在前提パターン化) / 3 (UI トラック、H7 を決定的に捕捉) / **4 (複数 Capability authoring 検査 — `--authoring-set` の XREF/XSYM/XSHARED、precond を BOM 宣言化、Cpc-1 を surface)** 完了。**Step 5 (拡張 11-14/21/22 を本体 01-10 へ保守的昇格) も完了** (commit `4a1108b`) — ただし **再番号は意図的に延期** (churn 回避)、**本書 23 は活発な frontier ゆえ draft 据え置き** (「churning draft は昇格しない」)。**全 Step 0〜5 完了し、本書は現在「実運用で枯らす」段階** (dry-run 1〜2、§8.1)。
 
 ### 7.2 Step 0 で確定した基盤 (fixed baseline)
 
@@ -360,7 +386,7 @@ UI 意味契約 (§4) 用のセクションを **今スキーマに予約**す�
 ## 8. 実証 (prototype 実測済み、2026-05-30)
 
 本方法論の流儀「実コードで実証する」(Addendum A〜I) に従い、採用形態 (b) を 2 段 prototype で実測した
-(`../../experiments/authoring-compiler-prototype/`: 入力 prose / AI 出力 BOM+診断 / 拡張 checker / `RESULTS.md`)。
+(`../../../experiments/authoring-compiler-prototype/`: 入力 prose / AI 出力 BOM+診断 / 拡張 checker / `RESULTS.md`)。
 
 - **AI 抽出器** (独立 subagent、穴を非開示) が縮小版 GRID の人間 prose から BOM を lift + 診断を発行: **proposal-ERROR 12 / WARNING 13 / INFO 4**。
 - **決定的検査器** (`checker.py --authoring`) が static 検査 (SCHEMA/C3/PRECOND/REF/PROV) を実行: GATE FAIL。正準 GRID BOM は PASS (区別できる)。
@@ -377,7 +403,45 @@ UI 意味契約 (§4) 用のセクションを **今スキーマに予約**す�
 
 **calibration 発見** (RESULTS §5): C-1 PRECOND の命名感受性 (→ AI が canonical 名へ正規化、§3.6 に反映済み) / C-2 SCHEMA の存在チェックだけでは不十分 (→ PROV が補完) / C-3 provenance が分界点を渡る橋 (→ §3.7 に反映済み)。
 
-**残課題** (順序は §7.1): ✅ 正規化を抽出器責務化 (Step 1/2) → ✅ UI 意味契約ルールの決定的化 (Step 3、§4.1) → ✅ 複数 Capability authoring 検査 (Step 4、`--authoring-set`)。Step 0〜4 完了。残るは **Step 5 (本体 01-10 への昇格 + 再番号)** のみ。
+**残課題** (順序は §7.1): ✅ 正規化を抽出器責務化 (Step 1/2) → ✅ UI 意味契約ルールの決定的化 (Step 3、§4.1) → ✅ 複数 Capability authoring 検査 (Step 4、`--authoring-set`)。**Step 0〜5 完了** (Step 5 昇格は commit `4a1108b`、再番号は意図的に延期)。本書は現在 **実運用ドライランで枯らす段階** (§8.1)。
+
+### 8.1 dry-run 2 — 新ドメイン実運用枯らし (2026-05-31)
+
+prototype (縮小版 GRID) と同型の独立 subagent 手順を、**画像グリッド外の新ドメイン** (アカウントアクセス: ログイン/パスワード変更 + UI 2 画面) に適用し本書を「実運用で枯らす」 (`../../../experiments/operating-model-dryrun-1/`、`FINDINGS-23-dryrun.md` 同梱)。
+
+- **題材**: 人間 prose (`INPUT-prose.md`)、仕込み穴 9 件 (`SEEDED-HOLES.md`、subagent 非開示)。独立 subagent が prose + extractor-spec の **2 ファイルのみ**から lift。執筆者が `checker.py --authoring` を独立実行: **GATE FAIL / 14 blocking ERROR / 0 INCONCLUSIVE / exit 1**。
+- **positive (主張の確証)**:
+  - **capability 非依存性**: 画像外ドメインで extractor-spec がクリーンに機能。RULE A 正規化 `UserNotFound → NotFound` も作動。仕込み穴 9 件**全件捕捉** + emergent 多数 (リセットフロー皆無 `BND-001` / ロックは失敗観測前提 `EVT-001` / 保存方式 `unresolved` `DEC-004`)。
+  - **UI seam を end-to-end 実証 (F-R2-A)**: AI が prose→archetype 認識→`ui_contracts` lift → 決定的 `check_ui_contracts` が **AI 産出の契約に対し** `[UI][ERROR]` 発火 (login の `cancel` 欠落)。従来は hand-built BOM の smoke-test のみ (§4.2 更新済)。
+  - **ゲート信号純度 (F-R2-F)**: 命名ノイズ 0・INCONCLUSIVE 0。14 ERROR の ~12 が純粋な意味的ギャップ。
+- **新規 finding**:
+  - **F-R2-B (✅ 一部解消 / 一部 defer)**: UI archetype ライブラリのギャップ。dry-run 3 + 敵対的レビューで設計確定 → `form` archetype 追加 + RULE E にロール正規化表 (詳細 §4.1 NOTE、§8.2)。view/detail・dialog 専用 archetype は意図的に未追加 (defer)。信号純度を汚していた偽 ERROR を解消。
+  - **F-R2-C (✅ spec 修正済)**: RULE E が semantic outcome (「失敗したら入れない」) から UI feedback affordance (`auth_failure`) を過剰 lift し構造 ERROR をマスク。extractor-spec RULE E を「結果が起きうる=`failure_reasons` / 画面が結果を表示=`feedback` (prose が表示に言及した時のみ lift)」と鋭くした。マスク機構は `check_ui_contracts` のコード上自明 (`login` 必須 feedback に `auth_failure` を含むため、BOM が `auth_failure` を持つと欠落 `[UI][ERROR]` が消える) で確認済。AI が新 RULE E を踏襲するかの再 run 検証は次サイクル。
+  - **F-R2-D (✅ 解決: 新 kind 不要)**: 当初「セキュリティ判断が散る」としたが dry-run 3/4 + BOM 精査で **who-may は `domain_decision` に一貫着地** (情報開示も policy なら domain) と判明 (§5.2 NOTE / §8.3)。決定的側 (D-deterministic) は `Forbidden` baseline + RULE F の認可 precond 被覆で解消。**canonical 04 の kind 追加は却下、7 種で足りる** (unconfounded round で決着、§8.3)。
+  - **F-R2-E (仮説反証)**: §7.2-b 診断接頭辞は全論点を収容 — 真のギャップは接頭辞でなく decision taxonomy (F-R2-D) と archetype library (F-R2-B)。
+- **収束**: finding は 2 クラスタ (blueprint 実装状況の明示=R1 / UI・taxonomy のドメイン被覆=R2) にきれいに収束。前者は本書内で解消済、後者は §8.2 で本体側を枯らした。
+
+### 8.2 dry-run 3 + 本体側 finding の枯らし (2026-05-31)
+
+本体側 finding (F-R2-B archetype library / F-R2-D decision taxonomy) を、認可・複数画面が豊富な新ドメイン (チーム文書共有・権限管理) で 2 点目検証し (`../../../experiments/operating-model-dryrun-2/`、`DESIGN.md` 同梱)、**canonical 変更前に敵対的レビュー workflow (`harden-bodyside-design`、4 レンズ→統合)** で設計を硬化した。
+
+- **dry-run 3 実測** (独立 subagent、2 ファイルのみ): GATE FAIL / 22 concerns (ERROR 12 + INCONCLUSIVE 10)。両 finding が **2 ドメイン目で構造的に再現** (認可 precond 7 件 INCONCLUSIVE / 3 画面 archetype 不在 / 全ロール語彙の不一致)。新たな失敗様式の連鎖なし=収束方向。
+- **敵対的レビューが過剰構築を是正** (canonical 04 を変更する前にレビューした価値):
+  - **D-deterministic (✅ adopt)**: 認可 precond の INCONCLUSIVE は checker 不足でなく **BOM が既存の `precondition_coverage` を使わなかった**だけ。プレフィックス自動マップ案は silent-pass で分界点違反のため却下。**checker は不変**、extractor-spec RULE F に「認可基準が prose 確定なら `precondition_coverage:{<precond>:[Forbidden]}` 宣言 + UC に `Forbidden`、未確定なら捏造せず INCONCLUSIVE 維持」を追加、RULE A baseline に `Forbidden` 追加。injection 実験で実証 (宣言済 UC=PASS / 未確定 UC=ERROR で正しく停止)。
+  - **B-library (✅ adopt-modified)**: `form` archetype のみ追加 (view/dialog は defer)。§4.1 NOTE。
+  - **B-rolevocab (✅ adopt-modified)**: 正規化は AI 側 (RULE E) のみ、checker は canonical のみ受理 (F-R2-C マスク回避)。§4.1 NOTE。
+  - **D-taxonomy (defer → §8.3 で決着)**: §5.2 NOTE 訂正。canonical 04 は不変。当初 defer、§8.3 の unconfounded round で「新 kind 不要」に決着。
+- **回帰**: good GRID PASS / dry-run 1-3 FAIL / cross-cap PASS / dynamic exit 1 / `form` ユニットテスト OK。tool 変更は `checker.py` の `form` 1 エントリ追加のみ + extractor-spec (RULE A/E/F)。
+
+### 8.3 dry-run 4 — unconfounded round で D-taxonomy を決着 (2026-05-31)
+
+dry-run 2/3 は単一執筆者 (taxonomy 認識あり) が prose と答えを書いた交絡を含むため、敵対的レビューの falsifier に従い **執筆交絡を除いた追加ラウンド**を回した (`../../../experiments/operating-model-dryrun-3/`、`PREREGISTER.md` に falsifier を**事前登録**)。
+
+- **手順**: 独立 agent A が **7 種 taxonomy・本研究を伏せて** 自然な業務要求 prose を執筆 (ドメインは agent が選択 = 備品貸出管理)。独立 agent B が更新版 extractor-spec で lift。執筆者が `decision_ownership` を直接精査 (答えキーなし)。
+- **falsifier 判定 = CONFOUND 確認 (新 kind 不要)**: 認可 (総務専有 R-03=human-confirmed / 承認要否 R-01=proposal) が **一貫して `domain_decision` に着地**。未確定の認可基準は `precondition_coverage` 未宣言で proposal-ERROR/INCONCLUSIVE として human へ差し戻り (所有者なしで沈黙しない)。**情報開示 (R-05 可視範囲) も `domain_decision`+`rendering_decision` に収まり owner 無しにならなかった** — dry-run 2/3 の「owner 無しで散る」は執筆交絡の人工物と確定。
+- **結論**: **`authorization_decision`/`disclosure_decision` の canonical 04 追加は却下。7 種で足りる。** 残る実観測は `domain_decision` の過積載 → 必要なら非 canonical な security/authz 監査タグで対応 (§5.2 NOTE)。
+- **副次の確証**: D-deterministic (RULE F) を独立データで end-to-end 検証 (確定認可=`precondition_coverage` 宣言→PASS / 未確定認可=未宣言→INCONCLUSIVE)。`form` archetype も独立データで作動。軽微 finding: extractor が flow sequence に `?` を出しパース不能 → §8 自己チェックに YAML 妥当性項目を追加。
+- **収束**: F-R2-D 決着。**本体側 finding (B/D) はすべて枯れた** — B-library(form)/B-rolevocab/D-deterministic は実装+実証、D-taxonomy は 3 ドメイン+unconfounded で「新 kind 不要」に決着。**canonical 01-10 は不変のまま**。
 
 ---
 
