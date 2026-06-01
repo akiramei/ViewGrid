@@ -13,6 +13,7 @@
 2. **だが各 rule に 5 欄を撒くのは over-build** (F-P9 が「BOM 全面格上げ」を明確に否定)。提案は **`generation_overlay` という opt-in ブロック** = 「再生成対象に選んだ型/サービスにだけ」付ける薄い上載せ層。監査地図としての as-built BOM 本体は不変に保つ。
 3. **新 finding (d-3 固有)**: 生成仕様には **provenance 軸 `deliberate | as-built-incidental | unresolved`** が要る。F-P10 の丸めギャップ (実装 ToEven / 生成 AwayFromZero) は **誰も選んでいない `Math.Round` 既定の偶発挙動**であり、忠実に as-built を書き写すと「偶然の銀行家丸め」を生成仕様として固定してしまう。provenance タグが **不可視の事故を可視の決定点へ昇格**させる = authoring 層の「AI は意味を所有しない / 未決定は捏造せず surface」原則の生成側への適用。**`as-built-incidental` の権威はモード依存** — as-built 再現モードでは権威 (偶発も忠実再現してよい) だが、**恒久 generation 契約モードでは非権威で block**。恒久契約にするには `deliberate` (人間 sign-off) へ昇格するか、決められないなら `unresolved` として block する (= 採用可能な確定契約は `deliberate` のみ。`unresolved` は block 状態であって契約ではない)。これにより「偶発を確定入力として凍結」を防ぐ (§4.1 で gating 定義。Codex review 反映)。
 4. **検証経路 (主張は in-range に限定)**: スキーマが gap を閉じる証明は「丸めモードを `vo_method_contract` に明記 → 再生成が ToEven に収束するか」(= F-P11、別 go-ahead)。**収束は *oracle が踏む in-range 入力に限った等価* であって全域等価ではない**: F-P10 の発散は丸めだけでなく **負の width/height (無効寸法) でも起きる** — 実コードは `Math.Clamp(round, 0, width<0)` が throw、生成物は自前 Clamp が `max<min` を黙って正規化して値を返す。これは oracle が正の寸法しか使わないため隠れていた **第 2 の coverage 盲点**であり、「oracle 盲点が発散を隠す」という本提案の中心テーゼをむしろ補強する (§6)。
+5. **二層分離 (PV-2 で得た拡張、§9)**: 生成仕様は **`generation_overlay` (生成入力 = 意味仕様) と `generation_gate` (受入検査 = style/compilation/oracle) の二層**に分かれる。crop は *silent な数値* gap で overlay 補填を要したが、2 例目の PlacementValidator (PV-2) の gap は *loud な style/analyzer* 違反 (file-scoped ns / CA1510 / 重複 using) で、overlay で人間が言語化するより **gate が機械的に担保**する領域だった。**意味 = overlay (oracle 被覆で収束) / style = gate (analyzer・formatter が担保)** という 2 種の安全網が Pattern 1 にはある。
 
 ---
 
@@ -284,6 +285,7 @@ services:
 - **新 finding 1**: 生成仕様には provenance 軸 (`deliberate/as-built-incidental/unresolved`) が必須。偶発挙動 (丸め ToEven) を可視の決定点へ昇格させる。authoring 層の provenance 原則の生成側移植。
 - **新 finding 2 (gating、Codex review で硬化)**: provenance タグだけでは不十分で、**生成モード (as-built 再現 / 恒久契約) ごとの権威**を定義しないと偶発を凍結する。`as-built-incidental` は再現モードでのみ権威、恒久契約モードでは block (deliberate/unresolved へ昇格必須) = PROV ゲートの生成側移植 (§4.1)。
 - **新 finding 3 (第 2 の coverage 盲点、Codex review で同定)**: F-P10 の発散は丸めだけでなく **無効寸法 (負の width/height) でも起きる** (実=throw / 生成=正規化)。oracle が正寸法しか踏まないため隠れていた。→ 収束主張は **in-range 等価に限定**され、全域 conformance には precondition 明文化か挙動決定 (D2) が要る。「oracle 盲点が発散を隠す」テーゼ (F-P5/F-P6 系) を crop でも再確認。
+- **新 finding 4 (overlay/gate 二層分離、PV-2=2 例目 PlacementValidator で発見、§9)**: 生成仕様は **生成入力 (`generation_overlay` = 意味仕様) と受入検査 (`generation_gate` = style/compilation/oracle) の二層**に分かれる。crop の本質 gap が *silent な数値発散* で overlay 補填を要したのに対し、PV-2 の gap は *loud な style/analyzer 違反* (IDE0161/CA1510/IDE0005) で **analyzer gate が build 時に決定的に捕捉**した。→ style は overlay で言語化せず gate が機械担保し、§3.4 の oracle も *生成入力* でなく *受入検査* = gate 側へ概念再配置。「意味=overlay / style=gate」が 2 種の安全網。
 - crop resolver の完全な worked example (インライン YAML)。
 - 検証経路と採否トレードオフ (推奨 B = 対象限定注入、2 例目後) を明示。
 
@@ -294,5 +296,97 @@ services:
 - midpoint property test / C# conformance harness (defer 中の既知ギャップ)。
 - 丸めモードの deliberate 化 (= D2、実コード挙動を変えうる人間決定)。
 
-**next 候補**: (i) F-P11 = enriched spec で再生成し ToEven 収束を反証可能に実証 / (ii) 2 例目 PlacementValidator で overlay 形を枯らす / (iii) IO-1 是正に再生成 resolver を唯一源として活用 (generation_scope.io1_caveat が示した跨ぎ drift の解消)。
-</invoke>
+**next 候補の進捗** (d-3 提案後に実施):
+- (i) ✅ **F-P12** = enriched spec で再生成し ToEven 収束を *in-range* で反証可能に実証 (midpoint oracle + 全スイート pass、commit 30ddf86)。
+- (ii) ✅ **PV-2** = 2 例目 PlacementValidator で overlay 形を枯らした → **§9** (overlay/gate の二層分離を発見、commit 20f9202)。
+- (iii) ✅ **IO-1 是正** = crop 優先規則を Core `CropFraction.ResolveEffective` へ単一源化、generation_scope.io1_caveat が示した跨ぎ drift を production で解消 (commit 2bc4aa9)。
+- 残: D1 (overlay の実 BOM 注入)、D2a/D2b (丸め・無効寸法の deliberate 化)、IO-3 (Fork が Regions 落とす) の anchor 化。
+
+---
+
+## 9. PV-2 (PlacementValidator) による検証 — overlay / gate の二層分離 (新 finding 4)
+
+> 実施 2026-06-01 (commit 20f9202)。d-3 next 候補 (ii)「2 例目で overlay 形を枯らす」を実施。
+> 詳細: `placementvalidator-{micro-pilot-plan,spec,micro-pilot-RESULT}.md` + `generated/PlacementValidator.gen.cs`。
+
+### 9.0 なぜ 2 例目が必要だったか
+§7 D1 は「実 BOM 注入は **2 例目で overlay 形が安定することを確認してから**。1 例ではスキーマが crop に過適合する恐れ」とした。PV-2 = `PlacementValidator` (幾何境界 + overlap/conflict + self-exclusion + 判定順序 + 結果オブジェクト error channel + 自己検証 VO 入力) は crop (値変換 + 優先 + 丸め + plain-data VO) と **異質な系統**で、過適合チェックの対象として適切。
+
+### 9.1 意味次元では overlay が汎化した (好結果)
+blind 生成 (独立生成器・tool use 0 回 = リポジトリ未参照) → 実 src へ swap → analyzers/style/warnings off で build+test:
+- **Core 186 + Application 466/1skip すべて pass** = 判定順序 (null→throw > 非正grid > 上限境界 > overlap > Valid) / self-exclusion / **conflict 同定 (反復順で先)** / row-major まで意味一致。
+- **crop と違い silent な数値発散は皆無** — 整数セル演算で丸めが無く、F-P10 の killer gap (`ToPixelBbox` の midpoint) に相当するものがこの幾何コアには存在しない。
+- → `behavior_contract` (判定順序 precedence) / `error_channel` (結果オブジェクト) / `ctor_guard` (自己検証 VO 入力) / `vo_method_contract` (OccupiedCells row-major) という overlay の欄は **crop の数値系から validator の幾何系へそのまま汎化**した。過適合は確認されず → D1 の前提条件 (2 例目で安定) を満たす。
+
+### 9.2 だが新しい gap が *別の場所* に出た — style/analyzer 契約
+意味は正しいのに、生 artifact は **本番構成 (analyzers ON = 実 CI) で build 失敗**する。原因は 3 つの style/analyzer 違反:
+
+| 違反 | 生成物 | 本番 (実装) | gate の出所 |
+| --- | --- | --- | --- |
+| **IDE0161** | block namespace `namespace X { }` | file-scoped `namespace X;` | `.editorconfig` `csharp_style_namespace_declarations = file_scoped:warning` → `TreatWarningsAsErrors` で error |
+| **CA1510** | `throw new ArgumentNullException(nameof(x))` | `ArgumentNullException.ThrowIfNull(x)` | `AnalysisLevel = latest-recommended` |
+| **IDE0005 / CS8019** | 冗長な file `using System.Linq;` | global using (`Directory.Build.props`) のみ | `ImplicitUsings` + `EnforceCodeStyleInBuild` |
+
+**crop の丸めギャップとの本質的対比** (= PV-2 の核心発見):
+
+| 軸 | crop (F-P10) の gap | PV-2 の gap |
+| --- | --- | --- |
+| 種類 | **silent** な数値発散 (丸め ToEven vs AwayFromZero) | **loud** な style/analyzer 違反 (ns / CA1510 / using) |
+| 検出 | oracle が踏まないと隠れる (coverage 盲点。swap が green だった) | analyzer gate が build 時に **必ず** 捕捉 (すり抜け不能) |
+| 閉じ方 | overlay に意味次元を補填 (`vo_method_contract.rounding`) | gate (analyzer・formatter) が機械的に正規化 |
+| 仕様の所在 | 生成 **入力** (overlay) で記述しないと発散 | 生成 **受入検査** (gate) が担保すれば足る |
+| provenance | `as-built-incidental` (誰も決めていない `Math.Round` 既定) | 大半 `deliberate` (`.editorconfig`/`Directory.Build.props` で human が明示済) |
+
+### 9.3 二層分離 — overlay は生成入力、gate は受入検査 (新 finding 4)
+PV-2 が示したのは、生成仕様には **役割の異なる 2 層** があるという構造:
+
+- **`generation_overlay` = 生成入力 (what to build)**: 意味・挙動・境界・error channel・ctor policy・numeric 契約。生成器がこれを *読んで* コードを書く。crop の丸めのように **oracle が踏まない意味細部はここで補填しないと silent に発散**する (§4 の provenance 規律が効くのもこの層)。
+- **`generation_gate` = 受入検査 (what must pass)**: style/format/analyzer 適合・コンパイル成立・oracle 通過。生成器の出力を *機械的に検査* する。style は overlay で人間が言語化するより gate で機械正規化する方が確実 — **意味と違い oracle 盲点が無く loud に落ちる**から。
+
+**なぜ混ぜないか**: 意味 (人間が言語化し provenance を付ける対象) と機械契約 (formatter/analyzer が自動判定する対象) を overlay に混在させると、読み手が「これは生成器が解釈すべき意味か / gate が機械適用する規約か」を区別できず負荷が増える。工業的にも自然な分離 = **overlay は設計入力 / gate は受入試験 (acceptance test)**。
+
+### 9.4 `generation_gate` スキーマ (追加提案)
+```yaml
+generation_gate:                 # 生成物の受入検査。overlay (生成入力) と対をなす
+  style_contract:
+    namespace: file-scoped                              # IDE0161
+    null_guard: "ArgumentNullException.ThrowIfNull"     # CA1510
+    usings: "global usings (Directory.Build.props) に依存。file 内の重複/未使用 using 禁止"  # IDE0005/CS8019
+    enforcement: gate            # ★ 人間が overlay に書くのでなく、機械が出力へ適用/検査
+    tools: [ "dotnet format", "analyzers (AnalysisLevel: latest-recommended)" ]
+    treat_warnings_as_errors: true
+    provenance: deliberate       # .editorconfig / Directory.Build.props で human が明示設定済 (§9.5)
+  compilation_contract:
+    must: "本番構成 (analyzers ON) で build 成功 — analyzers-off は意味等価の *分離観測* 専用"
+  oracle_contract:
+    must: "関連 oracle スイート (Core/Application) が pass"
+    # ← §3.4 の oracle_tests の *合否判定* はここ。overlay 側には coverage_gaps の自己申告のみ残す (§9.6)
+```
+
+対応する overlay 側 (PlacementValidator の意味仕様。`placementvalidator-spec.md` を凝縮):
+```yaml
+generation_overlay:
+  semantic_contract:             # ← §3 の各欄 (vo_method_contract/error_channel/ctor_guard/behavior_contract) を束ねる名 (P4: 再命名は presentational、意味不変)
+    behavior_contract:
+      check_order: "null→throw > 非正grid→OOB > 上限境界→OOB > overlap(exclude適用)→Conflict > Valid"
+      bounds: "上限のみ。下限は CellPosition 自己検証 VO が保証"
+      self_exclusion: "excludePlacementId は overlap 走査のみスキップ。境界に無影響"
+      conflict_identity: { rule: "existingPlacements 反復順で最初に重複した既存の Id", provenance: as-built-incidental }  # D 候補
+    error_channel: { result: "PlacementValidationResult (結果オブジェクト)", precondition: "existing null→ArgumentNullException", never: "ErrorOr/例外で結果失敗を表さない" }
+    vo_method_contract:
+      - { method: OccupiedCells, semantics: "row-major (dy外/dx内, origin.X+dx, origin.Y+dy)", provenance: deliberate }
+```
+
+### 9.5 なぜ style は gate で機械担保できるのか — 既存の human 契約があるから
+crop の丸め (`as-built-incidental`) は **誰も決めていない** `Math.Round` 既定で、§4.1 の gating により恒久契約には人間 sign-off (`deliberate` 昇格) が要った。対して style は **すでに human が決めた契約**が `.editorconfig` / `Directory.Build.props` にリポジトリ内 artifact として存在する (file-scoped:warning, AnalysisLevel, TreatWarningsAsErrors)。→ gate は「project の既存 style 契約を生成物へ適用/検査するだけ」で **新たな決定点を生まない**。これが「意味は決定点を孕む (overlay + provenance) が、style は機械担保で足る (gate)」という非対称の本質。
+
+### 9.6 §3.4 oracle_tests の精緻化 — oracle は gate 側 (no-churn 再解釈)
+PV-2 は §3.4 の `oracle_tests` の位置づけを精緻化する: oracle は生成器が *読む入力* ではなく、生成物を *検査する受入条件* = 概念的に **gate 側 (`oracle_contract`)**。P4 (no-churn) を守るため §3.4 を全面移動はせず、**役割の再解釈**に留める:
+- `generation_overlay` に残すのは `coverage_gaps` の *自己申告* (どの意味細部が oracle 未固定か = overlay で補填すべき箇所のヒント。例: crop の midpoint/無効寸法)。
+- 実際の *合否判定* (テスト実行) は `generation_gate.oracle_contract`。
+- これで「overlay = 何を作るかの入力 / gate = 何を通すべきかの検査」の役割が一貫する。
+
+### 9.7 PV-2 が D1 (実 BOM 注入) に与える含意
+- overlay 形は crop → validator で **安定** (過適合せず汎化) → §7 D1 の「2 例目で形を枯らす」前提は満たされた。**ただし** PV-2 は新たに `generation_gate` 層を要求するので、D1 の注入対象は overlay 単独でなく **overlay + gate の対**になる。
+- gate の中身は project 横断 (style は全 BOM 共通の `.editorconfig`/props)。→ gate は各 BOM の overlay に重複コピーせず、**project レベルで 1 つ宣言し overlay から参照**するのが over-build 回避 (§3 の「rule が既に持つ意味は overlay が参照」の原則を style 契約にも適用)。
+- 新たな人間決定点 (D 候補): PlacementValidator の **conflict 同定 (反復順で先) を `as-built-incidental` のまま再現するか `deliberate` 化するか** (crop の D2a/D2b と同型。反復順依存は偶発で、min-Guid 等の別規則を *選ぶ* 余地がある)。
