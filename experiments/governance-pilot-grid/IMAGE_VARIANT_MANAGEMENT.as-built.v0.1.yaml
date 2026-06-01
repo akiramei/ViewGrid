@@ -47,7 +47,7 @@ sources:
       - src/ViewGrid.Application/UseCases/UpdateImageCopyUseCase.cs     # ★ 統合更新 (sample の per-field UC-09..15 を 1 本に。ID-2)
       - src/ViewGrid.Application/UseCases/ImportImageUseCase.cs         # Asset + 既定 Copy 生成。hash 重複排除。既定 ScalingMode=設定追従 (ID-7)
       - src/ViewGrid.Application/UseCases/DeleteImageAssetUseCase.cs    # asset + copies(cascade) + file + thumbnail
-      - src/ViewGrid.Application/UseCases/ForkPlacementVariantUseCase.cs # GRID と跨ぐ。Clone は Regions を落とす (ID-8/IO-3)
+      - src/ViewGrid.Application/UseCases/ForkPlacementVariantUseCase.cs # GRID と跨ぐ。Clone は Regions も複製 (ID-8/IO-3 是正済 2026-06-01)
     services:   # 実効クロップ解決の所在
       - src/ViewGrid.Core/Services/IImageCropResolver.cs       # 規則宣言 (ManualCrop 排他優先→AutoCrop→null)
       - src/ViewGrid.Application/Services/ImageCropResolver.cs # ★ 権威実装。確定値 + GRID プレビュー + Fit が使う
@@ -278,10 +278,16 @@ audit_findings:
     where: GridWorkspaceViewModel の crop ライブプレビュー push (PushCropLivePreview)
     what: "GRID 側 VM は Draft 値を該当 placement へ渡すだけで crop の意味判断をしない。GRID BOM の O-2 (編集バッファは適切) と同型で overreach ではない。意味の漏れは IMAGE_VARIANT 側 (IO-1) にある。"
   - id: IO-3
-    severity: suspected_bug
+    severity: mitigated   # 2026-06-01 是正済 (旧 suspected_bug)
     where: ForkPlacementVariantUseCase.CloneWithNewId
-    what: "★ Fork のコピー複製が Transform/Scaling/Alignment/OccupySize/AutoCrop/ManualCrop は複製するが **Regions (保護領域) を複製しない**。Fork すると保護領域が静かに落ちる。"
-    guard: "Fork 変更時に Regions の複製有無を意識する。保護領域を持つバリアントを Fork すると消える as-built 挙動。"
+    what: "★ Fork のコピー複製が Transform/Scaling/Alignment/OccupySize/AutoCrop/ManualCrop は複製するが **Regions (保護領域) を複製しない** = Fork すると保護領域が静かに落ちる、が as-built バグだった。"
+    resolution: >
+      ✅ 2026-06-01 是正。CloneWithNewId が Regions も複製するようにした (新ヘルパー CloneRegions)。
+      各 Region は新 Id + 新 ImageCopyId の独立インスタンス (source と Id/FK/インスタンスを共有しない=片方の編集が漏れない)、
+      Rect/FillMode/FillColor/Offset/Rotation/Flip/SortOrder は引き継ぐ。AddAsync が子テーブルへ永続化し、Command の
+      redo は snapshot 再 INSERT なので region Id も undo/redo で安定。設計判断: Regions は永続セマンティック状態 (子テーブル)
+      かつ共有特性 (Scaling/Crop/Transform/Alignment/Regions) であり、Fork の doc も「全特性保持」と明言 → 継承が正しい。
+    anchor_test: "tests/ViewGrid.Application.Tests/UseCases/ForkPlacementVariantUseCaseTests.cs::Fork_Copies_ProtectedRegions_With_New_Ids_And_Fk (旧挙動で Regions=0 を捕捉=決定的 falsifier、実コード=PASS)。"
   - id: IO-4
     severity: minor
     where: "UpdateImageCopyUseCase の未使用 DI / DeleteImageAssetUseCase の cache 未無効化 / 既定 ScalingMode の二経路不一致"
@@ -302,7 +308,7 @@ boundaries:
       via: ForkPlacementVariantUseCase
       what: "コピー複製 (CloneWithNewId=IMAGE_VARIANT 側) + 配置の CopyId 付け替え (WithCopyId=GRID 側) を手動補償で束ねる (DB tx でない)。"
       cross_check_grid_bom: "GRID as-built BOM の straddles (Fork) と一致。GRID 側は『配置 CopyId 付け替え』、本 BOM 側は『新バリアント生成』を所有。両側一致。"
-      guard: "★ as-built バグ: Clone が Regions を落とす (IO-3)。補償は Add 成功/Update 失敗の窓のみ (Delete 失敗は無視)。"
+      guard: "★ Clone が Regions を落とす as-built バグ (IO-3) は 2026-06-01 是正済 (CloneRegions で複製)。補償は Add 成功/Update 失敗の窓のみ (Delete 失敗は無視) は不変。"
     - capability_pair: [GRID_COMPOSITION, IMAGE_VARIANT_MANAGEMENT]
       via: crop ライブプレビュー (GridWorkspaceViewModel ↔ CopyPropertiesViewModel)
       what: "GRID の VM が IMAGE_VARIANT の VM の Draft(ManualCrop/AutoCrop/EffectiveCropPreview) を読み、EffectiveCropFraction を当該 CopyId の全 PlacementItemViewModel に push。確定値/rollback は ImageCropResolver を権威に通る。"
@@ -361,8 +367,8 @@ as_built_divergences:
     topic: 既定 ScalingMode の解決が二経路で不一致
     as_built: "ImageCopy 生成が 2 経路: CreateLogicalCopyUseCase=ScalingMode.UniformContain ハードコード / ImportImageUseCase=設定追従 (DefaultScalingMode)。同じ『既定バリアント生成』で初期 ScalingMode の源が食い違う。"
   - id: ID-8
-    topic: Fork が Regions を落とす
-    as_built: "ForkPlacementVariantUseCase.CloneWithNewId が保護領域 (Regions) を複製しない。保護領域つきバリアントを Fork すると静かに消える (IO-3)。"
+    topic: Fork が Regions を落とす → 是正済
+    as_built: "ForkPlacementVariantUseCase.CloneWithNewId が保護領域 (Regions) を複製しなかった (Fork で静かに消える、IO-3)。✅ 2026-06-01 是正: CloneRegions で新 Id + 新 ImageCopyId の独立複製を行う (anchor test 固定)。"
   - id: ID-9
     topic: VO は plain data (自己検証しない)
     sample: "Invalid* 失敗理由は『upstream で構築不能 (C-VALUE-SEMANTICS)』= 構築時に弾く前提。UC-05 では到達不能とする。"
@@ -381,7 +387,7 @@ cross_capability_consistency:
   checks:
     - "GRID.does_not_own『画像(バリアント)の意味解釈 = 共有特性(Scaling/Crop/Transform/Alignment/Regions)の生成・適用 (IMAGE_VARIANT)』 ↔ 本 BOM.owns が同特性を所有。境界一致 (gap/overlap なし)。"
     - "GRID.does_not_own『画像同一性・重複検出 (ImageAsset.FileHash)』 ↔ 本 BOM.decision_ownership.image_identity が所有 (IR-02)。一致。"
-    - "Fork straddle: GRID 側=配置 CopyId 付け替え / 本 BOM 側=新バリアント生成。両側で同一 UseCase を別責務として記述。一致 + 共通 finding (Regions 落ち=IO-3) を両側に記録すべき。"
+    - "Fork straddle: GRID 側=配置 CopyId 付け替え / 本 BOM 側=新バリアント生成。両側で同一 UseCase を別責務として記述。一致 + 共通 finding (Regions 落ち=IO-3) を両側に記録 → ★ 2026-06-01 是正済 (IO-1 に続く research→実コード 2 例目: BOM が両側突合で発見した latent bug を production 修正 + anchor test 固定)。"
     - "crop ライブプレビュー straddle: GRID 側 push は overreach でない (GRID O-2 / 本 IO-2)。意味の漏れは本 BOM 側 EffectiveCropPreview (IO-1) だった → ★ 2026-06-01 是正済 (IO-1=mitigated): 優先判定を Core CropFraction.ResolveEffective へ単一源化、EffectiveCropPreview も委譲 (draft 入力・sync 性は保持)。境界の *どちら側に* overreach があるかを両側 BOM で確定し、研究成果 (F-P10/F-P12 の resolver 仕様 pin) を実コード是正へ接続した実例。"
     - "F-P2 候補C (Place が画像アスペクトから占有導出) の越境判定の裏付け: 『画像形状の解釈』は本 BOM.owns (image_identity/shared_property) であり GRID は does_not_own。両側 BOM が揃ったことで、あの越境が *どの Capability の所有を侵したか* が双方向に確定した。"
 
@@ -394,7 +400,7 @@ pilot:
     *単一 Capability では見えにくい drift* が境界の所有分析から浮かび上がった。
   not_yet:
     - 本 BOM を使った保守タスク監査 (GRID の maintenance-task-1/2 相当)
-    - "IO-1 = ✅ 2026-06-01 是正済 (優先判定を Core CropFraction.ResolveEffective へ単一源化 + CropFractionResolveEffectiveTests oracle)。残: IO-3 (Fork が Regions 落とす) の anchor test 化"
+    - "IO-1 = ✅ 2026-06-01 是正済 (優先判定を Core CropFraction.ResolveEffective へ単一源化 + CropFractionResolveEffectiveTests oracle)。IO-3 = ✅ 2026-06-01 是正済 (CloneRegions で Fork が保護領域を複製 + Fork_Copies_ProtectedRegions anchor test)。"
     - RENDERING_EXPORT の as-built BOM (3 つ目。crop 適用の RENDERING 側を固める)
     - ProtectedRegion の詳細 rules 化
-  next_step: "本 BOM の owns/boundaries を GRID BOM と相互参照済。次は (i) IO-1/IO-3 の anchor test 化 か (ii) 本 BOM で IMAGE_VARIANT の保守タスクを監査 (検出・sign-off の再現) か。"
+  next_step: "本 BOM の owns/boundaries を GRID BOM と相互参照済。IO-1/IO-3 とも是正完了。次は (i) 本 BOM で IMAGE_VARIANT の保守タスクを監査 (検出・sign-off の再現) か (ii) RENDERING_EXPORT BOM (3 つ目) か。"

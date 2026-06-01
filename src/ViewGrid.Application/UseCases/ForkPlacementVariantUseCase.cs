@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using ErrorOr;
 using ViewGrid.Application.Localization;
 using ViewGrid.Core.Entities;
@@ -8,7 +9,7 @@ namespace ViewGrid.Application.UseCases;
 /// <summary>
 /// 既存の <see cref="GridPlacement"/> の参照する <see cref="ImageCopy"/> を fork して
 /// その配置だけ独立したバリアントに分岐する。元の <see cref="ImageCopy"/> の全特性
-/// （Transform / ScalingMode / Alignment / OccupySize / AutoCrop / ManualCrop）を
+/// （Transform / ScalingMode / Alignment / OccupySize / AutoCrop / ManualCrop / Regions）を
 /// コピーした新規バリアントを作成し、当該 Placement の <see cref="GridPlacement.CopyId"/>
 /// を新しい Id へ付け替える。
 /// <para>
@@ -65,6 +66,9 @@ public sealed class ForkPlacementVariantUseCase(
     /// <summary>
     /// 元バリアントの全特性を保持したまま、Id / CopyName / 作成日時だけ差し替えた新規 ImageCopy を生成する。
     /// init-only プロパティを含むため <c>with</c> 式は使えず、明示コンストラクトする。
+    /// 保護領域 (<see cref="ImageCopy.Regions"/>) も複製するが、各 Region は新しい Id と新バリアントの
+    /// <see cref="ProtectedRegion.ImageCopyId"/> を持つ独立インスタンスにする (IO-3 是正。
+    /// 旧実装は Regions を落としており、保護領域つきバリアントを Fork すると静かに消えていた)。
     /// </summary>
     internal static ImageCopy CloneWithNewId(ImageCopy source, Guid newId, string newName, DateTimeOffset now) => new()
     {
@@ -79,7 +83,42 @@ public sealed class ForkPlacementVariantUseCase(
         ManualCrop = source.ManualCrop,
         CreatedAt = now,
         UpdatedAt = now,
+        Regions = CloneRegions(source.Regions, newId),
     };
+
+    /// <summary>
+    /// 保護領域を新バリアントへ複製する。各 Region は新しい <see cref="ProtectedRegion.Id"/> と
+    /// 新バリアントの <see cref="ProtectedRegion.ImageCopyId"/> を持つ独立インスタンスにし、source と
+    /// Id / FK / インスタンスを共有しない (片方の編集がもう片方へ漏れない)。Rect / FillMode /
+    /// オフセット / 回転 / 反転 / SortOrder などの内容はそのまま引き継ぐ。
+    /// </summary>
+    internal static ImmutableArray<ProtectedRegion> CloneRegions(
+        ImmutableArray<ProtectedRegion> source,
+        Guid newCopyId)
+    {
+        if (source.IsDefaultOrEmpty)
+            return ImmutableArray<ProtectedRegion>.Empty;
+
+        var builder = ImmutableArray.CreateBuilder<ProtectedRegion>(source.Length);
+        foreach (var r in source)
+        {
+            builder.Add(new ProtectedRegion
+            {
+                Id = Guid.NewGuid(),
+                ImageCopyId = newCopyId,
+                Rect = r.Rect,
+                FillMode = r.FillMode,
+                FillColor = r.FillColor,
+                OffsetXPx = r.OffsetXPx,
+                OffsetYPx = r.OffsetYPx,
+                Rotation = r.Rotation,
+                FlipX = r.FlipX,
+                FlipY = r.FlipY,
+                SortOrder = r.SortOrder,
+            });
+        }
+        return builder.MoveToImmutable();
+    }
 
     /// <summary>
     /// Placement の <see cref="GridPlacement.CopyId"/> を差し替えた複製を作る。
