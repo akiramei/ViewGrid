@@ -1,0 +1,164 @@
+# RENDERING_EXPORT — as-built BOM (v0.1)
+# 実 ViewGrid (.NET/C#/SkiaSharp) の RENDERING_EXPORT Capability を、実コード × manual × sample BOM の
+# 突合で地図化した「現実の意味地図」(status: as-built-draft)。GRID_COMPOSITION / IMAGE_VARIANT_MANAGEMENT の
+# 2 つに続く 3 つ目の Capability。F-P14 (2026-06-01)。
+#
+# ★ 本 BOM 作成時に F-P13 (工程管理層 v0.1 = change-classification-and-gates.md) の分類を実運用した。
+#    各 finding の F-P13 分類は PILOT-RESULT.md を参照。
+#
+# sample BOM (docs/capability-bom-audit/samples/rendering-export/21-rendering-export.yaml) は
+# **scope: focused = consumer read 面のみ** (PhotoBoard/Normal・実ファイル出力は対象外)。
+# as-built は **full pipeline** (Flat + PhotoBoard + TrimMode + 実 PNG + file 出力) なので、
+# 本 BOM は sample より広い。両者の差は as_built_divergences (RD-*) に記録。
+
+capability:
+  id: RENDERING_EXPORT
+  name_en: Rendering Export
+  role: consumer            # GRID と IMAGE_VARIANT の両方を read し、最終 PNG に変換する消費側 (sample と一致)
+  scope: full               # ★ sample=focused に対し as-built は full pipeline (RD-1)
+  layers:
+    core: [ "Core/Services/IGridImageRenderer.cs (PlacementRenderItem/IGridImageRenderer)", "Core/Entities/{RenderOptions,OutputMode,TrimMode,PhotoBoardStyle,PhotoBoardStyleCoefficients}", "Core/UseCases/PlacementGeometry.cs", "Core/Geometry/{AutoCropCalculator,PhotoBoardLayout,RegionGeometry}" ]
+    application: [ "Application/UseCases/{RenderGridUseCase,ExportGridUseCase}.cs", "Application/ViewModels/GridOutputViewModel.cs" ]
+    infrastructure: [ "Infrastructure/Imaging/SkiaGridImageRenderer.cs (★ 中核)", "Infrastructure/Imaging/{SkiaPixelHelper,AutoCropCache,SkiaAutoCropBboxResolver}.cs" ]
+    presentation: [ "Presentation/Views/PreviewWindow.axaml.cs" ]
+
+owns:
+  - "最終 PNG への合成パイプライン: Flat (Normal) と PhotoBoard の 2 モード (SkiaGridImageRenderer)。"
+  - "描画順 = PlacementOrder 昇順 (R-01。renderer が OrderBy で適用、両モード)。"
+  - "ScalingMode の画像→セル写像 (None/UniformContain[/ShrinkOnly/EnlargeOnly]/UniformCover/Fill の src/dst 矩形計算 = ComputeSrcDstRects/ComputeAxis)。"
+  - "Alignment アンカー適用 (単一アンカーで位置決め+トリミングを表現、CSS background-position 流儀 = ToAnchor1D/ComputeAxis)。"
+  - "crop/transform を適用した実ピクセル切り出し: ManualCrop/AutoCrop の bbox を原画像→回転後→src 矩形へ (ComputeCropSourceRect/ApplyTransform)。**優先判定そのものは Core に委譲 (does_not_own)**。"
+  - "ProtectedRegion の描画 (親側塗り FillMode + asset 切り出し描画、SortOrder 昇順 = PaintProtectedRegions)。★ IO-3 是正で Fork 後も Regions が複製されるため、ここが描画対象になる。"
+  - "TrimMode による最終切り出し (None/OccupiedCells/DrawnPixels = EncodeWithTrim/ComputeDrawnPixelsRect)。"
+  - "PhotoBoard 合成 (セル切り出し→フレーム/影/ジッター/回転→再合成、決定論シード = RenderPhotoBoard/ComposeWithFrame)。"
+  - "PNG エンコード (RGBA8888 premul、lossless quality=100、空き→1×1 透過フォールバック = EncodePng)。"
+  - "ピクセル丸め/clamp/整数 snap 方針 (描画 sub-pixel snap・region snap・α走査範囲。★ 方針が分散=RO-2)。"
+  - "プレビュー/エクスポートの実行オプション選択 (OutputMode/TrimMode/PhotoBoardStyle/Intensity、session-only 非永続 = GridOutputViewModel)。"
+
+does_not_own:   # read / 委譲のみ。RENDERING は再判定しない
+  - "crop 優先規則 (R-02 ManualCrop>AutoCrop>full→null): **Core `CropFraction.ResolveEffective` に委譲 (唯一源、IO-1 是正)**。renderer は 2 サイト (ComputeCropSourceRect:819 / ComputeRenderedGeometryRect:278) で委譲。元宣言は IMAGE_VARIANT R-08。"
+  - "セル→ピクセル幾何 (R-04 weights 比例): **Core `PlacementGeometry` に委譲** (ComputeDestRect/ComputeOccupiedBoundingBox)。RENDERING は呼ぶだけ。"
+  - "矩形の Transform (Flip+回転) 数学: **Core `AutoCropCalculator.TransformRect`** / AutoCrop 走査 `AutoCropCalculator.Compute` (Core 純関数) に委譲。"
+  - "PhotoBoard レイアウト数学: **Core `PhotoBoardLayout`** に委譲 (ジッター/回転/マージン計算)。renderer は結果を描画するだけ。"
+  - "placement 妥当性 (境界/重複): **GRID が所有・read only**。RENDERING は再検証しない (PlacementValidator を呼ばない)。"
+  - "copy 設定妥当性 (crop 比率/scaling/transform の値域): **IMAGE_VARIANT が所有・read only** (plain-data VO で値域非検証 = ID-9)。RENDERING は値を信じて描く。"
+
+rules:
+  - { id: R-01, name: RenderOrderFollowsPlacementOrder, kind: invariant, enforced_by: Renderer, statement: "items は PlacementOrder 昇順 (z-order、小さいほど下)。Flat/PhotoBoard 両方で OrderBy。", sample_parity: same }
+  - { id: R-02, name: ManualCropOverridesAutoCrop, kind: policy, enforced_by: "Core CropFraction.ResolveEffective (委譲)", statement: "ManualCrop 排他優先 → AutoCrop → full/none→null。", cross_capability: { declared_in: IMAGE_VARIANT_MANAGEMENT, declared_as: R-08, applied_in: RENDERING_EXPORT, via: "Core 単一源 (IO-1 是正後)" }, sample_parity: "same intent / as-built は Core 委譲" }
+  - { id: R-03, name: UnresolvableCopyHandling, kind: invariant, enforced_by: "Application RenderGridUseCase", statement: "★ as-built: copy/asset が見つからない placement は **NotFound エラー** (RenderGridUseCase:42-47)。", sample_parity: "★ 乖離 (RD-2): sample R-03 は『spec 無しは除外 (エラーでない)』。as-built は errors。" }
+  - { id: R-04, name: PixelRectComputedFromWeights, kind: invariant, enforced_by: "Core PlacementGeometry (委譲)", statement: "セル矩形は col/row weights 比例で canvas 内ピクセル化 (累積境界)。", sample_parity: "same / as-built は Core 委譲 (RENDERING は所有しない)" }
+  # as-built 固有 rule (sample focused に無い = full pipeline 由来)
+  - { id: RR-05, name: TrimModeSemantics, kind: policy, enforced_by: Renderer, statement: "None=全面 / OccupiedCells=占有セル bbox / DrawnPixels=α≥閾値の走査 bbox (占有セル+幾何 rect に clamp、外側へ膨らまない)。空きは 1×1 透過。" }
+  - { id: RR-06, name: TransparentBackground, kind: policy, enforced_by: Renderer, statement: "キャンバスは常に SKColors.Transparent で Clear (Flat/PhotoBoard 共通)。背景色オプションは無い。" }
+  - { id: RR-07, name: RegionPaintOrder, kind: invariant, enforced_by: Renderer, statement: "ProtectedRegion は SortOrder 昇順に『親側塗り→asset 描画』。region 自身の rotation/flip は asset のみ、親側塗りは無視。", cross_capability: { declared_in: IMAGE_VARIANT_MANAGEMENT } }
+  - { id: RR-08, name: DeterministicPhotoBoardSeed, kind: invariant, enforced_by: Renderer, statement: "PhotoBoard のジッターは GridCanvas.Id 由来シードで決定論的 (DeriveSeedFromGridId、GUID 先頭 4 byte LE)。SeedOverride でテスト固定可。" }
+  - { id: RR-09, name: PreviewExportEquivalence, kind: invariant, enforced_by: "Application (構造)", statement: "プレビューと PNG エクスポートは同一 RenderGridUseCase + 同一 BuildRenderOptions を通る (ExportGridUseCase は Render に委譲)。意味規則は完全共有 = 構造的に等価。" }
+
+decision_ownership:
+  rendering_compositing: RENDERING_EXPORT   # 合成/scaling/alignment/trim/photoboard/丸め/透過/PNG (RR-05..09)
+  crop_precedence: "shared/Core (CropFraction.ResolveEffective、IO-1)。元宣言 IMAGE_VARIANT R-08。RENDERING は適用サイトの 1 つ"
+  cell_geometry: "Core (PlacementGeometry、R-04)。RENDERING は read only"
+  placement_validity: GRID_COMPOSITION       # read only、再判定しない
+  copy_setting_validity: IMAGE_VARIANT_MANAGEMENT  # read only、再検証しない
+
+boundaries:
+  depends_on:
+    - { capability: GRID_COMPOSITION, interface: "GridCanvas + GridPlacement (FindByGridIdAsync=PlacementOrder 昇順) を read", access: read_only, cross_check_grid_bom: "GRID.does_not_own『最終出力生成』↔ 本 BOM.owns。一致" }
+    - { capability: IMAGE_VARIANT_MANAGEMENT, interface: "ImageCopy (crop/transform/scaling/alignment/regions) + ImageAsset を read", access: read_only, cross_check: "IMGVAR.depended_on_by に RENDERING あり (R-08 を独立適用→IO-1 で Core 委譲に是正)" }
+    - { capability: "Core geometry", interface: "PlacementGeometry / AutoCropCalculator / PhotoBoardLayout / CropFraction.ResolveEffective (純関数)", access: read_only }
+    - { capability: "Infrastructure Imaging", interface: "SkiaSharp / AutoCropCache / SkiaPixelHelper", access: read_write }
+  straddles:
+    - capability_pair: [IMAGE_VARIANT_MANAGEMENT, RENDERING_EXPORT]
+      via: "crop 優先規則 (R-08 / R-02)"
+      what: "ManualCrop>AutoCrop>null の優先判定。元は IMGVAR 宣言・3+1 サイトで独立実装 (IO-1) → 2026-06-01 Core CropFraction.ResolveEffective へ単一源化。RENDERING は唯一源を呼ぶ 2 サイト (ComputeCropSourceRect/ComputeRenderedGeometryRect)。"
+      cross_check: "IMAGE_VARIANT IO-1=mitigated と一致。RENDERING は『適用』、IMGVAR は『宣言』、Core が『単一源』。3 者整合。"
+      status: aligned   # IO-1 是正後
+    - capability_pair: [IMAGE_VARIANT_MANAGEMENT, RENDERING_EXPORT]
+      via: "ProtectedRegion の描画 (RR-07)"
+      what: "IMGVAR が所有する Regions を RENDERING が描画 (親側塗り+asset)。IO-3 是正で Fork 後も Regions が複製されるため、Fork 由来バリアントも正しく描画される。"
+      cross_check: "IMAGE_VARIANT IO-3=mitigated と一致 (Fork が Regions 継承→RENDERING がそれを描く)。"
+      status: aligned
+    - capability_pair: [GRID_COMPOSITION, RENDERING_EXPORT]
+      via: "セル幾何 (R-04)"
+      what: "weights→pixel のセル矩形計算。Core PlacementGeometry が単一源、GRID も RENDERING も同じ純関数を read。"
+      cross_check: "GRID/RENDERING とも PlacementGeometry に委譲 = 幾何の二重実装なし。"
+      status: aligned
+  depended_on_by: []   # 最終消費者 (出力)。下流 Capability なし
+  forbidden_in_sample:   # sample が禁じた事項と as-built の実態
+    - { rule: "import GRID Placement / IMGVAR ImageCopy (use neutral DTOs)", as_built: "★ 違反 (RD-3): PlacementRenderItem が GridPlacement/ImageCopy を直接保持。neutral DTO 化していない。" }
+    - { rule: "mutate placements/copies", as_built: "遵守 (read only、変更しない)" }
+    - { rule: "re-validate crop values", as_built: "遵守 (値域再検証しない。優先判定のみ Core 委譲)" }
+
+# ──────────────────────────────────────────────────────────────────────
+# overreach / 観測 (RO-*) — RENDERING が持ちすぎ/分散している意味
+# ──────────────────────────────────────────────────────────────────────
+overreach:
+  - id: RO-1
+    severity: to_assess
+    where: "SkiaGridImageRenderer.ComputeSrcDstRects / ComputeAxis (Infra)"
+    what: "ScalingMode (Contain/Cover/Fill) と Alignment アンカーの **意味写像が Infra 層に存在**。型 (ScalingMode/Alignment) は Core/IMGVAR 所有だが、『その値をどう画像→セル矩形に効かせるか』の規則は Skia renderer 内。"
+    assessment: "Skia 描画と密結合する部分は Infra で自然だが、ScalingMode→scale 係数の決定 (fitContain/fitCover の選択) はドメイン規則で、theoretically Core に純関数化できる。GRID/IMGVAR と違い RENDERING には『意味を置く Core 層』が薄い (geometry は Core だが scaling/alignment 適用は Infra)。"
+    classification: "F-P13: 観測 (将来の drift_elimination 候補。現状は単一実装なので drift ではない)"
+  - id: RO-2
+    severity: suspected
+    where: "SkiaGridImageRenderer の丸め: ComputeAxis (AwayFromZero) / SnapRectToIntegerPixels (Math.Round 既定=ToEven) / ToPixelSearchRect (Ceiling) / ToPixelBbox (ToEven, D2a)"
+    what: "★ ピクセル丸め方針が **4 箇所で不統一** (AwayFromZero / ToEven / Ceiling)。各々に局所的理由 (ComputeAxis は半透明行回避で AwayFromZero、SnapRect は asset と親塗りの coverage 一致) はあるが、**rendering_numeric_policy として一元化されていない**。"
+    risk: "AI/Codex が『一貫性のため』にどれかの Math.Round を別モードへ変えると、sub-pixel 境界が silent にずれ、golden image が無いと気付けない (crop の midpoint gap と同型の盲点)。"
+    classification: "F-P13: deliberate_decision 候補 (RDD-3) + v0.2 gate 候補 (rendering_numeric_policy / visual oracle)"
+
+# ──────────────────────────────────────────────────────────────────────
+# as_built_divergences (RD-*) — sample BOM / manual と実コードのズレ
+# ──────────────────────────────────────────────────────────────────────
+as_built_divergences:
+  - { id: RD-1, vs: sample, topic: scope, what: "sample=focused (consumer read 面のみ、PhotoBoard/Normal/file 出力は対象外)。as-built=full pipeline。", severity: expected, note: "sample が意図的に絞った抽象。as-built が広いのは設計どおり。" }
+  - { id: RD-2, vs: sample, topic: "R-03 unresolvable copy", what: "sample『spec 無し placement は除外 (エラーでない)』 vs as-built『copy/asset null は NotFound エラー』(RenderGridUseCase:42-47)。", severity: behavioral, classification: "F-P13: deliberate_decision 候補 (除外 vs エラーは設計判断)。要 human。" }
+  - { id: RD-3, vs: sample, topic: "neutral DTO boundary", what: "sample『Placement/ImageCopy を import せず neutral DTO』 vs as-built『PlacementRenderItem が GridPlacement/ImageCopy を直接保持』。", severity: design, note: "実コードは Core entity 共有のクリーンアーキで、sample の port/DTO 抽象は未採用。drift でなく設計選択だが sample との不一致は明記。" }
+  - { id: RD-4, vs: manual, topic: "PhotoBoard スタイル数", what: "★ manual §6.16.2『10 種類のスタイル』 vs 実コード PhotoBoardStyle enum = **3 種** (Natural/Rough/Scattered)。", severity: manual_drift, classification: "F-P13: doc-drift (manual 過大記載)。manual 修正候補。" }
+  - { id: RD-5, vs: manual, topic: "背景色", what: "manual §6.17.2『全面 … 透過 or 背景色』 vs 実コードは常に透過 (RR-06、背景色オプション無し)。", severity: manual_drift, classification: "F-P13: doc-drift (軽微)。" }
+  - { id: RD-6, vs: manual, topic: "DrawnPixels の α 閾値", what: "manual §6.19.2/§6.17.3『α>0』 vs 実コード DrawnPixelAlphaThreshold=8 (≈3%、AA フチ除外)。§6.17.3 は『AA フチも含む』と書くが実際は閾値で除外気味。", severity: manual_drift, classification: "F-P13: doc-drift + deliberate_decision 候補 (RDD-2)。" }
+
+# ──────────────────────────────────────────────────────────────────────
+# deliberate_decisions 候補 (RDD-*) — RENDERING 固有。★ 未裁定 = human_decision 待ち (F-P13)
+# IO-1/IO-3 と違い production バグでなく「現挙動が意図か」を人間が固定すべき点。D2a/D2b と同じ扱い。
+# ──────────────────────────────────────────────────────────────────────
+deliberate_decisions_pending:
+  - { id: RDD-1, subject: "透過背景 (RR-06)", current_behavior: "常に Transparent Clear、背景色オプション無し", provenance: deliberate-likely, note: "manual §6.19.2 RGBA/α 保持と整合。背景色機能を足すかは UX 判断。" }
+  - { id: RDD-2, subject: "DrawnPixelAlphaThreshold=8", current_behavior: "α≥8 を『描画あり』とみなし trim (コメントに ~3% 経験値の根拠あり)", provenance: deliberate-documented, note: "manual は α>0 と書く (RD-6)。閾値を deliberate 化 or manual 修正。" }
+  - { id: RDD-3, subject: "ピクセル丸め方針 (RO-2)", current_behavior: "ComputeAxis=AwayFromZero / SnapRect=ToEven / SearchRect=Ceiling", provenance: as-built-incidental, note: "★ 最重要。各局所理由はあるが一元方針が無い。D2a (ToEven) と整合させるか、rendering_numeric_policy として明文化するか要 human。" }
+  - { id: RDD-4, subject: "DPI を埋め込まない", current_behavior: "PNG に DPI/pHYs チャンク無し = pixel 実寸出力のみ", provenance: deliberate-likely, note: "manual §6.19.2 も解像度=実寸でDPI 非言及で整合。印刷用途で DPI 要求が出たら再検討。" }
+  - { id: RDD-5, subject: "空き出力の 1×1 透過フォールバック", current_behavior: "trim 結果が 0×0 なら 1×1 透過 PNG (ファイル破損回避)", provenance: deliberate-documented }
+  - { id: RDD-6, subject: "PNG quality=100 / lossless 固定", current_behavior: "Encode(Png, 100)、圧縮率/形式オプション無し", provenance: deliberate-likely }
+  - { id: RD-2-as-decision, subject: "未解決 copy = エラー or 除外 (RD-2)", current_behavior: "NotFound エラー", provenance: as-built-incidental, note: "sample は除外。エラーにするか除外するかは UX/契約判断。要 human。" }
+
+# ──────────────────────────────────────────────────────────────────────
+# cross_capability_consistency — 3 つ目で三角形が閉じる
+# ──────────────────────────────────────────────────────────────────────
+cross_capability_consistency:
+  with: [ GRID_COMPOSITION.as-built.v0.1.yaml, IMAGE_VARIANT_MANAGEMENT.as-built.v0.1.yaml ]
+  checks:
+    - "GRID.does_not_own『最終出力 (PNG) 生成』↔ 本 BOM.owns。境界一致 (gap/overlap なし)。"
+    - "IMGVAR R-08 (ManualCrop 優先、宣言のみ) ↔ 本 BOM R-02 (適用) ↔ Core CropFraction.ResolveEffective (単一源、IO-1)。3 者整合。**IO-1 是正が RENDERING 側でも正しく使われていることを確認** (renderer の 2 サイトが委譲、独立再実装なし)。"
+    - "IMGVAR IO-3 (Fork が Regions 継承、是正済) ↔ 本 BOM RR-07 (Regions 描画)。Fork 由来バリアントの Regions が描画対象になることを両側で確認。"
+    - "R-04 セル幾何: GRID / IMGVAR (ImageCopy.OccupySize) / RENDERING がいずれも Core PlacementGeometry を単一源とし、幾何の重複実装なし。"
+    - "decision_ownership: placement 妥当性=GRID / copy 設定妥当性=IMGVAR / 合成=RENDERING、で read-only 境界が三角形として閉じた (3 Capability 揃った)。"
+
+# ──────────────────────────────────────────────────────────────────────
+pilot:
+  status: as-built-draft   # 3 つ目の Capability。F-P13 分類を実運用しながら作成
+  value: >
+    GRID/IMGVAR に続く 3 つ目で、Capability 三角形 (配置・画像意味・出力) が閉じた。RENDERING は
+    両者の意味を read して最終 PNG に変換する消費側で、IO-1 (crop 単一源) / IO-3 (Fork Regions) の
+    是正が RENDERING 側で正しく使われていることを両側突合で確認できた。F-P13 の change classification を
+    初めて実運用し、finding を 5 分類に仕分けた (PILOT-RESULT.md)。
+  findings_summary:
+    overreach: [ RO-1 (scaling/alignment が Infra), RO-2 (丸め方針が分散) ]
+    divergences: [ RD-1 scope, RD-2 未解決 copy=エラー, RD-3 neutral DTO 未採用, RD-4 manual 10 vs 実 3 styles, RD-5 背景色, RD-6 α 閾値 ]
+    deliberate_pending: [ RDD-1..6 + RD-2-as-decision ]
+  oracle: "tests/ViewGrid.Application.Tests/Imaging/SkiaGridImageRendererTests.cs (renderer の pixel oracle)"
+  not_yet:
+    - "RO-2 丸め方針の一元化 (rendering_numeric_policy) / visual oracle (golden image / pixel diff) = F-P13 v0.2 gate 候補"
+    - "RDD-* / RD-2 の human 裁定 (deliberate 化)"
+    - "manual drift (RD-4/5/6) の修正"
+    - "PlacementGeometry / PhotoBoardLayout / AutoCropCalculator の内部 rules 化 (本 v0.1 は role のみ把握)"
+  next_step: "PILOT-RESULT.md で F-P13 分類を確定し、v0.2 へ戻す gate (rendering_numeric_policy / visual_oracle / preview_export_equivalence / doc_drift) を抽出。RDD-*/RD-2 は別途 human 裁定。"
