@@ -1,0 +1,385 @@
+# IMAGE_VARIANT_MANAGEMENT — as-built Capability BOM v0.1
+#
+# 目的: パターン2 (保守ガバナンス) pilot の横展開 (候補c)。GRID_COMPOSITION as-built BOM が
+#       does_not_own と宣言した「画像 (バリアント) の意味解釈」を *反対側から* 地図化し、
+#       GRID↔IMAGE_VARIANT の跨ぎ境界 (Fork / crop ライブプレビュー) を両側から張れるようにする。
+#       機械検査用ではなく **監査用の意味地図** (status: as-built-draft)。
+#
+# 突合した 3 ソース:
+#   - prior_bom : docs/capability-bom-audit/samples/image-variant-management/21-image-variant-management.yaml (理想化 v0.1 内容 / v0.2 スキーマ)
+#   - code      : 実 C# (.NET10/Avalonia) — 下記 sources.code
+#   - manual    : docs/user-manual/{02-assets,05-shared-properties,06-output}.md
+#
+# 重要: 本 BOM の価値は §as_built_divergences (理想 BOM と実コードのズレ) と §audit_focus に集約される。
+#       特に「実効クロップ解決 (R-08) が *単一の権威でなく複数箇所に分散* している」事実が核心。
+
+capability:
+  id: IMAGE_VARIANT_MANAGEMENT
+  status: as-built-draft
+  version: v0.1
+  name: { ja: 画像派生物管理, en: Image Variant Management }
+  purpose: >
+    1 枚の元画像 (ImageAsset) から設定違いの論理コピー (ImageCopy = バリアント) を生成・編集・問い合わせする。
+    ImageCopy の *共有特性* (Transform/ScalingMode/Alignment/AutoCrop/ManualCrop/ProtectedRegion) の意味的権威。
+    同じバリアントを参照する全配置にこれら特性が反映される。実効クロップ (CropFraction) の解決規則も本層が宣言するが、
+    as-built では適用が複数箇所に分散している (§audit IO-1)。配置 (GridPlacement) と描画 (RENDERING) は所有しない。
+
+sources:
+  code:
+    entities:
+      - src/ViewGrid.Core/Entities/ImageAsset.cs        # 元画像 (hash で同一性、R-02)
+      - src/ViewGrid.Core/Entities/ImageCopy.cs         # ★ バリアント (集約ルート)。共有特性の権威
+      - src/ViewGrid.Core/Entities/ProtectedRegion.cs   # 保護領域 (子テーブル image_copy_regions)
+    value_objects:
+      - src/ViewGrid.Core/Entities/ImageTransform.cs    # (Rotation, FlipX, FlipY) record struct
+      - src/ViewGrid.Core/Entities/ScalingMode.cs       # enum 6 値 (sample は 3)
+      - src/ViewGrid.Core/Entities/{Alignment,AnchorX,AnchorY}.cs   # 単一 anchor (配置位置 兼 crop 窓位置)
+      - src/ViewGrid.Core/Entities/AutoCropSettings.cs  # (TargetColorArgb:uint, Threshold:byte) 永続
+      - src/ViewGrid.Core/Entities/ManualCropFraction.cs # (x,y,w,h) 0-1 比率 永続
+      - src/ViewGrid.Core/Entities/{RegionRectFraction,ProtectedRegionFillMode}.cs
+      - src/ViewGrid.Core/Entities/OccupySize.cs        # 共有 VO (GRID と共通、自己検証する数少ない VO)
+    derived_runtime:   # ★ ImageCopy のフィールドではない。解決の途中/結果の派生型 (非永続)
+      - src/ViewGrid.Core/Entities/CropFraction.cs      # 実効クロップの統合型 (Auto/Manual を統一)
+      - src/ViewGrid.Core/Entities/AutoCropFraction.cs  # AutoCrop 走査結果 (cache 値)
+      - src/ViewGrid.Core/Entities/AutoCropPreset.cs    # UI プリセット enum
+    application_usecases:
+      - src/ViewGrid.Application/UseCases/CreateLogicalCopyUseCase.cs   # 既定 ScalingMode=UniformContain ハードコード (ID-7)
+      - src/ViewGrid.Application/UseCases/UpdateImageCopyUseCase.cs     # ★ 統合更新 (sample の per-field UC-09..15 を 1 本に。ID-2)
+      - src/ViewGrid.Application/UseCases/ImportImageUseCase.cs         # Asset + 既定 Copy 生成。hash 重複排除。既定 ScalingMode=設定追従 (ID-7)
+      - src/ViewGrid.Application/UseCases/DeleteImageAssetUseCase.cs    # asset + copies(cascade) + file + thumbnail
+      - src/ViewGrid.Application/UseCases/ForkPlacementVariantUseCase.cs # GRID と跨ぐ。Clone は Regions を落とす (ID-8/IO-3)
+    services:   # 実効クロップ解決の所在
+      - src/ViewGrid.Core/Services/IImageCropResolver.cs       # 規則宣言 (ManualCrop 排他優先→AutoCrop→null)
+      - src/ViewGrid.Application/Services/ImageCropResolver.cs # ★ 権威実装。確定値 + GRID プレビュー + Fit が使う
+      - src/ViewGrid.Core/Services/IAutoCropBboxResolver.cs
+      - src/ViewGrid.Core/Geometry/AutoCropCalculator.cs       # 純関数 (RGBA 外周走査で bbox)
+      - src/ViewGrid.Infrastructure/Imaging/{SkiaAutoCropBboxResolver,AutoCropCache,SkiaImageColorPicker}.cs  # 画像 I/O は Infra
+    viewmodels:
+      - src/ViewGrid.Application/ViewModels/CopyPropertiesViewModel.cs  # ★ 共有特性編集。EffectiveCropPreview が R-08 を再実装 (IO-1)
+      - src/ViewGrid.Application/ViewModels/VariantManagerViewModel.cs  # バリアント CRUD (最後の 1 個削除で asset cascade)
+      - src/ViewGrid.Application/ViewModels/{CopyItemViewModel,CopyCandidateViewModel,CropMode}.cs
+    history:
+      - src/ViewGrid.Application/History/Commands/{UpdateImageCopy,ForkPlacementVariant}Command.cs
+    persistence:
+      - src/ViewGrid.Infrastructure/Persistence/Configurations/{ImageCopyConfiguration,ProtectedRegionConfiguration}.cs  # 所有しない
+  manual:
+    - docs/user-manual/02-assets.md            # §2.5 バリアント = 設定違いの分身
+    - docs/user-manual/05-shared-properties.md # ★ 共有特性 (全配置に反映) / 適用順序 / §5.13 トリミング (Off/Auto/Manual 排他)
+    - docs/user-manual/06-output.md            # §6.17 TrimMode (出力側切り出し。crop とは別レイヤー)
+  prior_bom:
+    - docs/capability-bom-audit/samples/image-variant-management/21-image-variant-management.yaml
+
+# ────────────────────────────────────────────────────────────────────────
+# intent (マニュアルからの意図。引用・要約)
+# ────────────────────────────────────────────────────────────────────────
+intent:
+  - "バリアント (論理コピー) = 同じアセットを別のトリミング/回転/スケーリング設定で使う『設定違いの分身』 (manual §2.5)。"
+  - "共有特性 = バリアントに紐づき *同じバリアントを参照する全配置に反映* される特性。特性編集タブと配置 Inspector の共有特性 Expander のどちらから編集しても同一バリアントへの書き込みで結果は同じ (manual §5 冒頭)。"
+  - "適用順序: ①トリミング (AutoCrop/ManualCrop で有効領域決定) → ②回転/反転 → ③スケーリング+アライメント → ④保護領域 (manual §5 適用順序)。"
+  - "トリミングは OFF / 自動(単色余白=AutoCrop) / 手動(任意矩形=ManualCrop) の 3 択排他。併用不可。同一バリアントで 2 種クロップが要るなら Fork して別々に (manual §5.13)。"
+  - "AutoCrop は対象色(白/黒/透明/カスタム)の外周余白を許容色差 Threshold(Chebyshev)で自動検出。プレビューサムネに検出矩形を点線表示して調整 (manual §5.13.1)。"
+  - "PixelOffset (ピクセル微調整) と OccupySize は *配置固有* (その配置のみ) であって共有特性ではない (manual §5.11.1 / §4.10.2)。"
+  - "出力側の TrimMode (§6.17 描画ピクセル切り出し) はバリアントの crop とは別レイヤー: crop=画像の有効領域決定、TrimMode=最終キャンバスからの切り出し。"
+
+# ────────────────────────────────────────────────────────────────────────
+# owns / does_not_own (意味境界) — ★ GRID_COMPOSITION の does_not_own と対になる
+# ────────────────────────────────────────────────────────────────────────
+owns:
+  - 元画像 (ImageAsset) の取込・同一性 (FileHash で重複排除)・削除
+  - バリアント (ImageCopy) の生成/削除/改名と *共有特性* の権威:
+      - Transform (Rotation 90°単位 / FlipX / FlipY)
+      - ScalingMode (画像をセルにどう収めるか)
+      - Alignment (収まり位置 兼 crop 窓位置)
+      - AutoCrop 設定 (TargetColor + Threshold) / ManualCrop 矩形 (0-1 比率)
+      - ProtectedRegion (保護領域、子テーブル)
+      - 既定 OccupySize (= 新規配置時に GridPlacement へ継承される *初期値のみ*。ID-6)
+  - 実効クロップ規則の *宣言* (ManualCrop 排他優先→AutoCrop→null。IImageCropResolver)
+  - 共有特性編集の undo/redo (UpdateImageCopyCommand / ForkPlacementVariantCommand)
+
+does_not_own:
+  - 配置 (GridPlacement) の位置/占有/ピクセル微調整・配置妥当性 (GRID_COMPOSITION)
+  - グリッドへの最終描画・PNG 出力・出力 TrimMode (RENDERING_EXPORT / Presentation の Skia)
+  - 画像ファイルの物理保存形式・パス解決 (IImageStorage / Infrastructure)
+  - EF Core 永続化スキーマ・マイグレーション (Infrastructure.Persistence)
+  - AutoCrop の実画像ピクセル走査そのもの (Infrastructure.Imaging / SkiaSharp。本層は規則と設定値のみ所有、走査は委譲)
+
+# ────────────────────────────────────────────────────────────────────────
+# core_entities (実コードの実体)
+# ────────────────────────────────────────────────────────────────────────
+core_entities:
+  owned:
+    - name: ImageAsset
+      file: Core/Entities/ImageAsset.cs
+      fields: [Id, SourceType, "OriginalFilename?", StoredRelativePath, "Size(PixelSize)", "FileHash(sha256)", FileSizeBytes, MimeType, CreatedAt]
+      invariants: [FileHash で同一性 (重複取込は既存返却=IR-02), Size は PixelSize が正値を保証]
+      note: "エンティティ自身は ctor 検証なし。Size の正値性のみ PixelSize VO が保証。"
+    - name: ImageCopy
+      file: Core/Entities/ImageCopy.cs
+      kind: class (大半 required+init)
+      fields: [Id, AssetId, "CopyName?", Transform, ScalingMode, Alignment, OccupySize,
+               "AutoCropTargetColor:uint?", "AutoCropThreshold:byte?", "AutoCrop(=computed VO, EF Ignore)",
+               "ManualCropX/Y/Width/Height:double?", "ManualCrop(=computed VO, EF Ignore)",
+               "Regions:ImmutableArray<ProtectedRegion>(set, 子テーブル)", CreatedAt, "UpdatedAt(set)",
+               "Characteristics(=computed, Ignore)"]
+      note: >
+        ★ AutoCrop / ManualCrop は「原始 nullable 列が真実 + 集約 VO は computed get/init」設計。
+        「両方揃う時だけ非 null」という all-or-nothing は **getter のパターンマッチでのみ保証** され、
+        DB 列は各々独立 nullable (部分行を schema は弾けない=ID-3)。エンティティ ctor 検証なし。
+    - name: ProtectedRegion
+      file: Core/Entities/ProtectedRegion.cs
+      fields: [Id, "ImageCopyId(FK)", "Rect(RegionRectFraction)", FillMode, "FillColor?", OffsetXPx, OffsetYPx, Rotation, FlipX, FlipY, SortOrder]
+      note: "★ sample は『v0.2 候補・v0.1 では含まない』としたが実装済 + 2 回拡張済 (ID-1)。Rect の妥当性は RegionRectFraction.IsValid が *任意呼び出し* で、ctor では検証しない。"
+  value_objects:
+    - { name: ImageTransform, fields: [Rotation, FlipX, FlipY], kind: readonly record struct, self_validating: false, note: "Rotation enum で 90°単位は構造的に保証。それ以外は plain data" }
+    - { name: AutoCropSettings, fields: ["TargetColorArgb:uint", "Threshold:byte"], self_validating: false, note: "byte が threshold 範囲を構造保証。プリセット White/Black/Transparent" }
+    - { name: ManualCropFraction, fields: [x, y, w, h], range: "[0,1] 想定", self_validating: false, note: "★ 0-1 範囲・x+w≤1 等は ctor で検証されない (plain data)。sample の『構築不能』は偽" }
+    - { name: RegionRectFraction, fields: [x, y, w, h], self_validating: false, note: "ManualCropFraction と同形だが意味混同回避のため別型。IsValid は opt-in" }
+    - { name: OccupySize, fields: ["Width>0", "Height>0"], self_validating: true, note: "★ ctor で正値を throw 検証。PixelSize と並び数少ない自己検証 VO (GRID と共有)" }
+  enums:
+    - { name: Rotation, values: [None, CW90, CW180, CW270] }
+    - { name: ScalingMode, values: [None, UniformContain, UniformContainShrinkOnly, UniformContainEnlargeOnly, UniformCover, Fill], note: "★ 6 値 (sample は 3)" }
+    - { name: "Alignment(AnchorX×AnchorY)", values: ["X:{Left,Center,Right}", "Y:{Top,Center,Bottom}"], note: "単一 anchor が配置位置 兼 crop 窓位置。旧 TrimmingAnchor を吸収・廃止" }
+    - { name: ProtectedRegionFillMode, values: [White, Black, Transparent, Custom, None] }
+  derived_runtime:   # ★ ImageCopy のフィールドではない。解決フローの派生型 (非永続)
+    - { name: CropFraction, note: "実効クロップの *統合型*。AutoCrop(→AutoCropFraction)/ManualCrop が共に変換される。ImageCropResolver が産出。Renderer/View が共有" }
+    - { name: AutoCropFraction, note: "AutoCrop 走査結果 (AutoCropCache の値)。設定でなく計算結果" }
+
+# ────────────────────────────────────────────────────────────────────────
+# rules (実コードが現に強制している意味制約)
+# ────────────────────────────────────────────────────────────────────────
+rules:
+  - id: IR-01
+    name: ImageCopyMustReferenceExistingAsset
+    as_built: "CreateLogicalCopy / Import が asset 存在を確認 (ImageAsset.NotFound) + FK 制約。"
+    enforced_at: [CreateLogicalCopyUseCase.cs, ImportImageUseCase.cs]
+    applies_to: [CreateLogicalCopy, ImportImage]
+  - id: IR-02
+    name: ImageAssetDedupByFileHash
+    as_built: "ImportImage は hash 一致の既存 asset があれば新規生成せず既存 asset + 既定 copy を返す (WasDuplicate)。"
+    enforced_at: ImportImageUseCase.cs
+    applies_to: [ImportImage]
+  - id: IR-03
+    name: CropTriStateExclusive
+    as_built: >
+      トリミングは OFF / AutoCrop / ManualCrop の 3 択排他 (manual §5.13)。UI では CropMode enum (Off/Auto/Manual) と
+      OnAutoCropEnabledChanged / OnManualCropEnabledChanged の連動が排他を保証。*永続層は共存を構造的に許す*
+      (Auto 列と Manual 列が同時に非 null になりうる) ため、実効優先は IR-04 (Resolver) が決める。
+    enforced_at: [CopyPropertiesViewModel.cs (CropMode), ImageCropResolver.cs]
+    applies_to: [UpdateImageCopy]
+    fragile: true   # ★ UI 排他を外す/壊すと Auto+Manual 同時設定の不整合行が生まれ、優先解決頼みになる
+  - id: IR-04
+    name: ManualCropOverridesAutoCrop
+    as_built: >
+      実効クロップは ManualCrop を排他優先 → AutoCrop → null (full は無効化して null)。ImageCropResolver が標準実装。
+      ★ as-built ではこの優先規則が **単一の権威でなく 3 箇所に独立実装** されている (IO-1): (a) ImageCropResolver
+      (確定値 + GRID プレビュー rollback + Fit が使う権威) (b) CopyPropertiesViewModel.EffectiveCropPreview
+      (UI draft プレビュー専用の再実装) (c) SkiaGridImageRenderer.ComputeCropSourceRect (RENDERING の独立再実装)。
+      共有点は AutoCropCache (走査結果) のみで、優先判定ロジックは共有されていない。
+    enforced_at: [ImageCropResolver.cs L20-35, CopyPropertiesViewModel.cs (EffectiveCropPreview), SkiaGridImageRenderer.cs (ComputeCropSourceRect)]
+    applies_to: [resolve-effective-crop]
+    fragile: true   # ★ 3 実装の 1 つだけ直すと描画/プレビュー/出力で crop が食い違う drift になる
+    note: "sample R-08 は『本 Capability は宣言のみ・適用は RENDERING』としたが as-built は乖離 (ID-4)。"
+  - id: IR-05
+    name: AutoCropAndManualCropAreAllOrNothing
+    as_built: >
+      AutoCrop=(TargetColor,Threshold) 両方、ManualCrop=(x,y,w,h) 4 値、それぞれ揃った時だけ有効。
+      ★ ただし保証は ImageCopy の computed getter のパターンマッチのみ。DB 列は独立 nullable で部分行を弾けない。
+    enforced_at: ImageCopy.cs (AutoCrop/ManualCrop getter)
+    applies_to: [UpdateImageCopy]
+  - id: IR-06
+    name: AutoCropRequiresImagePixelScan
+    as_built: >
+      AutoCrop の実効矩形は実画像のピクセル走査が必要。Core(AutoCropCalculator)=純関数の外周走査、
+      Infrastructure(SkiaAutoCropBboxResolver)=画像 decode + 走査実行、AutoCropCache=結果キャッシュ(singleton)。
+      本 Capability は *設定値と規則* のみ所有し、走査自体は Infra に委譲する。ManualCrop は走査不要。
+    enforced_at: [AutoCropCalculator.cs, SkiaAutoCropBboxResolver.cs, AutoCropCache.cs]
+    applies_to: [resolve-effective-crop]
+  - id: IR-07
+    name: SharedPropertyPropagatesToAllPlacements
+    as_built: "共有特性編集は同じ CopyId を参照する全 placement に反映される (描画は EffectiveCropFraction 等を再解決)。配置固有 (Position/OccupySize/PixelOffset) には波及しない。"
+    enforced_at: [UpdateImageCopyUseCase.cs, GridWorkspaceViewModel.cs (push/rollback)]
+    applies_to: [UpdateImageCopy]
+  - id: IR-08
+    name: UpdateImageCopyDoesNoValueValidation_And_OccupyIsSeedOnly
+    as_built: >
+      UpdateImageCopyUseCase は値域検証を一切しない (optional-merge と Clear フラグのみ)。OccupySize 更新は
+      *新規配置の初期値* を変えるだけで既存配置に無影響 (実体の占有変更は GRID 側 UpdatePlacementOccupySizeUseCase)。
+      GRID/Grid リポジトリを DI に持つが未使用 (OccupySize 検証撤去の残滓=IO-4)。
+    enforced_at: UpdateImageCopyUseCase.cs
+    applies_to: [UpdateImageCopy]
+  - id: IR-09
+    name: DeleteAssetCascadesToCopies
+    as_built: "アセット削除は依存 copy を DB cascade で削除 + 実体ファイル + サムネ削除。VariantManager: 最後の 1 バリアント削除は親アセットごと cascade (孤児防止)。cascade 操作は履歴全消去 (_history.Clear)。"
+    enforced_at: [DeleteImageAssetUseCase.cs, VariantManagerViewModel.cs]
+    applies_to: [DeleteImageAsset, DeleteVariant]
+    note: "sample UC-02 は『依存 copy があれば DependentCopiesExist で拒否』だが、as-built は cascade 削除 (ID-5)。"
+  - id: IR-10
+    name: ValueObjectsAreMostlyPlainData
+    as_built: >
+      自己検証する VO は OccupySize / PixelSize / (GRID の) CellPosition のみ (ctor で throw)。本 Capability 固有の
+      Crop/Transform/Alignment/Region 系 VO は範囲・整合をドキュメント記載するが ctor では検証しない plain data。エンティティも ctor 検証なし。
+    enforced_at: [Core/Entities/*]
+    note: "★ sample が『無効値は upstream で構築不能 (C-VALUE-SEMANTICS)』とした保証は OccupySize/PixelSize 以外では成立しない (ID-9)。"
+
+# ────────────────────────────────────────────────────────────────────────
+# decision_ownership (意味判断の所在。as-built)
+# ────────────────────────────────────────────────────────────────────────
+decision_ownership:
+  image_identity:
+    owner: IMAGE_VARIANT_MANAGEMENT
+    decides: [元画像の同一性 (FileHash 重複排除), バリアントの存在, 共有特性の値の意味]
+    note: "★ GRID_COMPOSITION の does_not_own『画像同一性・重複検出』と対。境界一致。"
+  shared_property_semantics:
+    owner: IMAGE_VARIANT_MANAGEMENT (ImageCopy + UpdateImageCopyUseCase)
+    decides: [Transform/ScalingMode/Alignment/AutoCrop/ManualCrop/ProtectedRegion の意味と既定値]
+  effective_crop_resolution:
+    owner_declared: IMAGE_VARIANT_MANAGEMENT (IImageCropResolver が ManualCrop>AutoCrop を宣言)
+    owner_as_built: "分散 (IO-1): ImageCropResolver(権威) + CopyPropertiesViewModel.EffectiveCropPreview(UI draft) + SkiaGridImageRenderer(RENDERING)"
+    note: "★ sample は『適用は RENDERING、本 Capability は宣言のみ』としたが乖離 (ID-4)。forward(push)=EffectiveCropPreview / rollback=ImageCropResolver と経路非対称。"
+  placement_impact:
+    owner: GRID_COMPOSITION
+    note: "バリアント削除が配置に与える影響の決定は GRID 側。本 Capability は cascade を実行するのみ。"
+  rendering_output:
+    owner: RENDERING_EXPORT / Presentation
+  persistence_schema:
+    owner: INFRASTRUCTURE_PERSISTENCE (EF Core)
+  ui_interaction_flow:
+    owner: PRESENTATION_VIEWMODEL
+    appropriate_examples: [CopyPropertiesViewModel の Draft 編集バッファ, CropMode の排他ラジオ制御, VariantManager の作成/改名フライアウト]
+    overreach_examples: ["★ CopyPropertiesViewModel.EffectiveCropPreview が R-08 優先規則を再実装 (IO-1)。sample は ui_interaction を out_of_scope としたが、UI に crop の *意味* が漏れている"]
+
+# 観測された overreach / 注意点 (as-built audit findings)
+audit_findings:
+  - id: IO-1
+    severity: suspected_overreach
+    where: "実効クロップ優先規則 (R-08) の 3 重実装"
+    what: >
+      ManualCrop>AutoCrop>null + full 無効化という *実効クロップの意味* が、本来単一であるべき ImageCropResolver の他に
+      CopyPropertiesViewModel.EffectiveCropPreview (UI 層) と SkiaGridImageRenderer.ComputeCropSourceRect (RENDERING) にも
+      独立実装されている。CropFraction.IsFull() の扱いも重複。共有点は AutoCropCache の走査結果のみ。
+    guard: "AI 保守で優先規則を触るときは 3 箇所すべてを同期させる。理想は ImageCropResolver を唯一源に寄せて UI/Renderer はそれを呼ぶこと (今は性能/draft 都合で分散)。1 つだけ変更=描画/プレビュー/出力の crop drift。"
+  - id: IO-2
+    severity: appropriate
+    where: GridWorkspaceViewModel の crop ライブプレビュー push (PushCropLivePreview)
+    what: "GRID 側 VM は Draft 値を該当 placement へ渡すだけで crop の意味判断をしない。GRID BOM の O-2 (編集バッファは適切) と同型で overreach ではない。意味の漏れは IMAGE_VARIANT 側 (IO-1) にある。"
+  - id: IO-3
+    severity: suspected_bug
+    where: ForkPlacementVariantUseCase.CloneWithNewId
+    what: "★ Fork のコピー複製が Transform/Scaling/Alignment/OccupySize/AutoCrop/ManualCrop は複製するが **Regions (保護領域) を複製しない**。Fork すると保護領域が静かに落ちる。"
+    guard: "Fork 変更時に Regions の複製有無を意識する。保護領域を持つバリアントを Fork すると消える as-built 挙動。"
+  - id: IO-4
+    severity: minor
+    where: "UpdateImageCopyUseCase の未使用 DI / DeleteImageAssetUseCase の cache 未無効化 / 既定 ScalingMode の二経路不一致"
+    what: >
+      (a) UpdateImageCopyUseCase が IGridPlacementRepository/IGridCanvasRepository を注入するが未使用 (OccupySize 検証撤去の残滓)。
+      (b) DeleteImageAssetUseCase が AutoCropCache.InvalidateAsset を呼ばず走査結果がプロセス内に残留 (キーに AssetId 含むため実害限定)。
+      (c) 既定 ScalingMode の解決元が CreateLogicalCopy=UniformContain ハードコード vs ImportImage=設定追従 で食い違う (ID-7)。
+
+# ────────────────────────────────────────────────────────────────────────
+# boundaries — ★ GRID_COMPOSITION as-built BOM と両側で突合
+# ────────────────────────────────────────────────────────────────────────
+boundaries:
+  depends_on:
+    - { capability: WORKSPACE/STORAGE, interface: "IImageStorage (パス解決・保存)", access: read_write }
+    - { capability: INFRASTRUCTURE_IMAGING, interface: "IAutoCropBboxResolver (Skia 走査) / IThumbnailService", access: read_only }
+  straddles:
+    - capability_pair: [GRID_COMPOSITION, IMAGE_VARIANT_MANAGEMENT]
+      via: ForkPlacementVariantUseCase
+      what: "コピー複製 (CloneWithNewId=IMAGE_VARIANT 側) + 配置の CopyId 付け替え (WithCopyId=GRID 側) を手動補償で束ねる (DB tx でない)。"
+      cross_check_grid_bom: "GRID as-built BOM の straddles (Fork) と一致。GRID 側は『配置 CopyId 付け替え』、本 BOM 側は『新バリアント生成』を所有。両側一致。"
+      guard: "★ as-built バグ: Clone が Regions を落とす (IO-3)。補償は Add 成功/Update 失敗の窓のみ (Delete 失敗は無視)。"
+    - capability_pair: [GRID_COMPOSITION, IMAGE_VARIANT_MANAGEMENT]
+      via: crop ライブプレビュー (GridWorkspaceViewModel ↔ CopyPropertiesViewModel)
+      what: "GRID の VM が IMAGE_VARIANT の VM の Draft(ManualCrop/AutoCrop/EffectiveCropPreview) を読み、EffectiveCropFraction を当該 CopyId の全 PlacementItemViewModel に push。確定値/rollback は ImageCropResolver を権威に通る。"
+      cross_check_grid_bom: "別セッションの crop fix で追加された経路。GRID 側 push は overreach でない (IO-2)。意味の漏れは IMAGE_VARIANT 側 EffectiveCropPreview (IO-1)。"
+  depended_on_by:
+    - { capability: GRID_COMPOSITION, interface: "ImageCopy existence check by CopyId", access: read_only, cross_check: "GRID BOM の depends_on と一致 (existence_check_only)" }
+    - { capability: RENDERING_EXPORT, interface: "ImageCopy + ImageAsset を読み crop/transform/scale を適用", access: read_only, note: "R-08 を独立再実装 (IO-1)" }
+    - { capability: HISTORY_MANAGEMENT, interface: "UpdateImageCopyCommand / ForkPlacementVariantCommand", access: in-scope (実コードは History に同居) }
+
+# ────────────────────────────────────────────────────────────────────────
+# audit_focus (AI 保守 diff を照らす質問。pilot の検査軸)
+# ────────────────────────────────────────────────────────────────────────
+audit_focus:
+  - "[crop 優先 単一源化] 実効クロップの優先 (ManualCrop>AutoCrop>null, full 無効) を触るとき、ImageCropResolver / CopyPropertiesViewModel.EffectiveCropPreview / SkiaGridImageRenderer の 3 箇所を同期したか? 1 つだけ直して drift させていないか? (IR-04 fragile)"
+  - "[crop 排他] AutoCrop と ManualCrop の排他 (CropMode) を壊し、Auto+Manual 同時設定の不整合行を作っていないか? (IR-03)"
+  - "[all-or-nothing] AutoCrop(2値)/ManualCrop(4値) の片側だけ書いて部分行を作っていないか? (getter でしか守られない=IR-05)"
+  - "[crop 解釈の越境] 画像形状/アスペクト/crop の *意味解釈* を GRID 側 (配置 UseCase/VM) に持ち込んでいないか? (GRID BOM の does_not_own と対。GRID→IMAGE_VARIANT 越境)"
+  - "[occupy 二層] ImageCopy.OccupySize 変更を『既存配置に波及する』と誤解していないか? (= 新規配置の初期値のみ。既存は GRID の UpdatePlacementOccupySizeUseCase。IR-08)"
+  - "[Fork 責任分離] Fork のコピー複製 (IMAGE_VARIANT) と配置 CopyId 付け替え (GRID) の分離を保ち、補償ロジックを壊していないか? Regions 複製漏れ (IO-3) を直すなら他の特性と整合させたか?"
+  - "[走査の所在] AutoCrop の実画像走査を Core/Application に持ち込んでいないか? (Infra/Skia の責務。IR-06)"
+  - "[統合更新の Clear セマンティクス] UpdateImageCopyChanges の『null=変更なし』と『Clear*=明示クリア』の区別を壊していないか? (undo round-trip が壊れる。IR-08/ID-2)"
+  - "[既定値の単一源] 既定 ScalingMode 等の新規バリアント初期値を、CreateLogicalCopy と ImportImage で食い違わせていないか? (IO-4c)"
+  - "[cascade と履歴] アセット/最後のバリアント削除で cascade + 履歴全消去を維持しているか? 勝手に DependentCopiesExist 拒否へ変えていないか? (IR-09)"
+  - "[VO 検証の幻想] Crop/Transform VO が『構築時に弾く』前提で検証を省いていないか? (実際は plain data で弾かない。IR-10)"
+
+# ────────────────────────────────────────────────────────────────────────
+# as_built_divergences (★ 本 BOM の核心: 理想化 sample BOM と実コードのズレ)
+# ────────────────────────────────────────────────────────────────────────
+as_built_divergences:
+  - id: ID-1
+    topic: ProtectedRegion は実装済 (sample は v0.2 候補)
+    sample: "ProtectedRegion は v0.2 候補。v0.1 には含まない。"
+    as_built: "完全実装 + 2 回拡張済 (fill_color/offset, rotation/flip)。子テーブル image_copy_regions、RegionRectFraction、ProtectedRegionFillMode(5値)。実コードは Regions について sample の v0.2+ に相当。"
+  - id: ID-2
+    topic: per-field UC を統合更新へ
+    sample: "UC-09 ChangeTransform / UC-10 ChangeScaling / UC-11 ChangeAlignment / UC-12 ChangeAutoCrop / UC-13 ChangeManualCrop / UC-14 ChangeOccupy / UC-15 Rename と per-field。"
+    as_built: "全て UpdateImageCopyUseCase + UpdateImageCopyChanges(差分 record) に統合。optional-merge(?? current) + Clear フラグ(ClearAutoCrop/ClearManualCrop/ClearCopyName)で『変更なし』と『明示クリア』を区別 (undo 往復のため)。Regions も差分同期。"
+  - id: ID-3
+    topic: crop は flatten した独立 nullable 原始値で永続
+    sample: "auto_crop(AutoCropSettings|null) / manual_crop(ManualCropFraction|null) を単一 nullable VO として持つ。"
+    as_built: "AutoCrop=2列 / ManualCrop=4列 を独立 nullable で持ち、VO は computed view。all-or-nothing は getter のみで保証され schema は部分行を弾けない。"
+  - id: ID-4
+    topic: R-08 (ManualCropOverridesAutoCrop) の適用所在
+    sample: "enforced_at: rendering_export_capability / declaration_only。本 Capability は宣言のみで適用しない (適用コード不在をテストで確認)。"
+    as_built: "★ 適用が 3 箇所に分散 (IO-1): ImageCropResolver(Application 権威) + CopyPropertiesViewModel.EffectiveCropPreview(UI) + SkiaGridImageRenderer(RENDERING)。『適用コード不在』は成立しない。"
+    impact: "★ sample の『宣言のみ』を信じると、保守で 1 箇所だけ直して crop drift を起こす。3 重実装が現実。"
+  - id: ID-5
+    topic: アセット削除は拒否でなく cascade
+    sample: "UC-02 は依存 copy があれば DependentCopiesExist で拒否 (自動カスケードしない)。"
+    as_built: "DeleteImageAssetUseCase は copy を DB cascade で削除。VariantManager は最後のバリアント削除で親アセットごと削除。拒否しない。"
+  - id: ID-6
+    topic: ImageCopy.OccupySize は新規配置の初期値のみ
+    sample: "default_occupy_size を ImageCopy が持ち UC-14 ChangeOccupy で変更。"
+    as_built: "OccupySize は配置 (GridPlacement) 固有特性へ移管済。ImageCopy 側の OccupySize は *新規配置の初期値* + Fork 複製時の引き継ぎ値 (CloneWithNewId が source.OccupySize をコピー) として使われ、いずれも **既存 GridPlacement レコードには遡及しない**。実体の占有変更は GRID の UpdatePlacementOccupySizeUseCase。GRID BOM の D-1 と対。"
+  - id: ID-7
+    topic: 既定 ScalingMode の解決が二経路で不一致
+    as_built: "ImageCopy 生成が 2 経路: CreateLogicalCopyUseCase=ScalingMode.UniformContain ハードコード / ImportImageUseCase=設定追従 (DefaultScalingMode)。同じ『既定バリアント生成』で初期 ScalingMode の源が食い違う。"
+  - id: ID-8
+    topic: Fork が Regions を落とす
+    as_built: "ForkPlacementVariantUseCase.CloneWithNewId が保護領域 (Regions) を複製しない。保護領域つきバリアントを Fork すると静かに消える (IO-3)。"
+  - id: ID-9
+    topic: VO は plain data (自己検証しない)
+    sample: "Invalid* 失敗理由は『upstream で構築不能 (C-VALUE-SEMANTICS)』= 構築時に弾く前提。UC-05 では到達不能とする。"
+    as_built: "実際に ctor で自己検証するのは OccupySize/PixelSize (および GRID の CellPosition) のみ。IMAGE_VARIANT 固有の ManualCropFraction/AutoCropFraction/RegionRectFraction/ImageTransform/AutoCropSettings は範囲を ctor で検証しない plain data。UpdateImageCopyUseCase も値域検証なし。"
+    impact: "★ sample を信じて『無効値は型が弾く』前提で保守すると、不正 crop 比率等が素通りする。"
+  - id: ID-10
+    topic: ScalingMode が 6 値
+    sample: "ScalingMode = {UniformContain, UniformCover, Fill} の 3 値。"
+    as_built: "{None, UniformContain, UniformContainShrinkOnly, UniformContainEnlargeOnly, UniformCover, Fill} の 6 値。shrink/enlarge only バリアント追加。"
+
+# ────────────────────────────────────────────────────────────────────────
+# cross_capability_consistency (★ 候補c の主目的: 境界を両側から張る)
+# ────────────────────────────────────────────────────────────────────────
+cross_capability_consistency:
+  with: GRID_COMPOSITION.as-built.v0.1.yaml
+  checks:
+    - "GRID.does_not_own『画像(バリアント)の意味解釈 = 共有特性(Scaling/Crop/Transform/Alignment/Regions)の生成・適用 (IMAGE_VARIANT)』 ↔ 本 BOM.owns が同特性を所有。境界一致 (gap/overlap なし)。"
+    - "GRID.does_not_own『画像同一性・重複検出 (ImageAsset.FileHash)』 ↔ 本 BOM.decision_ownership.image_identity が所有 (IR-02)。一致。"
+    - "Fork straddle: GRID 側=配置 CopyId 付け替え / 本 BOM 側=新バリアント生成。両側で同一 UseCase を別責務として記述。一致 + 共通 finding (Regions 落ち=IO-3) を両側に記録すべき。"
+    - "crop ライブプレビュー straddle: GRID 側 push は overreach でない (GRID O-2 / 本 IO-2)。意味の漏れは本 BOM 側 EffectiveCropPreview (IO-1)。境界の *どちら側に* overreach があるか両側 BOM で初めて確定。"
+    - "F-P2 候補C (Place が画像アスペクトから占有導出) の越境判定の裏付け: 『画像形状の解釈』は本 BOM.owns (image_identity/shared_property) であり GRID は does_not_own。両側 BOM が揃ったことで、あの越境が *どの Capability の所有を侵したか* が双方向に確定した。"
+
+# pilot 運用メモ
+pilot:
+  status: as-built-draft (GRID と同じ突合方式で IMAGE_VARIANT を地図化。2 つ目の Capability)
+  value: >
+    GRID 単独では片側からしか張れなかった境界 (Fork / crop / 画像意味解釈) を、本 BOM で両側から突合できた
+    (§cross_capability_consistency)。F-P2 候補C の越境判定が双方向に裏付けられ、IO-1 (crop 優先の 3 重実装) という
+    *単一 Capability では見えにくい drift* が境界の所有分析から浮かび上がった。
+  not_yet:
+    - 本 BOM を使った保守タスク監査 (GRID の maintenance-task-1/2 相当)
+    - IO-1/IO-3 を catchable と確認し anchor test 化 (F-P3 系の手順を IMAGE_VARIANT へ)
+    - RENDERING_EXPORT の as-built BOM (3 つ目。crop 適用の RENDERING 側を固める)
+    - ProtectedRegion の詳細 rules 化
+  next_step: "本 BOM の owns/boundaries を GRID BOM と相互参照済。次は (i) IO-1/IO-3 の anchor test 化 か (ii) 本 BOM で IMAGE_VARIANT の保守タスクを監査 (検出・sign-off の再現) か。"

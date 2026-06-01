@@ -253,13 +253,21 @@ audit_findings:
 # boundaries
 # ────────────────────────────────────────────────────────────────────────
 boundaries:
+  # ★ 反対側 (IMAGE_VARIANT) の as-built BOM と両側突合済 (候補c、2026-06-01):
+  #    IMAGE_VARIANT_MANAGEMENT.as-built.v0.1.yaml §cross_capability_consistency 参照。
+  #    本 BOM の does_not_own (画像意味解釈/画像同一性) ↔ 向こうの owns が gap/overlap なく一致。
   depends_on:
-    - { capability: IMAGE_VARIANT_MANAGEMENT, interface: "ImageCopy existence check by CopyId", access: read_only }
+    - { capability: IMAGE_VARIANT_MANAGEMENT, interface: "ImageCopy existence check by CopyId", access: read_only, cross_bom: "IMAGE_VARIANT_MANAGEMENT.as-built.v0.1.yaml (depended_on_by.GRID と一致)" }
   straddles:
     - capability_pair: [GRID_COMPOSITION, IMAGE_VARIANT_MANAGEMENT]
       via: ForkPlacementVariantUseCase
       what: "配置の参照 ImageCopy を複製(新バリアント)し、その配置の CopyId だけ付け替え。GRID(配置更新)と IMAGE_VARIANT(コピー生成)を跨ぐ。失敗時は新コピー削除でロールバック。"
       guard: "Fork 変更時、配置側(CopyId 付け替え)とコピー側(複製・命名)の責任分離を保つ。片方だけ壊すと孤児/取り違え。"
+      cross_bom_finding: "★ 両側突合で判明: Clone が Regions(保護領域)を複製しない as-built バグ (向こうの IO-3/ID-8)。GRID 側からは見えなかった。"
+    - capability_pair: [GRID_COMPOSITION, IMAGE_VARIANT_MANAGEMENT]
+      via: crop ライブプレビュー (GridWorkspaceViewModel が EffectiveCropFraction を placement へ push)
+      what: "別セッションの crop fix で追加。GRID の VM は Draft を placement へ渡すだけ (overreach でない=O-2 同型)。"
+      cross_bom_finding: "意味の漏れは IMAGE_VARIANT 側 CopyPropertiesViewModel.EffectiveCropPreview (向こうの IO-1: crop 優先規則の 3 重実装)。境界のどちら側に overreach があるか両側 BOM で初めて確定。"
   depended_on_by:
     - { capability: RENDERING_EXPORT, interface: "GridCanvas + Placement list (論理情報のみ)", access: read_only }
 

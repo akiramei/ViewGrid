@@ -163,3 +163,33 @@ F-P2 (maintenance-task-2) で「AI 監査が catchable と確認した列挙外�
 - **F-P2 の探索成果が CI ガードへ恒久化**: 「AI 監査が列挙外逸脱を catchable と確認」(F-P2) → 「既存テストの盲点を特定」→ 「決定的 anchor test 化」(F-P7) という閉路が、F-P3 と同じ形で成立。AI 監査 (探索器・非決定的) と anchor test (gate・決定的) の役割分担が明確になった。
 - **AR-02 の anchor が 2 本** (Swap stage-3 / Move 自己除外)、**AR-07 の anchor が 3 本** (OccupySize / PlacementOrder / Move undo 連鎖) になり、両 fragile rule の被覆がさらに厚くなった。
 - 盲点の型は F-P5/F-P6 と同じ「**隣接層の同主題テスト (validator 単体の自己除外) が、本物の穴 (UseCase の配線) を被覆済に見せかける**」。BOM が指す意味境界 (AR-02 の「対象自身は除外」節) が、層をまたいだ配線ギャップを炙り出した。
+
+---
+
+## F-P8 — IMAGE_VARIANT_MANAGEMENT の as-built BOM 作成 = 跨ぎ境界の両側化 (2026-06-01、候補c)
+
+GRID 単独では「片側からしか張れなかった」Capability 境界を、2 つ目の as-built BOM で両側から突合した。成果物 = `../IMAGE_VARIANT_MANAGEMENT.as-built.v0.1.yaml` (GRID と同じ突合方式: sample BOM × 実 C# × manual)。
+
+### 作り方
+3 クラスタ (エンティティ/VO/永続化 ・ UseCase/crop 解決サービス ・ ViewModel/跨ぎ境界/manual) を独立 subagent で精査 → 執筆者が統合。headline 所見は実コードで裏取り (ImageCropResolver / Fork の CloneWithNewId / ImageCopy の crop getter / EffectiveCropPreview)。
+
+### 主要 as-built 所見 (sample BOM とのズレ = BOM の核心)
+- **ID-4 / IO-1 (最重要)**: sample は R-08 (ManualCropOverridesAutoCrop) を「本 Capability は宣言のみ・適用は RENDERING・適用コード不在をテストで確認」とした。実態は **実効クロップ優先規則が 3 箇所に独立実装** — ImageCropResolver(権威) / CopyPropertiesViewModel.EffectiveCropPreview(UI draft) / SkiaGridImageRenderer(RENDERING)。共有点は AutoCropCache の走査結果のみ。1 つだけ直すと描画/プレビュー/出力で crop drift。
+- **ID-1**: ProtectedRegion は sample 「v0.2 候補」だが実装済 + 2 回拡張済。
+- **ID-2**: per-field UC-09..15 を `UpdateImageCopyUseCase` + `UpdateImageCopyChanges` に統合 (Clear フラグで undo 往復を区別)。
+- **ID-3**: AutoCrop/ManualCrop は flatten した独立 nullable 列で永続、all-or-nothing は computed getter のみで保証 (schema は部分行を弾けない)。
+- **ID-6**: ImageCopy.OccupySize は新規配置の初期値 + Fork 複製時の引き継ぎ値で、既存 GridPlacement には遡及しない = GRID の D-1 と対。
+- **ID-8 / IO-3**: **Fork (CloneWithNewId) が Regions を複製しない** = 保護領域つきバリアントを Fork すると静かに消える。
+- **ID-9**: 自己検証する VO は OccupySize/PixelSize/CellPosition のみ。IMAGE_VARIANT 固有の crop/transform/region VO は plain data で sample の「無効値は構築不能」は成立しない。
+- 他: ID-5 (削除は拒否でなく cascade) / ID-7 (既定 ScalingMode が CreateLogicalCopy=ハードコード vs Import=設定追従で不一致) / ID-10 (ScalingMode 6 値)。
+
+### 両側化の価値 (候補c の主目的)
+`§cross_capability_consistency` で GRID BOM と相互参照:
+- GRID.does_not_own (画像意味解釈/画像同一性) ↔ 本 BOM.owns が **gap/overlap なく一致**。
+- **Fork straddle を両側から記述**: GRID 側=配置 CopyId 付け替え / IMAGE_VARIANT 側=新バリアント生成。両側突合で初めて **「Clone が Regions を落とす」共通 bug (IO-3)** が GRID 側からは見えなかった所見として浮上。
+- **crop ライブプレビュー straddle**: GRID 側 push は overreach でない (O-2 同型)、意味の漏れは IMAGE_VARIANT 側 EffectiveCropPreview (IO-1)。**境界のどちら側に overreach があるかは両側 BOM が揃って初めて確定**。
+- **F-P2 候補C の越境判定が双方向に裏付け**: 「画像形状の解釈」は IMAGE_VARIANT.owns、GRID は does_not_own。候補C の越境が *どの Capability の所有を侵したか* が両側で確定した。
+
+### 含意・next
+- 単一 Capability では見えにくい drift (IO-1 の 3 重実装) が、境界の所有分析から浮かび上がった = 横展開の具体的価値。
+- next 候補: (i) IO-1/IO-3 を catchable 確認し anchor test 化 (F-P3 系手順を IMAGE_VARIANT へ) / (ii) 本 BOM で IMAGE_VARIANT の保守タスク監査 (検出・sign-off の再現) / (iii) RENDERING_EXPORT の as-built BOM (3 つ目、crop 適用の RENDERING 側を固める)。
