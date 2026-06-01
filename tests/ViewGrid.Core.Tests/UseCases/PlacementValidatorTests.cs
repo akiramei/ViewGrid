@@ -181,10 +181,11 @@ public sealed class PlacementValidatorTests
     [Fact]
     public void ConflictingPlacementId_Is_First_In_Collection_Order_AsBuilt()
     {
-        // ★ as-built-incidental: 複数の既存が新配置と重複するとき、返る Conflict Id は
-        // 「collection 反復順で最初に重複した existing」。determinism は反復順依存であって
-        // *意図された* 契約 (例: min Guid / 最大重複面積) ではない (PV-3 の gap 候補 / 決定点)。
-        // この test は as-built 挙動を固定する falsifier (生成器が別の同定規則を選ぶと FAIL)。
+        // ★ deliberate (D-PV、2026-06-01 裁定、experiments/pattern1-readiness/human-decision-points.md):
+        // 複数の既存が新配置と重複するとき、返る Conflict Id は「caller 提供順で最初に重複した existing」。
+        // 実運用では caller が FindByGridIdAsync = OrderBy(PlacementOrder) から渡すため PlacementOrder
+        // 昇順で安定。契約 = validator は *入力順を保存* する (並べ替え/HashSet 化しない)。min Guid 等の
+        // 別規則は採らない。この test はその契約を固定する falsifier (別の同定規則/順序を選ぶと FAIL)。
         var firstId = Guid.NewGuid();
         var secondId = Guid.NewGuid();
         var existing = new ExistingPlacement[]

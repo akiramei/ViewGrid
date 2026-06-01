@@ -297,6 +297,27 @@ audit_findings:
       (c) 既定 ScalingMode の解決元が CreateLogicalCopy=UniformContain ハードコード vs ImportImage=設定追従 で食い違う (ID-7)。
 
 # ────────────────────────────────────────────────────────────────────────
+# deliberate_decisions — 人間が裁定し deliberate 化した設計判断 (experiments/pattern1-readiness/human-decision-points.md、2026-06-01 裁定)
+# ────────────────────────────────────────────────────────────────────────
+deliberate_decisions:
+  - id: D2a
+    subject: "CropFraction/ManualCropFraction/RegionRectFraction.ToPixelBbox の midpoint (x.5 px) 丸め"
+    current_behavior: "System.Math.Round 既定 = MidpointRounding.ToEven (銀行家丸め)。3 型で同一 (CropFraction.cs:20-23 ほか)。"
+    decision: preserve-and-document
+    provenance: deliberate   # 2026-06-01 裁定 (旧 as-built-incidental)
+    rationale: "F-P12 で midpoint oracle 固定済・3 型一貫・ToEven は中心揃いで系統誤差小。AwayFromZero へ変えると bbox 境界が x.5 でずれる仕様変更で UX 利得が薄く互換性リスクのみ。AI が『四捨五入の方が自然』と変える事故を deliberate 固定で防ぐ。"
+    anchor: "tests/ViewGrid.Core.Tests/Entities/CropFractionTests.cs::ToPixelBbox_Midpoint_Rounds_ToEven_AsBuilt (F-P12)"
+    do_not: "丸めモードを AwayFromZero/他へ変えない (= 仕様変更レビューを要する)。"
+  - id: D2b
+    subject: "ToPixelBbox の無効寸法 (負の軸引数) / 範囲外比率の扱い"
+    current_behavior: "範囲外*比率* (X,Y,W,H∉[0,1]) は x/y を [0,axis]、w/h を [0,axis-origin] に clamp = graceful。throw は*負の軸引数* (width/height<0) で Math.Clamp(_,0,負) が min>max のときのみ = 画像実寸が正の実運用では到達不能。"
+    decision: document-only-positive-axis-precondition
+    provenance: deliberate
+    precondition: "ToPixelBbox(width,height) の width/height は正の整数 (画像実寸が保証)。範囲外比率は valid sub-rect へ clamp する。"
+    rationale: "範囲外比率は既に clamp で安全、throw は負軸のみで到達不能。最小リスクで現挙動を正確に固定し、d3 §6 の『全域 conformance 未閉』caveat を『軸正の precondition』へ昇格して閉じる。explicit guard は YAGNI、normalize は負軸を無音で通すため不可。"
+    note: "★ d3 §3.4/§6 が『実=throw / 生成=正規化』と書いた発散は実際には負軸のみ (到達不能)。範囲外比率は実装も clamp 済で一致 = 発散は当初想定より狭い (精密化)。"
+
+# ────────────────────────────────────────────────────────────────────────
 # boundaries — ★ GRID_COMPOSITION as-built BOM と両側で突合
 # ────────────────────────────────────────────────────────────────────────
 boundaries:

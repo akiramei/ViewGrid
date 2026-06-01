@@ -250,6 +250,20 @@ audit_findings:
     what: "UI 編集中の一時値を VM が持つのは適切 (永続化は UseCase 経由)。overreach ではない。"
 
 # ────────────────────────────────────────────────────────────────────────
+# deliberate_decisions — 人間が裁定し deliberate 化した設計判断 (experiments/pattern1-readiness/human-decision-points.md、2026-06-01 裁定)
+# ────────────────────────────────────────────────────────────────────────
+deliberate_decisions:
+  - id: D-PV
+    subject: "PlacementValidator の conflict 同定順 (複数重複時にどの ConflictingPlacementId を返すか)"
+    current_behavior: "validator は existingPlacements の反復順で最初に重複した既存の Id を返す (PlacementValidator.cs:32-41)。全 caller (Place/Move/Swap/UpdateOccupySize) は FindByGridIdAsync = OrderBy(PlacementOrder) から構築 (EfGridPlacementRepository.cs:15) → 実運用は PlacementOrder 昇順で最初の重複 = 安定・決定的。"
+    decision: deliberate-first-by-caller-order
+    contract: "conflict identity = caller 提供順で最初に重複した配置。caller は安定順 (PlacementOrder 昇順) を渡す契約。validator は入力順を保存する (並べ替え/HashSet 化しない)。"
+    provenance: deliberate   # 2026-06-01 裁定 (旧 as-built-incidental)
+    rationale: "実運用は既に PlacementOrder 昇順で安定。意図を契約化すれば AI が validator の collection 型/LINQ や repo の OrderBy(PlacementOrder) を変えて conflict 対象が silent に変わる事故を防げる。順序非依存化 (min PlacementId 等) は validator に新 key を要し over-engineering。"
+    anchor: "tests/ViewGrid.Core.Tests/UseCases/PlacementValidatorTests.cs::ConflictingPlacementId_Is_First_In_Collection_Order_AsBuilt"
+    do_not: "validator の入力順保存を崩さない / caller の FindByGridIdAsync の OrderBy(PlacementOrder) を外さない。"
+
+# ────────────────────────────────────────────────────────────────────────
 # boundaries
 # ────────────────────────────────────────────────────────────────────────
 boundaries:

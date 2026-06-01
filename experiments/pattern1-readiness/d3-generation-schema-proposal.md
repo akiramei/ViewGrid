@@ -273,7 +273,7 @@ services:
 
 人間に残す決定点 (authoring 層と同じく「AI は提案、人間が硬化」):
 - D1: overlay を実 BOM に注入するか (A/B/C)。推奨 B、ただし 2 例目後。
-- D2: `ToPixelBbox` の 2 つの未決定点を `as-built-incidental` のまま再現するだけにするか、`deliberate` へ昇格するか。これらは実コードの挙動を変えうる **本物の設計判断** で d-3 が発見した: (D2a) midpoint 丸めを ToEven のままにするか AwayFromZero へ*決める*か / (D2b) 無効寸法 (負の width/height) を throw のままにするか、明示 precondition で「正寸法のみ」と契約するか、正規化を*選ぶ*か。恒久 generation 契約にするには §4.1 の gating により D2a/D2b とも block 解除 (昇格) が必須。
+- D2: `ToPixelBbox` の 2 つの未決定点を `as-built-incidental` のまま再現するだけにするか、`deliberate` へ昇格するか。これらは実コードの挙動を変えうる **本物の設計判断** で d-3 が発見した: (D2a) midpoint 丸めを ToEven のままにするか AwayFromZero へ*決める*か / (D2b) 無効寸法 (負の width/height) を throw のままにするか、明示 precondition で「正寸法のみ」と契約するか、正規化を*選ぶ*か。恒久 generation 契約にするには §4.1 の gating により D2a/D2b とも block 解除 (昇格) が必須。**✅ 2026-06-01 裁定済 (`human-decision-points.md`)**: D2a=preserve+document (ToEven 維持)、D2b=document-only (軸正 precondition) でいずれも `deliberate` 昇格・実コード不変。IMAGE_VARIANT BOM の `deliberate_decisions` へ反映。D2b は精密化: 範囲外比率は実装も clamp 済で生成と一致し、throw は負軸 (到達不能) のみ = 発散は当初想定より狭い。**PlacementValidator の conflict 同定 (§9.7 の D 候補) も同日 deliberate 化 (D-PV: PlacementOrder 昇順で先、GRID BOM へ反映)**。
 - D3: `generation_overlay` を恒久スキーマとするなら canonical methodology (docs 11-22 系) への昇格は churn 方針に従い 2 例目+敵対的レビュー後。
 
 ---
@@ -300,7 +300,7 @@ services:
 - (i) ✅ **F-P12** = enriched spec で再生成し ToEven 収束を *in-range* で反証可能に実証 (midpoint oracle + 全スイート pass、commit 30ddf86)。
 - (ii) ✅ **PV-2** = 2 例目 PlacementValidator で overlay 形を枯らした → **§9** (overlay/gate の二層分離を発見、commit 20f9202)。
 - (iii) ✅ **IO-1 是正** = crop 優先規則を Core `CropFraction.ResolveEffective` へ単一源化、generation_scope.io1_caveat が示した跨ぎ drift を production で解消 (commit 2bc4aa9)。
-- 残: D1 (overlay の実 BOM 注入)、D2a/D2b (丸め・無効寸法の deliberate 化)、IO-3 (Fork が Regions 落とす) の anchor 化。
+- 残: D1 (overlay の実 BOM 注入)。✅ D2a/D2b (丸め・無効寸法) = 2026-06-01 裁定済 (deliberate、実コード不変)。✅ IO-3 (Fork が Regions 落とす) = 2026-06-01 是正 + anchor test 済。
 
 ---
 
@@ -389,4 +389,4 @@ PV-2 は §3.4 の `oracle_tests` の位置づけを精緻化する: oracle は�
 ### 9.7 PV-2 が D1 (実 BOM 注入) に与える含意
 - overlay 形は crop → validator で **安定** (過適合せず汎化) → §7 D1 の「2 例目で形を枯らす」前提は満たされた。**ただし** PV-2 は新たに `generation_gate` 層を要求するので、D1 の注入対象は overlay 単独でなく **overlay + gate の対**になる。
 - gate の中身は project 横断 (style は全 BOM 共通の `.editorconfig`/props)。→ gate は各 BOM の overlay に重複コピーせず、**project レベルで 1 つ宣言し overlay から参照**するのが over-build 回避 (§3 の「rule が既に持つ意味は overlay が参照」の原則を style 契約にも適用)。
-- 新たな人間決定点 (D 候補): PlacementValidator の **conflict 同定 (反復順で先) を `as-built-incidental` のまま再現するか `deliberate` 化するか** (crop の D2a/D2b と同型。反復順依存は偶発で、min-Guid 等の別規則を *選ぶ* 余地がある)。
+- 新たな人間決定点 (D 候補): PlacementValidator の conflict 同定 (反復順で先) を `as-built-incidental` のまま再現するか `deliberate` 化するか (crop の D2a/D2b と同型)。**✅ 2026-06-01 裁定済 (D-PV、`human-decision-points.md`)**: caller (FindByGridIdAsync=OrderBy PlacementOrder) が安定順を渡す契約 + validator は入力順保存、として `deliberate` 化 (PlacementOrder 昇順で先)。GRID BOM の `deliberate_decisions` へ反映。反復順依存は production では既に PlacementOrder 昇順で安定だった。
