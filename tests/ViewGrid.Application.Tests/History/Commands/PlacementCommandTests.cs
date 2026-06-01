@@ -108,6 +108,51 @@ public sealed class PlacementCommandTests : IAsyncLifetime
         (await _fx.PlacementRepository.FindByIdAsync(placement.Id)).Should().BeNull();
     }
 
+    // AR-07 undo 対称性 anchor (Capability BOM governance pilot, F-P6):
+    // RemovePlacementCommand の「全フィールド snapshot 復元」のうち PlacementOrder (重なり順) を検証する。
+    // 既存 RemovePlacementCommand_Restores_Full_State_Including_PixelOffset は名前に反し PixelOffset しか
+    // 確認せず、PlacementOrder の復元は無被覆だった (PlacementOrder のテストは PlaceImageCopyUseCaseTests の
+    // *作成時採番* と renderer/fork の seed のみで、削除→undo 復元は誰も見ていない)。
+    // z-order は D-8 で実質「作成順」だが、削除→undo で順序が変わると重なり順が静かに崩れる
+    // (AR-07: undo は削除前の正確な状態を復元すべき。「復元配置は最前面へ」等の善意の正規化は違反)。
+    // 中間 order の配置を削除/復元することで、snapshot 値そのまま (=2) 以外 —
+    // 最前面へ積み直し (=4) / 既定値 (0) / 再採番 — を決定的に弾く。
+    [Fact]
+    public async Task RemovePlacementCommand_Restores_PlacementOrder()
+    {
+        var grid = await SeedGridAsync();
+        var asset = await _fx.SeedAssetAsync();
+        var copyA = await _fx.SeedCopyAsync(asset.Id, "A");
+        var copyB = await _fx.SeedCopyAsync(asset.Id, "B");
+        var copyC = await _fx.SeedCopyAsync(asset.Id, "C");
+
+        // 作成順に PlacementOrder = 1, 2, 3 が振られる (PlaceImageCopyUseCase: 空なら 1、以降 max+1)。
+        var a = (await _place.ExecuteAsync(grid.Id, copyA.Id, new CellPosition(0, 0))).Value;
+        var b = (await _place.ExecuteAsync(grid.Id, copyB.Id, new CellPosition(1, 0))).Value;
+        var c = (await _place.ExecuteAsync(grid.Id, copyC.Id, new CellPosition(2, 0))).Value;
+
+        // 前提: B は中間 order = 2 (a=1, c=3)。RemovePlacementUseCase は再採番しない (D-8)。
+        var snapshot = await _fx.PlacementRepository.FindByIdAsync(b.Id);
+        snapshot!.PlacementOrder.Should().Be(2);
+
+        var command = new RemovePlacementCommand(_remove, _fx.PlacementRepository, snapshot,
+            description: "削除: B");
+
+        // Execute → 削除
+        await _history.ExecuteAsync(command);
+        (await _fx.PlacementRepository.FindByIdAsync(b.Id)).Should().BeNull();
+
+        // Undo → 削除前の正確な PlacementOrder (=2) で復元されるべき。
+        await _history.UndoAsync();
+        var restored = await _fx.PlacementRepository.FindByIdAsync(b.Id);
+        restored.Should().NotBeNull();
+        restored!.PlacementOrder.Should().Be(2);
+
+        // 他配置の重なり順も不変 (a=1, c=3)。
+        (await _fx.PlacementRepository.FindByIdAsync(a.Id))!.PlacementOrder.Should().Be(1);
+        (await _fx.PlacementRepository.FindByIdAsync(c.Id))!.PlacementOrder.Should().Be(3);
+    }
+
     [Fact]
     public async Task MovePlacementCommand_Reverts_To_Before_Position()
     {

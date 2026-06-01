@@ -103,4 +103,32 @@ AR-07 は複合不変条件なので、列挙された sub-invariant を一つ�
 ### 含意 (F-P3 を補強)
 - 価値連鎖が **2 つ目の fragile** でも再現。`rules.fragile` を anchor test の優先リストとして使う運用が反復可能と確認。
 - 新知見: **複合 fragile 不変条件は sub-invariant に分解して照合せよ**。AR-07 は 7 つの sub-invariant のうち 6 つが被覆済で、欠けていた 1 つ (配置層 OccupySize) が**他層の同名テストに紛れて見えにくい**盲点だった。BOM の意味境界 (D-1「二層」) が、テストカバレッジの偽陽性 (層取り違え) を看破する物差しになった。
-- 残課題: Remove の全 snapshot 復元のうち **PlacementOrder** は依然未検証 (z-order は D-8 で実質「作成順」=低リスクだが、厳密には AR-07 の盲点)。F-P-next 候補。
+- 残課題: Remove の全 snapshot 復元のうち **PlacementOrder** は依然未検証 (z-order は D-8 で実質「作成順」=低リスクだが、厳密には AR-07 の盲点)。F-P-next 候補。 → **F-P6 (下記) で解消済**。
+
+---
+
+## F-P6 — AR-07 残盲点 (Remove の PlacementOrder 復元) を決定的 anchor test 化 (2026-06-01、実施・実証済)
+
+F-P5 で残課題に挙げた「`RemovePlacementCommand` の全 snapshot 復元のうち **PlacementOrder**(重なり順)が未検証」を、同手順で anchor test 化した。AR-07 の sub-invariant 分解で唯一残っていた穴。
+
+### 盲点 (F-P5 と同型: 隣接テストが本物の穴を覆い隠す)
+- 既存 `RemovePlacementCommand_Restores_Full_State_Including_PixelOffset` は**名前に "Full State" と謳いながら PixelOffset しか検証していない**。PlacementOrder は無被覆。
+- grep "PlacementOrder" すると hit はするが、それらは `PlaceImageCopyUseCaseTests` の**作成時採番 (1,2,3)** 検証と、renderer/fork の seed セットアップだけ。**削除→undo での復元を見ているテストは皆無**。表面走査では「PlacementOrder はテスト済」と誤読する (F-P5 の「OccupySize 二層」取り違えと同じ構図)。
+
+### 追加した anchor test
+`PlacementCommandTests.cs::RemovePlacementCommand_Restores_PlacementOrder` — A/B/C を順に配置 (order=1/2/3)、**中間の B (order=2)** を snapshot して削除→undo。復元された B の PlacementOrder が **2 そのまま**であること、かつ A=1 / C=3 が不変であることを確認。中間 order を狙うことで「最前面へ積み直し (=4)」「既定値 (0)」「再採番」のいずれの退行も決定的に弾く (RemovePlacementUseCase は再採番しない=D-8 を前提)。
+
+### 決定的実証 (dotnet test)
+| 対象 RemovePlacementCommand.UndoAsync | 既存 463 件 | 新 anchor test |
+| --- | --- | --- |
+| **実コード** (snapshot を AddAsync で完全復元) | PASS | **PASS** (合計 464 pass / 1 skip) |
+| **deviation** (復元配置を最前面へ積み直す z-order 正規化) | **全 PASS** (463) | **FAIL** |
+
+→ **既存スイートは PlacementOrder 復元を未被覆 (deviation が PixelOffset テスト含む 463 件を全て素通り)。新 anchor test だけが捕捉。** deviation は一時差し込み後 `git checkout` で復元 (src clean)。
+
+**再現手順 (決定的)**: `src/ViewGrid.Application/History/Commands/RemovePlacementCommand.cs` の `UndoAsync` で `AddAsync(_snapshot, ...)` の直前に、`_snapshot.PlacementOrder` を「グリッド内 max+1 (空なら 1)」へ書き換える行を足す (= 復元を最前面へ正規化)。これで `RemovePlacementCommand_Restores_PlacementOrder` のみ FAIL・他 463 PASS / 1 skip。
+
+### 含意
+- **deviation が「typo」でなく意味的動機を持つ善意の変更**(「削除した配置を undo したら最前面に出てほしい」という妥当に見える UX 判断)である点が F-P3/F-P5 より一段強い。AR-07 の「undo は削除前の*正確な*状態を復元する」という不変条件が、もっともらしい正規化欲求を弾く境界として機能した。
+- **AR-07 の sub-invariant 分解が完了**: 7 つ全てに決定的 anchor が付いた (BOM の `coverage_note` に明記)。GRID_COMPOSITION の 2 つの fragile rule (AR-02 / AR-07) は、宣言された不変条件が全て CI ガード化された状態に到達。
+- 一般原則 (F-P5 を補強): **隣接する同名/類似テスト (PixelOffset 復元・作成時採番) が、本物の盲点 (削除→undo 復元) を「被覆済」に見せかける**。BOM の sub-invariant 列挙が、この種のカバレッジ偽陽性を機械的に炙り出す物差しになる。

@@ -168,16 +168,26 @@ rules:
     enforced_at: [History/UndoRedoService.cs, History/Commands/*]
     applies_to: [Place, Move, Swap, Remove, UpdateOffset, UpdateOccupySize]
     fragile: true   # ★ 配置 UseCase を変えると対応 Command の undo 対称性/Id 安定性が壊れうる
-    anchor_test: >
-      tests/ViewGrid.Application.Tests/History/Commands/PlacementCommandTests.cs::UpdatePlacementOccupySizeCommand_RoundTrip
-      (F-P5 で追加。配置層 OccupySize の Execute→Undo→Redo before/after 対称を決定的に捕捉: 実コード=PASS /
-      deviation(Undo が before でなく after を再適用)=FAIL を dotnet test で実証。盲点=配置系 6 Command のうち
-      OccupySize Command だけ round-trip テストが無かった。注意: GridAndCopyCommandTests に OccupySize undo
-      テストはあるが、あれは ImageCopy(コピー層=新規配置の初期値)であって配置層でない — D-1/audit_focus
-      「OccupySize 二層」の取り違えで、表面走査では誤って『被覆済』と読める。
-      AR-07 の他の不変条件 (Place の Id 安定/Remove の PixelOffset 復元/Move・Offset の対称/Swap 冪等/
-      UndoRedoService のスタック整合) は既存テストで被覆済。残課題: Remove の全 snapshot 復元のうち
-      PlacementOrder は未検証 (z-order は D-8 で実質作成順=低リスク、別ラウンド候補)。)
+    anchor_test:
+      - >
+        tests/ViewGrid.Application.Tests/History/Commands/PlacementCommandTests.cs::UpdatePlacementOccupySizeCommand_RoundTrip
+        (F-P5 で追加。配置層 OccupySize の Execute→Undo→Redo before/after 対称を決定的に捕捉: 実コード=PASS /
+        deviation(Undo が before でなく after を再適用)=FAIL を dotnet test で実証。盲点=配置系 6 Command のうち
+        OccupySize Command だけ round-trip テストが無かった。注意: GridAndCopyCommandTests に OccupySize undo
+        テストはあるが、あれは ImageCopy(コピー層=新規配置の初期値)であって配置層でない — D-1/audit_focus
+        「OccupySize 二層」の取り違えで、表面走査では誤って『被覆済』と読める。)
+      - >
+        tests/ViewGrid.Application.Tests/History/Commands/PlacementCommandTests.cs::RemovePlacementCommand_Restores_PlacementOrder
+        (F-P6 で追加。RemovePlacementCommand の全 snapshot 復元のうち PlacementOrder(重なり順)を決定的に捕捉:
+        実コード=PASS / deviation(復元配置を最前面へ積み直す善意の z-order 正規化)=FAIL。盲点=既存
+        RemovePlacementCommand_Restores_Full_State_Including_PixelOffset は名前に反し PixelOffset しか検証せず、
+        PlacementOrder 復元は無被覆だった(PlacementOrder のテストは作成時採番 PlaceImageCopyUseCaseTests と
+        renderer/fork の seed のみ)。中間 order の配置を削除/復元し snapshot 値そのまま以外を弾く。)
+    coverage_note: >
+      AR-07 の各 sub-invariant の被覆状況: Place の Id 安定 / Remove の PixelOffset 復元 / Remove の
+      PlacementOrder 復元(F-P6) / Move・UpdateOffset の before/after 対称 / UpdateOccupy の対称(F-P5) /
+      Swap 冪等 / UndoRedoService のスタック整合 — 全て被覆済。複合 fragile は sub-invariant に分解して
+      照合せよ(欠けた 1 つが隣接テストに紛れて見えにくい)。
   - id: AR-08
     name: CascadeOpsClearHistory
     as_built: "アセット/バリアント/グリッドの 作成/削除・ワークスペース操作は cascade 整合のため履歴全消去 (manual §8.26)。"
