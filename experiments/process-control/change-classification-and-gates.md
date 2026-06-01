@@ -1,9 +1,15 @@
-# F-P13 — Software Manufacturing Control v0.1 (change classification + required gates)
+# Software Manufacturing Control — change classification + required gates
+## v0.2 (F-P15、2026-06-01) ← v0.1 (F-P13)
 
-> 実施 2026-06-01。工程管理層の **入口** だけを、抽象論でなく **実証済み部品**から立ち上げる。
-> **スコープ限定**: `change classification` + `required gates` のみ。traceability / metrics は最小セクション、
-> release criteria は v0.2、RENDERING_EXPORT BOM はその後。over-build 回避 (F-P9 と同じ規律)。
-> **実例は実証済みのみ**: IO-1 / IO-3 / F-P10 / F-P12 / F-P11 / PV-3 / D2a-D2b-D-PV。
+> 工程管理層の **入口** を、抽象論でなく **実証済み部品**から立ち上げる living spec。
+> - **v0.1 (F-P13)**: change classification + required gates の 5 change_type を立ち上げ。
+> - **v0.2 (F-P15)**: F-P14 (RENDERING_EXPORT BOM) を実運用して回収した 5 gap を取り込む =
+>   change_type 2 種 (`as_built_bom_authoring` / `doc_drift`) + 条件付き gate 3 種
+>   (`rendering_numeric_policy` / `visual_oracle` / `preview_export_equivalence`) を追加 (§1 / §5.1)。
+>
+> **スコープ限定 (v0.2 も広げすぎない)**: change_type と required_gates の *追加* のみ。
+> release_criteria / metrics 自動集計 / traceability 大拡張は引き続き後送り (§9)。over-build 回避 (F-P9 規律)。
+> **実例は実証済みのみ**: v0.1=IO-1/IO-3/F-P10/F-P12/F-P11/PV-3/D2a-D2b-D-PV、v0.2 追加=F-P8/F-P14 (as_built)、RD-4/5/6 (doc_drift)。
 
 ## 0. なぜ change classification + gates から
 これまでの成果は 3 系統に整理できる (いずれも実コードで実証済):
@@ -22,8 +28,9 @@
 
 ## 1. change_types (分類 + required gates)
 ```yaml
-# v0.1 = 直近で実際に回した 5 種のみ。各 type は実例 (実証済) を持つ。
-# 既知だが v0.1 で詳細化しない type は §9 に列挙 (silent に落とさない)。
+# v0.1 baseline = 5 種 (semantic_bugfix / drift_elimination / generation_micro_pilot / deliberate_decision / schema_feedback)。
+# v0.2 追加 (F-P15) = as_built_bom_authoring / doc_drift (末尾)。各 type は実例 (実証済) を持つ。
+# まだ詳細化しない type (invariant_hardening / maintenance_audit) は §9 に列挙 (silent に落とさない)。
 change_types:
 
   semantic_bugfix:               # 既存挙動が契約に反する = 直す
@@ -73,6 +80,24 @@ change_types:
       - source_experiment_reference   # どの実験 (F-P*/PV-*) の知見かを明示
       - schema_update                 # 提案 doc/overlay/gate を追記 (P4: 追記のみ・churn 最小)
       - no_overgeneralization_review  # 1 例過適合を疑う敵対的レビュー (Codex)。実 BOM 注入は別決定 (D1)
+
+  # ── v0.2 追加 (F-P15、F-P14 で実地に必要と判明) ───────────────────────────
+  as_built_bom_authoring:        # 新 Capability の as-built BOM 化 (v0.1 §9 から昇格、F-P8/F-P14 で実証)
+    examples: [ "F-P8: IMAGE_VARIANT BOM", "F-P14: RENDERING_EXPORT BOM (Capability 三角形を閉じた)" ]
+    required_gates:
+      - source_reconciliation         # 実コード × manual × sample BOM の三方突合 (file:line 裏取り)
+      - cross_capability_consistency  # 既存 BOM と境界突合 (gap/overlap なし)
+      - finding_classification        # 各 finding を change_type に仕分け (本表へ。doc_drift/deliberate/observation 等)
+      - headline_evidence             # 主要所見はコード裏取り (例: PhotoBoardStyle=3 を enum で確認)
+
+  doc_drift:                     # manual/doc が言うこと vs コードがすること のズレ (v0.2 新規、RD-4/5/6 で顕在)
+    examples: [ "RD-4: manual「10 styles」vs 実 3", "RD-5: 背景色 vs 透過", "RD-6: α>0 vs α≥8" ]
+    required_gates:
+      - code_behavior_evidence        # コードの実挙動を file:line で裏取り
+      - manual_claim_evidence         # doc/manual の該当記述を §x で裏取り
+      - drift_classification          # doc 修正で済むか / 背後に未裁定の deliberate_decision があるか を判定
+      - doc_patch_or_deliberate_backlog  # doc を直す or 設計判断なら deliberate_decision backlog へ送る
+      - independent_review            # Codex review (§2、既定義 gate を再利用。production bug でないので軽量だが記録は残す)
 ```
 
 ---
@@ -98,6 +123,13 @@ change_types:
 | human_decision | ユーザー裁定。AI は options+推奨を出すのみ (decision ownership)。 |
 | bom_deliberate_decisions_update | `provenance: as-built-incidental → deliberate`、rationale、do_not を記載。 |
 | no_overgeneralization_review | 1 例過適合を疑う (例: 2 例目で overlay 形が安定するか)。実 BOM 注入は採否判断 (D1) を分離。 |
+| source_reconciliation | 実コード×manual×sample BOM の三方突合。差は as_built_divergences に記録。 (v0.2) |
+| cross_capability_consistency | 既存 BOM と境界 (owns/does_not_own/straddles) を突合し gap/overlap なしを確認。 (v0.2) |
+| finding_classification | 出た finding を本書の change_type に仕分け (doc_drift/deliberate/observation 等)。 (v0.2) |
+| headline_evidence | 主要所見をコードで裏取り (enum 値数・分岐・委譲先など)。 (v0.2) |
+| code_behavior_evidence / manual_claim_evidence | コード実挙動 (file:line) と doc 記述 (§x) を両側引用。 (v0.2) |
+| drift_classification | doc 修正で済む drift か、背後に未裁定の設計判断 (deliberate) があるかを切り分け。 (v0.2) |
+| doc_patch_or_deliberate_backlog | doc を直す、または設計判断なら deliberate_decision backlog へ送る。 (v0.2) |
 
 ---
 
@@ -120,6 +152,31 @@ change_types:
 - **generation_overlay (生成入力=意味)**: 対象を blind 再生成するとき、oracle が踏まない意味細部 (丸め/精度/判定順序/error channel/conflict 同定) は overlay に補填しないと **silent に発散** (F-P10 の丸め)。
 - **generation_gate (受入検査=style/compilation/oracle)**: 生成物の style/analyzer 適合・コンパイル・oracle 通過。style は overlay で言語化せず gate が **機械担保** (PV-2: IDE0161/CA1510/IDE0005 を analyzer gate が build 時に loud に捕捉)。
 - 切り分け規則: **意味は overlay (oracle 被覆で収束) / style は gate (analyzer・formatter が担保)**。rule が既に持つ意味は overlay が *参照*、欠落次元のみ overlay が新規保持 (over-build 回避)。
+
+## 5.1 rendering / output 系の条件付き gate (v0.2 追加、F-P14 由来)
+描画・出力を触る変更には、value oracle だけでは捕まらない silent 盲点 (RO-2 丸め分散) があるため、次の条件付き gate を要求する。
+```yaml
+gate: rendering_numeric_policy
+required_when: [ "rendering code が 丸め / clip / α閾値 / DPI / pixel 座標変換 に触れる" ]
+requires:
+  - current_behavior_evidence              # 現在の丸め/閾値を file:line で
+  - deliberate_decision_or_existing_policy # 既存方針 (D2a=ToEven 等) に照らす or human 裁定へ
+  - numeric_or_visual_oracle               # 数値 oracle か visual oracle で固定
+
+gate: visual_oracle
+required_when: [ "出力ピクセルが変わりうる (合成 / scaling / trim / 丸め)" ]
+requires:
+  - golden_image_or_pixel_diff             # golden image + pixel-diff 閾値 (値 oracle では sub-pixel ずれを逃す)
+  - threshold_documented                   # 許容 diff 閾値を明記
+
+gate: preview_export_equivalence
+required_when: [ "preview と export が描画経路を共有 / 重複する" ]
+requires:
+  - shared_options_evidence                # 同一 options builder を通る証拠
+  - shared_renderer_or_equivalence_test    # 共有 renderer か等価テスト
+  - divergence_risk_note                   # 経路が分岐するリスクの注記
+```
+→ いずれも F-P14 (RENDERING) で *机上でなく実地に* 必要と判明: RO-2 (丸め 4 箇所不統一) が `rendering_numeric_policy` の動機、視覚出力の sub-pixel ずれが `visual_oracle` の動機 (D2a の midpoint gap と同型の silent 盲点)、RR-09 (preview/export が同一 UseCase 共有) が `preview_export_equivalence` の動機。
 
 ## 6. production code 変更時の review / push 手順 (実運用フロー)
 IO-1 / IO-3 で実際に回した手順を工程として固定:
@@ -153,6 +210,7 @@ trace:
   - { finding: D2a, decision: "ToPixelBbox 丸め = ToEven を preserve+document", test: ToPixelBbox_Midpoint_Rounds_ToEven_AsBuilt, commit: d21fe4e, status: deliberate, type: deliberate_decision }
   - { finding: D2b, decision: "ToPixelBbox 軸正 precondition (document-only)", test: "(precondition、到達不能パス)", commit: d21fe4e, status: deliberate, type: deliberate_decision }
   - { finding: D-PV, decision: "conflict 同定 = caller 安定順 (PlacementOrder 昇順)、validator は入力順保存", test: ConflictingPlacementId_Is_First_In_Collection_Order_AsBuilt, commit: d21fe4e, status: deliberate, type: deliberate_decision }
+  - { finding: F-P14, decision: "RENDERING_EXPORT as-built BOM (三角形を閉じる) + F-P13 実運用で 5 gap 回収", test: "(地図化、実コード変更なし)", commit: 0e7f03a, status: mapped, type: as_built_bom_authoring }
 ```
 
 ## 8. metrics (v0.1 最小: 3 つ、現時点の実績)
@@ -167,28 +225,32 @@ metrics:
     value: 3
     items: [ D2a, D2b, D-PV ]
 ```
-→ いずれも現実績から即数えられる (空中戦でない)。自動集計は v0.2。
+→ いずれも現実績から即数えられる (空中戦でない)。自動集計は後送り (v0.3+、§9)。
 
 ---
 
-## 9. v0.1 でカバーしない (既知の境界 — silent に落とさない)
-v0.1 の change_types は **直近で回した 5 種**に限定。次は実例があるが詳細化を v0.2 へ送る (gate は既存 RESULT に存在):
+## 9. カバー範囲と既知の境界 (silent に落とさない)
+**v0.2 で取り込み済 (F-P15)**: `as_built_bom_authoring` (F-P8/F-P14、v0.1 §9 から昇格) / `doc_drift` (RD-4/5/6) の 2 change_type + rendering 系 3 gate (§5.1: rendering_numeric_policy / visual_oracle / preview_export_equivalence)。
+**まだ詳細化しない (v0.3+ へ。実例はあるが gate は既存 RESULT に存在)**:
 - **invariant_hardening** (F-P3/F-P5/F-P6/F-P7): fragile 不変条件に決定的 anchor を足す (production 変更なし)。gate は maintenance-task-1 RESULT に。
-- **as_built_bom_authoring** (F-P8 / 候補c): 新 Capability の as-built BOM 化 (両側突合)。gate は IMAGE_VARIANT BOM 作成手順に。
 - **maintenance_audit** (F-P1/F-P2): AI が AI の保守を BOM で監査 (検出・sign-off・汎化)。gate は maintenance-task-1/2 RESULT に。
-- v0.2 で追加予定: `traceability` 拡張 / `metrics` 自動集計 / `release_criteria` / RENDERING_EXPORT BOM。
+- 後送り: `release_criteria` / `metrics` 自動集計 / `traceability` 大拡張 / **decision backlog の正式化** (F-P14 で deliberate 候補が 7 件まとめて surface した運用 = バッチ裁定の型化)。
 
 ## 10. 使い方 (decision flow)
 変更に着手する前に:
 ```
-(1) この変更はどの change_type か? (§1。複数なら主たるものを選び、跨ぎは両方の gate を満たす)
-(2) §3: human decision が要るか? → 要れば AI は提案のみで止まり裁定を仰ぐ
-(3) §4: anchor test が要るか? → 要れば falsifier を確認
-(4) §5: 生成を含むなら overlay/gate のどちらで担保するか
-(5) production code を触るなら §6 の 10 ステップ
-(6) §7 に trace 行を 1 つ足す
+(1)  この変更はどの change_type か? (§1。複数なら主たるものを選び、跨ぎは両方の gate を満たす)
+(1b) BOM 作成なら as_built_bom_authoring、manual と code のズレなら doc_drift (§1、v0.2 追加)
+(2)  §3: human decision が要るか? → 要れば AI は提案のみで止まり裁定を仰ぐ
+(3)  §4: anchor test が要るか? → 要れば falsifier を確認
+(4)  §5: 生成を含むなら overlay/gate のどちらで担保するか
+(4b) §5.1: 描画/出力 (丸め/clip/α/DPI/pixel) を触るなら rendering_numeric_policy / visual_oracle / preview_export_equivalence (v0.2 追加)
+(5)  production code を触るなら §6 の 10 ステップ
+(6)  §7 に trace 行を 1 つ足す
 ```
 
 ## next
-- v0.2: release_criteria + traceability/metrics の拡張 + §9 の 3 type を取り込む。
-- 3 つ目の Capability (RENDERING_EXPORT BOM) に入るとき、本分類で「as-built 拡張 / production finding / generation candidate / deliberate decision」を仕分けながら進める。
+- ✅ v0.2 (F-P15): `as_built_bom_authoring` / `doc_drift` の 2 change_type + rendering 系 3 gate (§5.1) を取り込み済。
+- 直近の適用: **doc_drift の初実例 = RENDERING manual drift (RD-4/5/6) の修正**。
+- **RENDERING deliberate 裁定** (RDD-*/RO-2 丸め) は §5.1 の rendering_numeric_policy / visual_oracle を定義した *本 v0.2 の後*に (数値・視覚を扱う基盤が先)。
+- v0.3+: release_criteria / metrics 自動集計 / invariant_hardening・maintenance_audit の型化 / decision backlog の正式化。
