@@ -176,6 +176,58 @@ public sealed class PlacementCommandTests : IAsyncLifetime
         (await _fx.PlacementRepository.FindByIdAsync(placement.Id))!.Position.Should().Be(new CellPosition(2, 2));
     }
 
+    // AR-07 undo 対称性 anchor (Capability BOM governance pilot, F-P7):
+    // MovePlacementCommand は Execute(before→after)/Undo(after→before) で同じ Move UseCase を
+    // 対称に呼ぶ。移動が「自分の現 footprint と重なる」N×M 移動だと、Move UseCase が
+    // excludePlacementId を落とした瞬間に *両方向とも* 自己重複で失敗し、UndoRedoService が
+    // 依存破綻としてスタックを全クリア = undo が静かに壊れる (D-5 が警告し、F-P2 の auditor が
+    // 候補B で辿った AR-02→Move→History→Undo の連鎖)。既存 MovePlacementCommand テストは
+    // 1×1 で自己重複が起きないため、この連鎖は無被覆だった。
+    [Fact]
+    public async Task MovePlacementCommand_RoundTrip_When_Move_Overlaps_Own_Footprint()
+    {
+        var grid = await SeedGridAsync();
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await SeedCopyWithSizeAsync(asset.Id, new OccupySize(2, 1));  // 2×1
+        var placement = (await _place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0))).Value;
+
+        var command = new MovePlacementCommand(_move, grid.Id, placement.Id,
+            before: new CellPosition(0, 0),
+            after: new CellPosition(1, 0),
+            description: "移動: 自己重複");
+
+        // Execute: (0,0)→(1,0)、新 footprint {(1,0),(2,0)} は旧 {(0,0),(1,0)} と (1,0) で重なる。
+        await _history.ExecuteAsync(command);
+        (await _fx.PlacementRepository.FindByIdAsync(placement.Id))!.Position.Should().Be(new CellPosition(1, 0));
+
+        // Undo: (1,0)→(0,0) も同様に自己重複移動。自己除外が無いと失敗しスタックが全クリアされる。
+        await _history.UndoAsync();
+        (await _fx.PlacementRepository.FindByIdAsync(placement.Id))!.Position.Should().Be(new CellPosition(0, 0));
+
+        await _history.RedoAsync();
+        (await _fx.PlacementRepository.FindByIdAsync(placement.Id))!.Position.Should().Be(new CellPosition(1, 0));
+    }
+
+    private async Task<ImageCopy> SeedCopyWithSizeAsync(Guid assetId, OccupySize size, string copyName = "sized")
+    {
+        var now = DateTimeOffset.UtcNow;
+        var copy = new ImageCopy
+        {
+            Id = Guid.NewGuid(),
+            AssetId = assetId,
+            CopyName = copyName,
+            Transform = ImageTransform.Identity,
+            ScalingMode = ScalingMode.UniformContain,
+            Alignment = Alignment.Center,
+            OccupySize = size,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var added = await _fx.CopyRepository.AddAsync(copy);
+        if (added.IsError) throw new InvalidOperationException();
+        return added.Value;
+    }
+
     [Fact]
     public async Task SwapPlacementsCommand_Symmetric_Execute_Undo_Redo()
     {

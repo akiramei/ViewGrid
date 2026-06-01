@@ -136,7 +136,17 @@ rules:
     enforced_at: [PlacementValidator.cs, SwapPlacementsUseCase.cs L63-71]
     applies_to: [Place, Move, Swap, UpdateOccupySize]
     fragile: true   # ★ AI が (3) を削ると 1000-step random walk でのみ出る実バグになる (旧 ledger A-3 と同型)
-    anchor_test: "tests/ViewGrid.Application.Tests/UseCases/SwapPlacementsUseCaseTests.cs::Returns_Conflict_When_Swap_Would_Make_AB_Mutually_Overlap (F-P3 で追加。stage-3 削除を決定的に捕捉: 実コード=PASS / 削除版=FAIL を dotnet test で実証。既存 6 swap テストはこの盲点を未被覆だった)"
+    anchor_test:
+      - >
+        tests/ViewGrid.Application.Tests/UseCases/SwapPlacementsUseCaseTests.cs::Returns_Conflict_When_Swap_Would_Make_AB_Mutually_Overlap
+        (F-P3 で追加。Swap の stage-3 削除を決定的に捕捉: 実コード=PASS / 削除版=FAIL を dotnet test で実証。
+        既存 6 swap テストはこの盲点を未被覆だった)。
+      - >
+        tests/ViewGrid.Application.Tests/UseCases/MovePlacementUseCaseTests.cs::Allows_Move_That_Overlaps_Own_Current_Footprint
+        (F-P7 で追加。AR-02「対象自身は除外 (excludePlacementId)」節を Move UseCase 層で捕捉:
+        2×1 配置を自分の現 footprint と重なる位置へ移動 → 実コード=PASS / excludePlacementId 削除版=誤 Conflict で FAIL。
+        盲点=既存 5 Move テストは全て 1×1 で自己重複が起きず、PlacementValidatorTests の自己除外テストは
+        validator 単体で「Move UseCase が引数を配線しているか」を見ていなかった = 層の取り違え。F-P2 候補B の anchor 化)。
   - id: AR-03
     name: SwapOnlyWithinSameGrid
     as_built: "a.GridId != b.GridId なら Error.Validation('Placement.DifferentGrid')。別グリッド間 swap 不可。"
@@ -183,6 +193,15 @@ rules:
         RemovePlacementCommand_Restores_Full_State_Including_PixelOffset は名前に反し PixelOffset しか検証せず、
         PlacementOrder 復元は無被覆だった(PlacementOrder のテストは作成時採番 PlaceImageCopyUseCaseTests と
         renderer/fork の seed のみ)。中間 order の配置を削除/復元し snapshot 値そのまま以外を弾く。)
+      - >
+        tests/ViewGrid.Application.Tests/History/Commands/PlacementCommandTests.cs::MovePlacementCommand_RoundTrip_When_Move_Overlaps_Own_Footprint
+        (F-P7 で追加。MovePlacementCommand が「自分の現 footprint と重なる」N×M 移動を Execute→Undo→Redo の
+        round-trip 全体で成立させることを要求する History 層 anchor。Move UseCase が excludePlacementId を
+        落とすと Execute の自己重複移動が誤 Conflict になり round-trip がまず Execute 段で壊れる (= deviation を捕捉)。
+        Undo 方向の戻し移動も自己重複なので、仮に Execute が通っても Undo 側で失敗する設計連鎖があり、
+        UndoRedoService は依存破綻でスタックを全クリアする (D-5 が警告し F-P2 auditor が候補B で辿った
+        AR-02→Move→History→Undo の連鎖。本 anchor はその入口=round-trip 成立を固定する)。
+        既存 MovePlacementCommand テストは 1×1 で自己重複が起きず未被覆。)
     coverage_note: >
       AR-07 の各 sub-invariant の被覆状況: Place の Id 安定 / Remove の PixelOffset 復元 / Remove の
       PlacementOrder 復元(F-P6) / Move・UpdateOffset の before/after 対称 / UpdateOccupy の対称(F-P5) /

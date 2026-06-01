@@ -132,3 +132,34 @@ F-P5 で残課題に挙げた「`RemovePlacementCommand` の全 snapshot 復元�
 - **deviation が「typo」でなく意味的動機を持つ善意の変更**(「削除した配置を undo したら最前面に出てほしい」という妥当に見える UX 判断)である点が F-P3/F-P5 より一段強い。AR-07 の「undo は削除前の*正確な*状態を復元する」という不変条件が、もっともらしい正規化欲求を弾く境界として機能した。
 - **AR-07 の sub-invariant 分解が完了**: 7 つ全てに決定的 anchor が付いた (BOM の `coverage_note` に明記)。GRID_COMPOSITION の 2 つの fragile rule (AR-02 / AR-07) は、宣言された不変条件が全て CI ガード化された状態に到達。
 - 一般原則 (F-P5 を補強): **隣接する同名/類似テスト (PixelOffset 復元・作成時採番) が、本物の盲点 (削除→undo 復元) を「被覆済」に見せかける**。BOM の sub-invariant 列挙が、この種のカバレッジ偽陽性を機械的に炙り出す物差しになる。
+
+---
+
+## F-P7 — F-P2 候補B (Move の自己除外) を決定的 anchor test 化 (2026-06-01、実施・実証済)
+
+F-P2 (maintenance-task-2) で「AI 監査が catchable と確認した列挙外逸脱」を、F-P3 と同じ形で恒久 CI ガードへ落とした。これにより F-P2 も `AI 監査で catchable → 既存テスト盲点を確認 → anchor test 化` の閉路で締まる。
+
+### 盲点 (F-P5/F-P6 と同型: 層を取り違えた「テスト済」の誤読)
+候補B = `MovePlacementUseCase` が `PlacementValidator.Validate` へ渡す **`excludePlacementId` を削除**する変更 (「冗長として整理」に見える)。これは AR-02 の「対象自身は除外」節を壊し、移動先が自分の現 footprint と重なる限り**自己重複で誤 Conflict** になる (N×M 配置の 1 セル移動で発生)。
+- 既存 5 件の `MovePlacementUseCaseTests` は**全て 1×1 配置**で、自己重複が起きないため `excludePlacementId` を一度も exercise しない。
+- `PlacementValidatorTests.Excluded_Placement_Is_Skipped_For_Self_Move_Validation` は **validator 単体**に引数を直接渡して self-skip を検証するだけで、**「Move UseCase が実際に引数を配線しているか」は見ていない** = 配線ギャップ。
+- → 表面走査では「自己除外はテスト済」と誤読するが、候補B (UseCase が引数を落とす) は validator テストも 5 Move テストも全通過する。
+
+### 追加した anchor test (2 本)
+1. `MovePlacementUseCaseTests.cs::Allows_Move_That_Overlaps_Own_Current_Footprint` (AR-02, UseCase 層) — 2×1 を (0,0) に置き (footprint {(0,0),(1,0)})、(1,0) へ移動 (新 {(1,0),(2,0)} が旧と (1,0) で重なる)。自己除外があれば成功、無ければ誤 Conflict。
+2. `PlacementCommandTests.cs::MovePlacementCommand_RoundTrip_When_Move_Overlaps_Own_Footprint` (AR-07 連鎖, History 層) — 同じ自己重複移動を `MovePlacementCommand` で Execute→Undo→Redo の round-trip 全体が成立することを要求。Undo の戻し移動も自己重複なので、自己除外が無いと連鎖的に壊れる。**注意**: deviation 時はまず **Execute 段の自己重複移動が誤 Conflict** になって round-trip が崩れる時点で本 test が落ちる (deviation を確実に捕捉)。「undo 側でスタック全クリアまで」は D-5/UndoRedoService の設計上の下流帰結であって本 test が直接観測するものではない。本 anchor が固定するのは **F-P2 で auditor が辿った AR-02→Move→History→Undo の連鎖の入口 = round-trip 成立そのもの**。
+
+### 決定的実証 (dotnet test)
+| 対象 MovePlacementUseCase | 既存 464 件 | 新 anchor 2 本 |
+| --- | --- | --- |
+| **実コード** (excludePlacementId あり) | PASS | **PASS** (合計 466 pass / 1 skip) |
+| **deviation** (excludePlacementId 削除 = 候補B) | **全 PASS** (464) | **両方 FAIL** |
+
+→ **既存スイートは Move の自己除外を未被覆 (候補B が validator テスト含む 464 件を全て素通り)。新 2 anchor だけが捕捉。** deviation は一時差し込み後 `git checkout` で復元 (src clean)。
+
+**再現手順 (決定的)**: `src/ViewGrid.Application/UseCases/MovePlacementUseCase.cs` の `PlacementValidator.Validate(...)` 呼び出しから `excludePlacementId: placementId` 引数を削除。これで上記 2 anchor のみ FAIL・他 464 PASS / 1 skip。
+
+### 含意 (F-P2 と F-P3 を接続)
+- **F-P2 の探索成果が CI ガードへ恒久化**: 「AI 監査が列挙外逸脱を catchable と確認」(F-P2) → 「既存テストの盲点を特定」→ 「決定的 anchor test 化」(F-P7) という閉路が、F-P3 と同じ形で成立。AI 監査 (探索器・非決定的) と anchor test (gate・決定的) の役割分担が明確になった。
+- **AR-02 の anchor が 2 本** (Swap stage-3 / Move 自己除外)、**AR-07 の anchor が 3 本** (OccupySize / PlacementOrder / Move undo 連鎖) になり、両 fragile rule の被覆がさらに厚くなった。
+- 盲点の型は F-P5/F-P6 と同じ「**隣接層の同主題テスト (validator 単体の自己除外) が、本物の穴 (UseCase の配線) を被覆済に見せかける**」。BOM が指す意味境界 (AR-02 の「対象自身は除外」節) が、層をまたいだ配線ギャップを炙り出した。

@@ -41,7 +41,7 @@ F-P1 (maintenance-task-1) で検出した逸脱 (swap stage-3 削除) は **audi
 
 ## caveat / follow-up
 - **非決定性 caveat**: 1 run・強力モデルによる結果。AI 監査は非決定的で、これは**証拠であって証明ではない**。robust 化の本命は依然 anchor test (F-P3/F-P5/F-P6) = catchable な不変条件を決定的 CI ガードへ落とす路線。F-P2 は「どの逸脱が catchable か」を**列挙外まで広げて観測**した段階に当たる。
-- **follow-up (anchor 候補)**: 候補B は実バグでもある (N×M 配置の自己重複移動を誤拒否 + undo 連鎖破壊)。既存 Move テストがこの自己除外を被覆しているかは未確認 — F-P3/F-P5/F-P6 と同型の anchor test 化候補 (別ラウンド)。候補C は「越境を伴う新機能」であって既存改修でない点も、保守タスクの線引き材料として記録。
+- **follow-up (anchor 候補) → ✅ F-P7 で解消済** (`../maintenance-task-1/PILOT-RESULT.md` の F-P7): 候補B は実バグでもある (N×M 配置の自己重複移動を誤拒否 + undo 連鎖破壊)。既存 Move テストは全て 1×1 でこの自己除外を未被覆と確認 (validator 単体テストは引数を直接渡すだけで Move UseCase の配線を見ていない=層取り違え)。anchor 2 本 (`Allows_Move_That_Overlaps_Own_Current_Footprint` / `MovePlacementCommand_RoundTrip_When_Move_Overlaps_Own_Footprint`) を追加し、実コード=PASS / 候補B=既存 464 全 PASS・新 2 本のみ FAIL を実証。**F-P2 の探索成果が CI ガードへ恒久化された。** 候補C は「越境を伴う新機能」であって既存改修でない点も、保守タスクの線引き材料として記録。
 
 ## スコープ (この round でやらないこと)
-ViewGrid 全体 BOM 化 / 全再生成 / 複数 auditor run による統計化 / 候補B の anchor test 化は対象外 (上記 follow-up)。
+ViewGrid 全体 BOM 化 / 全再生成 / 複数 auditor run による統計化は対象外。(候補B の anchor test 化は当初「別ラウンド」としたが、後続 F-P7 で実施済 = 上記 follow-up。)
