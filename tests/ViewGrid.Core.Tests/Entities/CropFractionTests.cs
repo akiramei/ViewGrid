@@ -59,6 +59,19 @@ public sealed class CropFractionTests
     }
 
     [Fact]
+    public void ToPixelBbox_Midpoint_Rounds_ToEven_AsBuilt()
+    {
+        // ★ F-P12 oracle 硬化: midpoint (x.5) の丸めモードを決定的に固定する falsifier。
+        // 0.5 × 5 = 2.5 (ちょうど中間値)。実装は System.Math.Round 既定 = ToEven (銀行家丸め) で X=2。
+        // MidpointRounding.AwayFromZero なら X=3 となり、F-P10 の blind 生成物 (AwayFromZero) はここで FAIL する。
+        // 注意: これは「現実装が ToEven である」という as-built 事実の再現を固定するもので、
+        //       ToEven が *意図された* 丸め方針か (AwayFromZero との優劣) は未決定 (d-3 の決定点 D2a)。
+        new CropFraction(0.5, 0.0, 1.0, 1.0).ToPixelBbox(5, 5).X.Should().Be(2);
+        // 別の中間値でも ToEven を確認: 0.5 × 1 = 0.5 → 0 (ToEven) / 1 (AwayFromZero)。
+        new CropFraction(0.5, 0.0, 1.0, 1.0).ToPixelBbox(1, 1).X.Should().Be(0);
+    }
+
+    [Fact]
     public void From_AutoCropFraction_Maps_Fields()
     {
         CropFraction.From(new AutoCropFraction(0.1, 0.2, 0.3, 0.4))

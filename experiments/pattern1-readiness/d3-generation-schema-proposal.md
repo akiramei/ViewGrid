@@ -295,5 +295,4 @@ services:
 - 丸めモードの deliberate 化 (= D2、実コード挙動を変えうる人間決定)。
 
 **next 候補**: (i) F-P11 = enriched spec で再生成し ToEven 収束を反証可能に実証 / (ii) 2 例目 PlacementValidator で overlay 形を枯らす / (iii) IO-1 是正に再生成 resolver を唯一源として活用 (generation_scope.io1_caveat が示した跨ぎ drift の解消)。
-</content>
 </invoke>
