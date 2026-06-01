@@ -63,6 +63,6 @@ RDD-1..6 + RD-2 は **現挙動が意図か**を人間が固定すべき RENDERI
 ## 7. next
 - (a) v0.2: §4 の 5 gap を F-P13 へ取り込む (doc_drift type + 3 gate + decision backlog)。
 - (b) RDD-*/RD-2 の human 裁定 (deliberate 化、別ターン)。
-- (c) manual drift (RD-4/5/6) の修正 (doc_drift の最初の実例)。
+- ✅ (c) manual drift (RD-4/5/6) の修正 = 2026-06-01 (F-P16) 完了 = **doc_drift change_type の初適用例** (日英 06-output.md を実態へ、behavior 不変)。
 - (d) RO-2 の rendering_numeric_policy 明文化 (D2a と整合 or 独立方針)。
 - 成果物: `RENDERING_EXPORT.as-built.v0.1.yaml` + 本 RESULT。実コード変更なし (観測・地図化のみ)。

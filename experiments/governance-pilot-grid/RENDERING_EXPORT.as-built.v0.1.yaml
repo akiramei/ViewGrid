@@ -114,9 +114,9 @@ as_built_divergences:
   - { id: RD-1, vs: sample, topic: scope, what: "sample=focused (consumer read 面のみ、PhotoBoard/Normal/file 出力は対象外)。as-built=full pipeline。", severity: expected, note: "sample が意図的に絞った抽象。as-built が広いのは設計どおり。" }
   - { id: RD-2, vs: sample, topic: "R-03 unresolvable copy", what: "sample『spec 無し placement は除外 (エラーでない)』 vs as-built『copy/asset null は NotFound エラー』(RenderGridUseCase:42-47)。", severity: behavioral, classification: "F-P13: deliberate_decision 候補 (除外 vs エラーは設計判断)。要 human。" }
   - { id: RD-3, vs: sample, topic: "neutral DTO boundary", what: "sample『Placement/ImageCopy を import せず neutral DTO』 vs as-built『PlacementRenderItem が GridPlacement/ImageCopy を直接保持』。", severity: design, note: "実コードは Core entity 共有のクリーンアーキで、sample の port/DTO 抽象は未採用。drift でなく設計選択だが sample との不一致は明記。" }
-  - { id: RD-4, vs: manual, topic: "PhotoBoard スタイル数", what: "★ manual §6.16.2『10 種類のスタイル』 vs 実コード PhotoBoardStyle enum = **3 種** (Natural/Rough/Scattered)。", severity: manual_drift, classification: "F-P13: doc-drift (manual 過大記載)。manual 修正候補。" }
-  - { id: RD-5, vs: manual, topic: "背景色", what: "manual §6.17.2『全面 … 透過 or 背景色』 vs 実コードは常に透過 (RR-06、背景色オプション無し)。", severity: manual_drift, classification: "F-P13: doc-drift (軽微)。" }
-  - { id: RD-6, vs: manual, topic: "DrawnPixels の α 閾値", what: "manual §6.19.2/§6.17.3『α>0』 vs 実コード DrawnPixelAlphaThreshold=8 (≈3%、AA フチ除外)。§6.17.3 は『AA フチも含む』と書くが実際は閾値で除外気味。", severity: manual_drift, classification: "F-P13: doc-drift + deliberate_decision 候補 (RDD-2)。" }
+  - { id: RD-4, vs: manual, topic: "PhotoBoard スタイル数", what: "★ manual §6.16.2『10 種類のスタイル』 vs 実コード PhotoBoardStyle enum = **3 種** (Natural/Rough/Scattered)。", severity: manual_drift, classification: "F-P13: doc-drift (manual 過大記載)。", resolution: "✅ 2026-06-01 (F-P16) manual 修正済 = doc_drift change_type の初適用。日英 06-output.md §6.16.2 を 3 styles (Natural/Rough/Scattered) の実態へ。★ Codex review が副 drift を捕捉: 旧記述『フレーム 白/黒/なし』も誤り (PhotoBoardStyleCoefficients は 3 style とも FrameStrength/ShadowStrength=1.00 共通、変わるのは Rotation/Jitter/Overlap/Expansion/Drift)。フレーム=単一オフホワイト固定に訂正。behavior 不変。" }
+  - { id: RD-5, vs: manual, topic: "背景色", what: "manual §6.17.2『全面 … 透過 or 背景色』 vs 実コードは常に透過 (RR-06、背景色オプション無し)。", severity: manual_drift, classification: "F-P13: doc-drift (軽微)。", resolution: "✅ 2026-06-01 (F-P16) manual 修正済 (日英 §6.17.2 = 透過のみ・背景色オプション無しと明記)。" }
+  - { id: RD-6, vs: manual, topic: "DrawnPixels の α 閾値", what: "manual §6.19.2/§6.17.3『α>0』 vs 実コード DrawnPixelAlphaThreshold=8 (≈3%、AA フチ除外)。§6.17.3 は『AA フチも含む』と書くが実際は閾値で除外気味。", severity: manual_drift, classification: "F-P13: doc-drift + deliberate_decision 候補 (RDD-2 は α閾値=8 の数値裁定で別)。", resolution: "✅ 2026-06-01 (F-P16) manual 修正済 (日英 §6.17/§6.17.2/§6.17.3 =『描画ピクセル走査、完全/ほぼ透明なフチは無視』へ。閾値=8 の数値は developer-facing BOM 側にのみ残す)。閾値そのものを変えるかは RDD-2 (deliberate、別)。" }
 
 # ──────────────────────────────────────────────────────────────────────
 # deliberate_decisions 候補 (RDD-*) — RENDERING 固有。★ 未裁定 = human_decision 待ち (F-P13)
@@ -159,6 +159,6 @@ pilot:
   not_yet:
     - "RO-2 丸め方針の一元化 (rendering_numeric_policy) / visual oracle (golden image / pixel diff) = F-P13 v0.2 gate 候補"
     - "RDD-* / RD-2 の human 裁定 (deliberate 化)"
-    - "manual drift (RD-4/5/6) の修正"
+    - "✅ manual drift (RD-4/5/6) の修正 = 2026-06-01 (F-P16) 完了 (doc_drift change_type の初適用)"
     - "PlacementGeometry / PhotoBoardLayout / AutoCropCalculator の内部 rules 化 (本 v0.1 は role のみ把握)"
   next_step: "PILOT-RESULT.md で F-P13 分類を確定し、v0.2 へ戻す gate (rendering_numeric_policy / visual_oracle / preview_export_equivalence / doc_drift) を抽出。RDD-*/RD-2 は別途 human 裁定。"

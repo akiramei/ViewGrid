@@ -37,17 +37,17 @@ Normal mode and PhotoBoard mode differ **only in the rendering pipeline** used a
 
 ### 6.16.2 Style Presets
 
-Ten styles are provided. Each preset is tuned with a combination of the following:
+Three styles are provided (Natural / Rough / Scattered). Each style tunes a combination of
+**rotation amount, position jitter, overlap frequency, expansion, and drift**, so the same
+intensity produces a distinctly different degree of "scatter" per style. The frame (a single
+off-white Polaroid-style border) and the drop shadow are common across all three styles
+(there are no color or border-type options).
 
-- Frame (white border / black border / none) and its thickness
-- How the shadow falls (distance / blur / color)
-- Jitter (tilt / positional offset)
-- Naturalness of overlap (i.e., the "human feel" of the two-stage curve)
-
-Guidance on choosing a style:
-- **A safe, tidy look** → simple Polaroid-family presets
-- **Lively, pop** → styles with stronger jitter
-- **Monochrome / chic** → dark-family presets
+| Style | Mood |
+|---|---|
+| **Natural** | Slight wobble, no overlap. A tidy "photo album" look |
+| **Rough** | Moderate rotation with occasional overlap. A "photos stuck in a notebook" look |
+| **Scattered** | Bold rotation, frequent overlap, larger expansion. A "photos tossed on a desk" look |
 
 ### 6.16.3 Intensity Slider
 
@@ -90,7 +90,7 @@ The final trim range specification, applied in both Normal mode and PhotoBoard m
 |---|---|
 | **Full** | The entire canvas (canvas width × height) |
 | **Occupied cells** | The bounding box of the group of cells occupied by placements |
-| **Drawn pixels** | The bounding box found by scanning for pixels with α > 0 |
+| **Drawn pixels** | The bounding box found by scanning the drawn pixels (fully or nearly transparent edges are ignored) |
 
 "Full" gives a fixed output size, "Occupied cells" covers only the placement range, and "Drawn pixels" covers only the area actually drawn. In PhotoBoard mode, the bounding box is calculated including the results of shadows and jitter.
 
@@ -109,16 +109,16 @@ For a 3×3 grid (canvas 1200×1200), with one placement in the top-left 2×2 cel
 
 | Mode | Output PNG size | Content |
 |---|---|---|
-| Full | 1200×1200 | The entire canvas (the center cell, top-right, and bottom-left are empty — transparent or background color) |
+| Full | 1200×1200 | The entire canvas (the center cell, top-right, and bottom-left are empty and transparent; there is no background-color option) |
 | Occupied cells | About 1200×1200 | The range that merges the bounding box of the top-left placement with that of the bottom-right placement (in this example, almost the same as Full) |
-| Drawn pixels | About 1000×1000 | Only pixels with α > 0. If the placement's scaling result leaves transparent areas, those are omitted |
+| Drawn pixels | About 1000×1000 | Only drawn pixels (fully or nearly transparent edges are ignored). If the placement's scaling result leaves transparent areas, those are omitted |
 
 In PhotoBoard mode, the bounding box expands to accommodate the jitter (tilt) and shadows. Trimming with "Drawn pixels" gives a size where "the corners of the photos fit exactly."
 
 ### 6.17.3 Notes
 
 - With "Occupied cells" or "Drawn pixels," the output size varies depending on the placement, so use "Full" when you want a consistent size
-- "Drawn pixels" relies on α scanning, so even very faint semi-transparent pixels (for example, anti-aliased edges) are included. If the resulting size is larger than expected, check whether semi-transparent areas are scattered across the canvas
+- "Drawn pixels" scans the drawn pixels; fully or nearly transparent edges (such as faint anti-aliased fringes) are ignored, while sufficiently opaque semi-transparent areas are still included. If the resulting size is larger than expected, check whether semi-transparent areas are scattered across the canvas
 
 ## 6.18 Preview
 
