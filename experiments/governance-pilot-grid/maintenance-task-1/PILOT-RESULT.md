@@ -30,7 +30,7 @@
 
 ## meta-findings (方法論側へ戻す)
 - **F-P1 (✅ 実証)**: ガバナンスループ (BOM + 独立 maintainer + 独立 auditor) は fragile-invariant 逸脱に対し機能。検出と sign-off の両方向。
-- **F-P2 (limitation / 次ラウンド)**: 今回の逸脱は audit_focus に **明示列挙済み** の項目だった。BOM の汎化力 (列挙外の逸脱を捕捉できるか) は未検証 → 次は audit_focus に無い逸脱 (例: AR-05 PixelOffset の境界チェック追加 = 仕様違反、または undo 対称性 AR-07 の破壊) を植えて試す。
+- **F-P2 (✅ 実証済、2026-06-01 — `../maintenance-task-2/PILOT-RESULT.md`)**: 当初 limitation だった「BOM の汎化力 (audit_focus 列挙外の逸脱を捕捉できるか)」を検証 → **3/3 正答・偽陽性なし**。独立 auditor が、列挙外の 2 逸脱 (AR-02 の `excludePlacementId` 自己除外削除 / Place が画像アスペクトから占有を導出する Capability 越境) を、rules/does_not_own/decision_ownership/boundaries/divergences から**推論して**捕捉し、正当リファクタは PASS とした。**BOM は「チェックリスト」でなく「意味地図」として汎化する**ことを実証。caveat: 単 run・非決定的 = 証拠であって証明でない (robust 化の本命は anchor test 路線)。
 - **F-P3 (reproducibility → 次の改善対象)**: 監査は AI 判断 (非決定的)。別 run で見落とすリスク。AR-02 stage-3 は **「実在し・catchable」と実証された破壊パターン** = ユーザーが defer した **C# dynamic conformance harness / anchor test の最初の落とし込み先**として最有力。「破壊パターンを観測してから harness に落とす」(ユーザー方針) の観測が完了した。
 - **F-P4 (positive)**: BOM 駆動監査はコメント上の意味縮小も捕捉 = コード差分だけでなく宣言/意図の侵食も拾う。
 
@@ -60,7 +60,7 @@ ViewGrid 全体 BOM 化 / 全再生成 / UI 網羅監査 / EF 完全一致は対
 ### 含意
 - **価値連鎖が end-to-end で完成**: as-built BOM の `fragile` 指摘 → AI 監査が逸脱を catchable と確認 → 既存テストの盲点を特定 → 決定的 anchor test で恒久ガード化 (AI 判断不要・CI で再現可能)。
 - 一般原則: **BOM の `rules.fragile` は「決定的 anchor test を持つべき不変条件」の優先リスト**になる。次の自然な展開は AR-07 (undo 対称性) 等、他の fragile に同手順を適用。
-- F-P2 (列挙外逸脱で BOM 汎化力テスト) は未実施 (別ラウンド候補)。
+- F-P2 (列挙外逸脱で BOM 汎化力テスト) は **✅ 実証済** (`../maintenance-task-2/PILOT-RESULT.md`、3/3・偽陽性なし)。
 
 ---
 

@@ -309,6 +309,13 @@ pilot:
   success_condition: >
     AI に小さな保守タスクを与えたとき、本 BOM (特に audit_focus + rules.fragile + as_built_divergences) で
     「壊してはいけない意味」の越境・破壊・取り違えを検出・指摘できるか。完全再生成は目標でない。
+  validated:
+    - "F-P1 (maintenance-task-1): 列挙済み逸脱 (AR-02 swap stage-3) の検出 + 正当リファクタ sign-off。両方向成功。"
+    - "F-P3/F-P5/F-P6: fragile 不変条件 (AR-02 / AR-07 全 sub-invariant) を決定的 anchor test 化 = AI 判断不要の CI ガードへ。"
+    - >
+      F-P2 (maintenance-task-2): audit_focus 列挙*外*の逸脱でも独立 auditor が rules/does_not_own/
+      decision_ownership/boundaries/divergences から推論して捕捉 (3/3・偽陽性なし)。
+      → 本 BOM は『チェックリスト』でなく『意味地図』として汎化する。caveat: 監査は非決定的 (証拠であって証明でない)。
   not_yet:
     - ViewGrid 全体の BOM 化
     - BOM からの全再生成
