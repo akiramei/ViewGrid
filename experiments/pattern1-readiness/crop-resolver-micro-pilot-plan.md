@@ -65,4 +65,5 @@ F-P2 の「blind auditor」の **生成版**:
 - **スコープ漏れ**: 生成器が ImageCopy の all-or-nothing getter (IR-05) まで作り込もうとしたら範囲外と判定 (入力型は所与)。
 
 ## 8. 位置づけ
-F-P10 (本計画の実施) は **別途 go ahead が要る**。本ファイルは F-P9 (readiness audit) の成果物で、実行はしない。実施後、結果は `experiments/pattern1-readiness/` に micro-pilot result として記録し、d-3 の BOM スキーマ拡張提案へ繋ぐ。
+F-P10 (本計画の実施) は **✅ 実施済 (2026-06-01)**。結果は `crop-resolver-micro-pilot-RESULT.md` を参照
+(生成物は全スイートを drop-in で通過、唯一の発散 = ToPixelBbox の丸めモード未指定 → d-3 へ)。
