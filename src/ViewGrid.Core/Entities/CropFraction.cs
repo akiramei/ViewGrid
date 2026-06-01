@@ -34,4 +34,32 @@ public readonly record struct CropFraction(double X, double Y, double Width, dou
 
     /// <summary>ManualCrop 設定から CropFraction を作る。</summary>
     public static CropFraction From(ManualCropFraction f) => new(f.X, f.Y, f.Width, f.Height);
+
+    /// <summary>
+    /// 実効クロップの優先規則 (R-08) の<b>唯一の源</b>。<c>ManualCrop を排他優先 → AutoCrop → null</c>。
+    /// いずれも <see cref="IsFull"/> (クロップ無効 = 全領域) なら <c>null</c> を返す。
+    /// <para>
+    /// AutoCrop の I/O・ピクセル走査は呼出側が済ませた <paramref name="auto"/> を渡す（本メソッドは純粋: I/O を持たない）。
+    /// ManualCrop が非 null の時点で <paramref name="auto"/> は<b>一切参照しない</b>（排他・短絡）。
+    /// <see cref="ViewGrid.Core.Services.IImageCropResolver"/> の標準実装 / CopyPropertiesViewModel の
+    /// 編集プレビュー / SkiaGridImageRenderer の出力が、この 1 関数に優先判定を委譲することで drift を防ぐ。
+    /// </para>
+    /// </summary>
+    /// <param name="manual">ManualCrop 比率（OFF / 未設定なら null）。</param>
+    /// <param name="auto">AutoCrop 走査結果の比率（OFF / 未走査なら null）。ManualCrop 優先時は無視される。</param>
+    /// <returns>実効クロップ比率。クロップ無効（OFF / full / どちらも null）なら null。</returns>
+    public static CropFraction? ResolveEffective(ManualCropFraction? manual, AutoCropFraction? auto)
+    {
+        if (manual is { } m)
+        {
+            var cf = From(m);
+            return cf.IsFull() ? null : cf;
+        }
+        if (auto is { } a)
+        {
+            var cf = From(a);
+            return cf.IsFull() ? null : cf;
+        }
+        return null;
+    }
 }

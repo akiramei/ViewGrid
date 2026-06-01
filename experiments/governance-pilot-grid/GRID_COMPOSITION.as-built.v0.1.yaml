@@ -267,7 +267,7 @@ boundaries:
     - capability_pair: [GRID_COMPOSITION, IMAGE_VARIANT_MANAGEMENT]
       via: crop ライブプレビュー (GridWorkspaceViewModel が EffectiveCropFraction を placement へ push)
       what: "別セッションの crop fix で追加。GRID の VM は Draft を placement へ渡すだけ (overreach でない=O-2 同型)。"
-      cross_bom_finding: "意味の漏れは IMAGE_VARIANT 側 CopyPropertiesViewModel.EffectiveCropPreview (向こうの IO-1: crop 優先規則の 3 重実装)。境界のどちら側に overreach があるか両側 BOM で初めて確定。"
+      cross_bom_finding: "意味の漏れは IMAGE_VARIANT 側 CopyPropertiesViewModel.EffectiveCropPreview だった (向こうの IO-1: crop 優先規則の重複実装)。境界のどちら側に overreach があるか両側 BOM で確定。★ 2026-06-01 是正済 (IMAGE_VARIANT IO-1=mitigated): 優先判定を Core CropFraction.ResolveEffective へ単一源化、EffectiveCropPreview も委譲。GRID 側 push (Draft→placement) は引き続き overreach でない。"
   depended_on_by:
     - { capability: RENDERING_EXPORT, interface: "GridCanvas + Placement list (論理情報のみ)", access: read_only }
 

@@ -235,20 +235,12 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// </summary>
     public CropFraction? EffectiveCropPreview
     {
-        get
-        {
-            if (DraftManualCrop is { } mc)
-            {
-                var cf = CropFraction.From(mc);
-                return cf.IsFull() ? null : cf;
-            }
-            if (AutoCropEnabled && AutoCropPreviewFraction is { } af)
-            {
-                var cf = CropFraction.From(af);
-                return cf.IsFull() ? null : cf;
-            }
-            return null;
-        }
+        // 優先判定 (ManualCrop>AutoCrop>null, full→null) は CropFraction.ResolveEffective に委譲（唯一源）。
+        // ただし入力は永続 entity でなく編集バッファ (Draft*) であり、AutoCrop は事前走査済みの
+        // AutoCropPreviewFraction を渡す（resolver の I/O は使わない = draft プレビュー専用の同期経路）。
+        get => CropFraction.ResolveEffective(
+            DraftManualCrop,
+            AutoCropEnabled ? AutoCropPreviewFraction : null);
     }
 
     /// <summary>

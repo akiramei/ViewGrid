@@ -170,15 +170,19 @@ rules:
   - id: IR-04
     name: ManualCropOverridesAutoCrop
     as_built: >
-      実効クロップは ManualCrop を排他優先 → AutoCrop → null (full は無効化して null)。ImageCropResolver が標準実装。
-      ★ as-built ではこの優先規則が **単一の権威でなく 3 箇所に独立実装** されている (IO-1): (a) ImageCropResolver
-      (確定値 + GRID プレビュー rollback + Fit が使う権威) (b) CopyPropertiesViewModel.EffectiveCropPreview
-      (UI draft プレビュー専用の再実装) (c) SkiaGridImageRenderer.ComputeCropSourceRect (RENDERING の独立再実装)。
-      共有点は AutoCropCache (走査結果) のみで、優先判定ロジックは共有されていない。
-    enforced_at: [ImageCropResolver.cs L20-35, CopyPropertiesViewModel.cs (EffectiveCropPreview), SkiaGridImageRenderer.cs (ComputeCropSourceRect)]
+      実効クロップは ManualCrop を排他優先 → AutoCrop → null (full は無効化して null)。
+      ★ 2026-06-01 是正 (IO-1): 優先判定は **Core 純関数 CropFraction.ResolveEffective に単一源化**。
+      4 サイト (ImageCropResolver=確定値+GRID プレビュー rollback+Fit / CopyPropertiesViewModel.EffectiveCropPreview=
+      UI draft プレビュー / SkiaGridImageRenderer の ComputeCropSourceRect=出力 pixel + ComputeRenderedGeometryRect=出力 geometry)
+      が全て ResolveEffective に委譲し、各サイトは入力取得 (永続+I/O / draft / decoded bitmap) のみ担う。
+      AutoCrop 走査結果は AutoCropCache で共有。短絡・排他・full→null は決定点 (ResolveEffective) で一元的に保証。
+    enforced_at: [CropFraction.cs (ResolveEffective=唯一源), ImageCropResolver.cs, CopyPropertiesViewModel.cs (EffectiveCropPreview), SkiaGridImageRenderer.cs (ComputeCropSourceRect/ComputeRenderedGeometryRect/ComputeAutoCropFraction)]
     applies_to: [resolve-effective-crop]
-    fragile: true   # ★ 3 実装の 1 つだけ直すと描画/プレビュー/出力で crop が食い違う drift になる
-    note: "sample R-08 は『本 Capability は宣言のみ・適用は RENDERING』としたが as-built は乖離 (ID-4)。"
+    fragile: false   # ★ 単一源化で「1 つだけ直すと drift」は解消。残る注意は各サイトの入力取得規約 (下記 note)。
+    note: >
+      sample R-08 は『本 Capability は宣言のみ・適用は RENDERING』としたが as-built は乖離 (ID-4)。
+      是正後の残注意: ResolveEffective は純関数で I/O を持たないため、各サイトが「ManualCrop が無いときだけ AutoCrop 入力を渡す」
+      短絡を *呼出側で* 守る必要がある (resolver/renderer とも ManualCrop 非 null 時は AutoCrop I/O/走査をスキップ)。
   - id: IR-05
     name: AutoCropAndManualCropAreAllOrNothing
     as_built: >
@@ -234,8 +238,8 @@ decision_ownership:
     decides: [Transform/ScalingMode/Alignment/AutoCrop/ManualCrop/ProtectedRegion の意味と既定値]
   effective_crop_resolution:
     owner_declared: IMAGE_VARIANT_MANAGEMENT (IImageCropResolver が ManualCrop>AutoCrop を宣言)
-    owner_as_built: "分散 (IO-1): ImageCropResolver(権威) + CopyPropertiesViewModel.EffectiveCropPreview(UI draft) + SkiaGridImageRenderer(RENDERING)"
-    note: "★ sample は『適用は RENDERING、本 Capability は宣言のみ』としたが乖離 (ID-4)。forward(push)=EffectiveCropPreview / rollback=ImageCropResolver と経路非対称。"
+    owner_as_built: "★ 単一源化済 (IO-1 是正、2026-06-01): 優先判定 = Core CropFraction.ResolveEffective。ImageCropResolver(永続+I/O アダプタ) / EffectiveCropPreview(draft) / SkiaGridImageRenderer(出力 pixel+geometry) が委譲。"
+    note: "★ sample は『適用は RENDERING、本 Capability は宣言のみ』としたが乖離 (ID-4)。是正前は forward(push)=EffectiveCropPreview / rollback=ImageCropResolver と経路非対称 + 優先判定が分散。是正後は優先判定のみ単一源 (入力取得は文脈固有のまま)。"
   placement_impact:
     owner: GRID_COMPOSITION
     note: "バリアント削除が配置に与える影響の決定は GRID 側。本 Capability は cascade を実行するのみ。"
@@ -251,13 +255,24 @@ decision_ownership:
 # 観測された overreach / 注意点 (as-built audit findings)
 audit_findings:
   - id: IO-1
-    severity: suspected_overreach
-    where: "実効クロップ優先規則 (R-08) の 3 重実装"
+    severity: mitigated   # ★ 2026-06-01 是正済 (Pattern1/2 成果を実コードへ): was suspected_overreach
+    where: "実効クロップ優先規則 (R-08) の重複実装 → 単一源化"
     what: >
-      ManualCrop>AutoCrop>null + full 無効化という *実効クロップの意味* が、本来単一であるべき ImageCropResolver の他に
-      CopyPropertiesViewModel.EffectiveCropPreview (UI 層) と SkiaGridImageRenderer.ComputeCropSourceRect (RENDERING) にも
-      独立実装されている。CropFraction.IsFull() の扱いも重複。共有点は AutoCropCache の走査結果のみ。
-    guard: "AI 保守で優先規則を触るときは 3 箇所すべてを同期させる。理想は ImageCropResolver を唯一源に寄せて UI/Renderer はそれを呼ぶこと (今は性能/draft 都合で分散)。1 つだけ変更=描画/プレビュー/出力の crop drift。"
+      ManualCrop>AutoCrop>null + full 無効化という *実効クロップの意味* が、かつて ImageCropResolver /
+      CopyPropertiesViewModel.EffectiveCropPreview / SkiaGridImageRenderer の *4 箇所* (renderer 内に 2:
+      ComputeCropSourceRect + ComputeRenderedGeometryRect) に独立実装されていた。
+      ★ 是正: 優先判定を Core の純関数 **CropFraction.ResolveEffective(ManualCropFraction?, AutoCropFraction?)** に
+      単一源化し、4 サイト全てがこれに委譲。各サイトは自分の文脈の入力取得のみ担う (resolver=永続+I/O /
+      EffectiveCropPreview=draft 編集バッファ・sync / renderer=decoded bitmap・pixel・回転)。
+      AutoCrop 走査結果は従来どおり AutoCropCache で共有。F-P10/F-P12 で CropFraction/resolver 仕様を pin した上での是正。
+    history_finding: >
+      是正中に site 4 (ComputeRenderedGeometryRect) のみ短絡が違う latent drift を発見:
+      `if (Manual && !Manual.IsFull()) ... else if (Auto)` 構造のため ManualCrop=full かつ AutoCrop も設定済 (malformed 行) で
+      AutoCrop へ fall through していた (sites 1-3 は ManualCrop 排他で null)。UI 排他では到達しないが、単一源化で site 4 も
+      権威に整合 (正常系は挙動不変)。full→null の担保も従来は経路依存 (resolver は IAutoCropBboxResolver の null-on-full に依存)
+      だったのを ResolveEffective が決定点で明示化。
+    canonical_source: "ViewGrid.Core.Entities.CropFraction.ResolveEffective (Core 純関数 = R-08 の唯一源)。oracle: tests/ViewGrid.Core.Tests/Entities/CropFractionResolveEffectiveTests.cs (6 Fact、短絡/排他/full→null)。"
+    guard: "優先規則を変えるときは CropFraction.ResolveEffective 1 箇所のみ。各サイトの入力取得 (draft / 永続 / decoded) と AutoCrop 走査は文脈固有なので寄せない (依存方向: Infra renderer は Application resolver を呼べない、Core 純関数のみ共有可)。"
   - id: IO-2
     severity: appropriate
     where: GridWorkspaceViewModel の crop ライブプレビュー push (PushCropLivePreview)
@@ -301,7 +316,7 @@ boundaries:
 # audit_focus (AI 保守 diff を照らす質問。pilot の検査軸)
 # ────────────────────────────────────────────────────────────────────────
 audit_focus:
-  - "[crop 優先 単一源化] 実効クロップの優先 (ManualCrop>AutoCrop>null, full 無効) を触るとき、ImageCropResolver / CopyPropertiesViewModel.EffectiveCropPreview / SkiaGridImageRenderer の 3 箇所を同期したか? 1 つだけ直して drift させていないか? (IR-04 fragile)"
+  - "[crop 優先 単一源] 実効クロップの優先 (ManualCrop>AutoCrop>null, full 無効) を変えるとき、Core CropFraction.ResolveEffective (唯一源) で変更したか? 各サイトに優先判定ロジックを再実装し直して drift を *復活* させていないか? (IR-04、2026-06-01 単一源化済。CropFractionResolveEffectiveTests が oracle)"
   - "[crop 排他] AutoCrop と ManualCrop の排他 (CropMode) を壊し、Auto+Manual 同時設定の不整合行を作っていないか? (IR-03)"
   - "[all-or-nothing] AutoCrop(2値)/ManualCrop(4値) の片側だけ書いて部分行を作っていないか? (getter でしか守られない=IR-05)"
   - "[crop 解釈の越境] 画像形状/アスペクト/crop の *意味解釈* を GRID 側 (配置 UseCase/VM) に持ち込んでいないか? (GRID BOM の does_not_own と対。GRID→IMAGE_VARIANT 越境)"
@@ -332,8 +347,8 @@ as_built_divergences:
   - id: ID-4
     topic: R-08 (ManualCropOverridesAutoCrop) の適用所在
     sample: "enforced_at: rendering_export_capability / declaration_only。本 Capability は宣言のみで適用しない (適用コード不在をテストで確認)。"
-    as_built: "★ 適用が 3 箇所に分散 (IO-1): ImageCropResolver(Application 権威) + CopyPropertiesViewModel.EffectiveCropPreview(UI) + SkiaGridImageRenderer(RENDERING)。『適用コード不在』は成立しない。"
-    impact: "★ sample の『宣言のみ』を信じると、保守で 1 箇所だけ直して crop drift を起こす。3 重実装が現実。"
+    as_built: "★ 適用は複数サイトに存在 (resolver/preview/renderer×2)。優先判定は 2026-06-01 に Core CropFraction.ResolveEffective へ単一源化 (IO-1 是正)。『適用コード不在』は成立しない。"
+    impact: "★ sample の『宣言のみ』は誤り。是正前は分散実装で 1 箇所だけ直すと crop drift。是正後は優先判定が単一源だが、適用 (pixel 化/走査/draft) は依然各層に分散している点に注意。"
   - id: ID-5
     topic: アセット削除は拒否でなく cascade
     sample: "UC-02 は依存 copy があれば DependentCopiesExist で拒否 (自動カスケードしない)。"
@@ -367,7 +382,7 @@ cross_capability_consistency:
     - "GRID.does_not_own『画像(バリアント)の意味解釈 = 共有特性(Scaling/Crop/Transform/Alignment/Regions)の生成・適用 (IMAGE_VARIANT)』 ↔ 本 BOM.owns が同特性を所有。境界一致 (gap/overlap なし)。"
     - "GRID.does_not_own『画像同一性・重複検出 (ImageAsset.FileHash)』 ↔ 本 BOM.decision_ownership.image_identity が所有 (IR-02)。一致。"
     - "Fork straddle: GRID 側=配置 CopyId 付け替え / 本 BOM 側=新バリアント生成。両側で同一 UseCase を別責務として記述。一致 + 共通 finding (Regions 落ち=IO-3) を両側に記録すべき。"
-    - "crop ライブプレビュー straddle: GRID 側 push は overreach でない (GRID O-2 / 本 IO-2)。意味の漏れは本 BOM 側 EffectiveCropPreview (IO-1)。境界の *どちら側に* overreach があるか両側 BOM で初めて確定。"
+    - "crop ライブプレビュー straddle: GRID 側 push は overreach でない (GRID O-2 / 本 IO-2)。意味の漏れは本 BOM 側 EffectiveCropPreview (IO-1) だった → ★ 2026-06-01 是正済 (IO-1=mitigated): 優先判定を Core CropFraction.ResolveEffective へ単一源化、EffectiveCropPreview も委譲 (draft 入力・sync 性は保持)。境界の *どちら側に* overreach があるかを両側 BOM で確定し、研究成果 (F-P10/F-P12 の resolver 仕様 pin) を実コード是正へ接続した実例。"
     - "F-P2 候補C (Place が画像アスペクトから占有導出) の越境判定の裏付け: 『画像形状の解釈』は本 BOM.owns (image_identity/shared_property) であり GRID は does_not_own。両側 BOM が揃ったことで、あの越境が *どの Capability の所有を侵したか* が双方向に確定した。"
 
 # pilot 運用メモ
@@ -379,7 +394,7 @@ pilot:
     *単一 Capability では見えにくい drift* が境界の所有分析から浮かび上がった。
   not_yet:
     - 本 BOM を使った保守タスク監査 (GRID の maintenance-task-1/2 相当)
-    - IO-1/IO-3 を catchable と確認し anchor test 化 (F-P3 系の手順を IMAGE_VARIANT へ)
+    - "IO-1 = ✅ 2026-06-01 是正済 (優先判定を Core CropFraction.ResolveEffective へ単一源化 + CropFractionResolveEffectiveTests oracle)。残: IO-3 (Fork が Regions 落とす) の anchor test 化"
     - RENDERING_EXPORT の as-built BOM (3 つ目。crop 適用の RENDERING 側を固める)
     - ProtectedRegion の詳細 rules 化
   next_step: "本 BOM の owns/boundaries を GRID BOM と相互参照済。次は (i) IO-1/IO-3 の anchor test 化 か (ii) 本 BOM で IMAGE_VARIANT の保守タスクを監査 (検出・sign-off の再現) か。"

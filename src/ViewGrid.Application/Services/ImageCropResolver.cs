@@ -17,21 +17,15 @@ public sealed class ImageCropResolver(
         System.ArgumentNullException.ThrowIfNull(copy);
         System.ArgumentNullException.ThrowIfNull(asset);
 
-        // ManualCrop 優先（排他）
-        if (copy.ManualCrop is { } manual)
-        {
-            var cf = CropFraction.From(manual);
-            return cf.IsFull() ? null : cf;
-        }
-
-        // AutoCrop（既存パス、cache 経由）
-        if (copy.AutoCrop is { } settings)
+        // AutoCrop 走査（I/O）は ManualCrop が無いときだけ起こす（排他・短絡を維持）。
+        // 走査結果を含む優先判定 (ManualCrop>AutoCrop>null, full→null) は CropFraction.ResolveEffective に委譲。
+        AutoCropFraction? autoFraction = null;
+        if (copy.ManualCrop is null && copy.AutoCrop is { } settings)
         {
             var path = imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
-            var fraction = await autoCropResolver.ResolveAsync(asset.Id, path, settings, ct);
-            return fraction is { } f ? CropFraction.From(f) : null;
+            autoFraction = await autoCropResolver.ResolveAsync(asset.Id, path, settings, ct);
         }
 
-        return null;
+        return CropFraction.ResolveEffective(copy.ManualCrop, autoFraction);
     }
 }

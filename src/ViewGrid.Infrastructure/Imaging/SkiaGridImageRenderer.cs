@@ -265,18 +265,19 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
             // Crop が有効なら、回転後座標系の bbox サイズで sw/sh を上書き。
             // DrawOne は src 矩形を Crop オフセット起点で計算するため、ここでも同じ
             // 「Crop 後の論理画像サイズ」で ScalingMode を計算しないと dst 矩形が乖離する。
-            // ManualCrop 優先（排他）、それ以外で AutoCrop（cache 経由）。
-            (int cx, int cy, int cw, int ch)? cropBbox = null;
-            if (item.Copy.ManualCrop is { } manual && !manual.IsFull())
+            // 優先判定 (ManualCrop>AutoCrop>null, full→null) は CropFraction.ResolveEffective に委譲（唯一源）。
+            // AutoCrop は ManualCrop が無いときだけ cache から取得（排他・短絡を維持。ComputeCropSourceRect と同一規則）。
+            AutoCropFraction? autoFraction = null;
+            if (item.Copy.ManualCrop is null &&
+                item.Copy.AutoCrop is { } settings &&
+                _autoCropCache.TryGet(item.Copy.AssetId, settings, out var cached))
             {
-                cropBbox = manual.ToPixelBbox(sourceW, sourceH);
+                autoFraction = cached;
             }
-            else if (item.Copy.AutoCrop is { } settings &&
-                _autoCropCache.TryGet(item.Copy.AssetId, settings, out var fraction) &&
-                !fraction.IsFull())
-            {
-                cropBbox = fraction.ToPixelBbox(sourceW, sourceH);
-            }
+            (int cx, int cy, int cw, int ch)? cropBbox =
+                CropFraction.ResolveEffective(item.Copy.ManualCrop, autoFraction) is { } cf
+                    ? cf.ToPixelBbox(sourceW, sourceH)
+                    : null;
             if (cropBbox is { } b && b.cw > 0 && b.ch > 0)
             {
                 var rotatedCrop = AutoCropCalculator.TransformRect(
@@ -812,15 +813,29 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
     /// </summary>
     private PixelRect? ComputeCropSourceRect(PlacementRenderItem item, SKBitmap source)
     {
-        // ManualCrop 優先（排他、走査不要）
-        if (item.Copy.ManualCrop is { } manual)
-        {
-            if (manual.IsFull()) return null;
-            var (mx, my, mw, mh) = manual.ToPixelBbox(source.Width, source.Height);
-            if (mw <= 0 || mh <= 0) return null;
-            return new PixelRect(mx, my, mw, mh);
-        }
+        // 優先判定 (ManualCrop>AutoCrop>null, full→null) は CropFraction.ResolveEffective に委譲（唯一源）。
+        // AutoCrop の走査 (I/O) は ManualCrop が無いときだけ実行（排他・短絡＝走査不要を維持）。
+        var autoFraction = ComputeAutoCropFraction(item, source);
+        if (CropFraction.ResolveEffective(item.Copy.ManualCrop, autoFraction) is not { } cf)
+            return null;
 
+        var (x, y, w, h) = cf.ToPixelBbox(source.Width, source.Height);
+        if (w <= 0 || h <= 0)
+            return null;
+        return new PixelRect(x, y, w, h);
+    }
+
+    /// <summary>
+    /// AutoCrop 走査結果の比率を返す（原画像座標系）。ManualCrop がある or AutoCrop OFF なら走査せず null。
+    /// 走査は <see cref="AutoCropCache"/> 経由（cache miss 時のみ実走査）。
+    /// 優先判定 (ManualCrop 排他) は呼出側の <see cref="CropFraction.ResolveEffective"/> に委ね、本メソッドは
+    /// 「ManualCrop が無いときの AutoCrop 比率取得」だけを担う。
+    /// </summary>
+    private AutoCropFraction? ComputeAutoCropFraction(PlacementRenderItem item, SKBitmap source)
+    {
+        // ManualCrop 優先（排他）のため、ManualCrop があれば AutoCrop 走査は不要。
+        if (item.Copy.ManualCrop is not null)
+            return null;
         if (item.Copy.AutoCrop is not { } settings)
             return null;
 
@@ -829,7 +844,7 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         // Skia の Decode は Windows で Bgra8888 を返すため、Bytes を RGBA として走査する前に
         // Rgba8888+Unpremul に正規化する（R/B swap で色一致が壊れるのを防ぐ）。
         // Cache miss 時のみ走査するので毎回コピーは発生しない。
-        var fraction = _autoCropCache.GetOrCompute(assetId, settings, () =>
+        return _autoCropCache.GetOrCompute(assetId, settings, () =>
         {
             if (source.Width <= 0 || source.Height <= 0)
                 return AutoCropFraction.Full;
@@ -853,14 +868,6 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 if (ownsNormalized) normalized.Dispose();
             }
         });
-
-        if (fraction.IsFull())
-            return null;
-
-        var (x, y, w, h) = fraction.ToPixelBbox(source.Width, source.Height);
-        if (w <= 0 || h <= 0)
-            return null;
-        return new PixelRect(x, y, w, h);
     }
 
     /// <summary>
