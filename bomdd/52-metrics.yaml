@@ -1,0 +1,44 @@
+bomdd:
+  product: ViewGrid
+  layer: metrics
+
+metrics:
+
+  stage0_topology_health_check:      # 2026-07-07: 宣言なしリポの遡及健診(impact-retrospective.py の下位形・scratch 治具)
+    method: >
+      ECO 台帳・影響宣言が存在しないため「宣言 vs 実 diff」の採点は不能。
+      代わりに実 diff のみから変更トポロジーを測定(仮 unit = src/<Project>/<第一階層 dir>・
+      *.md / docs / publish / experiments / obj / bin 除外・merge 除外)。
+    population: "code コミット 245 / 仮 unit 29"
+    multi_unit_rate: "49.8%(122/245 が 2 unit 以上に波及)"
+    cross_layer_rate: "40.8%(100/245 が Core/Application/Infrastructure/Presentation の層境界を跨ぐ)"
+    hub_concentration: >
+      multi-unit コミット 122 件中の出現数 — Application/ViewModels 83(68%)・
+      Presentation/Views 81(66%)・以下 Presentation 直下 31・UseCases 28 と急減衰。
+      最頻同時変更ペア = ViewModels↔Views 62 回。
+    file_level_hubs: >
+      GridWorkspaceViewModel.cs 39回/64KB・CopyPropertiesViewModel.cs 37回/54KB・
+      GridCanvasView.axaml.cs 35回/117KB(2,498行)・GridWorkspaceView.axaml 34回/53KB・
+      CopyPropertiesView.axaml 31回 + .axaml.cs 22回。
+    caveats: >
+      系統誤差: widest 上位 2(initial commit 19 unit・using 一括削除 18 unit)等の
+      機械的掃引が跨ぎ率を数%押し上げ(除外しても 48% 前後で結論不変)。
+      仮 unit はディレクトリ第一階層であり M-BOM 裁定を経た境界ではない。N=1・scratch 治具。
+    verdict: >
+      影響宣言の回収見込みあり(変更の半分が跨ぐ)。ハブ先行の as-built 起票を採用
+      (32-mbom.yaml — file unit 6 + catch-all 2)。
+
+  hub_ledger:                        # 61 §1.4 の既定点検リスト(影響分析時に必ず点検 or「影響なし」根拠を書く)
+    note: "実 ECO の under 実績ではなく stage-0 健診の変更集中実績に基づく初期版。ECO 運用開始後は遡及採点(impact-retrospective.py)で更新する"
+    units:
+      - "M-VM-WORKSPACE-001(GridWorkspaceViewModel — 複合宣言(多:1)につき、E-GRID/E-IMGVAR いずれの変更でも予測に入れる)"
+      - "M-VIEW-CANVAS-005(GridCanvasView.axaml.cs — 複合宣言。VM↔View 同時変更 62 回の片割れ)"
+      - "M-VM-COPYPROPS-002 ↔ M-VIEW-COPYPROPS-007(ペア変更常習)"
+      - "M-VIEW-WORKSPACE-006"
+      - "M-VIEW-REST-008 内 ManualCropEditorWindow(M-VIEW-COPYPROPS-007 と矩形編集ロジックを概念共有)"
+
+  debt:
+    - "View/code-behind ペアの機械写像ギャップ: artifact.path は 1 ファイルのみ宣言(path_note は写像外)。GridCanvasView.axaml / GridWorkspaceView.axaml.cs / CopyPropertiesView.axaml.cs は catch-all M-VIEW-REST-008 に帰属してしまう — 遡及採点導入時に unit 帰属規約(ペア写像)を裁定して解消(ViewPrism2 の csproj/sln 被覆ギャップ→ECO-035 解消と同型)"
+    - "csproj / sln / Directory.Build.props を所有する unit が未宣言(ViewPrism2 と同じギャップ。M-SLN-000 相当の起票は ECO 運用開始時)"
+    - "tests/ の unit 宣言なし(遡及採点導入時に --test-unit 指定で分離集計)"
+    - "acceptance_refs 全 unit 空(Control Plan 未起票 — 既存テストの CP 接続は移行 M4)"

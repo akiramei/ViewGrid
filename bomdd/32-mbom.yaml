@@ -1,0 +1,156 @@
+bomdd:
+  product: ViewGrid
+  experiment: "hub-first-migration(2026-07-07 — stage-0 健診で実測したハブ unit の as-built 起票。file unit 6 + catch-all 2。宣言=実装・M0 Freeze 下で実装は無変更)"
+  layer: M-BOM
+
+# 起票方針:
+#  - unit 粒度の裁定根拠 = 変更集中の実測(52-metrics.yaml)。god ファイルは単一ファイル unit、
+#    残余は catch-all(将来の ECO で段階縮小 — ViewPrism2 ECO-036 系列の型)。
+#  - View/code-behind ペアの機械写像は artifact.path の 1 ファイルのみ(path_note は写像外)。
+#    既知の被覆ギャップとして 52-metrics debt に記録済み。
+#  - acceptance_refs は空(Control Plan 未起票)。既存テストの CP 接続は移行 M4 で行う。
+
+mbom:
+  manufacturing_units:
+
+    # ========== ViewModels ハブ(Application 層) ==========
+
+    - id: M-VM-WORKSPACE-001
+      ebom_refs: [E-GRID-COMPOSITION-001, E-IMAGE-VARIANT-002]   # 複合宣言(多:1)— 61 §1.4 の既定点検対象
+      artifact:
+        path: src/ViewGrid.Application/ViewModels/GridWorkspaceViewModel.cs
+        type: avalonia-viewmodel
+      interface_contract:
+        role: "配置タブの中核コーディネータ。アクティブグリッド・配置済み一覧・配置候補を保持し、配置/取消/移動/入れ替え/ライブプレビュー連動を統括"
+        state: "CurrentGrid / SelectedPlacement / SelectedCandidate / IsBusy(ObservableProperty)+ Placements / Candidates / CandidateGroups(ObservableCollection)"
+        children: "子 VM を所有: Inspector(PlacementInspector), VariantProperties(CopyProperties standalone), Output, Variants, Structure。AttachContext による 2 相初期化(IGridOutputContext 等)"
+        selection: "CurrentSelection: ISelectionContext(PlacementSelection / VariantSelection / GridSelection / NoSelection の派生型)"
+        ops: "LoadGridAsync(grid, ct) / PlaceCopyAtAsync(copyId, cell, ct)+ Place/Remove/Move/Swap/UpdateOffset の各 UseCase 委譲"
+        live_preview: "CopyPropertiesViewModel.PropertyChanged → PushSharedPropertyLivePreview(共有特性のみ・IsLivePreviewSharedProperty/CropProperty で判定)→ PlacementItemViewModel[] へ即時反映。Rollback = RollbackPlacementsForCopyAsync(attach 切替/Revert 時)"
+        deps: "Repos: GridCanvas/ImageCopy/ImageAsset/GridPlacement。UseCases: Place/Remove/Move/Swap/UpdateOffset。IThumbnailService, IImageCropResolver, IImageStorage, IAppSettingsService, SaveCoordinator, IMessenger, IUndoRedoService, ILocalizationService"
+      invariants:
+        - "SelectedPlacement != null ⟹ CurrentSelection = PlacementSelection(選択優先順位)"
+        - "_pendingInspectorTask で配置切替を直列化(race 排除)"
+        - "_syncingCandidateFromPlacement フラグ: 配置→候補同期中は候補変更ハンドラの配置解除を抑止"
+        - "HasGrid は CurrentGrid の非 null に厳密追従"
+      acceptance_refs: []
+      notes: "god-VM(64KB/39回変更)。責務多層(グリッド管理・配置 CRUD・候補ロード・ライブプレビュー・auto-save・子 VM 構成)。解体は将来 ECO(ViewPrism2 ECO-036 の型)"
+
+    - id: M-VM-COPYPROPS-002
+      ebom_refs: [E-IMAGE-VARIANT-002]
+      artifact:
+        path: src/ViewGrid.Application/ViewModels/CopyPropertiesViewModel.cs
+        type: avalonia-viewmodel
+      interface_contract:
+        role: "論理コピー(バリアント)の共有特性編集・保存。特性タブでスタンドアロン、または PlacementInspector 内に embed の 2 態"
+        state: "HasCopy / IsDirty / Rotation / FlipX / FlipY / ScalingMode / AlignX / AlignY / AutoCropEnabled / ManualCropEnabled + RegionItems(ObservableCollection<ProtectedRegionItemViewModel>)"
+        computed: "CropMode(Off/Auto/Manual の tri-state)/ EffectiveCropPreview: CropFraction? / AttachedCopyId / IsAttaching"
+        ops: "SaveAsync(ct) [RelayCommand・CanSave = HasCopy ∧ IsDirty] / Revert() / Attach(CopyItemViewModel?)"
+        events: "PropertyChanged(GridWorkspace がライブプレビュー用に購読)/ DraftReverted(rollback トリガー)"
+        deps: "UpdateImageCopyUseCase, IUndoRedoService, IMessenger, IImageColorPicker, IAutoCropBboxResolver, IAppSettingsService, ILocalizationService"
+      invariants:
+        - "_suppressDirty: Attach 中の PropertyChanged は dirty にしない"
+        - "AutoCrop/ManualCrop 排他(OnXxxChanged が相互 OFF)"
+        - "_autoCropPreviewCts: プレビュー計算は latest-only(連続変更でキャンセル)"
+        - "RegionItems の購読 lifecycle は Add/Remove/Clear で自動管理"
+      acceptance_refs: []
+      notes: "54KB/37回変更。AutoCrop プレビューの非同期性と Revert(ドラフト破棄)の相互作用が複雑"
+
+    - id: M-VM-SHELL-003
+      ebom_refs: [E-SHELL-004]
+      artifact:
+        path: src/ViewGrid.Application/ViewModels/MainWindowViewModel.cs
+        type: avalonia-viewmodel
+      interface_contract:
+        role: "アプリ全体の統括。Undo/Redo 履歴・未保存状態・ステータスバー・タブ別 VM 参照を一元管理"
+        state: "Title / CanUndo / CanRedo / UndoLabel / RedoLabel / HoveredHistoryIndex + computed: HistoryEntries / CurrentHistoryIndex / StatusSummary / HistorySummary / CurrentHints / HasUnsavedChanges / UnsavedSummary"
+        ops: "UndoAsync / RedoAsync / JumpToHistoryAsync(int)(いずれも RelayCommand)"
+        wiring: "IUndoRedoService.StateChanged/Undone/Redone 購読。子 VM 監視: AssetLibrary.Assets.CollectionChanged / GridList.SelectedGrid / GridWorkspace.SelectedPlacement。CopyLibraryChangedMessage を send"
+        deps: "IMessenger, IUndoRedoService, ILocalizationService + AssetLibrary/GridCanvasList/GridWorkspace の各 VM"
+      invariants:
+        - "_uiContext capture: ThreadPool 発火の StateChanged を UI スレッドへ marshal"
+        - "_pendingLoadGridTask: SelectedGrid 切替前に旧グリッド flush を await(EF 並行クエリ race 防止)"
+        - "RefreshAfterHistoryAsync の順序固定: GridList.LoadAsync → grid 切替 → CopyLibraryChangedMessage"
+        - "_pendingAffectedGridId: Undo/Redo 対象 grid へ自動切替(IUndoableCommand.AffectedGridId)"
+      acceptance_refs: []
+      notes: "27KB/18回変更。Undo/Redo × 並行 grid 切替のレース制御が複雑(race fix コメント多数)"
+
+    - id: M-VM-REST-004
+      ebom_refs: [E-GRID-COMPOSITION-001, E-IMAGE-VARIANT-002, E-RENDERING-EXPORT-003, E-SHELL-004]
+      artifact:
+        path: src/ViewGrid.Application/ViewModels
+        path_note: "上記 3 file unit を除く残余(catch-all)。子 VM: PlacementInspector / GridCanvasList / GridOutput / VariantManager / GridStructureEditor / AssetLibrary + entity wrapper 群(GridCanvasItem / PlacementItem / ProtectedRegionItem / CopyItem / CopyCandidate / CandidateGroup / AssetItem)+ ダイアログ VM 3 種 + ViewModelBase / CropMode"
+        type: avalonia-viewmodel
+      interface_contract:
+        role: "配置タブの子 VM 群・entity wrapper 群・ダイアログ VM 群(いずれも M-VM-WORKSPACE-001 または MainWindow から所有される)"
+        pattern: "Context Injection(AttachContext による 2 相初期化)/ SaveCoordinator(debounce auto-save)を共有"
+      invariants: []
+      acceptance_refs: []
+      notes: "catch-all。変更が集中し始めた子 VM は file unit へ昇格して縮小する(ECO-036 系列の型)"
+
+    # ========== Views ハブ(Presentation 層) ==========
+
+    - id: M-VIEW-CANVAS-005
+      ebom_refs: [E-GRID-COMPOSITION-001, E-IMAGE-VARIANT-002]   # 複合宣言(多:1)— 既定点検対象
+      artifact:
+        path: src/ViewGrid.Presentation/Views/GridCanvasView.axaml.cs
+        path_note: "+ GridCanvasView.axaml(機械写像外 — 52-metrics debt 参照)"
+        type: avalonia-view-codebehind
+      interface_contract:
+        role: "グリッドレイアウト可視化・配置 D&D・ピクセル微調整・保護領域プレビューの統合 canvas(2,498 行・イベントハンドラ 13・79 メソッド)"
+        vm: "DataContext = GridWorkspaceViewModel。XAML 双方向 binding + Rebuild 時の VM 直呼び"
+        subscriptions: "CopyPropertiesViewModel.SelectedRegion(region frame 追従)/ CurrentGrid.Placements.CollectionChanged → Rebuild() / placement.PropertyChanged → PixelOffset 再適用 / RegionItems per-item 購読"
+        logic: "D&D 状態機械 4 層(セル候補・配置交換・自己部分移動・境界ドラッグ)+ ヒットテスト(占有セル↔配置 VM の O(1) 逆引き辞書)+ SkiaSharp プリローテーション LRU キャッシュ(BitmapCacheKey)+ Shift+ドラッグ / Ctrl+Arrow の dual 微調整パス"
+        deps: "Core: GridCanvas, Placement, CellPosition, ProtectedRegion, OccupySize, ImageTransform。SkiaSharp: SKBitmap/SKCanvas"
+      invariants:
+        - "_occupantMap: 占有セル全域の逆引きは Move/Swap/OccupySize 変更時に差分更新"
+        - "_placementBorders: Border ↔ PlacementItemViewModel 1:1。SizeChanged で PixelOffset 再計算"
+        - "_unselectedRegionBorders: region 毎 1 Border・重複防止 Set で購読管理"
+        - "Shift+D&D はドラッグ中 VM 直接更新(IsDirty)→ Released で永続化(Inspector 保存フロー統一)"
+      acceptance_refs: []
+      notes: "リポ最大 god-View(117KB/35回変更)。セル座標→ピクセル座標換算が 3 箇所に重複(geometry-service 抽出候補)= 翻訳層職人芸の実例"
+
+    - id: M-VIEW-WORKSPACE-006
+      ebom_refs: [E-GRID-COMPOSITION-001, E-RENDERING-EXPORT-003]
+      artifact:
+        path: src/ViewGrid.Presentation/Views/GridWorkspaceView.axaml
+        path_note: "+ GridWorkspaceView.axaml.cs(225 行・機械写像外)"
+        type: avalonia-view
+      interface_contract:
+        role: "グリッド・バリアント・出力モード選択パネル+サムネ D&D ソース(53KB XAML が主体)"
+        vm: "DataContext = GridWorkspaceViewModel。Styles 定義(ToggleButton.StyleCard/.Segment)"
+        logic: "TreeView 配下サムネ drag(Tunnel 捕捉)→ dataTransfer 'copy:ID:0,0' 生成 / F2 インラインリネーム / Preview・DeleteAsset 確認ダイアログの非同期フロー"
+      invariants:
+        - "インラインリネーム排他: IsEditing 中は D&D 無効化"
+        - "DeleteAsset cascade: ConfirmDialog 確認後に MainWindowViewModel が依存物削除を判定"
+      acceptance_refs: []
+      notes: "34回変更(churn は XAML 側)。code-behind は View 責務に専念しており smell なし"
+
+    - id: M-VIEW-COPYPROPS-007
+      ebom_refs: [E-IMAGE-VARIANT-002]
+      artifact:
+        path: src/ViewGrid.Presentation/Views/CopyPropertiesView.axaml
+        path_note: "+ CopyPropertiesView.axaml.cs(801 行・機械写像外)"
+        type: avalonia-view
+      interface_contract:
+        role: "ImageCopy の scaling/alignment/crop/region 設定タブ UI+矩形 D&D エディタ embed"
+        vm: "DataContext = CopyPropertiesViewModel。HasCopy で no-variant 案内切替 / vm.SaveAsync・RevertAsync・Editor.* 直呼び"
+        logic: "DragMode 状態機械(CreateNew/Move/Resize×8 handle)+ 12 点 Distance ヒットテスト+ManualCrop overlay(分数座標リアルタイム編集)+ 非同期 ColorPicker"
+        embed: "ShowSaveBar property: standalone は true / PlacementInspector embed 時 false"
+      invariants:
+        - "_isDragging + _dragMode: 矩形編集の排他とモード遷移制御"
+        - "SelectedRegion 変更購読 → GridCanvasView.RegionSelectionFrame 自動追従"
+      acceptance_refs: []
+      notes: "31+22回変更。manual crop と region の矩形編集ロジックが完全重複(DragMode 共有化候補)= 翻訳層職人芸の実例"
+
+    - id: M-VIEW-REST-008
+      ebom_refs: [E-GRID-COMPOSITION-001, E-IMAGE-VARIANT-002, E-RENDERING-EXPORT-003, E-SHELL-004]
+      artifact:
+        path: src/ViewGrid.Presentation/Views
+        path_note: "上記 3 view unit(の宣言 path)を除く残余(catch-all)。主要: ManualCropEditorWindow(702 行・8 handle 矩形エディタ)/ PreviewWindow(621 行・ズーム/パン/ミニマップ)/ WorkspaceSwitchDialog(235 行)+ 小型ダイアログ群"
+        type: avalonia-view
+      interface_contract:
+        role: "ダイアログ・ウィンドウ・小型パネル群。PreviewWindow は RenderModel の consumer(E-RENDERING-EXPORT-003)"
+      invariants: []
+      acceptance_refs: []
+      notes: "catch-all。ManualCropEditorWindow は M-VIEW-COPYPROPS-007 と矩形編集ロジックを概念共有(将来の共通化 ECO で同時影響になりやすい — 既定点検)"

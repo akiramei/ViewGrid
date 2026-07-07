@@ -1,0 +1,43 @@
+bomdd:
+  product: ViewGrid
+  experiment: "hub-first-migration(2026-07-07 — stage-0 健診に基づくハブ先行 as-built 起票。最小 4 品目のみ・完全な E-BOM 化は後続)"
+  layer: E-BOM
+
+# 出典: E-GRID/E-IMGVAR/E-RENDER は docs/capability-bom-audit/samples/ の
+# 3 capability BOM(F-P13〜16 系列の as-built)を品目へ昇格したもの。
+# 境界の権威(担当/非担当・R-08 等の裁定)は当該文書が引き続き持つ。
+
+ebom:
+  items:
+    - id: E-GRID-COMPOSITION-001
+      name: グリッド構成・配置
+      source: docs/capability-bom-audit/samples/grid-composition/
+      summary: >
+        グリッドキャンバスの配置論理の唯一の権威。Placement の配置妥当性・
+        交換(Swap)・占有(OccupySize)・順序管理。ImageCopy の意味解釈は
+        しない(CopyId の存在性のみ — E-IMAGE-VARIANT-002 との境界)。
+
+    - id: E-IMAGE-VARIANT-002
+      name: 画像バリアント管理
+      source: docs/capability-bom-audit/samples/image-variant-management/
+      summary: >
+        ImageCopy 派生物の設定保持・検証・存在確認(Transform/Scaling/
+        Alignment/AutoCrop/ManualCrop/ProtectedRegion)。AutoCrop vs
+        ManualCrop の優先適用は保持のみ — 描画解釈は E-RENDERING-EXPORT-003
+        へ(R-08)。Placement からの逆参照・cascade 削除判定は本品目外。
+
+    - id: E-RENDERING-EXPORT-003
+      name: レンダリング・出力
+      source: docs/capability-bom-audit/samples/rendering-export/
+      summary: >
+        GridCanvas + ImageCopy 設定を read し、z 順・有効クロップ・
+        ピクセル幾何を解決した RenderModel を構築。配置妥当性・crop 値
+        妥当性は再判定しない(read-only DTO consume)。
+
+    - id: E-SHELL-004
+      name: アプリケーション統括(シェル)
+      source: as-built(capability-bom-audit 未対象領域)
+      summary: >
+        ウィンドウ統括・Undo/Redo 履歴・未保存状態・ステータスバー・
+        ワークスペース切替・設定。capability-bom-audit の 3 文書が
+        扱わなかった横断領域を品目化(境界裁定は未実施 — 最初の関連 ECO で行う)。
