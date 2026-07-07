@@ -37,6 +37,27 @@ metrics:
       - "M-VIEW-WORKSPACE-006"
       - "M-VIEW-REST-008 内 ManualCropEditorWindow(M-VIEW-COPYPROPS-007 と矩形編集ロジックを概念共有)"
 
+  trial_error_signals:               # 2026-07-07: git 履歴からの試行錯誤信号抽出(scratch 治具・1例目)
+    method: >
+      件名キーワード分類(feat/fix/revert・再設計)+ fix ファイル集合を直近 feat と突合。
+      潜伏距離 = 同一ファイルへの feat→fix のコミット距離(時間でなくコミット数。
+      キーワード分類には「文言修正」等の混入ノイズあり。N=1・scratch)。
+    population: "298 コミット = feat 118 / fix 57(19%)/ revert・再設計 6"
+    fix_latency: >
+      (fix,file) 対 115 件 — p50 = 13 コミット・p90 = 91。即時(≤3)32 件 vs
+      遅発(>20)39 件(34%)= 潜伏欠陥が即時発見を上回る。
+    fix_concentration: >
+      GridCanvasView.axaml.cs 11 回(fix 集中 1 位 = churn 1 位 = サイズ 1 位の三冠)・
+      CopyPropertiesView ペア+VM で計 22 回。fix ハブ = 変更ハブ = god ファイル(三系統の実測が同一 unit 群へ収束)。
+    failed_fix_chain: >
+      「ManualCrop/AutoCrop プレビュー overlay の位置ずれ」— バグ修正 → Revert →
+      「真因」修正 → Revert の二重失敗連鎖を記録。当該領域 = M-VIEW-CANVAS-005 /
+      M-VIEW-COPYPROPS-007 の notes に記録済みの座標換算重複(翻訳層職人芸)と一致。
+      **smell(静的)と試行錯誤実績(履歴)が同一箇所を独立に指した** — ハブ台帳の妥当性の裏付け。
+    design_reversals: >
+      「配置ファースト UI」第 1 段階 Revert → 第 2 段階で準備タブ完全廃止(方針転換の実録)/
+      「ScalingMode.None 再設計 + TrimmingAnchor 廃止」— K 層/decision note へ昇格すべき裁定点の候補。
+
   debt:
     - "View/code-behind ペアの機械写像ギャップ: artifact.path は 1 ファイルのみ宣言(path_note は写像外)。GridCanvasView.axaml / GridWorkspaceView.axaml.cs / CopyPropertiesView.axaml.cs は catch-all M-VIEW-REST-008 に帰属してしまう — 遡及採点導入時に unit 帰属規約(ペア写像)を裁定して解消(ViewPrism2 の csproj/sln 被覆ギャップ→ECO-035 解消と同型)"
     - "csproj / sln / Directory.Build.props を所有する unit が未宣言(ViewPrism2 と同じギャップ。M-SLN-000 相当の起票は ECO 運用開始時)"
