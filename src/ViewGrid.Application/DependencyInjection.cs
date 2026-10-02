@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<DeleteGridCanvasUseCase>();
         services.AddScoped<RenameGridCanvasUseCase>();
         services.AddScoped<UpdateGridCanvasSizeUseCase>();
+        services.AddScoped<UpdateGridStructureUseCase>();
         services.AddScoped<PlaceImageCopyUseCase>();
         services.AddScoped<RemovePlacementUseCase>();
         services.AddScoped<MovePlacementUseCase>();

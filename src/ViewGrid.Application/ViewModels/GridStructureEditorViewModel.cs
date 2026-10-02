@@ -24,6 +24,7 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
     private readonly IGridCanvasRepository _gridRepository;
     private readonly UpdateGridWeightsUseCase _updateWeightsUseCase;
     private readonly UpdateGridLocksUseCase _updateLocksUseCase;
+    private readonly UpdateGridStructureUseCase _updateStructureUseCase;
     private readonly FitGridWeightToPlacementUseCase _fitWeightUseCase;
     private readonly IUndoRedoService _history;
     private readonly ILocalizationService _loc;
@@ -41,6 +42,7 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
         IGridCanvasRepository gridRepository,
         UpdateGridWeightsUseCase updateWeightsUseCase,
         UpdateGridLocksUseCase updateLocksUseCase,
+        UpdateGridStructureUseCase updateStructureUseCase,
         FitGridWeightToPlacementUseCase fitWeightUseCase,
         IUndoRedoService history,
         ILocalizationService loc)
@@ -48,6 +50,7 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
         _gridRepository = gridRepository;
         _updateWeightsUseCase = updateWeightsUseCase;
         _updateLocksUseCase = updateLocksUseCase;
+        _updateStructureUseCase = updateStructureUseCase;
         _fitWeightUseCase = fitWeightUseCase;
         _history = history;
         _loc = loc;
@@ -107,6 +110,66 @@ public sealed partial class GridStructureEditorViewModel : ViewModelBase
         }
         Context.StatusMessage = _loc["Status_GridWeightsUpdated"];
         return true;
+    }
+
+    /// <summary>末尾に 1 行追加する (既存の配置は動かない。 Undo で元の行数へ戻る)。</summary>
+    public Task<bool> AddRowAsync(CancellationToken ct = default) => AddRowOrColumnAsync(addRow: true, ct);
+
+    /// <summary>末尾に 1 列追加する (既存の配置は動かない。 Undo で元の列数へ戻る)。</summary>
+    public Task<bool> AddColumnAsync(CancellationToken ct = default) => AddRowOrColumnAsync(addRow: false, ct);
+
+    /// <summary>
+    /// 行・列の追加。 作成後に行列数を変えられないと、 2×2 に 5 枚目を足すためだけに別グリッドを作り、 既存配置と
+    /// 配置固有の微調整を作り直すことになる。 末尾追加なら既存の配置・微調整・重みはそのまま使える。
+    /// 履歴には 1 操作として積み、 Undo で元の構造 (行列数・重み・ロック) へ戻す。
+    /// </summary>
+    private async Task<bool> AddRowOrColumnAsync(bool addRow, CancellationToken ct)
+    {
+        var grid = Context.CurrentGrid;
+        if (grid is null) return false;
+
+        // 最新の永続値を基準にする (画面の VM ではなく DB が正本)。
+        var persisted = await _gridRepository.FindByIdAsync(grid.GridId, ct);
+        if (persisted is null) return false;
+        var before = GridStructure.From(persisted);
+
+        if (addRow ? before.Rows >= UpdateGridStructureUseCase.MaxGridDimension
+                   : before.Cols >= UpdateGridStructureUseCase.MaxGridDimension)
+        {
+            Context.StatusMessage = _loc.Format(
+                addRow ? "Status_GridRowsAtLimitFmt" : "Status_GridColsAtLimitFmt",
+                UpdateGridStructureUseCase.MaxGridDimension);
+            return false;
+        }
+
+        var after = addRow ? before.WithRowAdded() : before.WithColumnAdded();
+        var description = _loc.Format(
+            addRow ? "History_GridRowAddedFmt" : "History_GridColAddedFmt",
+            grid.Name, addRow ? after.Rows : after.Cols);
+        var command = new UpdateGridStructureCommand(_updateStructureUseCase, grid.GridId, before, after, description);
+        var result = await _history.ExecuteAsync(command, ct);
+        if (result.IsError)
+        {
+            Context.StatusMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+            return false;
+        }
+
+        ApplyStructureToViewModel(grid, after);
+        Context.NotifyCurrentGridChanged();
+        Context.StatusMessage = _loc.Format(
+            addRow ? "Status_GridRowAddedFmt" : "Status_GridColAddedFmt",
+            addRow ? after.Rows : after.Cols);
+        return true;
+    }
+
+    private static void ApplyStructureToViewModel(GridCanvasItemViewModel grid, GridStructure structure)
+    {
+        grid.Rows = structure.Rows;
+        grid.Cols = structure.Cols;
+        grid.ColWeights = structure.ColWeights;
+        grid.RowWeights = structure.RowWeights;
+        grid.ColLocked = structure.ColLocked;
+        grid.RowLocked = structure.RowLocked;
     }
 
     /// <summary>

@@ -12,8 +12,16 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
     [ObservableProperty]
     public partial string Name { get; set; }
 
-    public int Rows { get; }
-    public int Cols { get; }
+    /// <summary>
+    /// 行数 / 列数。 行・列の追加で変わるため可変 (ObservableProperty)。 変更で <see cref="GridSizeLabel"/> を再評価する。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GridSizeLabel))]
+    public partial int Rows { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GridSizeLabel))]
+    public partial int Cols { get; set; }
 
     /// <summary>
     /// キャンバス幅 (px)。 配置タブの右ペインから編集される (LostFocus / Enter で

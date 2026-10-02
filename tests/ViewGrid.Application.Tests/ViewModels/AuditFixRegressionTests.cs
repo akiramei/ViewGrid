@@ -78,7 +78,7 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
             _history, _messenger, new NullLocalizationService(),
             NullLogger<VariantManagerViewModel>.Instance);
         var structure = new GridStructureEditorViewModel(
-            _fx.GridRepository, updateWeights, updateLocks, fitWeight, _history,
+            _fx.GridRepository, updateWeights, updateLocks, new UpdateGridStructureUseCase(_fx.GridRepository, _fx.PlacementRepository), fitWeight, _history,
             new NullLocalizationService());
 
         _vm = new GridWorkspaceViewModel(
@@ -882,5 +882,87 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
         await _vm.ReloadFromMessageAsyncForTests();
 
         candidate.SummaryLine.Should().EndWith("90°", "表示済みの要約値も保存後に同期する");
+    }
+
+    // ─── 行・列の追加 (ユーザビリティ評価) ──────────────────────────────────
+
+    [Fact]
+    public async Task AddRow_And_AddColumn_Keep_Placements_Update_The_ViewModel_And_Undo_Restores_The_Grid()
+    {
+        var (a, _, p1, p2) = await SeedTwoPlacementsAsync(autoSave: false);
+        var grid = _vm.CurrentGrid!;
+        grid.Rows.Should().Be(2);
+        grid.Cols.Should().Be(2);
+
+        (await _vm.Structure.AddRowAsync()).Should().BeTrue();
+        (await _vm.Structure.AddColumnAsync()).Should().BeTrue();
+
+        grid.Rows.Should().Be(3);
+        grid.Cols.Should().Be(3);
+        grid.GridSizeLabel.Should().Contain("3×3");
+        grid.RowWeights.Should().HaveCount(3);
+        grid.ColWeights.Should().HaveCount(3);
+        _vm.Placements.Select(p => p.PlacementId).Should().BeEquivalentTo([p1.PlacementId, p2.PlacementId]);
+        (await _fx.PlacementRepository.FindByIdAsync(p2.PlacementId))!.Position.Should().Be(new CellPosition(1, 0));
+        _history.History.Should().HaveCount(2, "行追加と列追加はそれぞれ 1 操作として履歴に積まれる");
+
+        (await _history.UndoAsync()).IsError.Should().BeFalse();
+        (await _history.UndoAsync()).IsError.Should().BeFalse();
+
+        var stored = (await _fx.GridRepository.FindByIdAsync(grid.GridId))!;
+        stored.GridRows.Should().Be(2);
+        stored.GridCols.Should().Be(2);
+        (await _fx.PlacementRepository.FindByGridIdAsync(grid.GridId)).Should().HaveCount(2, "配置は無傷");
+        _ = a;
+    }
+
+    [Fact]
+    public async Task AddRow_Can_Be_Redone()
+    {
+        await SeedTwoPlacementsAsync(autoSave: false);
+        var gridId = _vm.CurrentGrid!.GridId;
+        await _vm.Structure.AddRowAsync();
+        await _history.UndoAsync();
+
+        (await _history.RedoAsync()).IsError.Should().BeFalse();
+
+        (await _fx.GridRepository.FindByIdAsync(gridId))!.GridRows.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task A_Placement_Can_Be_Put_Into_The_Added_Cell_And_Undo_Order_Stays_Valid()
+    {
+        var (_, b, _, _) = await SeedTwoPlacementsAsync(autoSave: false);
+        var gridId = _vm.CurrentGrid!.GridId;
+        await _vm.Structure.AddRowAsync();
+        var candidateB = _vm.Candidates.Single(c => c.CopyId == b.Id);
+        (await _vm.PlaceCopyAtAsync(candidateB.CopyId, new CellPosition(0, 2))).Should().BeTrue(); // 追加した行
+
+        // 追加行の配置が先に Undo され、 続けて行追加を Undo できる (範囲外の配置が残らない)。
+        (await _history.UndoAsync()).IsError.Should().BeFalse();
+        (await _history.UndoAsync()).IsError.Should().BeFalse();
+
+        (await _fx.GridRepository.FindByIdAsync(gridId))!.GridRows.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task AddRow_At_The_Limit_Reports_It_And_Does_Not_Touch_The_History()
+    {
+        await SeedTwoPlacementsAsync(autoSave: false);
+        var gridId = _vm.CurrentGrid!.GridId;
+        var current = GridStructure.From((await _fx.GridRepository.FindByIdAsync(gridId))!);
+        var atLimit = current with
+        {
+            Rows = UpdateGridStructureUseCase.MaxGridDimension,
+            RowWeights = GridCanvas.UniformWeights(UpdateGridStructureUseCase.MaxGridDimension),
+            RowLocked = GridCanvas.AllUnlocked(UpdateGridStructureUseCase.MaxGridDimension),
+        };
+        await new UpdateGridStructureUseCase(_fx.GridRepository, _fx.PlacementRepository).ExecuteAsync(gridId, atLimit);
+        _history.Clear();
+
+        (await _vm.Structure.AddRowAsync()).Should().BeFalse();
+
+        _vm.StatusMessage.Should().Be("Status_GridRowsAtLimitFmt(20)", "上限であることを利用者へ伝える");
+        _history.History.Should().BeEmpty();
     }
 }

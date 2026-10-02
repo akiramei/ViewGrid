@@ -440,6 +440,16 @@
   <data name="Candidate_CropManual" xml:space="preserve"><value>crop</value></data>
   <data name="Candidate_CropAuto" xml:space="preserve"><value>自動 crop</value></data>
   <data name="Candidate_RegionsFmt" xml:space="preserve"><value>保護領域 {0}</value></data>
+  <data name="GridProps_AddRow" xml:space="preserve"><value>+ 行を追加</value></data>
+  <data name="GridProps_AddRow_Tooltip" xml:space="preserve"><value>グリッドの末尾に 1 行追加します。 既存の配置・微調整はそのままで、 Undo できます</value></data>
+  <data name="GridProps_AddCol" xml:space="preserve"><value>+ 列を追加</value></data>
+  <data name="GridProps_AddCol_Tooltip" xml:space="preserve"><value>グリッドの末尾に 1 列追加します。 既存の配置・微調整はそのままで、 Undo できます</value></data>
+  <data name="History_GridRowAddedFmt" xml:space="preserve"><value>行を追加: 「{0}」 (計 {1} 行)</value></data>
+  <data name="History_GridColAddedFmt" xml:space="preserve"><value>列を追加: 「{0}」 (計 {1} 列)</value></data>
+  <data name="Status_GridRowAddedFmt" xml:space="preserve"><value>行を追加しました (計 {0} 行)</value></data>
+  <data name="Status_GridColAddedFmt" xml:space="preserve"><value>列を追加しました (計 {0} 列)</value></data>
+  <data name="Status_GridRowsAtLimitFmt" xml:space="preserve"><value>行数は最大 {0} 行です</value></data>
+  <data name="Status_GridColsAtLimitFmt" xml:space="preserve"><value>列数は最大 {0} 列です</value></data>
   <data name="Status_NoChange" xml:space="preserve"><value>変更なし</value></data>
   <data name="Status_AssetDeletedSingleFmt" xml:space="preserve"><value>{0} を削除しました。</value></data>
   <data name="Status_AssetDeletedCountFmt" xml:space="preserve"><value>{0} 件削除しました。</value></data>

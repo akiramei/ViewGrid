@@ -37,6 +37,22 @@ public partial class GridPropertiesView : UserControl
         await mainVm.GridList.CommitEditingAsync();
     }
 
+    /// <summary>「+ 行を追加」: 末尾に 1 行追加する (既存の配置は動かない。 Undo 可)。</summary>
+    private async void OnAddRowClicked(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (owner.DataContext is not MainWindowViewModel mainVm) return;
+        await mainVm.GridWorkspace.Structure.AddRowAsync();
+    }
+
+    /// <summary>「+ 列を追加」: 末尾に 1 列追加する (既存の配置は動かない。 Undo 可)。</summary>
+    private async void OnAddColumnClicked(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (owner.DataContext is not MainWindowViewModel mainVm) return;
+        await mainVm.GridWorkspace.Structure.AddColumnAsync();
+    }
+
     /// <summary>リセットボタン。 ドラフトを永続化済み値に戻す (履歴は触らない)。</summary>
     private void OnRevertClicked(object? sender, RoutedEventArgs e)
     {

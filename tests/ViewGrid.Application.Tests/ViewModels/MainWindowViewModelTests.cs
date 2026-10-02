@@ -106,7 +106,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             sharedHistory, _messenger, new NullLocalizationService(),
             NullLogger<VariantManagerViewModel>.Instance);
         var structure = new GridStructureEditorViewModel(
-            _fx.GridRepository, updateWeights, updateLocks, fitWeight, sharedHistory,
+            _fx.GridRepository, updateWeights, updateLocks, new UpdateGridStructureUseCase(_fx.GridRepository, _fx.PlacementRepository), fitWeight, sharedHistory,
             new NullLocalizationService());
         _gridWorkspace = new GridWorkspaceViewModel(
             _fx.GridRepository, _fx.CopyRepository, _fx.AssetRepository, _fx.PlacementRepository,

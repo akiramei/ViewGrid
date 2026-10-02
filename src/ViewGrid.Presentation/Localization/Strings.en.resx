@@ -440,6 +440,16 @@
   <data name="Candidate_CropManual" xml:space="preserve"><value>crop</value></data>
   <data name="Candidate_CropAuto" xml:space="preserve"><value>auto crop</value></data>
   <data name="Candidate_RegionsFmt" xml:space="preserve"><value>protected regions {0}</value></data>
+  <data name="GridProps_AddRow" xml:space="preserve"><value>+ Add row</value></data>
+  <data name="GridProps_AddRow_Tooltip" xml:space="preserve"><value>Add one row at the end of the grid. Existing placements and adjustments are kept, and it can be undone</value></data>
+  <data name="GridProps_AddCol" xml:space="preserve"><value>+ Add column</value></data>
+  <data name="GridProps_AddCol_Tooltip" xml:space="preserve"><value>Add one column at the end of the grid. Existing placements and adjustments are kept, and it can be undone</value></data>
+  <data name="History_GridRowAddedFmt" xml:space="preserve"><value>Add row: "{0}" ({1} rows)</value></data>
+  <data name="History_GridColAddedFmt" xml:space="preserve"><value>Add column: "{0}" ({1} columns)</value></data>
+  <data name="Status_GridRowAddedFmt" xml:space="preserve"><value>Added a row ({0} rows)</value></data>
+  <data name="Status_GridColAddedFmt" xml:space="preserve"><value>Added a column ({0} columns)</value></data>
+  <data name="Status_GridRowsAtLimitFmt" xml:space="preserve"><value>The maximum is {0} rows</value></data>
+  <data name="Status_GridColsAtLimitFmt" xml:space="preserve"><value>The maximum is {0} columns</value></data>
   <data name="Status_NoChange" xml:space="preserve"><value>No changes</value></data>
   <data name="Status_AssetDeletedSingleFmt" xml:space="preserve"><value>Deleted {0}.</value></data>
   <data name="Status_AssetDeletedCountFmt" xml:space="preserve"><value>Deleted {0} items.</value></data>

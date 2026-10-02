@@ -70,6 +70,18 @@
                 <StackPanel Classes="FormSection">
                     <TextBlock Classes="FieldLabel" Text="{loc:Tr GridProps_CellCount}" />
                     <TextBlock Text="{Binding GridSizeLabel}" FontSize="12" />
+                    <!--
+                        末尾に行・列を追加 (既存の配置・微調整・重みはそのまま。 Undo 可)。 追加は即時保存で、
+                        名前 / キャンバスサイズのドラフト編集とは独立。
+                    -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                        <Button Click="OnAddRowClicked"
+                                Content="{loc:Tr GridProps_AddRow}"
+                                ToolTip.Tip="{loc:Tr GridProps_AddRow_Tooltip}" />
+                        <Button Click="OnAddColumnClicked"
+                                Content="{loc:Tr GridProps_AddCol}"
+                                ToolTip.Tip="{loc:Tr GridProps_AddCol_Tooltip}" />
+                    </StackPanel>
                 </StackPanel>
 
                 <!--
