@@ -384,10 +384,14 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
         while (Environment.TickCount64 < until && cp.IsDirty)
             await Task.Delay(50);
 
-        // 未保存フラグが消えた直後は、 保存の後処理 (再読込の通知) がまだ積まれる途中かもしれない。 保存の完了 (保留中の
-        // 自動保存を含む) を待ってから、 後処理の完了を待って読む。
+        // 判定は強制保存 (FlushAllPendingEditsAsync) より前に行う。 強制保存は未保存の編集を自分で保存してしまうので、
+        // 先に呼ぶと、 保存の最中の追加入力に対して自動保存が再予約されなかった場合でも、 テストが成功してしまう
+        // (検出力が落ちる)。 ここでは、 自動保存だけで未保存フラグが消えたことを確認する。
+        cp.IsDirty.Should().BeFalse("最後の入力まで自動保存された (強制保存の助けなしに)");
+
+        // 未保存フラグが消えた直後は、 保存の後処理 (再読込の通知) がまだ積まれる途中かもしれない。 保存の完了を待ってから、
+        // 後処理の完了を待って読む (ここでの強制保存は、 同期のためだけ。 すでに未保存の編集は無い)。
         (await Vm.FlushAllPendingEditsAsync()).Should().BeTrue();
-        cp.IsDirty.Should().BeFalse("最後の入力まで自動保存された");
         var stored = (await ReadCopyAsync(a.Id))!;
         stored.Transform.FlipX.Should().BeTrue();
         stored.Transform.FlipY.Should().BeTrue("最後の入力が自動保存で DB へ届く");
