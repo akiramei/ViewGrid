@@ -137,12 +137,12 @@ deliberate_decisions_pending:
 deliberate_decisions:
   - id: D-OUTPUT-PENDING
     subject: "出力 (Preview / PNG) 時に、未保存の編集 (draft) をどう扱うか"
-    current_behavior: "GridOutputViewModel の RequestPreviewAsync / ExportToPngAsync は、レンダリング前に FlushPendingEditsOrReportAsync → GridWorkspaceViewModel.FlushAllPendingEditsAsync で Inspector・候補単体編集・グリッド一覧の保留 auto-save を確定する。auto-save ON で保存に失敗し未保存編集が残った場合は Status_OutputAbortedSaveFailed を出して出力を中止する (古い内容を黙って出さない)。auto-save OFF (手動保存モード) は draft を保存せず、レンダラーは DB の保存済み値を読む。画面 (draft のライブプレビュー) と出力が食い違いうるが、これは手動保存の意味 (Save するまで永続化しない) の帰結。(修正前: auto-save ON でも 1 秒のデバウンス中は保存を待たず、画面は crop+Bottom なのに出力は crop なし・Center だった。)"
+    current_behavior: "GridOutputViewModel の RequestPreviewAsync / ExportToPngAsync は、レンダリング前に FlushPendingEditsOrReportAsync → GridWorkspaceViewModel.FlushAllPendingEditsAsync で Inspector・候補単体編集・グリッド一覧の保留 auto-save を確定する (グリッド一覧の保存失敗も結果に含める: 外部保存は成否 (未保存の編集が残らないか) を返す)。auto-save ON で保存に失敗し未保存編集が残った場合は Status_OutputAbortedSaveFailed を出して出力を中止する (古い内容を黙って出さない)。auto-save OFF (手動保存モード) は draft を保存せず、レンダラーは DB の保存済み値を読む。画面 (draft のライブプレビュー) と出力が食い違いうるが、これは手動保存の意味 (Save するまで永続化しない) の帰結。(修正前: auto-save ON でも 1 秒のデバウンス中は保存を待たず、画面は crop+Bottom なのに出力は crop なし・Center だった。)"
     decision: deliberate-flush-then-render-saved-values
     contract: "出力は常に DB の保存済み値から作る。auto-save ON なら出力前に保留保存を確定し、失敗が残れば中止する。auto-save OFF の draft は出力に反映せず、出力のために保存もしない (出力は編集状態を変えない)。"
     provenance: deliberate   # 2026-10-02 裁定 (「現状のまま確定」。旧: 競合による偶発挙動)
     rationale: "レンダラーは永続値だけを入力とする単純な契約 (RENDERING は read-only) を保てる。手動保存モードで出力が勝手に保存すると「Save するまで永続化しない」が崩れ、履歴にも意図しない保存が積まれる。auto-save ON の取りこぼしだけを塞ぎ、失敗時は中止して古い出力を防ぐ。"
-    anchor: "tests/ViewGrid.Application.Tests/ViewModels/AuditFixRegressionTests.cs::C02_Manual_Save_Mode_Does_Not_Save_Drafts_On_Output (+ C02_Preview_Flushes_Pending_AutoSave_*, C02_Preview_Is_Aborted_When_A_Pending_Edit_Cannot_Be_Saved)"
+    anchor: "tests/ViewGrid.Application.Tests/ViewModels/AuditFixRegressionTests.cs::C02_Manual_Save_Mode_Does_Not_Save_Drafts_On_Output (+ C02_Preview_Flushes_Pending_AutoSave_*, C02_Preview_Is_Aborted_When_A_Pending_Edit_Cannot_Be_Saved、SourceReviewRegressionTests.cs::R06_* (グリッド保存失敗でも出力を中止する))"
     do_not: "手動保存モードで出力前に draft を自動保存しない / auto-save ON の出力前 flush を外さない / 保存失敗時に古い値で黙って出力しない / レンダラーに draft (未保存値) を直接渡す経路を足さない。"
     open_ux_note: "手動保存モードで未保存の draft があるまま出力すると画面と出力がずれる。警告表示などの UX 改善は別判断 (本決定は挙動の契約のみ)。"
 

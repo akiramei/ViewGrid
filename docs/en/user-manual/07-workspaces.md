@@ -74,7 +74,7 @@ The **Switch** button on another workspace card → confirmation dialog → the 
 
 #### Behavior When Switching
 
-1. **Check for unsaved edits**: with auto-save ON, completes any saves in progress. With auto-save OFF and unsaved edits, a **Save / Discard / Go back** prompt appears ("Go back" cancels the switch). This happens before `active.json` is rewritten
+1. **Check for unsaved edits and save them**: with auto-save OFF and unsaved edits, a **Save / Discard / Go back** prompt appears ("Go back" cancels the switch). With auto-save ON, it waits until every pending or in-progress save has finished. If a save fails and unsaved edits remain, **the switch is not performed** so that no edits are lost; the reason is shown and you stay on the current screen. This happens before `active.json` is rewritten
 2. **Rewrite `active.json`**: updates the active workspace name
 3. **Launch a new process**: starts ViewGrid afresh with the target workspace
 4. **Exit the current process**: terminates the current process gracefully
@@ -150,6 +150,8 @@ my-workspace.zip
 └── thumbnails/<hash[0..1]>/  thumbnails
 ```
 
+A workspace that was only created and never opened gets an empty database initialized before it is written out, so the exported zip can be restored as it is.
+
 #### Notes
 
 - The active workspace can also be exported (the DB is opened read-only, and writes are locked)
@@ -163,6 +165,17 @@ The **Import from zip** button at the bottom of the dialog → select a zip. It 
 #### Workspace Name on Import
 
 The imported workspace name is the same as the source name (folder name) in the zip. If a workspace with the same name already exists, the import fails with a **duplicate error**. Rename it before importing.
+
+#### Checks Before Importing
+
+Before the workspace is registered or switched to, the zip is checked to confirm that it contains a workspace that can really be opened. A zip that matches any of the following is **rejected** with the reason shown. When rejected, the workspace is not registered and your current working environment is unchanged.
+
+- The zip does not contain the database (`viewgrid.db`)
+- The database is corrupt, or is not a ViewGrid database
+- The database structure is incomplete and cannot be opened (required tables or columns are missing; the check applies the same migration as at startup to a temporary copy, so a backup made by an older version is accepted because the migration can bring it up to date)
+- The image files the database refers to are not included in the zip
+
+Specify another backup zip.
 
 #### After Import
 

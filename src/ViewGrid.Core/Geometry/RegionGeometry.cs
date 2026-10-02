@@ -118,6 +118,30 @@ public static class RegionGeometry
     }
 
     /// <summary>
+    /// サムネイルから切り出して回転を焼き込んだ画像 (<paramref name="thumbWidth"/>×<paramref name="thumbHeight"/> px) の
+    /// 縦横比が、 元解像度の crop から出力が使う寸法 (<see cref="ComputeTransformedCropSize"/>) の比率と
+    /// <paramref name="tolerance"/> (既定 2%) を超えてずれているか。 サムネイルは長辺 1024px までなので、 極細の crop
+    /// (例: 幅 4000px の画像の 1px 幅) は整数画素へ丸められて比率が大きく変わる。 画面表示が Bitmap の比率に頼ると、
+    /// 出力より太く / 細く見えるので、 ずれているときは出力と同じ描画サイズを明示する必要がある。
+    /// crop が無い (画像全体) とき、 寸法が不正なときは <c>false</c>。
+    /// </summary>
+    public static bool ThumbnailAspectDeviatesFromCrop(
+        CropFraction? effectiveCrop, ImageTransform transform, int sourceWidth, int sourceHeight,
+        int thumbWidth, int thumbHeight, double tolerance = 0.02)
+    {
+        if (effectiveCrop is null || sourceWidth <= 0 || sourceHeight <= 0
+            || thumbWidth <= 0 || thumbHeight <= 0)
+            return false;
+
+        var (tw, th) = ComputeTransformedCropSize(effectiveCrop, transform, sourceWidth, sourceHeight);
+        if (tw <= 0 || th <= 0) return false;
+
+        var expected = (double)tw / th;
+        var actual = (double)thumbWidth / thumbHeight;
+        return Math.Abs(actual - expected) / expected > tolerance;
+    }
+
+    /// <summary>
     /// 親画像が cell 内に描画されるサイズ (canvas 座標。 cell クリップ前 = cell より大きくなり得る)。
     /// <see cref="ScalingMode"/> ごとの倍率 (縮小のみ / 拡大のみ を含む) は、 <b>元画像ピクセル</b> を基準に
     /// 計算する (出力 = renderer と同じ)。 画面表示がサムネイルの寸法を基準にすると、 サムネが元画像より

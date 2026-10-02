@@ -11,7 +11,9 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using SkiaSharp;
+using ViewGrid.Application.Caching;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
 using ViewGrid.Core.Entities;
@@ -101,12 +103,13 @@ public partial class GridCanvasView : UserControl
 
     // ---------- 焼き込み済みサムネ Bitmap キャッシュ（LoadAndPreRotateBitmap） ----------
     // Rebuild の都度 disk read + Skia decode/encode が走るのを避けるため、
-    // (ThumbnailPath, Rotation, FlipX, FlipY, Crop) でキャッシュ。LRU 上限 64 件、
-    // evict 時に Bitmap.Dispose() でメモリ解放する (画面表示中のものは切り離されるまで保留)。
+    // (ThumbnailPath, Rotation, FlipX, FlipY, Crop) でキャッシュ。LRU 上限 64 件。
+    // 上限を超えて追い出した Bitmap は、 その場では破棄せず退避し、 画面から切り離されたと確認できてから
+    // 破棄する (SweepBitmapCache)。 Avalonia の Image は Source を複製せず同一 Bitmap を参照して描画・計測の
+    // たびに使うので、 表示中の Bitmap を破棄すると ObjectDisposedException / 空白になる。
     private const int BitmapCacheCapacity = 64;
 
-    private readonly LinkedList<KeyValuePair<BitmapCacheKey, Bitmap>> _bitmapCacheLru = new();
-    private readonly Dictionary<BitmapCacheKey, LinkedListNode<KeyValuePair<BitmapCacheKey, Bitmap>>> _bitmapCacheIndex = new();
+    private readonly DeferredDisposalLruCache<BitmapCacheKey, Bitmap> _bitmapCache = new(BitmapCacheCapacity);
 
     private readonly record struct BitmapCacheKey(
         string Path,
@@ -127,63 +130,26 @@ public partial class GridCanvasView : UserControl
         // null の Crop は (0,0,1,1) と同じ「変換なし」扱いで正規化（キーが一意になる）。
         var c = cropFraction ?? new ViewGrid.Core.Entities.CropFraction(0, 0, 1, 1);
         var key = new BitmapCacheKey(thumbnailPath, rotation, flipX, flipY, c.X, c.Y, c.Width, c.Height);
-
-        if (_bitmapCacheIndex.TryGetValue(key, out var node))
-        {
-            // LRU 末尾へ昇格
-            _bitmapCacheLru.Remove(node);
-            _bitmapCacheLru.AddLast(node);
-            return node.Value.Value;
-        }
-
-        var bitmap = LoadAndPreRotateBitmap(thumbnailPath, rotation, flipX, flipY, cropFraction);
-        var newNode = _bitmapCacheLru.AddLast(new KeyValuePair<BitmapCacheKey, Bitmap>(key, bitmap));
-        _bitmapCacheIndex[key] = newNode;
-
-        // 上限超え分は最古を evict する。 ただし Avalonia の Image は Source を複製せず同一 Bitmap を保持して
-        // 描画・計測のたびに参照するため、 画面に表示中の Bitmap を Dispose すると、 65 種類以上の画像/変換
-        // (9×8 グリッドや保護領域つき画像など) を同時に表示したとき、 先に作った画像が表示されたまま
-        // 破棄され描画で例外/空白になる。 表示中のものは破棄を保留し、 Rebuild 完了後に切り離されたものから破棄する。
-        while (_bitmapCacheLru.Count > BitmapCacheCapacity)
-        {
-            var oldest = _bitmapCacheLru.First!;
-            _bitmapCacheLru.RemoveFirst();
-            _bitmapCacheIndex.Remove(oldest.Value.Key);
-            if (IsBitmapDisplayed(oldest.Value.Value))
-                _evictedButDisplayedBitmaps.Add(oldest.Value.Value);
-            else
-                oldest.Value.Value.Dispose();
-        }
-        return bitmap;
-    }
-
-    /// <summary>キャッシュから追い出されたが、 追い出し時点で画面の Image が使っていたため破棄を保留している Bitmap。</summary>
-    private readonly List<Bitmap> _evictedButDisplayedBitmaps = new();
-
-    /// <summary>配置ビジュアル (Border → Image) のいずれかが <paramref name="bitmap"/> を Source にしているか。</summary>
-    private bool IsBitmapDisplayed(Bitmap bitmap)
-    {
-        foreach (var child in CanvasGrid.Children)
-        {
-            if (child is Border { Child: Image { Source: { } source } } && ReferenceEquals(source, bitmap))
-                return true;
-        }
-        return false;
+        return _bitmapCache.GetOrCreate(
+            key, () => LoadAndPreRotateBitmap(thumbnailPath, rotation, flipX, flipY, cropFraction));
     }
 
     /// <summary>
-    /// 破棄を保留していた Bitmap のうち、 画面から切り離されたものを破棄する。 Rebuild で配置ビジュアルを
-    /// 作り直した後 (= 古い Image が全て取り除かれた後) に呼ぶ。
+    /// 追い出されて破棄を保留している Bitmap のうち、 画面のどの Image も使っていないものを破棄する。
+    /// 配置ビジュアル (CanvasGrid 直下) だけでなく、 保護領域のオーバーレイ (UnselectedRegionOverlays 配下の
+    /// 入れ子の Border → Image) や選択中領域のプレビューも含め、 このビュー配下のすべての Image を見る。
+    /// 配置ビジュアルや領域オーバーレイを作り直した後 (= 画面の状態が確定した後) に呼ぶ。
     /// </summary>
-    private void DisposeDetachedEvictedBitmaps()
+    private void SweepBitmapCache()
     {
-        for (var i = _evictedButDisplayedBitmaps.Count - 1; i >= 0; i--)
+        if (!_bitmapCache.HasRetired) return;
+
+        var inUse = new HashSet<Bitmap>(ReferenceEqualityComparer.Instance as IEqualityComparer<Bitmap>);
+        foreach (var image in this.GetVisualDescendants().OfType<Image>())
         {
-            var bitmap = _evictedButDisplayedBitmaps[i];
-            if (IsBitmapDisplayed(bitmap)) continue;
-            _evictedButDisplayedBitmaps.RemoveAt(i);
-            bitmap.Dispose();
+            if (image.Source is Bitmap bitmap) inUse.Add(bitmap);
         }
+        _bitmapCache.Sweep(inUse.Contains);
     }
 
     public GridCanvasView()
@@ -650,6 +616,7 @@ public partial class GridCanvasView : UserControl
                 region.FlipX, region.FlipY,
                 cropFraction);
             RegionAssetPreview.Source = bitmap;
+            SweepBitmapCache();
         }
         catch
         {
@@ -827,6 +794,10 @@ public partial class GridCanvasView : UserControl
                 }
             }
         }
+
+        // 領域オーバーレイの Image へ Bitmap を割り当て終えた。 この過程でキャッシュから追い出された Bitmap は、
+        // 入れ子の Border → Image も含めて表示中かを確認してから破棄する。
+        SweepBitmapCache();
     }
 
     /// <summary>未選択 region 用の Border テンプレート。 グレー細枠 + 透過背景 + Image 子要素。</summary>
@@ -1097,7 +1068,7 @@ public partial class GridCanvasView : UserControl
 
         // 配置ビジュアルを作り直したので、 キャッシュから追い出されて破棄を保留していた Bitmap のうち
         // もう表示されていないものをここで破棄する。
-        DisposeDetachedEvictedBitmaps();
+        SweepBitmapCache();
 
         // Layer 3: 境界ドラッグハンドル（A2: 列・行比率の動的調整）
         BuildBoundaryHandles(grid);
@@ -1595,9 +1566,16 @@ public partial class GridCanvasView : UserControl
                 // 置いて 600 DIP で表示したとき、 出力は 400px (= 240 DIP) なのに画面は 400 DIP になる。
                 // 出力と同じ計算 (RegionGeometry.ComputeParentDrawSize) で描画サイズを求め、 Bitmap は画素の
                 // 供給元に徹させる。
-                if (placement.ScalingMode is ViewGrid.Core.Entities.ScalingMode.None
+                //
+                // 極細の crop (例: 幅 4000 の画像の 1px 幅) では、 サムネイルを切り出した Bitmap の縦横比が元解像度の
+                // crop と大きくずれる (1×100 のはずが、 サムネでは幅 1px に切り上げられて 1×26 になる)。 Bitmap の
+                // 比率から Stretch で寸法を決める通常の表示だと、 画面だけ出力より太く見える。 その場合も、 出力と同じ
+                // 計算で求めた描画サイズを明示し、 Bitmap は画素の供給元に徹させる (比率は Stretch.Fill の明示サイズが決める)。
+                var thumbnailAspectDeviates = ThumbnailAspectDeviatesFromCrop(bitmap, placement);
+                if ((placement.ScalingMode is ViewGrid.Core.Entities.ScalingMode.None
                         or ViewGrid.Core.Entities.ScalingMode.UniformContainShrinkOnly
                         or ViewGrid.Core.Entities.ScalingMode.UniformContainEnlargeOnly
+                        || thumbnailAspectDeviates)
                     && placement.SourceWidth > 0 && placement.SourceHeight > 0
                     && grid is not null)
                 {
@@ -1618,7 +1596,9 @@ public partial class GridCanvasView : UserControl
                     if (drawW > 0 && drawH > 0)
                     {
                         var displayScale = ComputeDisplayScale(grid);
-                        image.Stretch = Stretch.Uniform; // explicit W/H へ uniform リサンプリング
+                        // explicit W/H へ uniform リサンプリング。 サムネの比率が crop とずれているときは、 明示サイズが
+                        // 出力の描画サイズそのものなので Fill (Bitmap の比率に引きずられない)。
+                        image.Stretch = thumbnailAspectDeviates ? Stretch.Fill : Stretch.Uniform;
                         // 縮小のみ / 拡大のみ の MapScalingMode は StretchDirection を DownOnly / UpOnly にするが、
                         // 明示サイズを使う以上、 方向の制限が残ると明示サイズへの拡縮自体が拒否される
                         // (サムネより明示サイズが大きい/小さい場合に、 サムネ寸法のまま描かれてしまう)。
@@ -1672,6 +1652,19 @@ public partial class GridCanvasView : UserControl
 
         return container;
     }
+
+    /// <summary>
+    /// サムネイルから切り出して回転を焼き込んだ <paramref name="bitmap"/> の縦横比が、 元解像度の crop
+    /// (<see cref="RegionGeometry.ComputeTransformedCropSize"/>、 出力が使う寸法) から 2% を超えてずれているか。
+    /// サムネイルは長辺 1024px までなので、 極細の crop は整数画素へ丸められて比率が大きく変わる。
+    /// crop が無いときは常に <c>false</c> (サムネ全体の比率は元画像と同じ)。
+    /// </summary>
+    private static bool ThumbnailAspectDeviatesFromCrop(Bitmap bitmap, PlacementItemViewModel placement) =>
+        RegionGeometry.ThumbnailAspectDeviatesFromCrop(
+            placement.EffectiveCropFraction,
+            new ViewGrid.Core.Entities.ImageTransform(placement.Rotation, placement.FlipX, placement.FlipY),
+            placement.SourceWidth, placement.SourceHeight,
+            bitmap.PixelSize.Width, bitmap.PixelSize.Height);
 
     // ---------- 画像特性 → Avalonia 表示パラメータのマッピング ----------
 

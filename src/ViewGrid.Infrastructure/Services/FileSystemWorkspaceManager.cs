@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using ErrorOr;
+using Microsoft.EntityFrameworkCore;
 using ViewGrid.Core.Services;
 using ViewGrid.Core.Settings;
 
@@ -260,6 +261,16 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
             if (!string.IsNullOrEmpty(parentDir))
                 Directory.CreateDirectory(parentDir);
 
+            // 作っただけで一度も開いていないワークスペースはフォルダだけで DB が無い。 そのまま書き出すと、
+            // 自分で出力した zip を復元できない (取り込み検証が「DB が含まれていない」 で拒否する) ので、
+            // 空のワークスペースとして DB を初期化してから書き出す (失う編集データは無い)。
+            try { await EnsureDatabaseExistsAsync(sourceDir, ct); }
+            catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException or IOException)
+            {
+                return Error.Failure("Workspace.ExportDatabaseInitFailed",
+                    $"ワークスペースのデータベースを初期化できませんでした: {ex.Message}");
+            }
+
             // 失敗時に半端な zip を残さないよう、 一時ファイル経由で書き出してから rename する。
             var tempZip = destinationZipPath + ".tmp";
             return WriteExportZipAtomically(
@@ -269,6 +280,26 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
         {
             _lock.Release();
         }
+    }
+
+    /// <summary>
+    /// ワークスペースに DB ファイルが無ければ、 起動時と同じマイグレーションで空の DB を作る。 既にあれば何もしない
+    /// (使用中の DB には触れない)。
+    /// </summary>
+    private static async Task EnsureDatabaseExistsAsync(string workspaceDir, CancellationToken ct)
+    {
+        var dbPath = Path.Combine(workspaceDir, ImportedWorkspaceValidator.DatabaseFileName);
+        if (File.Exists(dbPath)) return;
+
+        var options = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Persistence.ViewGridDbContext>()
+            .UseSqlite(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+            {
+                DataSource = dbPath,
+                Pooling = false,
+            }.ToString())
+            .Options;
+        await using var db = new Persistence.ViewGridDbContext(options);
+        await db.Database.MigrateAsync(ct);
     }
 
     private static Error? ValidateExportPreLock(string sourceName, string destinationZipPath)

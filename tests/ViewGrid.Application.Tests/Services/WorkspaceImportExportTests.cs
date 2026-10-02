@@ -48,6 +48,36 @@ public sealed class WorkspaceImportExportTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_Workspace_That_Was_Never_Opened_Can_Be_Exported_And_Restored()
+    {
+        // 作っただけで一度も開いていないワークスペースは、 フォルダだけで DB が無い。 自分で出力した zip を
+        // 復元できなくならないよう、 書き出し時に空の DB を初期化する。
+        (await _manager.CreateAsync("fresh", "新規")).IsError.Should().BeFalse();
+        File.Exists(Path.Combine(_root.FullName, "workspaces", "fresh", "viewgrid.db")).Should().BeFalse();
+        var zipPath = CreateZipPath("fresh-export");
+
+        var exported = await _manager.ExportAsync("fresh", zipPath);
+        var restored = await _manager.ImportAsync(zipPath, "restored", "復元");
+
+        exported.IsError.Should().BeFalse();
+        restored.IsError.Should().BeFalse("書き出した zip は、 同じアプリで復元できる");
+        File.Exists(Path.Combine(_root.FullName, "workspaces", "restored", "viewgrid.db")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Export_Does_Not_Touch_An_Existing_Database()
+    {
+        await SeedDefaultWorkspaceAsync();
+        var dbPath = Path.Combine(_workspaceDir, "viewgrid.db");
+        var before = File.ReadAllBytes(dbPath);
+
+        (await _manager.ExportAsync(WorkspaceBootstrap.DefaultWorkspaceName, CreateZipPath("untouched"))).IsError
+            .Should().BeFalse();
+
+        File.ReadAllBytes(dbPath).Should().Equal(before, "使用中の DB は初期化・変更しない");
+    }
+
+    [Fact]
     public async Task ExportAsync_CreatesZip_WithMetadataAndFiles()
     {
         await SeedDefaultWorkspaceAsync();

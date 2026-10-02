@@ -151,6 +151,35 @@ public sealed class LivePreviewRefresherTests
     }
 
     [Fact]
+    public async Task Disposing_The_Subscription_Releases_The_Viewmodels_Reference_To_The_Callback_Target()
+    {
+        // R10: 閉じたプレビューのコールバック (= ウィンドウ) を、 ワークスペースの寿命まで保持してはならない。
+        await using var h = await AppViewModelHarness.CreateAsync(new AutoConfirmationService());
+        WeakReference weak = StartAndDispose(h);
+
+        for (var i = 0; i < 5 && weak.IsAlive; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            await Task.Delay(20);
+        }
+
+        h.Workspace.Output.IsLivePreviewActive.Should().BeFalse("停止後は VM が自動更新を保持しない");
+        weak.IsAlive.Should().BeFalse("閉じたウィンドウ相当のオブジェクトが回収できる");
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference StartAndDispose(AppViewModelHarness h)
+    {
+        var fakeWindow = new object();
+        var subscription = h.Workspace.Output.StartLivePreview(bytes => GC.KeepAlive(fakeWindow));
+        h.Workspace.Output.IsLivePreviewActive.Should().BeTrue();
+        var weak = new WeakReference(fakeWindow);
+        subscription.Dispose();
+        return weak;
+    }
+
+    [Fact]
     public async Task ScopedGridRenderer_Uses_A_Different_DbContext_Than_The_Root_Scope()
     {
         // 実際の DI 配線 (AddInfrastructure + AddApplication) で、 描画に使う DbContext が

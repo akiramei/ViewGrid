@@ -147,7 +147,23 @@ public sealed partial class GridOutputViewModel : ViewModelBase
         var live = new LivePreviewRefresher(LivePreviewDebounce, RenderForLiveAsync, onUpdated);
         _livePreview?.Dispose();
         _livePreview = live;
-        return live;
+        // 破棄時は、 この VM が持つ参照も外す。 外さないと、 閉じたプレビューのコールバック (= ウィンドウ) が
+        // ワークスペースの寿命まで保持され、 最後の画像 (PNG 配列・Bitmap) も解放されない。
+        return new LivePreviewSubscription(() =>
+        {
+            if (ReferenceEquals(_livePreview, live)) _livePreview = null;
+            live.Dispose();
+        });
+    }
+
+    /// <summary>自動更新が開始中か (テスト用)。 停止後は <c>false</c>。</summary>
+    internal bool IsLivePreviewActive => _livePreview is not null;
+
+    private sealed class LivePreviewSubscription(Action onDispose) : IDisposable
+    {
+        private Action? _onDispose = onDispose;
+
+        public void Dispose() => Interlocked.Exchange(ref _onDispose, null)?.Invoke();
     }
 
     /// <summary>

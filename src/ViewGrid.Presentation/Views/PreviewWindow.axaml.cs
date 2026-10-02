@@ -246,6 +246,17 @@ public partial class PreviewWindow : Window
         _closed = true;
         _liveUpdate?.Dispose();
         _liveUpdate = null;
+
+        // 閉じたあとも最後の画像を抱えたままにしない: 画像の参照 (PNG 配列と、 本体・縮小マップの Bitmap) を外し、
+        // 最後の Bitmap を 1 回だけ破棄する (描画が一巡してから)。 大きいキャンバスほど効く。
+        var last = PreviewImage.Source as Bitmap;
+        PreviewImage.Source = null;
+        MinimapImage.Source = null;
+        _bytes = null;
+        _workspace = null;
+        if (last is not null)
+            Dispatcher.UIThread.Post(last.Dispose, DispatcherPriority.Background);
+
         base.OnClosed(e);
     }
 

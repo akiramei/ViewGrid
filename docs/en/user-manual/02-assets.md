@@ -69,7 +69,7 @@ Select an asset in the candidate list and click the **"New Variant"** button (wi
 
 #### Duplicating with all settings
 
-To add another option based on the current one (crop, rotation, protected regions, and so on), select a variant in the candidate list and click the **"Duplicate"** button. A new variant named "name (copy)" is created with the rotation, flips, scaling, alignment, occupancy, crop (auto / manual) and protected regions all carried over, and it becomes the selected one. The original variant and the placements that use it are not changed (this is different from Fork, which branches a single placement).
+To add another option based on the current one (crop, rotation, protected regions, and so on), select a variant in the candidate list and click the **"Duplicate"** button. A new variant named "name (copy)" is created with the rotation, flips, scaling, alignment, occupancy, crop (auto / manual) and protected regions all carried over, and it becomes the selected one. The original variant and the placements that use it are not changed (this is different from Fork, which branches a single placement). A duplicate is made from the **saved content**, so any unsaved edit you have just made is resolved first: with auto-save ON it waits for the save to finish and then duplicates; with manual saving and unsaved edits it asks **Save / Discard / Go back** ("Go back" or a failed save means nothing is duplicated).
 
 #### Telling candidates apart
 

@@ -82,12 +82,12 @@ The description of each history entry (for example, "Rename: Grid 1 → Working"
 
 The following operations involve a cascade delete, so the history is cleared entirely before they are executed (there is no way to restore the state from before they ran):
 
-- Importing / deleting an asset
-- Creating / deleting a variant
+- Importing / deleting an asset (an import clears the history only when it adds new images; importing only images that already exist keeps it)
+- Creating / deleting a variant (duplicating a variant with its settings does not clear it)
 - Creating / deleting a grid
 - Switching workspaces
 
-Before performing these, you can export important states as a PNG so that recovery is possible.
+If you want to keep an important state before performing these, finish saving and then **export the workspace as a zip** ([§7.22.1](07-workspaces.md)) or **duplicate the workspace** ([§7.21.5](07-workspaces.md)). A PNG is a finished sample; it cannot bring cells, placements and variants back to an editable state.
 
 ### 8.26.3 Persistence of the History
 
