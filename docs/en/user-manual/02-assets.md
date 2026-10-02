@@ -45,6 +45,10 @@ Because ViewGrid uses the **SHA256 hash** of the image file itself as the file n
 - Even with different file names, identical content is treated as a duplicate (`photo.jpg` and `photo-copy.jpg` are identical if they have the same byte sequence)
 - If even 1 byte differs, it is a separate asset
 
+#### Import result display
+
+When an import finishes, a result notice appears at the bottom of the window and stays until you close it. Besides the counts of added / existing (duplicate) / failed files, **each failed file is listed with its name and the reason** (with "and N more" beyond 5). **Retry failed** imports only the failed files again. An import that only finds duplicates changes nothing, so the Undo history from before is kept.
+
 #### Advantages of the Storage Structure
 
 - Files are distributed into subfolders by the first 2 hash digits (`images\3a\3a5c8e...png`), avoiding the Windows Explorer problem of too many files in one folder
@@ -61,7 +65,15 @@ Example: if you register the same landscape photo as two variants — **(A) a po
 
 ### 2.5.2 Creating a New Variant
 
-Select an asset in the candidate list and click the **"New Variant"** button (with a + icon). Often the workflow is to duplicate an existing variant and then edit it.
+Select an asset in the candidate list and click the **"New Variant"** button (with a + icon). A new variant is created from the original image with the initial values.
+
+#### Duplicating with all settings
+
+To add another option based on the current one (crop, rotation, protected regions, and so on), select a variant in the candidate list and click the **"Duplicate"** button. A new variant named "name (copy)" is created with the rotation, flips, scaling, alignment, occupancy, crop (auto / manual) and protected regions all carried over, and it becomes the selected one. The original variant and the placements that use it are not changed (this is different from Fork, which branches a single placement).
+
+#### Telling candidates apart
+
+Variants made from the same source image share the same thumbnail, so the candidate list shows **processing badges** under the name: `crop 640×240` for a manual crop (pixel size), `auto crop` for an automatic crop, and `protected regions 2` when there are protected regions. Rotation and occupancy still appear in the summary line below. The badges are updated after saving and after Undo.
 
 ![Adding a variant](../images/um/um-02-05-add-variant.png)
 

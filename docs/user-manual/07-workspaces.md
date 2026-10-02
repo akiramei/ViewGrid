@@ -210,7 +210,7 @@ ViewGrid 起動時のワークスペース選択フロー:
 ```
 1. %LocalAppData%\ViewGrid\active.json を読む
 2. 指定ワークスペースが存在する  → そのワークスペースをアクティブに
-   存在しない (削除済み等)        → workspaces.json 先頭をアクティブに
+   存在しない (削除済み等)        → workspaces.json 先頭の、 実在するものをアクティブに (画面下部に通知)
    workspaces.json も空            → Default を自動作成してアクティブに
 3. 旧バージョンからの初回起動:
    %LocalAppData%\ViewGrid\viewgrid.db が存在  → workspaces\Default\ に自動移行

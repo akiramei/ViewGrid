@@ -200,7 +200,7 @@ The workspace selection flow when ViewGrid starts up:
 ```
 1. Read %LocalAppData%\ViewGrid\active.json
 2. The specified workspace exists       → make that workspace active
-   It does not exist (deleted, etc.)     → make the first entry in workspaces.json active
+   It does not exist (deleted, etc.)     → make the first existing entry in workspaces.json active (a notice is shown at the bottom of the window)
    workspaces.json is also empty         → create Default automatically and make it active
 3. First launch from an older version:
    %LocalAppData%\ViewGrid\viewgrid.db exists  → migrate automatically to workspaces\Default\

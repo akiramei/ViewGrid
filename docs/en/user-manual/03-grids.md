@@ -35,6 +35,10 @@ You can edit the name and canvas size under **Grid Settings** in the right pane 
 
 ![Grid Settings (right pane)](../images/um/um-03-06-grid-properties.png)
 
+### 3.6.3 Adding Rows / Columns
+
+To increase the number of rows or columns after creation, use **+ Add row** / **+ Add column** below **Cell count** in Grid Settings. One row (column) is added at the end, and the existing placements, their placement-specific adjustments, the column ratios and the locks are all kept. The new row (column) gets the average of the existing ratios and is unlocked. Each addition is one history entry, and **Undo** returns to the previous number of rows and columns. The limit is 20 rows and 20 columns. (There is no operation to remove rows or columns. Undo works because placements put in the added cells are undone first.)
+
 <!-- CAPTURE
 file: docs/en/images/um/um-03-06-grid-properties.png
 size: 482x600 (right pane zoomed in, Grid properties shown)

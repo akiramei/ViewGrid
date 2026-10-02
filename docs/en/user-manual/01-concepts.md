@@ -33,7 +33,7 @@ Grid G2              ←── Placement P2 belongs to it
 
 | Action | Scope of effect | Undoable? |
 |---|---|---|
-| Asset import | A new Asset plus 1 default Variant are created automatically | ❌ (clears all history) |
+| Asset import | A new Asset plus 1 default Variant are created automatically (an import that only finds duplicates changes nothing) | ❌ (clears all history only when something new is added) |
 | Asset deletion | The Asset + all Variants + all Placements are removed by cascade | ❌ (clears all history) |
 | Variant creation | A single Variant is added, with zero Placements | ❌ (clears all history) |
 | Variant deletion | The Variant + all Placements referencing it are removed | ❌ (clears all history) |
@@ -99,7 +99,9 @@ The header at the top of the center canvas shows the grid name / cell count / ca
 
 ### 1.3.2 Status Bar
 
-At the very bottom of the window. Left: a hint matching the current state / the asset count / an unsaved badge. Right: a history summary plus an icon for opening the history flyout.
+At the very bottom of the window. Far left: **the name of the workspace that is currently open** (it also appears in the window title as "name - ViewGrid", so you do not confuse another project that has a grid with the same name). Next: a hint matching the current state / the asset count / an unsaved badge. Right: a history summary plus an icon for opening the history flyout.
+
+Above the status bar, a **notice bar** may appear, for example with the result of an image import or a startup message about a missing workspace (**Close** dismisses it).
 
 ## 1.4 Where Data Is Stored
 
