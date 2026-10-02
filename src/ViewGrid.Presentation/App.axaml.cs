@@ -139,6 +139,29 @@ public partial class App : global::Avalonia.Application
         if (sender is not IClassicDesktopStyleApplicationLifetime desktop) return;
         if (desktop.MainWindow?.DataContext is not MainWindowViewModel mainVm) return;
 
+        // 手動保存モードで未保存の編集があるまま閉じると編集が失われるので、 保存 / 破棄 / 戻る を確認する。
+        // 「戻る」 なら終了しない。 保存・破棄を選んだら、 下の通常の終了処理 (確認済みなので 2 回目の
+        // ShutdownRequested では再確認しない) へ進む。 確認ダイアログは非同期なので、 先に Cancel しておく。
+        if (mainVm.HasUnsavedManualEdits)
+        {
+            e.Cancel = true;
+            _shutdownAwaited = true; // 確認中の再入 (閉じるボタンの連打など) を抑止
+            bool proceed;
+            try { proceed = await mainVm.ResolveUnsavedBeforeExitAsync(); }
+            catch { proceed = false; }
+            if (!proceed)
+            {
+                _shutdownAwaited = false;
+                return;
+            }
+
+            try { await Task.WhenAll(mainVm.GridList.LastOpenedSaveTask, mainVm.FlushAllAutoSavesAsync()); }
+            catch { /* 永続化失敗 / auto-save 失敗は致命的でないので無視 */ }
+            DisposeMainVmOnce(mainVm);
+            desktop.Shutdown();
+            return;
+        }
+
         var pending = mainVm.GridList.LastOpenedSaveTask;
         var flushAll = mainVm.FlushAllAutoSavesAsync();
 

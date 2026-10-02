@@ -20,6 +20,7 @@ namespace ViewGrid.Application.Tests.ViewModels;
 public sealed class MainWindowViewModelTests : IAsyncLifetime
 {
     private UseCaseFixture _fx = null!;
+    private readonly AutoConfirmationService _confirm = new();
     private WeakReferenceMessenger _messenger = null!;
     private AssetLibraryViewModel _assetLibrary = null!;
     private GridCanvasListViewModel _gridList = null!;
@@ -112,7 +113,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             _fx.Thumbnails, _fx.CropResolver,
             place, remove, move, swap, offset,
             _fx.Storage, _fx.AppSettings, _messenger, sharedHistory, inspector,
-            variantProperties, output, variants, structure,
+            variantProperties, output, variants, structure, _confirm,
             new NullLocalizationService(),
             NullLogger<GridWorkspaceViewModel>.Instance);
 
@@ -486,5 +487,155 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         saved.PixelOffsetX.Should().NotBe(20,
             "Undo must not commit the pending 20 draft as a new history item after applying the undo");
         _vm.CanRedo.Should().BeTrue("an Undo should leave its undone command redoable");
+    }
+
+    // ─── 手動保存モードのグリッド切替・終了時: 保存 / 破棄 / 戻る ────────────────────────────
+
+    private async Task<(ViewGrid.Core.Entities.GridCanvas G1, ViewGrid.Core.Entities.GridCanvas G2, ViewGrid.Core.Entities.ImageCopy Copy)>
+        SeedTwoGridsWithADraftAsync()
+    {
+        await _fx.AppSettings.UpdateAsync(s => s with { EnableAutoSave = false });
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id, "c");
+        ViewGrid.Core.Entities.GridCanvas NewGrid(string name) => new()
+        {
+            Id = Guid.NewGuid(), Name = name, GridRows = 2, GridCols = 2,
+            ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        var g1 = NewGrid("grid-1");
+        var g2 = NewGrid("grid-2");
+        (await _fx.GridRepository.AddAsync(g1)).IsError.Should().BeFalse();
+        (await _fx.GridRepository.AddAsync(g2)).IsError.Should().BeFalse();
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        await place.ExecuteAsync(g1.Id, copy.Id, new ViewGrid.Core.Entities.CellPosition(0, 0));
+
+        await _gridList.LoadAsync();
+        await WaitUntilAsync(() => _gridWorkspace.CurrentGrid is not null);
+        _gridList.SelectedGrid = _gridList.Grids.Single(g => g.GridId == g1.Id);
+        await WaitUntilAsync(() => _gridWorkspace.CurrentGrid?.GridId == g1.Id && _gridWorkspace.Placements.Count == 1);
+        _gridWorkspace.SelectedPlacement = _gridWorkspace.Placements.Single();
+        await _gridWorkspace.WaitPendingInspectorAttachAsync();
+        _gridWorkspace.Inspector.CopyProperties.AlignY = ViewGrid.Core.Entities.AnchorY.Bottom;
+        _gridWorkspace.Inspector.IsAnyDirty.Should().BeTrue();
+        return (g1, g2, copy);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (!condition())
+            await Task.Delay(5, timeout.Token);
+        await Task.Delay(50); // 連鎖の後続 (復元・再読込) が落ち着くのを待つ
+    }
+
+    [Fact]
+    public async Task GridSwitch_With_A_Draft_Cancel_Keeps_The_Grid_Placements_And_Draft()
+    {
+        var (g1, g2, copy) = await SeedTwoGridsWithADraftAsync();
+        _confirm.UnsavedAnswer = UnsavedChoice.Cancel;
+        var placement = _gridWorkspace.SelectedPlacement;
+
+        _gridList.SelectedGrid = _gridList.Grids.Single(g => g.GridId == g2.Id);
+        await WaitUntilAsync(() => _confirm.UnsavedRequests.Count == 1 && _gridList.SelectedGrid?.GridId == g1.Id);
+
+        _confirm.UnsavedRequests.Should().ContainSingle();
+        _gridList.SelectedGrid!.GridId.Should().Be(g1.Id, "「戻る」で元のグリッドへ戻る");
+        _gridWorkspace.CurrentGrid!.GridId.Should().Be(g1.Id, "グリッドは読み込み直されない");
+        _gridWorkspace.SelectedPlacement.Should().BeSameAs(placement);
+        _gridWorkspace.Inspector.CopyProperties.AlignY.Should().Be(ViewGrid.Core.Entities.AnchorY.Bottom);
+        _gridWorkspace.Inspector.IsAnyDirty.Should().BeTrue();
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id))!.Alignment.Y.Should().Be(ViewGrid.Core.Entities.AnchorY.Center);
+    }
+
+    [Fact]
+    public async Task GridSwitch_With_A_Draft_Save_Persists_Then_Loads_The_Other_Grid()
+    {
+        var (_, g2, copy) = await SeedTwoGridsWithADraftAsync();
+        _confirm.UnsavedAnswer = UnsavedChoice.Save;
+
+        _gridList.SelectedGrid = _gridList.Grids.Single(g => g.GridId == g2.Id);
+        await WaitUntilAsync(() => _gridWorkspace.CurrentGrid?.GridId == g2.Id);
+
+        _confirm.UnsavedRequests.Should().ContainSingle();
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id))!.Alignment.Y.Should().Be(ViewGrid.Core.Entities.AnchorY.Bottom);
+        _gridWorkspace.Inspector.IsAnyDirty.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GridSwitch_With_A_Draft_Discard_Drops_It_And_Loads_The_Other_Grid()
+    {
+        var (_, g2, copy) = await SeedTwoGridsWithADraftAsync();
+        _confirm.UnsavedAnswer = UnsavedChoice.Discard;
+
+        _gridList.SelectedGrid = _gridList.Grids.Single(g => g.GridId == g2.Id);
+        await WaitUntilAsync(() => _gridWorkspace.CurrentGrid?.GridId == g2.Id);
+
+        _confirm.UnsavedRequests.Should().ContainSingle("グリッド切替が引き起こす配置選択の解除で二重に確認しない");
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id))!.Alignment.Y.Should().Be(ViewGrid.Core.Entities.AnchorY.Center);
+        _gridWorkspace.Inspector.IsAnyDirty.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GridSwitch_With_An_Unsaved_Grid_Name_Asks_And_Cancel_Keeps_The_Edit()
+    {
+        var (g1, g2, _) = await SeedTwoGridsWithADraftAsync();
+        await _gridWorkspace.Inspector.RevertAllAsync(); // 配置の draft は無くし、 グリッド名の draft だけにする
+        _gridList.SelectedGrid!.EditingName = "renamed";
+        _gridList.SelectedGrid.IsDirty.Should().BeTrue();
+        _confirm.UnsavedAnswer = UnsavedChoice.Cancel;
+
+        _gridList.SelectedGrid = _gridList.Grids.Single(g => g.GridId == g2.Id);
+        await WaitUntilAsync(() => _confirm.UnsavedRequests.Count == 1 && _gridList.SelectedGrid?.GridId == g1.Id);
+
+        _confirm.UnsavedRequests.Should().ContainSingle();
+        _gridList.SelectedGrid!.EditingName.Should().Be("renamed");
+        _gridList.SelectedGrid.IsDirty.Should().BeTrue();
+        (await _fx.GridRepository.FindByIdAsync(g1.Id))!.Name.Should().Be("grid-1");
+    }
+
+    [Fact]
+    public async Task GridSwitch_Without_A_Draft_Does_Not_Ask()
+    {
+        var (_, g2, _) = await SeedTwoGridsWithADraftAsync();
+        await _gridWorkspace.Inspector.RevertAllAsync();
+
+        _gridList.SelectedGrid = _gridList.Grids.Single(g => g.GridId == g2.Id);
+        await WaitUntilAsync(() => _gridWorkspace.CurrentGrid?.GridId == g2.Id);
+
+        _confirm.UnsavedRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Exit_Asks_Only_When_Manual_Mode_Has_Unsaved_Edits_And_Reports_The_Choice()
+    {
+        var (_, _, copy) = await SeedTwoGridsWithADraftAsync();
+        _vm.HasUnsavedManualEdits.Should().BeTrue();
+
+        _confirm.UnsavedAnswer = UnsavedChoice.Cancel;
+        (await _vm.ResolveUnsavedBeforeExitAsync()).Should().BeFalse("「戻る」なら終了しない");
+        _vm.HasUnsavedManualEdits.Should().BeTrue("編集は残る");
+
+        _confirm.UnsavedAnswer = UnsavedChoice.Save;
+        (await _vm.ResolveUnsavedBeforeExitAsync()).Should().BeTrue();
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id))!.Alignment.Y.Should().Be(ViewGrid.Core.Entities.AnchorY.Bottom);
+        _vm.HasUnsavedManualEdits.Should().BeFalse();
+
+        var requestsBefore = _confirm.UnsavedRequests.Count;
+        (await _vm.ResolveUnsavedBeforeExitAsync()).Should().BeTrue();
+        _confirm.UnsavedRequests.Count.Should().Be(requestsBefore, "未保存の編集が無ければ確認しない");
+    }
+
+    [Fact]
+    public async Task Exit_With_AutoSave_On_Never_Asks()
+    {
+        await SeedTwoGridsWithADraftAsync();
+        await _fx.AppSettings.UpdateAsync(s => s with { EnableAutoSave = true });
+
+        _vm.HasUnsavedManualEdits.Should().BeFalse();
+        (await _vm.ResolveUnsavedBeforeExitAsync()).Should().BeTrue();
+        _confirm.UnsavedRequests.Should().BeEmpty();
     }
 }

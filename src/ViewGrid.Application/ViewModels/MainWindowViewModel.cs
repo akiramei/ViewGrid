@@ -316,7 +316,10 @@ public sealed partial class MainWindowViewModel
                 // OnGridListPropertyChanged 経由で GridWorkspace.LoadGridAsync が起動し、
                 // 新グリッドの placement が再ロードされる。 この経路自体に
                 // CopyLibraryChangedMessage と同等の効果があるため、 下の Send はスキップする。
-                GridList.SelectedGrid = target;
+                // 履歴操作による自動切替は利用者の切替操作ではないので、 未保存の編集の確認は出さない。
+                _suppressGridPrompt = true;
+                try { GridList.SelectedGrid = target; }
+                finally { _suppressGridPrompt = false; }
                 // 切替で起動した LoadGridAsync の完了を待つ (上の理由と同じ race 回避 + 例外握り潰し)。
                 await ObserveQuietlyAsync(_pendingLoadGridTask);
                 gridSwitched = true;
@@ -448,9 +451,26 @@ public sealed partial class MainWindowViewModel
     /// </summary>
     private Task _pendingLoadGridTask = Task.CompletedTask;
 
+    /// <summary>
+    /// 直近に <see cref="GridWorkspaceViewModel.LoadGridAsync"/> を完了した (= ワークスペースが表示している) グリッド。
+    /// 手動保存モードでグリッドを切り替えるとき、 未保存の編集の確認と「戻る」 の書き戻し先に使う。
+    /// </summary>
+    private GridCanvasItemViewModel? _committedGrid;
+
+    /// <summary>「戻る」 で SelectedGrid を書き戻している間 true。 選択変更を新しいグリッドの読込として扱わない。</summary>
+    private bool _restoringGrid;
+
+    /// <summary>
+    /// 履歴操作 (Undo/Redo) が対象グリッドへ自動で切り替えるときに true。 利用者の切替操作ではないので
+    /// 未保存の編集の確認を出さない (履歴操作そのものが再読込で draft を破棄する従来の挙動)。
+    /// </summary>
+    private bool _suppressGridPrompt;
+
     private async void OnGridListPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(GridCanvasListViewModel.SelectedGrid))
+            return;
+        if (_restoringGrid)
             return;
 
         OnPropertyChanged(nameof(StatusSummary));
@@ -461,7 +481,7 @@ public sealed partial class MainWindowViewModel
         // 旧実装では先に flush を await してから _pendingLoadGridTask を更新していたため、
         // yield 中に他の caller (RefreshAfterHistoryAsync 等) が古い完了済み Task を見て
         // 「load 終わった」 と誤判定して並行 LoadGridAsync を走らせる race があった (Codex review P2)。
-        var task = WaitFlushThenLoadGridAsync(GridList.SelectedGrid);
+        var task = WaitFlushThenLoadGridAsync(GridList.SelectedGrid, prompt: !_suppressGridPrompt);
         _pendingLoadGridTask = task;
         try { await task; }
         catch { /* 内部で StatusMessage に反映済み */ }
@@ -472,12 +492,72 @@ public sealed partial class MainWindowViewModel
     /// 起動する内部ヘルパ。 ラップ Task を <see cref="_pendingLoadGridTask"/> に publish することで、
     /// 外部 caller は flush 段階から含めた切替全体の完了を観測できる (race 防止)。
     /// </summary>
-    private async Task WaitFlushThenLoadGridAsync(GridCanvasItemViewModel? value)
+    private async Task WaitFlushThenLoadGridAsync(GridCanvasItemViewModel? value, bool prompt)
     {
+        // 手動保存モードで別のグリッドへ移るとき、 未保存の編集 (配置・候補・グリッド名/サイズ) を
+        // 保存 / 破棄 / 戻る で確認する。 LoadGridAsync は配置を全消去するので、 その前に解決する
+        // (戻る場合に元の配置選択と編集バッファを保てる)。
+        if (prompt && !await ConfirmGridSwitchAsync(value))
+        {
+            RestoreGridSelection();
+            return;
+        }
+
         try { await GridList.WaitPendingSelectedGridFlushAsync(); }
         catch { /* GridList 側で StatusMessage に反映済み */ }
         await GridWorkspace.LoadGridAsync(value);
+        _committedGrid = value;
     }
+
+    /// <summary>
+    /// 手動保存モードのグリッド切替前に、 未保存の編集の扱いを確認する。 先へ進んでよいとき <c>true</c>。
+    /// 同じグリッドの再読込 (インスタンスだけ入れ替わる) や、 表示中のグリッドが削除済みのときは対象外。
+    /// </summary>
+    private async Task<bool> ConfirmGridSwitchAsync(GridCanvasItemViewModel? target)
+    {
+        var committed = _committedGrid;
+        if (committed is null || target?.GridId == committed.GridId) return true;
+
+        // 再読込で Grids のインスタンスが入れ替わっていても、 いまの一覧の同じ Id のインスタンスが編集中の正本。
+        var current = GridList.Grids.FirstOrDefault(g => g.GridId == committed.GridId);
+        if (current is null) return true; // 削除された
+
+        try { return await GridWorkspace.ResolvePendingManualEditsAsync(BuildGridDraft(current)); }
+        catch { return false; }
+    }
+
+    private PendingDraft BuildGridDraft(GridCanvasItemViewModel grid) => new(
+        Label: grid.Name,
+        IsDirty: () => grid.IsDirty,
+        SaveAsync: ct => GridList.TryCommitEditingForAsync(grid, ct),
+        Discard: grid.RevertEditing);
+
+    /// <summary>「戻る」: 選択を、 いま表示しているグリッドへ書き戻す。 読込はやり直さない。</summary>
+    private void RestoreGridSelection()
+    {
+        var committed = _committedGrid;
+        var target = committed is null
+            ? null
+            : GridList.Grids.FirstOrDefault(g => g.GridId == committed.GridId);
+
+        _restoringGrid = true;
+        try { GridList.SelectedGrid = target; }
+        finally { _restoringGrid = false; }
+    }
+
+    /// <summary>手動保存モードで、 ワークスペースまたはグリッド一覧に未保存の編集があるか (終了時の確認に使う)。</summary>
+    public bool HasUnsavedManualEdits =>
+        GridWorkspace.HasUnsavedManualEdits
+        || (GridWorkspace.IsManualSaveMode && GridList.SelectedGrid is { IsDirty: true });
+
+    /// <summary>
+    /// アプリ終了前に、 手動保存モードの未保存の編集を 保存 / 破棄 / 戻る で確認する。
+    /// 終了してよいとき <c>true</c>、 「戻る」 または保存失敗のとき <c>false</c> (終了しない)。
+    /// </summary>
+    public Task<bool> ResolveUnsavedBeforeExitAsync(CancellationToken ct = default) =>
+        GridWorkspace.ResolvePendingManualEditsAsync(
+            GridList.SelectedGrid is { } grid ? BuildGridDraft(grid) : null,
+            forExit: true, ct);
 
     /// <summary>
     /// アプリ終了時 / ワークスペース切替時に、 全 auto-save dispatcher の保留分を

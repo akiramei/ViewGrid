@@ -21,4 +21,14 @@ internal sealed class AvaloniaConfirmationService : IConfirmationService
 
         return ConfirmDialog.ShowAsync(_owner, title, message, confirmLabel);
     }
+
+    public Task<UnsavedChoice> AskUnsavedChangesAsync(
+        string title, string message, string saveLabel, string discardLabel, string cancelLabel,
+        CancellationToken ct = default)
+    {
+        if (_owner is null)
+            throw new InvalidOperationException("Owner window is not set. Call SetOwnerWindow first.");
+
+        return UnsavedChangesDialog.ShowAsync(_owner, title, message, saveLabel, discardLabel, cancelLabel);
+    }
 }

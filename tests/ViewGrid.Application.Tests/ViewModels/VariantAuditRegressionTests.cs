@@ -18,6 +18,7 @@ namespace ViewGrid.Application.Tests.ViewModels;
 public sealed class VariantAuditRegressionTests : IAsyncLifetime
 {
     private UseCaseFixture _fx = null!;
+    private readonly AutoConfirmationService _confirm = new();
     private WeakReferenceMessenger _messenger = null!;
     private UndoRedoService _history = null!;
     private GridWorkspaceViewModel _vm = null!;
@@ -108,7 +109,7 @@ public sealed class VariantAuditRegressionTests : IAsyncLifetime
             variantProperties,
             output,
             variants,
-            structure,
+            structure, _confirm,
             new NullLocalizationService(),
             NullLogger<GridWorkspaceViewModel>.Instance);
     }

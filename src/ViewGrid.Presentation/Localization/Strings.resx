@@ -498,6 +498,21 @@
   <data name="Confirm_DeleteGrid_MessageFmt" xml:space="preserve"><value>グリッド「{0}」を削除します。
 このグリッドの配置 {1} 件も削除され、操作履歴はリセットされます。
 この操作は元に戻せません。続行しますか？</value></data>
+  <data name="Common_Discard" xml:space="preserve"><value>破棄</value></data>
+  <data name="Common_Back" xml:space="preserve"><value>戻る</value></data>
+  <data name="Confirm_Unsaved_Title" xml:space="preserve"><value>未保存の編集</value></data>
+  <data name="Confirm_UnsavedSwitch_MessageFmt" xml:space="preserve"><value>「{0}」に未保存の編集があります。
+このまま移動すると編集は失われます。
+
+保存: 編集を保存して移動します
+破棄: 編集を捨てて移動します
+戻る: 移動をやめて編集を続けます</value></data>
+  <data name="Confirm_UnsavedExit_MessageFmt" xml:space="preserve"><value>「{0}」に未保存の編集があります。
+このまま終了すると編集は失われます。
+
+保存: 編集を保存して終了します
+破棄: 編集を捨てて終了します
+戻る: 終了をやめて編集を続けます</value></data>
   <data name="Confirm_DeleteWorkspace_Title" xml:space="preserve"><value>ワークスペースを削除</value></data>
   <data name="Confirm_DeleteWorkspace_MessageFmt" xml:space="preserve"><value>「{0}」を削除しますか?
 workspaces/.trash/ にバックアップが残るため、 必要なら手動で復元できます。</value></data>

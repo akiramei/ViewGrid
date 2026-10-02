@@ -86,7 +86,7 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
             _fx.Thumbnails, _fx.CropResolver,
             place, remove, move, swap, offset,
             _fx.Storage, _fx.AppSettings, _messenger, _history,
-            inspector, variantProperties, output, variants, structure,
+            inspector, variantProperties, output, variants, structure, _confirm,
             new NullLocalizationService(), NullLogger<GridWorkspaceViewModel>.Instance);
     }
 
@@ -296,6 +296,224 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
 
         _vm.SelectedCandidate.Should().BeSameAs(candidate);
         _vm.SelectedCandidateNode.Should().BeSameAs(candidate);
+    }
+
+    // ─── 手動保存モードの切替時: 保存 / 破棄 / 戻る (ユーザビリティ評価: 切替で無言で消える) ──────────
+
+    /// <summary>2 つの配置 (バリアント A / B) を作り、 A の配置を選択して Inspector に attach 済みにする。</summary>
+    private async Task<(ImageCopy A, ImageCopy B, PlacementItemViewModel P1, PlacementItemViewModel P2)>
+        SeedTwoPlacementsAsync(bool autoSave)
+    {
+        await _fx.AppSettings.UpdateAsync(s => s with { EnableAutoSave = autoSave });
+        var asset = await _fx.SeedAssetAsync(width: 100, height: 100);
+        var a = await _fx.SeedCopyAsync(asset.Id, copyName: "A");
+        var b = await _fx.SeedCopyAsync(asset.Id, copyName: "B");
+        var grid = await SeedGridAsync(2, 2);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        var pa = (await place.ExecuteAsync(grid.Id, a.Id, new CellPosition(0, 0))).Value;
+        var pb = (await place.ExecuteAsync(grid.Id, b.Id, new CellPosition(1, 0))).Value;
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(grid));
+        var p1 = _vm.Placements.Single(p => p.PlacementId == pa.Id);
+        var p2 = _vm.Placements.Single(p => p.PlacementId == pb.Id);
+        await SwitchToAsync(p1);
+        return (a, b, p1, p2);
+    }
+
+    /// <summary>View のバインドと同じく選択プロパティを書き換え、 切替の連鎖 (確認・attach) の完了を待つ。</summary>
+    private async Task SwitchToAsync(PlacementItemViewModel? placement)
+    {
+        _vm.SelectedPlacement = placement;
+        await _vm.WaitPendingInspectorAttachAsync();
+        await _vm.WaitPendingVariantAttachAsync();
+    }
+
+    /// <summary>A の配置に未保存の編集 (共有特性の縦揃え Bottom + 配置固有の ΔX=15) を作る。</summary>
+    private void MakeDraft()
+    {
+        _vm.Inspector.CopyProperties.AlignY = AnchorY.Bottom;
+        _vm.Inspector.PixelOffsetX = 15;
+        _vm.Inspector.IsAnyDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Switch_Cancel_Restores_The_Selection_And_Keeps_The_Draft()
+    {
+        var (a, _, p1, p2) = await SeedTwoPlacementsAsync(autoSave: false);
+        MakeDraft();
+        _confirm.UnsavedAnswer = UnsavedChoice.Cancel;
+
+        await SwitchToAsync(p2);
+
+        _confirm.UnsavedRequests.Should().ContainSingle();
+        _vm.SelectedPlacement.Should().BeSameAs(p1, "「戻る」で元の配置へ戻る");
+        _vm.Inspector.AttachedSource.Should().BeSameAs(p1);
+        _vm.SelectedCandidate!.CopyId.Should().Be(a.Id, "候補の選択も元のバリアントへ戻る");
+        _vm.Inspector.CopyProperties.AlignY.Should().Be(AnchorY.Bottom, "編集は残る");
+        _vm.Inspector.PixelOffsetX.Should().Be(15, "配置固有の編集も残る (attach をやり直さない)");
+        _vm.Inspector.IsAnyDirty.Should().BeTrue();
+        (await _fx.CopyRepository.FindByIdAsync(a.Id))!.Alignment.Y.Should().Be(AnchorY.Center, "DB は変わらない");
+    }
+
+    [Fact]
+    public async Task Switch_Save_Persists_The_Draft_Then_Moves_On()
+    {
+        var (a, _, p1, p2) = await SeedTwoPlacementsAsync(autoSave: false);
+        MakeDraft();
+        _confirm.UnsavedAnswer = UnsavedChoice.Save;
+
+        await SwitchToAsync(p2);
+
+        _confirm.UnsavedRequests.Should().ContainSingle();
+        _vm.SelectedPlacement.Should().BeSameAs(p2);
+        _vm.Inspector.AttachedSource.Should().BeSameAs(p2);
+        _vm.Inspector.IsAnyDirty.Should().BeFalse();
+        (await _fx.CopyRepository.FindByIdAsync(a.Id))!.Alignment.Y.Should().Be(AnchorY.Bottom);
+        (await _fx.PlacementRepository.FindByIdAsync(p1.PlacementId))!.PixelOffsetX.Should().Be(15);
+    }
+
+    [Fact]
+    public async Task Switch_Discard_Rolls_Back_The_Draft_And_The_Canvas_Then_Moves_On()
+    {
+        var (a, _, p1, p2) = await SeedTwoPlacementsAsync(autoSave: false);
+        MakeDraft();
+        p1.Alignment.Y.Should().Be(AnchorY.Bottom, "ライブプレビューで draft が canvas に出ている");
+        _confirm.UnsavedAnswer = UnsavedChoice.Discard;
+
+        await SwitchToAsync(p2);
+        await _vm.WaitPendingRollbackForTests();
+
+        _confirm.UnsavedRequests.Should().ContainSingle();
+        _vm.SelectedPlacement.Should().BeSameAs(p2);
+        _vm.Inspector.IsAnyDirty.Should().BeFalse();
+        (await _fx.CopyRepository.FindByIdAsync(a.Id))!.Alignment.Y.Should().Be(AnchorY.Center);
+        p1.Alignment.Y.Should().Be(AnchorY.Center, "canvas も DB の値へ戻る");
+        p1.PixelOffsetX.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Deselect_With_A_Draft_Asks_And_Cancel_Keeps_The_Selection()
+    {
+        var (_, _, p1, _) = await SeedTwoPlacementsAsync(autoSave: false);
+        MakeDraft();
+        _confirm.UnsavedAnswer = UnsavedChoice.Cancel;
+
+        await SwitchToAsync(null); // Esc で選択解除
+
+        _confirm.UnsavedRequests.Should().ContainSingle();
+        _vm.SelectedPlacement.Should().BeSameAs(p1);
+        _vm.Inspector.IsAnyDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Switch_Without_A_Draft_Does_Not_Ask()
+    {
+        var (_, _, _, p2) = await SeedTwoPlacementsAsync(autoSave: false);
+
+        await SwitchToAsync(p2);
+
+        _confirm.UnsavedRequests.Should().BeEmpty();
+        _vm.SelectedPlacement.Should().BeSameAs(p2);
+    }
+
+    [Fact]
+    public async Task Switch_With_AutoSave_On_Saves_Without_Asking()
+    {
+        var (a, _, _, p2) = await SeedTwoPlacementsAsync(autoSave: true);
+        _vm.Inspector.CopyProperties.AlignY = AnchorY.Bottom;
+
+        await SwitchToAsync(p2);
+
+        _confirm.UnsavedRequests.Should().BeEmpty("自動保存 ON は従来どおり切替時に確定する");
+        (await _fx.CopyRepository.FindByIdAsync(a.Id))!.Alignment.Y.Should().Be(AnchorY.Bottom);
+    }
+
+    [Fact]
+    public async Task Switch_Save_Failure_Is_Treated_As_Back_And_Keeps_The_Draft()
+    {
+        var (_, _, p1, p2) = await SeedTwoPlacementsAsync(autoSave: false);
+        _vm.Inspector.OccupyWidth = 5; // 2x2 グリッドには置けない (検証エラー)
+        _vm.Inspector.OccupyHeight = 5;
+        _confirm.UnsavedAnswer = UnsavedChoice.Save;
+
+        await SwitchToAsync(p2);
+
+        _vm.SelectedPlacement.Should().BeSameAs(p1, "保存に失敗した編集を黙って捨てて先へ進まない");
+        _vm.Inspector.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Candidate_Click_While_A_Placement_Is_Dirty_Asks_Once_And_Cancel_Restores_Both_Selections()
+    {
+        var (a, b, p1, _) = await SeedTwoPlacementsAsync(autoSave: false);
+        MakeDraft();
+        _confirm.UnsavedAnswer = UnsavedChoice.Cancel;
+        var candidateB = _vm.Candidates.Single(c => c.CopyId == b.Id);
+
+        _vm.SelectedCandidateNode = candidateB; // 配置選択中に別バリアントをクリック (配置解除 + 候補切替の 2 連鎖)
+        await _vm.WaitPendingInspectorAttachAsync();
+        await _vm.WaitPendingVariantAttachAsync();
+
+        _confirm.UnsavedRequests.Should().ContainSingle("1 回の操作で確認は 1 回だけ");
+        _vm.SelectedPlacement.Should().BeSameAs(p1);
+        _vm.SelectedCandidate!.CopyId.Should().Be(a.Id);
+        _vm.VariantProperties.AttachedCopyId.Should().Be(a.Id, "候補単体編集も元のバリアントのまま");
+        _vm.Inspector.IsAnyDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Candidate_Switch_With_A_Standalone_Draft_Cancel_Keeps_It_And_Save_And_Discard_Work()
+    {
+        await _fx.AppSettings.UpdateAsync(s => s with { EnableAutoSave = false });
+        var asset = await _fx.SeedAssetAsync(width: 100, height: 100);
+        var a = await _fx.SeedCopyAsync(asset.Id, "A");
+        var b = await _fx.SeedCopyAsync(asset.Id, "B");
+        await _vm.LoadCandidatesAsync();
+        _vm.SelectedCandidateNode = _vm.Candidates.Single(c => c.CopyId == a.Id);
+        await _vm.WaitPendingVariantAttachAsync();
+        var candidateB = _vm.Candidates.Single(c => c.CopyId == b.Id);
+        SetManualCrop(_vm.VariantProperties, 10, 10, 50, 50);
+
+        // 戻る
+        _confirm.UnsavedAnswer = UnsavedChoice.Cancel;
+        _vm.SelectedCandidateNode = candidateB;
+        await _vm.WaitPendingVariantAttachAsync();
+        _vm.SelectedCandidate!.CopyId.Should().Be(a.Id);
+        _vm.VariantProperties.IsDirty.Should().BeTrue();
+        _vm.VariantProperties.ManualCropEnabled.Should().BeTrue();
+        (await _fx.CopyRepository.FindByIdAsync(a.Id))!.ManualCrop.Should().BeNull();
+
+        // 見出しをクリックしても同じ (候補が空になる切替)
+        _vm.SelectedCandidateNode = _vm.CandidateGroups.Single();
+        await _vm.WaitPendingVariantAttachAsync();
+        _vm.SelectedCandidate!.CopyId.Should().Be(a.Id, "見出しクリックの切替も「戻る」で元へ戻る");
+        _vm.SelectedCandidateNode.Should().BeSameAs(_vm.SelectedCandidate);
+
+        // 保存
+        _confirm.UnsavedAnswer = UnsavedChoice.Save;
+        _vm.SelectedCandidateNode = candidateB;
+        await _vm.WaitPendingVariantAttachAsync();
+        _vm.SelectedCandidate.Should().BeSameAs(candidateB);
+        (await _fx.CopyRepository.FindByIdAsync(a.Id))!.ManualCrop.Should().NotBeNull();
+
+        // 破棄 (B に新しい draft → A へ戻る)
+        SetManualCrop(_vm.VariantProperties, 5, 5, 20, 20);
+        _confirm.UnsavedAnswer = UnsavedChoice.Discard;
+        _vm.SelectedCandidateNode = _vm.Candidates.Single(c => c.CopyId == a.Id);
+        await _vm.WaitPendingVariantAttachAsync();
+        (await _fx.CopyRepository.FindByIdAsync(b.Id))!.ManualCrop.Should().BeNull();
+        _vm.VariantProperties.AttachedCopyId.Should().Be(a.Id);
+    }
+
+    [Fact]
+    public async Task Reselecting_The_Same_Placement_Does_Not_Ask()
+    {
+        var (_, _, p1, _) = await SeedTwoPlacementsAsync(autoSave: false);
+        MakeDraft();
+
+        await SwitchToAsync(p1);
+
+        _confirm.UnsavedRequests.Should().BeEmpty();
+        _vm.Inspector.IsAnyDirty.Should().BeTrue();
     }
 
     // ─── 削除の確認 (ユーザビリティ評価: 確認なしの不可逆削除) ───────────────────

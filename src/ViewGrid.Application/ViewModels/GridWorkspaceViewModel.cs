@@ -47,6 +47,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private readonly SaveCoordinator _variantAutoSave;
     private readonly IMessenger _messenger;
     private readonly IUndoRedoService _history;
+    private readonly IConfirmationService _confirmation;
     private readonly ILocalizationService _loc;
     private readonly ILogger<GridWorkspaceViewModel> _logger;
 
@@ -206,9 +207,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         GridOutputViewModel output,
         VariantManagerViewModel variants,
         GridStructureEditorViewModel structure,
+        IConfirmationService confirmation,
         ILocalizationService loc,
         ILogger<GridWorkspaceViewModel> logger)
     {
+        _confirmation = confirmation;
         _gridRepository = gridRepository;
         _copyRepository = copyRepository;
         _assetRepository = assetRepository;
@@ -545,11 +548,144 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// </summary>
     public Task SelectPlacementAsync(PlacementItemViewModel? value)
     {
+        // 「戻る」 で選択を元へ戻している最中の再入。 元の対象は attach 済みで編集バッファも保持されているので、
+        // attach し直さない (InitializeEditingBufferFor が未保存の配置固有 draft を消してしまう)。
+        if (_restoringSelection)
+        {
+            NotifySelectionChanged();
+            return Task.CompletedTask;
+        }
+
         SyncCandidateToPlacement(value);
         var previous = _pendingInspectorTask;
         _pendingInspectorTask = FlushThenAttachAsync(previous, value, CurrentGrid);
         NotifySelectionChanged();
         return _pendingInspectorTask;
+    }
+
+    // ─── 手動保存モードで未保存の編集があるまま別の対象へ移るとき (保存 / 破棄 / 戻る) ─────────────
+    // 自動保存 OFF の編集 (draft) は、 切替で無言で捨てず、 3 択で確認する (決定 D-SWITCH-PENDING)。
+    // 選択プロパティは View のバインドで先に書き換わってしまうため、 「戻る」 は元の対象へ選択を
+    // 書き戻し (_restoringSelection で再入を抑止)、 attach をやり直さない。
+
+    /// <summary>「戻る」 で選択を元へ書き戻している間 true。 選択変更 hook が attach / 確認をしない。</summary>
+    private bool _restoringSelection;
+
+    /// <summary>確認ダイアログの進行中の Task。 1 つの操作が複数の選択変更を起こしても、 確認は 1 回だけ出す。</summary>
+    private Task<bool>? _inFlightResolve;
+
+    /// <summary>自動保存が OFF (手動保存モード) か。</summary>
+    public bool IsManualSaveMode => !_appSettings.Current.EnableAutoSave;
+
+    /// <summary>
+    /// 手動保存モードで、 Inspector または候補単体編集に未保存の編集があるか。
+    /// 自動保存 ON のときは切替・終了時に確定されるので常に <c>false</c>。
+    /// </summary>
+    public bool HasUnsavedManualEdits =>
+        IsManualSaveMode
+        && (Inspector.IsAnyDirty || (VariantProperties.HasCopy && VariantProperties.IsDirty));
+
+    /// <summary>
+    /// 未保存の編集 (手動保存モード) を、 保存 / 破棄 / 戻る の 3 択で解決する。 先へ進んでよいとき
+    /// (編集なし・保存した・破棄した) は <c>true</c>、 「戻る」 または保存失敗のときは <c>false</c>
+    /// (編集は残る。 保存に失敗した編集を黙って捨てない)。 保存・破棄を選んだ場合、 解決した編集パネルは
+    /// 全て clean になって戻るので、 続く選択切替の連鎖で二重に確認しない。
+    /// </summary>
+    /// <param name="extra">グリッド一覧のグリッド名・キャンバスサイズ編集など、 本 VM の外にある編集。</param>
+    /// <param name="forExit">アプリ終了前の確認か (文言が変わる)。</param>
+    public Task<bool> ResolvePendingManualEditsAsync(
+        PendingDraft? extra = null, bool forExit = false, CancellationToken ct = default)
+    {
+        if (_inFlightResolve is { IsCompleted: false } inFlight) return inFlight;
+        if (!IsManualSaveMode) return Task.FromResult(true);
+        if (!HasUnsavedManualEdits && extra?.IsDirty() != true) return Task.FromResult(true);
+
+        var task = ResolveCoreAsync(extra, forExit, ct);
+        _inFlightResolve = task;
+        return task;
+    }
+
+    private async Task<bool> ResolveCoreAsync(PendingDraft? extra, bool forExit, CancellationToken ct)
+    {
+        var label = Inspector.IsAnyDirty
+            ? Inspector.HeaderLabel
+            : VariantProperties.HasCopy && VariantProperties.IsDirty
+                ? Candidates.FirstOrDefault(c => c.CopyId == VariantProperties.AttachedCopyId)?.CopyDisplayName
+                    ?? _loc[Terminology.VariantUnknownKey]
+                : extra?.Label ?? string.Empty;
+
+        var choice = await _confirmation.AskUnsavedChangesAsync(
+            _loc["Confirm_Unsaved_Title"],
+            _loc.Format(forExit ? "Confirm_UnsavedExit_MessageFmt" : "Confirm_UnsavedSwitch_MessageFmt", label),
+            _loc["Common_Save"], _loc["Common_Discard"], _loc["Common_Back"],
+            ct);
+
+        switch (choice)
+        {
+            case UnsavedChoice.Save:
+                return await SaveManualEditsAsync(extra, ct);
+            case UnsavedChoice.Discard:
+                await DiscardManualEditsAsync(extra, ct);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private async Task<bool> SaveManualEditsAsync(PendingDraft? extra, CancellationToken ct)
+    {
+        var ok = true;
+        if (Inspector.IsAnyDirty)
+            ok &= await Inspector.TrySaveAllAsync(ct);
+        if (VariantProperties.HasCopy && VariantProperties.IsDirty)
+            ok &= await VariantProperties.TrySaveAsync(ct);
+        if (extra is { } e && e.IsDirty())
+            ok &= await e.SaveAsync(ct);
+
+        // 保存に失敗した (検証エラーなど) 場合は先へ進まず、 編集と失敗理由 (各パネルの StatusMessage) を残す。
+        return ok && !HasUnsavedManualEdits && extra?.IsDirty() != true;
+    }
+
+    private async Task DiscardManualEditsAsync(PendingDraft? extra, CancellationToken ct)
+    {
+        if (Inspector.IsAnyDirty)
+            await Inspector.RevertAllAsync(ct);
+        if (VariantProperties.HasCopy && VariantProperties.IsDirty)
+            VariantProperties.Revert();
+        extra?.Discard();
+    }
+
+    /// <summary>「戻る」: 選択を、 いま Inspector に attach 済みの配置 (= draft を持つ対象) へ書き戻す。</summary>
+    private void RestorePlacementSelection()
+    {
+        var target = Inspector.AttachedSource;
+        if (target is not null && !Placements.Contains(target)) target = null;
+
+        _restoringSelection = true;
+        try
+        {
+            SelectedPlacement = target;
+            SyncCandidateToPlacement(target);
+        }
+        finally { _restoringSelection = false; }
+        NotifySelectionChanged();
+    }
+
+    /// <summary>「戻る」: 候補の選択を、 いま候補単体編集に attach 済みのバリアントへ書き戻す。</summary>
+    private void RestoreCandidateSelection()
+    {
+        var target = Candidates.FirstOrDefault(c => c.CopyId == VariantProperties.AttachedCopyId);
+
+        _restoringSelection = true;
+        try
+        {
+            _selectedGroupHeader = null;
+            SelectedCandidate = target;
+        }
+        finally { _restoringSelection = false; }
+        Variants.NotifyContextChanged();
+        OnPropertyChanged(nameof(SelectedCandidateNode));
+        NotifySelectionChanged();
     }
 
     /// <summary>
@@ -605,6 +741,23 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     {
         // 先行 attach の完了を待つ (失敗は観測済み扱いで握る — 今回の attach は継続させる)。
         try { await previous; } catch { }
+
+        // 手動保存モードで、 別の配置 (または未選択) へ移ろうとしていて、 いま attach 中の配置に未保存の編集がある
+        // → 保存 / 破棄 / 戻る を確認する。 attach 中の配置が既に無い (削除・グリッド切替で消えた) ときは対象外。
+        var attached = Inspector.AttachedSource;
+        if (!ReferenceEquals(value, attached)
+            && attached is not null && Placements.Contains(attached)
+            && IsManualSaveMode && Inspector.IsAnyDirty)
+        {
+            bool proceed;
+            try { proceed = await ResolvePendingManualEditsAsync(); }
+            catch { proceed = false; }
+            if (!proceed)
+            {
+                RestorePlacementSelection();
+                return;
+            }
+        }
 
         try { await Inspector.FlushAutoSaveAsync(CancellationToken.None); }
         catch { /* StatusMessage に反映済み想定。 attach は継続 */ }
@@ -1371,6 +1524,9 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
         NotifySelectionChanged();
 
+        // 「戻る」 で候補選択を書き戻している最中は attach も確認もしない (元の対象は attach 済み)。
+        if (_restoringSelection) return;
+
         // 旧候補の保留中編集 (auto-save 待ち) を確定してから新候補を attach する。 先に attach すると
         // VariantProperties.Attach が draft と IsDirty を捨て、 1 秒以内の候補切替で編集が消える。
         var previous = _pendingVariantTask;
@@ -1382,8 +1538,31 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         // 先行の切替の完了を待つ (失敗は握る — 今回の attach は継続させる)。
         try { await previous; } catch { }
 
+        // 手動保存モードで、 別の候補へ移ろうとしていて、 いま attach 中のバリアントに未保存の編集がある
+        // → 保存 / 破棄 / 戻る を確認する。 attach 中のバリアントが既に候補に無い (削除された) ときは対象外。
+        var attachedCopyId = VariantProperties.AttachedCopyId;
+        if (IsManualSaveMode
+            && VariantProperties.HasCopy && VariantProperties.IsDirty
+            && attachedCopyId is { } attachedId
+            && candidate?.CopyId != attachedId
+            && Candidates.Any(c => c.CopyId == attachedId))
+        {
+            bool proceed;
+            try { proceed = await ResolvePendingManualEditsAsync(); }
+            catch { proceed = false; }
+            if (!proceed)
+            {
+                RestoreCandidateSelection();
+                return;
+            }
+        }
+
         try { await FlushVariantEditsCoreAsync(CancellationToken.None); }
         catch { /* StatusMessage に反映済み想定。 attach は継続 */ }
+
+        // 確認の間・保存の間に選択がさらに変わった (または「戻る」 で書き戻された) なら、 この切替は古い。
+        // 古い候補を attach すると、 選択中の候補と編集対象がずれる。 後続の切替に任せる。
+        if (!ReferenceEquals(SelectedCandidate, candidate)) return;
 
         await AttachVariantPropertiesAsync(candidate);
     }
@@ -1557,3 +1736,17 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         VariantProperties.Dispose();
     }
 }
+
+/// <summary>
+/// 手動保存モードの切替・終了時の確認 (<see cref="GridWorkspaceViewModel.ResolvePendingManualEditsAsync"/>) に
+/// 参加させる、 ワークスペース VM の外にある未保存編集 (例: グリッド一覧のグリッド名・キャンバスサイズ)。
+/// </summary>
+/// <param name="Label">確認ダイアログに出す対象の名前。</param>
+/// <param name="IsDirty">未保存の編集があるか。</param>
+/// <param name="SaveAsync">保存する。 成功で <c>true</c>。</param>
+/// <param name="Discard">編集を破棄して永続値へ戻す。</param>
+public sealed record PendingDraft(
+    string Label,
+    Func<bool> IsDirty,
+    Func<CancellationToken, Task<bool>> SaveAsync,
+    Action Discard);
