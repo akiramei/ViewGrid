@@ -50,7 +50,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             new NullLocalizationService(),
             NullLogger<AssetLibraryViewModel>.Instance);
 
-        var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
+        var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository, _fx.AppSettings);
         var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
 
         // CopyPropertiesViewModel: PlacementInspector に inline embed されるため必要

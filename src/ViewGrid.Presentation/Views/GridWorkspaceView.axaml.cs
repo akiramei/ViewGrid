@@ -151,13 +151,25 @@ public partial class GridWorkspaceView : UserControl
     }
 
     /// <summary>
-    /// F2 キーで選択中の候補をリネーム編集モードに切り替える。
+    /// 候補リストのキー操作。 <c>Enter</c> = 選択中の候補を最初の空きセルへ配置、
+    /// <c>F2</c> = 選択中の候補をリネーム編集モードに切り替える。
     /// </summary>
     private void OnCandidateListKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key != Key.F2) return;
         if (DataContext is not GridWorkspaceViewModel vm) return;
+        if (e.Source is TextBox) return; // リネーム入力中の Enter / F2 は入力欄側で扱う
         if (vm.SelectedCandidate is not { } candidate) return;
+
+        // Enter: 選択中の候補を最初の空きセルへ配置する (配置ボタンと同じコマンド)。
+        if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
+        {
+            if (!candidate.IsEditing && vm.PlaceSelectedToFirstFreeCellCommand.CanExecute(null))
+                vm.PlaceSelectedToFirstFreeCellCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key != Key.F2) return;
 
         vm.Variants.BeginEditCandidate(candidate);
         e.Handled = true;

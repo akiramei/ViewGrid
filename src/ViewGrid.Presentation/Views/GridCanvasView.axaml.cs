@@ -2457,6 +2457,18 @@ public partial class GridCanvasView : UserControl
             }
         }
 
+        // Delete で選択中の配置を削除する (配置を削除ボタンと同じコマンド。 履歴に積まれ Undo できる)。
+        // 保護領域を選択中は対象外 (領域ではなく配置を消してしまわないように)。 文字入力中は拾わない。
+        if (e.Key == Key.Delete && e.KeyModifiers == KeyModifiers.None
+            && region is null && e.Source is not TextBox
+            && _vm?.RemoveSelectedPlacementCommand is { } removeCommand
+            && removeCommand.CanExecute(null))
+        {
+            removeCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
         if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
             return;
 

@@ -13,7 +13,7 @@ public sealed class CreateLogicalCopyUseCaseTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _fx = await UseCaseFixture.CreateAsync();
-        _useCase = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
+        _useCase = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository, _fx.AppSettings);
     }
 
     public async Task DisposeAsync() => await _fx.DisposeAsync();
@@ -33,6 +33,22 @@ public sealed class CreateLogicalCopyUseCaseTests : IAsyncLifetime
         copy.Alignment.Should().Be(Alignment.Center);
         copy.OccupySize.Should().Be(OccupySize.OneByOne);
         copy.CopyName.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(ScalingMode.UniformCover)]
+    [InlineData(ScalingMode.None)]
+    [InlineData(ScalingMode.Fill)]
+    public async Task Uses_The_Default_Scaling_From_App_Settings(ScalingMode configured)
+    {
+        // 設定画面の「既定値」は新規の論理コピーにも効く (取り込み時の既定バリアントと同じ初期値)。
+        await _fx.AppSettings.UpdateAsync(s => s with { DefaultScalingMode = configured });
+        var asset = await _fx.SeedAssetAsync();
+
+        var result = await _useCase.ExecuteAsync(asset.Id);
+
+        result.IsError.Should().BeFalse();
+        result.Value.ScalingMode.Should().Be(configured);
     }
 
     [Fact]

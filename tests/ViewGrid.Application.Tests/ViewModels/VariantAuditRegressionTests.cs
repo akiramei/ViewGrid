@@ -68,7 +68,7 @@ public sealed class VariantAuditRegressionTests : IAsyncLifetime
             _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository, _fx.AssetRepository,
             _fx.CropResolver, updateWeights,
             NullLogger<FitGridWeightToPlacementUseCase>.Instance);
-        var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
+        var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository, _fx.AppSettings);
         var updateCopy = new UpdateImageCopyUseCase(_fx.CopyRepository, _fx.PlacementRepository, _fx.GridRepository);
         var deleteAsset = new DeleteImageAssetUseCase(_fx.AssetRepository, _fx.Storage, _fx.Thumbnails);
         var variantProperties = new CopyPropertiesViewModel(

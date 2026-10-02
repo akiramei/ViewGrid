@@ -64,7 +64,7 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
         var fitWeight = new FitGridWeightToPlacementUseCase(
             _fx.GridRepository, _fx.PlacementRepository, _fx.CopyRepository, _fx.AssetRepository,
             _fx.CropResolver, updateWeights, NullLogger<FitGridWeightToPlacementUseCase>.Instance);
-        var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository);
+        var createCopy = new CreateLogicalCopyUseCase(_fx.AssetRepository, _fx.CopyRepository, _fx.AppSettings);
         var deleteAsset = new DeleteImageAssetUseCase(_fx.AssetRepository, _fx.Storage, _fx.Thumbnails);
         var variantProperties = new CopyPropertiesViewModel(
             updateCopy, _history, _messenger, _fx.ColorPicker, _fx.AutoCropResolver, _fx.AppSettings,

@@ -175,6 +175,17 @@ public partial class WorkspaceSwitchDialog : Window
     {
         if (DataContext is not WorkspaceSwitchDialogViewModel vm) return;
 
+        // 切替はアプリを再起動する。 手動保存モードで未保存の編集があるまま再起動すると失われるので、
+        // active.json の書き換えと新プロセスの起動より前に 保存 / 破棄 / 戻る を確認する
+        // (終了時の確認 ShutdownRequested では、 新プロセスが既に起動していて遅い)。 「戻る」 なら切替しない。
+        if (Owner is Window { DataContext: MainWindowViewModel mainVm } && mainVm.HasUnsavedManualEdits)
+        {
+            bool proceed;
+            try { proceed = await mainVm.ResolveUnsavedBeforeExitAsync(); }
+            catch { proceed = false; }
+            if (!proceed) return;
+        }
+
         var newName = await vm.ApplyAsync();
         if (newName is null) return;
 
