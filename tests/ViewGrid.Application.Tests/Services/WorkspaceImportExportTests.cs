@@ -39,8 +39,9 @@ public sealed class WorkspaceImportExportTests : IAsyncLifetime
 
     private async Task SeedDefaultWorkspaceAsync()
     {
+        // インポート時に DB の妥当性を検証するため、実際の SQLite DB (EF のマイグレーション履歴 + 参照画像 1 件) を作る。
         var dbPath = Path.Combine(_workspaceDir, "viewgrid.db");
-        await File.WriteAllTextAsync(dbPath, "fake-db-content");
+        WorkspaceTestDatabase.Create(dbPath, "assets/ab/abdef.png");
         var assetsDir = Path.Combine(_workspaceDir, "assets", "ab");
         Directory.CreateDirectory(assetsDir);
         await File.WriteAllBytesAsync(Path.Combine(assetsDir, "abdef.png"), [0x89, 0x50, 0x4e, 0x47]);
@@ -157,7 +158,8 @@ public sealed class WorkspaceImportExportTests : IAsyncLifetime
 
         var importedDb = Path.Combine(_root.FullName, "workspaces", "imported", "viewgrid.db");
         File.Exists(importedDb).Should().BeTrue();
-        (await File.ReadAllTextAsync(importedDb)).Should().Be("fake-db-content");
+        (await File.ReadAllBytesAsync(importedDb)).Should().Equal(
+            await File.ReadAllBytesAsync(Path.Combine(_workspaceDir, "viewgrid.db")));
 
         var importedAsset = Path.Combine(_root.FullName, "workspaces", "imported", "assets", "ab", "abdef.png");
         File.Exists(importedAsset).Should().BeTrue();
