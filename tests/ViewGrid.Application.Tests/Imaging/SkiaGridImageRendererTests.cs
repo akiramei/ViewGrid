@@ -867,6 +867,75 @@ public sealed class SkiaGridImageRendererTests : IAsyncLifetime
         rendered.GetPixel(10, 10).Should().Be(SKColors.Red);
     }
 
+    // ─── 余白削除 (DrawnPixels) と保護領域 (R02) ───────────────────────────────
+
+    [Fact]
+    public async Task TrimMode_DrawnPixels_Keeps_Region_Placed_Outside_Parent_Image_Rect()
+    {
+        // 100x100 セルへ 100x50 の画像を中央配置 (親は y=25..75)。 セル上端 (親の外) に 20x20 の保護領域を置く。
+        // 親の矩形だけで走査すると保護領域が余白として削られ、 100x50 になる (期待は 0..75 の 100x75)。
+        var imagePath = WriteSolidColorPng(100, 50, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0, 0, 0.2, 0.4), 0, fillMode: ProtectedRegionFillMode.None)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+        var items = new[] { new PlacementRenderItem(placement, copy, imagePath) };
+
+        var full = await _renderer.RenderPngAsync(grid, items, new RenderOptions(TrimMode.None));
+        var trimmed = await _renderer.RenderPngAsync(grid, items, new RenderOptions(TrimMode.DrawnPixels));
+
+        full.IsError.Should().BeFalse();
+        trimmed.IsError.Should().BeFalse();
+        using var fullBitmap = SKBitmap.Decode(full.Value);
+        using var trimmedBitmap = SKBitmap.Decode(trimmed.Value);
+        fullBitmap.GetPixel(5, 5).Alpha.Should().Be(255, "保護領域は親画像の外のセル上端に描画される");
+        trimmedBitmap.Width.Should().Be(100);
+        trimmedBitmap.Height.Should().Be(75, "セル上端の保護領域 (y=0..20) から親画像の下端 (y=75) まで残る");
+        trimmedBitmap.GetPixel(5, 5).Alpha.Should().Be(255);
+    }
+
+    [Fact]
+    public async Task TrimMode_DrawnPixels_Keeps_Region_Even_When_Offset_Beyond_Parent_On_Every_Side()
+    {
+        // 親 (100x50 を中央配置) の下側 (y=80..) と右側 (セル右端) に置いた保護領域も、 上側と同様に残る。
+        var imagePath = WriteSolidColorPng(100, 50, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopyWithRegions(
+            regions: ImmutableArray.Create(MakeRegion(
+                new RegionRectFraction(0, 0, 0.2, 0.4), 0,
+                fillMode: ProtectedRegionFillMode.None, offsetXPx: 80, offsetYPx: 80)));
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var trimmed = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode.DrawnPixels));
+
+        trimmed.IsError.Should().BeFalse();
+        using var bitmap = SKBitmap.Decode(trimmed.Value);
+        bitmap.Width.Should().Be(100);
+        bitmap.Height.Should().Be(75, "親 (y=25..75) の下端ではなく、 下側の保護領域 (y=80..100) まで残る");
+    }
+
+    [Fact]
+    public async Task TrimMode_DrawnPixels_Without_Regions_Still_Trims_To_Parent_Rect()
+    {
+        // 回帰: 保護領域が無い通常ケースは従来どおり親画像の矩形 (100x50) に切り出される。
+        var imagePath = WriteSolidColorPng(100, 50, SKColors.Red);
+        var grid = CreateGrid(rows: 1, cols: 1, canvas: new PixelSize(100, 100));
+        var copy = CreateCopy();
+        var placement = CreatePlacement(grid.Id, copy.Id, new CellPosition(0, 0));
+
+        var trimmed = await _renderer.RenderPngAsync(
+            grid, [new PlacementRenderItem(placement, copy, imagePath)],
+            new RenderOptions(TrimMode.DrawnPixels));
+
+        trimmed.IsError.Should().BeFalse();
+        using var bitmap = SKBitmap.Decode(trimmed.Value);
+        bitmap.Width.Should().Be(100);
+        bitmap.Height.Should().Be(50);
+    }
+
     private static ImageCopy CreateCopyWithRegions(
         ScalingMode scaling = ScalingMode.UniformContain,
         Alignment? alignment = null,

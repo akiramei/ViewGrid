@@ -71,6 +71,34 @@ public static class PlacementGeometry
     }
 
     /// <summary>
+    /// 重み付きの軸 (列幅・行高の比率) 上で、 座標 <paramref name="position"/> (0..<paramref name="total"/>) が
+    /// 何番目のセルに属するかを返す。 表示は Star 重みで列・行を割り付けるため、 「全幅 ÷ 列数」 の均等割りで
+    /// 判定すると、 重み付きグリッドで実際の境界とずれ、 同じ列内でもドラッグ先が隣の列になる。
+    /// 重みが無い / 要素数が <paramref name="count"/> と合わないときは均等割り。 重み 1 未満は 1 として扱う
+    /// (表示側の割り付けと同じ規則)。 範囲外の座標は両端のセルへ丸める。
+    /// </summary>
+    public static int ResolveWeightedIndex(
+        IReadOnlyList<int>? weights, int count, double position, double total)
+    {
+        if (count <= 1 || total <= 0.0) return 0;
+
+        var useWeights = weights is not null && weights.Count == count;
+        double Weight(int i) => useWeights ? Math.Max(1, weights![i]) : 1.0;
+
+        double sum = 0.0;
+        for (var i = 0; i < count; i++) sum += Weight(i);
+
+        var target = position / total * sum;
+        double cumulative = 0.0;
+        for (var i = 0; i < count; i++)
+        {
+            cumulative += Weight(i);
+            if (target < cumulative) return i;
+        }
+        return count - 1;
+    }
+
+    /// <summary>
     /// 占有セル群のバウンディングボックスを計算する。<see cref="TrimMode.OccupiedCells"/>
     /// での出力切り出しに使う純粋関数。各 placement の <see cref="ComputeDestRect"/>
     /// （PixelOffset=0）の和集合を取り、結果をキャンバス境界にクランプして返す。

@@ -24,6 +24,29 @@ public readonly record struct CropFraction(double X, double Y, double Width, dou
         return (x, y, w, h);
     }
 
+    /// <summary>
+    /// 縮小画像 (サムネイル) から切り出すための指定。 <see cref="ToPixelBbox"/> は低解像度で極細の crop
+    /// (例: 幅 4000 の画像の 1px 幅を、 幅 1024 のサムネで) を 0px に丸めてしまい、 呼び出し側が
+    /// 「crop なし」 と同じに扱って画像全体を表示する不整合が出る。 ここでは切り出し元を分数座標
+    /// (<c>Src*</c>、 サムネ pixel 単位の小数) で返し、 出力サイズ (<c>Dst*</c>) は最低 1px に保つ。
+    /// 有効な領域が無い (幅・高さが 0 以下 / 画像外) ときは <c>null</c>。
+    /// </summary>
+    public (double SrcX, double SrcY, double SrcWidth, double SrcHeight, int DstWidth, int DstHeight)? ToSampleRect(
+        int width, int height)
+    {
+        if (width <= 0 || height <= 0) return null;
+
+        var sx = System.Math.Clamp(X * width, 0.0, width);
+        var sy = System.Math.Clamp(Y * height, 0.0, height);
+        var sw = System.Math.Clamp(Width * width, 0.0, width - sx);
+        var sh = System.Math.Clamp(Height * height, 0.0, height - sy);
+        if (sw <= 0.0 || sh <= 0.0) return null;
+
+        var dw = System.Math.Max(1, (int)System.Math.Round(sw));
+        var dh = System.Math.Max(1, (int)System.Math.Round(sh));
+        return (sx, sy, sw, sh, dw, dh);
+    }
+
     /// <summary>クロップ無効（fullness 1.0 に近い）か。</summary>
     public bool IsFull(double tolerance = 1e-6) =>
         System.Math.Abs(X) < tolerance && System.Math.Abs(Y) < tolerance

@@ -94,6 +94,53 @@ public static class RegionGeometry
     }
 
     /// <summary>
+    /// crop 適用後・回転後 (transformed 座標) の親画像の寸法。 renderer と同じ順序で、
+    /// <b>元画像で整数の crop 矩形を確定してから</b> 90°/270° 回転で幅と高さを入れ替える
+    /// (crop 比率は元画像座標のもの。 先に寸法だけ入れ替えて比率を掛けると、 非正方形 crop + 回転で
+    /// 軸が食い違い、 画面の表示倍率が出力とずれる)。 crop が無い / 空なら画像全体。
+    /// </summary>
+    public static (int Width, int Height) ComputeTransformedCropSize(
+        CropFraction? effectiveCrop, ImageTransform transform, int sourceWidth, int sourceHeight)
+    {
+        var cw = sourceWidth;
+        var ch = sourceHeight;
+        if (effectiveCrop is { } crop)
+        {
+            var bbox = crop.ToPixelBbox(sourceWidth, sourceHeight);
+            if (bbox.Width > 0 && bbox.Height > 0)
+            {
+                cw = bbox.Width;
+                ch = bbox.Height;
+            }
+        }
+
+        return transform.Rotation is Rotation.Cw90 or Rotation.Cw270 ? (ch, cw) : (cw, ch);
+    }
+
+    /// <summary>
+    /// 親画像が cell 内に描画されるサイズ (canvas 座標。 cell クリップ前 = cell より大きくなり得る)。
+    /// <see cref="ScalingMode"/> ごとの倍率 (縮小のみ / 拡大のみ を含む) は、 <b>元画像ピクセル</b> を基準に
+    /// 計算する (出力 = renderer と同じ)。 画面表示がサムネイルの寸法を基準にすると、 サムネが元画像より
+    /// 小さい場合に縮小のみ・拡大のみの判定がずれ、 出力と違う大きさで表示される。
+    /// </summary>
+    /// <param name="cellWidth">cell の幅 (canvas 座標)。</param>
+    /// <param name="cellHeight">cell の高さ (canvas 座標)。</param>
+    public static (double Width, double Height) ComputeParentDrawSize(
+        double cellWidth, double cellHeight,
+        ImageTransform transform, ScalingMode scalingMode,
+        CropFraction? effectiveCrop, int sourceWidth, int sourceHeight)
+    {
+        if (cellWidth <= 0 || cellHeight <= 0 || sourceWidth <= 0 || sourceHeight <= 0)
+            return (0.0, 0.0);
+
+        var (tw, th) = ComputeTransformedCropSize(effectiveCrop, transform, sourceWidth, sourceHeight);
+        if (tw <= 0 || th <= 0) return (0.0, 0.0);
+
+        var dst = ComputeDstRectForFill(tw, th, 0, 0, cellWidth, cellHeight, scalingMode, Alignment.Center);
+        return (dst.W, dst.H);
+    }
+
+    /// <summary>
     /// 親側塗り矩形 (cell-local 表示座標、 作成キャンバス px、 cell でクリップ済み) を計算する。
     /// renderer の <c>SkiaGridImageRenderer.ComputeRegionParentFillRect</c> と同じ式の純粋関数版。
     /// region が effective Crop の外、 Transform 後 src 矩形外、 cell の外のいずれかなら <c>null</c>。

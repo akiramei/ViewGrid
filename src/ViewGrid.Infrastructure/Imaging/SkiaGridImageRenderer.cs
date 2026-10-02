@@ -311,18 +311,44 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
                 item.Placement.PixelOffsetX,
                 item.Placement.PixelOffsetY);
 
-            var (_, dstRect) = ComputeSrcDstRects(sw, sh, dest, item.Copy);
-            var visible = Intersect(
-                dstRect,
-                SKRect.Create(cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height));
-            if (visible.Width <= 0 || visible.Height <= 0)
-                continue;
+            var (srcRect, dstRect) = ComputeSrcDstRects(sw, sh, dest, item.Copy);
+            var cellSkRect = SKRect.Create(cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height);
+            var visible = Intersect(dstRect, cellSkRect);
+            if (visible.Width > 0 && visible.Height > 0)
+            {
+                var rect = ToPixelSearchRect(visible, grid.CanvasSize.Width, grid.CanvasSize.Height);
+                if (rect.Width > 0 && rect.Height > 0)
+                    union = union is null ? rect : Union(union.Value, rect);
+            }
 
-            var rect = ToPixelSearchRect(visible, grid.CanvasSize.Width, grid.CanvasSize.Height);
-            if (rect.Width <= 0 || rect.Height <= 0)
-                continue;
-
-            union = union is null ? rect : Union(union.Value, rect);
+            // 保護領域の asset は親画像の描画矩形とは無関係に、 セル内の任意位置 (OffsetXPx / OffsetYPx) へ
+            // 描かれる。 親の矩形だけを走査範囲にすると、 親の外側 (余白部分) に置いた保護領域が
+            // 通常 / None では描画されるのに DrawnPixels の余白削除で消える。 描画 (DrawRegionAsset) と同じ
+            // 矩形を cell でクリップして走査範囲へ加える。 asset は整数 pixel にスナップ済みなので、
+            // 親画像のようなサブピクセル補間の薄い縁は生じない。
+            if (!item.Copy.Regions.IsDefaultOrEmpty && dstRect.Width > 0 && dstRect.Height > 0
+                && srcRect.Width > 0 && srcRect.Height > 0)
+            {
+                var (scaleX, scaleY) = RegionGeometry.ComputeSourceToCellScale(
+                    item.Copy.Transform, srcRect.Width, srcRect.Height, dstRect.Width, dstRect.Height);
+                if (scaleX > 0 && scaleY > 0)
+                {
+                    foreach (var region in item.Copy.Regions)
+                    {
+                        if (!TryComputeRegionAssetDest(
+                                region, sourceW, sourceH, cellRect, scaleX, scaleY,
+                                out var assetDest, out _))
+                            continue;
+                        var assetVisible = Intersect(assetDest, cellSkRect);
+                        if (assetVisible.Width <= 0 || assetVisible.Height <= 0)
+                            continue;
+                        var assetRect = ToPixelSearchRect(assetVisible, grid.CanvasSize.Width, grid.CanvasSize.Height);
+                        if (assetRect.Width <= 0 || assetRect.Height <= 0)
+                            continue;
+                        union = union is null ? assetRect : Union(union.Value, assetRect);
+                    }
+                }
+            }
         }
 
         return union ?? SKRectI.Empty;
@@ -660,29 +686,11 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         double assetScaleX, double assetScaleY,
         SKSamplingOptions sampling, SKPaint paint)
     {
-        var (sx, sy, sw, sh) = region.Rect.ToPixelBbox(sourceWidth, sourceHeight);
-        if (sw <= 0 || sh <= 0) return;
-
-        // 回転前 (region 自身の Rotation 適用前) の cell-local pixel サイズ。
-        var origW = sw * assetScaleX;
-        var origH = sh * assetScaleY;
-        if (origW <= 0 || origH <= 0) return;
-
-        // 回転後の visible bbox (Cw90/Cw270 で W/H が swap)。
+        if (!TryComputeRegionAssetDest(
+                region, sourceWidth, sourceHeight, cellRect, assetScaleX, assetScaleY,
+                out var snappedVis, out var srcSk))
+            return;
         var axisSwap = region.Rotation is Rotation.Cw90 or Rotation.Cw270;
-        var visW = axisSwap ? origH : origW;
-        var visH = axisSwap ? origW : origH;
-
-        var dstLeft = cellRect.X + region.OffsetXPx;
-        var dstTop = cellRect.Y + region.OffsetYPx;
-        // 親側塗りと同じ snap rule で visible bbox を整数 pixel に揃える (corner round + dimensions round)。
-        // offset/cellRect は整数で dstLeft/dstTop も整数だが、 visW/visH は scale 由来の float なので
-        // round で整数化する。 これで親側塗りと asset が 「同じ source bbox から同じ整数 pixel coverage」
-        // になり、 offset が source 写像位置と一致したとき完全に重なる。
-        var snappedVis = SnapRectToIntegerPixels(SKRect.Create((float)dstLeft, (float)dstTop, (float)visW, (float)visH));
-        if (snappedVis.Width <= 0 || snappedVis.Height <= 0) return;
-
-        var srcSk = SKRect.Create(sx, sy, sw, sh);
 
         // 無変換は fast path。 既存挙動と同じ DrawImage を直接コール (matrix push なし)。
         if (region.Rotation == Rotation.None && !region.FlipX && !region.FlipY)
@@ -713,6 +721,49 @@ internal sealed class SkiaGridImageRenderer : IGridImageRenderer
         {
             canvas.Restore();
         }
+    }
+
+    /// <summary>
+    /// region asset を cell 内へ描く先の整数 pixel 矩形 (region 自身の回転後の visible bbox。 Cw90/Cw270 で W/H が swap)
+    /// と、 元画像からの切り出し矩形を求める。 描画 (<see cref="DrawRegionAsset"/>) と、 出力の余白削除が
+    /// 走査すべき範囲 (<see cref="ComputeRenderedGeometryRect"/>) が同じ矩形を使うよう 1 か所に集約してある。
+    /// 描画対象が無い (切り出しが空 / スケール不正) とき <c>false</c>。
+    /// </summary>
+    private static bool TryComputeRegionAssetDest(
+        ProtectedRegion region,
+        int sourceWidth, int sourceHeight,
+        PixelRect cellRect,
+        double assetScaleX, double assetScaleY,
+        out SKRect snappedVis, out SKRect srcSk)
+    {
+        snappedVis = SKRect.Empty;
+        srcSk = SKRect.Empty;
+
+        var (sx, sy, sw, sh) = region.Rect.ToPixelBbox(sourceWidth, sourceHeight);
+        if (sw <= 0 || sh <= 0) return false;
+
+        // 回転前 (region 自身の Rotation 適用前) の cell-local pixel サイズ。
+        var origW = sw * assetScaleX;
+        var origH = sh * assetScaleY;
+        if (origW <= 0 || origH <= 0) return false;
+
+        // 回転後の visible bbox (Cw90/Cw270 で W/H が swap)。
+        var axisSwap = region.Rotation is Rotation.Cw90 or Rotation.Cw270;
+        var visW = axisSwap ? origH : origW;
+        var visH = axisSwap ? origW : origH;
+
+        var dstLeft = cellRect.X + region.OffsetXPx;
+        var dstTop = cellRect.Y + region.OffsetYPx;
+        // 親側塗りと同じ snap rule で visible bbox を整数 pixel に揃える (corner round + dimensions round)。
+        // offset/cellRect は整数で dstLeft/dstTop も整数だが、 visW/visH は scale 由来の float なので
+        // round で整数化する。 これで親側塗りと asset が 「同じ source bbox から同じ整数 pixel coverage」
+        // になり、 offset が source 写像位置と一致したとき完全に重なる。
+        var snapped = SnapRectToIntegerPixels(SKRect.Create((float)dstLeft, (float)dstTop, (float)visW, (float)visH));
+        if (snapped.Width <= 0 || snapped.Height <= 0) return false;
+
+        snappedVis = snapped;
+        srcSk = SKRect.Create(sx, sy, sw, sh);
+        return true;
     }
 
     /// <summary>
