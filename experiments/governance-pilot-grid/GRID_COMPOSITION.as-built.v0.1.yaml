@@ -285,6 +285,17 @@ deliberate_decisions:
     do_not: "手動保存モードの切替で draft を確認なしに保存・破棄しない / 『戻る』で attach をやり直さない (配置固有の編集を消す) / 保存失敗を黙って先へ進めない / 1 操作で確認を複数回出さない / Undo・出力にこの確認を混ぜない。"
     cross_capability: "共有特性の draft (IMAGE_VARIANT_MANAGEMENT) と配置固有の draft (GRID_COMPOSITION) を同じ確認で解決する。C02 の open_ux_note (手動保存で画面と出力がずれる) は、切替での喪失については解消したが、出力時の警告表示は未対応のまま。"
 
+  - id: D-HEADER-SELECT
+    subject: "候補ツリーで画像グループの見出しを選んだときの、候補 (SelectedCandidate) と候補向けコマンドの扱い"
+    current_behavior: "GridWorkspaceViewModel.SelectedCandidateNode (GridWorkspaceViewModel.cs:83) が TreeView.SelectedItem の双方向バインド先で、見出し (CandidateGroupViewModel) と候補 (CopyCandidateViewModel) の両方を受ける。見出しを選ぶと SelectedCandidate を null にし、削除・配置・複製など候補向けコマンドは CanExecute=false になる。ツリー上の見出し選択は維持される。候補一覧の再読込 (LoadCandidatesAsync) は、見出し選択中に先頭候補を自動選択して見出し選択を奪わない。見出しの後で候補を選べば候補選択へ戻る。(修正前: TreeView が候補型だけにバインドされ、見出しを選んでも型変換に失敗して SelectedCandidate が前の候補のまま残り、削除・配置・複製が『見た目で選んでいない候補』に作用した。最後のバリアントなら画像本体まで削除された。)"
+    decision: deliberate-header-clears-candidate
+    contract: "候補向けコマンドの対象は、ツリー上で今選ばれている候補だけ。見出し選択中は対象なし (SelectedCandidate=null) で、コマンドは無効。再読込・リスト更新といったプログラム起因の処理が、ユーザーの見出し選択を別の候補へ置き換えない。"
+    provenance: deliberate   # 2026-10-02 裁定 (不具合調査報告 D01。旧: TreeView の型不一致による偶発挙動)
+    rationale: "代替案『見出し選択でも直前の候補を保持する』は、画面上の選択と操作対象がずれる元の不具合そのもの。代替案『見出し選択で先頭候補を自動選択する』は、ユーザーが選んだ見出しを奪い、見出し選択を表現できない。選択と対象を常に一致させるのが最小の驚きで、削除などの破壊的操作の安全側でもある。"
+    anchor: "tests/ViewGrid.Application.Tests/ViewModels/AuditFixRegressionTests.cs::D01_Selecting_A_Group_Header_Clears_The_Candidate_And_Disables_Candidate_Commands (+ D01_Delete_Does_Not_Touch_The_Previously_Selected_Candidate_After_Header_Selection / D01_Reload_Does_Not_Steal_Header_Selection_By_Auto_Selecting_The_First_Candidate / D01_Selecting_A_Candidate_After_A_Header_Restores_Candidate_Selection)"
+    do_not: "見出し選択時に SelectedCandidate を前の値のまま残さない / 見出し選択中に候補向けコマンドを有効にしない / 再読込で見出し選択を先頭候補へ置き換えない / TreeView の SelectedItem を候補型だけにバインドし直さない。"
+    cross_capability: "手動保存モードの見出しクリックは D-SWITCH-PENDING の確認対象 (候補切替と同じ扱い)。削除は IMAGE_VARIANT_MANAGEMENT (バリアント・画像の削除) を呼ぶため、対象の取り違えは画像本体の喪失につながる。"
+
 # ────────────────────────────────────────────────────────────────────────
 # boundaries
 # ────────────────────────────────────────────────────────────────────────

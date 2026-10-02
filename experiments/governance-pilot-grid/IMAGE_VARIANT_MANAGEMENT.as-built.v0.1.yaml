@@ -317,6 +317,17 @@ deliberate_decisions:
     rationale: "範囲外比率は既に clamp で安全、throw は負軸のみで到達不能。最小リスクで現挙動を正確に固定し、d3 §6 の『全域 conformance 未閉』caveat を『軸正の precondition』へ昇格して閉じる。explicit guard は YAGNI、normalize は負軸を無音で通すため不可。"
     note: "★ d3 §3.4/§6 が『実=throw / 生成=正規化』と書いた発散は実際には負軸のみ (到達不能)。範囲外比率は実装も clamp 済で一致 = 発散は当初想定より狭い (精密化)。"
 
+  - id: D-CROP-INPUT
+    subject: "手動 crop の数値入力 (X / Y / 幅 / 高さ) で、空欄・0・範囲外の値をどう扱うか"
+    current_behavior: "CopyPropertiesViewModel (CopyPropertiesViewModel.cs:225-313)。(1) 空欄 (null) の項目は『入力し直しの途中』で、矩形は直前の有効値 (_lastCropX/Y/W/H) を使い続ける。空欄の最中に保存しても保存済みの crop は null (削除) にならない。(2) 0 は従来どおり『未確定』(IsManualCropDefined=false) で、保存時に crop として永続化しない。(3) 入力欄の IsEnabled (IsManualCropInputEnabled) は『手動モードか』と『元画像サイズが既知か』だけで決まり、矩形の値に依存しない。(4) X / Y は 0..(画像サイズ-1) にクランプし、幅・高さは 0..(画像サイズ-原点) にクランプする。原点を動かして右端・下端を超えるときは幅・高さを切り詰め、数値欄の表示も正規化後の値へ更新する。空欄の項目と Attach 中 (DB 値の取り込み) は触らない。(修正前: 幅を消す・0 にすると IsManualCropDefined が偽になり、それに依存した IsEnabled で全欄が無効化されて入力を続けられなかった。範囲外の値でドラッグの Math.Clamp の上限が負になり例外になった。)"
+    decision: deliberate-blank-keeps-last-valid-and-clamp
+    contract: "空欄=直前の有効値を維持 (crop の削除ではない) / 0=未確定 (永続化しない) / X,Y は size-1 にクランプ / 原点移動で幅・高さを切り詰める / 入力欄の有効無効は矩形の値に依存させない。crop を消す操作は『手動』の OFF で、空欄ではない。"
+    provenance: deliberate   # 2026-10-02 裁定 (不具合調査報告 C06。旧: 欄の有効無効が自身の値に依存した偶発挙動)
+    rationale: "代替案『空欄=crop 削除』は、入力の途中 (全消去→再入力) や空欄中の auto-save で、保存済みの crop を黙って消す。代替案『範囲外は拒否して元へ戻す』は、打鍵の途中の値 (例: 幅 200 を入力する途中の 2) を弾いて入力しにくい。クランプなら入力は常に有効で、View のドラッグが前提とする W <= 画像幅 が保たれる。"
+    anchor: "tests/ViewGrid.Application.Tests/ViewModels/AuditFixRegressionTests.cs::C06_Clearing_Width_Keeps_Fields_Enabled_And_Does_Not_Delete_The_Crop (+ C06_Saving_While_A_Field_Is_Blank_Does_Not_Erase_The_Stored_Crop / C06_Zero_Width_Is_Undefined_But_Input_Stays_Enabled_And_Recovers / C06_Width_Beyond_The_Image_Is_Clamped_So_Dragging_Cannot_Throw / C06_Moving_The_Origin_Past_The_Right_Edge_Trims_The_Width_And_Updates_The_Field / C06_Origin_Is_Clamped_Inside_The_Image / C06_Numeric_Input_Is_Disabled_Only_When_Not_In_Manual_Mode)"
+    do_not: "空欄を crop の削除として扱わない / 入力欄の IsEnabled を IsManualCropDefined などの矩形の値に依存させない / 範囲外の値を黙って通さない (View のドラッグが例外になる) / 0 を有効な crop として永続化しない。"
+    cross_capability: "手動 crop の保存は IMAGE_VARIANT_MANAGEMENT、配置への反映 (ライブプレビュー push) は GRID_COMPOSITION が DraftManualCrop を参照する。空欄中は直前の有効値が push されるため、プレビューが消えたり飛んだりしない。"
+
 # ────────────────────────────────────────────────────────────────────────
 # boundaries — ★ GRID_COMPOSITION as-built BOM と両側で突合
 # ────────────────────────────────────────────────────────────────────────
