@@ -426,6 +426,12 @@
   <data name="Status_AssetImportedFmt" xml:space="preserve"><value>{0} 件追加</value></data>
   <data name="Status_AssetDuplicatedFmt" xml:space="preserve"><value>{0} 件は既存（重複）</value></data>
   <data name="Status_AssetImportFailedFmt" xml:space="preserve"><value>{0} 件失敗</value></data>
+  <data name="Status_AssetImportFailureDetailFmt" xml:space="preserve"><value>  ・{0}: {1}</value></data>
+  <data name="Status_AssetImportFailureMoreFmt" xml:space="preserve"><value>  ほか {0} 件</value></data>
+  <data name="Notice_RetryFailedImports" xml:space="preserve"><value>失敗分を再試行</value></data>
+  <data name="StatusBar_Workspace_Tooltip" xml:space="preserve"><value>いま開いているワークスペース（ファイル → ワークスペースで切替）</value></data>
+  <data name="Notice_WorkspaceMissingFallbackFmt" xml:space="preserve"><value>ワークスペース「{0}」のデータが見つからなかったため、「{1}」を開きました。 元のデータを移動した場合は、 ファイル → ワークスペース から切り替えるか、 バックアップ zip を取り込んでください。</value></data>
+  <data name="Notice_WorkspaceMissingRecreatedFmt" xml:space="preserve"><value>ワークスペース「{0}」のデータが見つからなかったため、 空のワークスペースとして作り直しました。 元のデータを移動した場合は、 バックアップ zip を取り込んでください。</value></data>
   <data name="Status_NoChange" xml:space="preserve"><value>変更なし</value></data>
   <data name="Status_AssetDeletedSingleFmt" xml:space="preserve"><value>{0} を削除しました。</value></data>
   <data name="Status_AssetDeletedCountFmt" xml:space="preserve"><value>{0} 件削除しました。</value></data>

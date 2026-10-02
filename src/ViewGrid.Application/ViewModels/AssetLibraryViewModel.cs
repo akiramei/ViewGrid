@@ -165,6 +165,20 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase, IRecipient<As
         }
     }
 
+    /// <summary>
+    /// 直近の取り込みで失敗したファイルのパス。 <see cref="RetryFailedImportsAsync"/> で再試行できる。
+    /// 次の取り込みで置き換わる (成功したファイルは含まれない)。
+    /// </summary>
+    private List<string> _failedImportPaths = [];
+
+    /// <summary>再試行できる失敗ファイルがあるか。</summary>
+    public bool HasFailedImports => _failedImportPaths.Count > 0;
+
+    /// <summary>直近の取り込みで失敗したファイルだけをもう一度取り込む。</summary>
+    [RelayCommand(CanExecute = nameof(HasFailedImports))]
+    public Task RetryFailedImportsAsync(CancellationToken ct = default) =>
+        AddFilesAsync(_failedImportPaths.ToArray(), ct);
+
     [RelayCommand]
     public async Task PickFilesAndImportAsync(CancellationToken ct = default)
     {
@@ -194,6 +208,10 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase, IRecipient<As
             var imported = 0;
             var duplicated = 0;
             var failed = 0;
+            var failures = new List<(string Path, string Reason)>();
+            // 候補ライブラリ (アセット・バリアント) が実際に変わったか。 重複取り込みは何も変えない
+            // (既存の既定バリアントを返すだけ) ので、 履歴を消したり再読込を促したりしない。
+            var catalogChanged = false;
 
             foreach (var path in paths)
             {
@@ -207,6 +225,8 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase, IRecipient<As
                 if (result.IsError)
                 {
                     failed++;
+                    var reason = string.Join(", ", result.Errors.Select(e => e.Description));
+                    failures.Add((path, reason));
                     LogImportFailed(_logger, path, string.Join(", ", result.Errors));
                     continue;
                 }
@@ -215,14 +235,21 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase, IRecipient<As
                     duplicated++;
                 else
                     imported++;
+
+                if (!result.Value.WasDuplicate || result.Value.CreatedCopy)
+                    catalogChanged = true;
             }
 
-            StatusMessage = BuildStatus(imported, duplicated, failed);
+            _failedImportPaths = failures.Select(f => f.Path).ToList();
+            OnPropertyChanged(nameof(HasFailedImports));
+            RetryFailedImportsCommand.NotifyCanExecuteChanged();
+
+            StatusMessage = BuildStatus(imported, duplicated, failed, failures);
             await ReloadAssetsAsync(ct);
 
-            // 取り込みは ImportImageUseCase が既定 Copy を自動作成するため、
-            // 候補ライブラリにも変更が及ぶ。失敗のみのケースでは通知不要。
-            if (imported > 0 || duplicated > 0)
+            // 新しいアセット (と既定バリアント) が増えたときだけ、 候補ライブラリへ通知し履歴を消す。
+            // 失敗のみ・重複のみ (何も変わらない) のときは、 それ以前の配置編集を Undo できるまま残す。
+            if (catalogChanged)
             {
                 // アセット追加は Undo 対象外。新規 Copy が生まれるため履歴の参照整合性が崩れる前にクリア。
                 _history.Clear();
@@ -378,13 +405,25 @@ public sealed partial class AssetLibraryViewModel : ViewModelBase, IRecipient<As
         return new AssetItemViewModel(asset, thumb);
     }
 
-    private string BuildStatus(int imported, int duplicated, int failed)
+    /// <summary>失敗の内訳として列挙するファイル数の上限 (超えた分は「ほか N 件」)。</summary>
+    private const int MaxListedFailures = 5;
+
+    private string BuildStatus(int imported, int duplicated, int failed, List<(string Path, string Reason)> failures)
     {
         var parts = new List<string>();
         if (imported > 0) parts.Add(_loc.Format("Status_AssetImportedFmt", imported));
         if (duplicated > 0) parts.Add(_loc.Format("Status_AssetDuplicatedFmt", duplicated));
         if (failed > 0) parts.Add(_loc.Format("Status_AssetImportFailedFmt", failed));
-        return parts.Count > 0 ? string.Join(" / ", parts) : _loc["Status_NoChange"];
+        var summary = parts.Count > 0 ? string.Join(" / ", parts) : _loc["Status_NoChange"];
+        if (failures.Count == 0) return summary;
+
+        // 失敗したファイル名と理由を 1 行ずつ示す (ログを見なくても何が駄目だったか分かるように)。
+        var lines = new List<string> { summary };
+        foreach (var (path, reason) in failures.Take(MaxListedFailures))
+            lines.Add(_loc.Format("Status_AssetImportFailureDetailFmt", Path.GetFileName(path), reason));
+        if (failures.Count > MaxListedFailures)
+            lines.Add(_loc.Format("Status_AssetImportFailureMoreFmt", failures.Count - MaxListedFailures));
+        return string.Join('\n', lines);
     }
 
     [LoggerMessage(EventId = 2001, Level = LogLevel.Information, Message = "アセット一覧を読み込み: {Count} 件")]

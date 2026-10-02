@@ -35,15 +35,75 @@ public static class WorkspaceBootstrap
     /// <returns>解決済みのワークスペース名と絶対パス。</returns>
     public static (string ActiveName, string WorkspaceDirectory) Resolve(string rootDirectory, string? cliWorkspaceName)
     {
+        var resolution = ResolveWithRecovery(rootDirectory, cliWorkspaceName);
+        return (resolution.ActiveName, resolution.WorkspaceDirectory);
+    }
+
+    /// <summary>
+    /// <see cref="Resolve"/> に加えて、 選ばれたワークスペースのデータが見つからなかった (移動・削除された) ことを
+    /// 呼び出し側へ伝える。 見つからないまま同名の空フォルダを黙って作り直すと、 空のワークスペースが
+    /// 元の案件に見えてしまう。 そこで次の順に解決し、 欠落を <see cref="WorkspaceResolution.MissingWorkspaceName"/> で通知する:
+    /// <list type="number">
+    /// <item><c>workspaces.json</c> の先頭にある、 ディレクトリが実在する別のワークスペースを開く (active.json も更新)</item>
+    /// <item>実在する別のワークスペースが無ければ、 要求された名前で空のワークスペースを作る</item>
+    /// </list>
+    /// 初回起動 (どのワークスペースも未登録) は欠落ではなく、 通知しない。
+    /// </summary>
+    public static WorkspaceResolution ResolveWithRecovery(string rootDirectory, string? cliWorkspaceName)
+    {
         ArgumentException.ThrowIfNullOrEmpty(rootDirectory);
 
         MigrateLegacyDataIfNeeded(rootDirectory);
 
-        var activeName = ResolveActiveName(rootDirectory, cliWorkspaceName);
-        var workspaceDir = Path.Combine(rootDirectory, WorkspacesSubdirectory, activeName);
-        Directory.CreateDirectory(workspaceDir);
+        var requested = ResolveActiveName(rootDirectory, cliWorkspaceName);
+        var workspacesRoot = Path.Combine(rootDirectory, WorkspacesSubdirectory);
+        var activeName = requested;
+        var workspaceDir = Path.Combine(workspacesRoot, requested);
+        string? missing = null;
 
-        return (activeName, workspaceDir);
+        if (!Directory.Exists(workspaceDir))
+        {
+            var known = ReadManifestNames(rootDirectory);
+            var fallback = known.FirstOrDefault(n =>
+                !string.Equals(n, requested, StringComparison.OrdinalIgnoreCase)
+                && IsValidName(n)
+                && Directory.Exists(Path.Combine(workspacesRoot, n)));
+
+            if (fallback is not null)
+            {
+                missing = requested;
+                activeName = fallback;
+                workspaceDir = Path.Combine(workspacesRoot, fallback);
+                WriteActive(rootDirectory, activeName);
+            }
+            else if (known.Any(n => string.Equals(n, requested, StringComparison.OrdinalIgnoreCase)))
+            {
+                // 登録済みなのにデータが無く、 代わりに開けるものも無い。 空で作るが、 呼び出し側が通知する。
+                missing = requested;
+            }
+        }
+
+        Directory.CreateDirectory(workspaceDir);
+        return new WorkspaceResolution(activeName, workspaceDir, missing);
+    }
+
+    /// <summary><c>workspaces.json</c> に登録されているワークスペース名 (登録順)。 無い・壊れている場合は空。</summary>
+    private static List<string> ReadManifestNames(string rootDirectory)
+    {
+        var path = Path.Combine(rootDirectory, "workspaces.json");
+        if (!File.Exists(path)) return [];
+        try
+        {
+            var entries = JsonSerializer.Deserialize<List<ManifestEntry>>(File.ReadAllText(path));
+            return entries?.Where(e => !string.IsNullOrEmpty(e.Name)).Select(e => e.Name!).ToList() ?? [];
+        }
+        catch (JsonException) { return []; }
+        catch (IOException) { return []; }
+    }
+
+    private sealed class ManifestEntry
+    {
+        public string? Name { get; set; }
     }
 
     /// <summary>
@@ -145,3 +205,14 @@ public static class WorkspaceBootstrap
         public string? Name { get; set; }
     }
 }
+
+/// <summary>
+/// 起動時のワークスペース解決結果。
+/// </summary>
+/// <param name="ActiveName">開くワークスペース名。</param>
+/// <param name="WorkspaceDirectory">そのデータディレクトリ (作成済み)。</param>
+/// <param name="MissingWorkspaceName">
+/// 要求されたワークスペースのデータが見つからなかった場合のその名前。 <see cref="ActiveName"/> と違えば別の
+/// ワークスペースへ切り替えて開いた、 同じなら空のワークスペースとして作り直した。 欠落なしなら <c>null</c>。
+/// </param>
+public sealed record WorkspaceResolution(string ActiveName, string WorkspaceDirectory, string? MissingWorkspaceName);

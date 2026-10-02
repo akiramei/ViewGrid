@@ -130,7 +130,11 @@ internal static class Program
         // キャプチャモードは専用ワークスペースを強制し、 通常は --workspace=<name>
         // 引数 (再起動経路) があれば優先する。
         var cliWorkspace = captureMode ? CaptureMode.WorkspaceName : ParseWorkspaceArg(args);
-        var (activeWorkspace, workspaceDir) = WorkspaceBootstrap.Resolve(rootDir, cliWorkspace);
+        var resolution = WorkspaceBootstrap.ResolveWithRecovery(rootDir, cliWorkspace);
+        var activeWorkspace = resolution.ActiveName;
+        var workspaceDir = resolution.WorkspaceDirectory;
+        if (resolution.MissingWorkspaceName is { } missingWorkspace)
+            Log.Warning("ワークスペース {Missing} のデータが見つかりません。 {Active} を開きます", missingWorkspace, activeWorkspace);
 
         // 同一ワークスペースの二重起動を阻止するファイルロック。 失敗時は App 側で
         // 警告ダイアログを出して通常起動はしない。
@@ -145,6 +149,7 @@ internal static class Program
             .ConfigureServices((_, services) =>
             {
                 services.AddSingleton(lockedState);
+                services.AddSingleton(new WorkspaceStartupInfo(activeWorkspace, resolution.MissingWorkspaceName));
                 services.AddSingleton(new CaptureModeState(captureMode));
                 services
                     .AddInfrastructure(rootDir, workspaceDir, activeWorkspace)

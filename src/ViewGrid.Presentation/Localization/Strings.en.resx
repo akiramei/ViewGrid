@@ -426,6 +426,12 @@
   <data name="Status_AssetImportedFmt" xml:space="preserve"><value>{0} added</value></data>
   <data name="Status_AssetDuplicatedFmt" xml:space="preserve"><value>{0} already existed (duplicates)</value></data>
   <data name="Status_AssetImportFailedFmt" xml:space="preserve"><value>{0} failed</value></data>
+  <data name="Status_AssetImportFailureDetailFmt" xml:space="preserve"><value>  - {0}: {1}</value></data>
+  <data name="Status_AssetImportFailureMoreFmt" xml:space="preserve"><value>  and {0} more</value></data>
+  <data name="Notice_RetryFailedImports" xml:space="preserve"><value>Retry failed</value></data>
+  <data name="StatusBar_Workspace_Tooltip" xml:space="preserve"><value>The workspace currently open (switch it from File → Workspace)</value></data>
+  <data name="Notice_WorkspaceMissingFallbackFmt" xml:space="preserve"><value>The data for workspace "{0}" was not found, so "{1}" was opened. If you moved the original data, switch from File → Workspace or import a backup zip.</value></data>
+  <data name="Notice_WorkspaceMissingRecreatedFmt" xml:space="preserve"><value>The data for workspace "{0}" was not found, so it was recreated as an empty workspace. If you moved the original data, import a backup zip.</value></data>
   <data name="Status_NoChange" xml:space="preserve"><value>No changes</value></data>
   <data name="Status_AssetDeletedSingleFmt" xml:space="preserve"><value>Deleted {0}.</value></data>
   <data name="Status_AssetDeletedCountFmt" xml:space="preserve"><value>Deleted {0} items.</value></data>

@@ -37,6 +37,51 @@ public sealed partial class MainWindowViewModel
     [ObservableProperty]
     public partial string Title { get; set; } = "ViewGrid";
 
+    /// <summary>
+    /// いま開いているワークスペースの表示名。 ワークスペースは物理的に分離されるので、 通常画面でも
+    /// どの案件を開いているかが分かるように、 ウィンドウタイトルとステータスバーに常時表示する
+    /// (同じ名前のグリッドを持つ別案件を取り違えない)。 未設定なら空。
+    /// </summary>
+    [ObservableProperty]
+    public partial string WorkspaceName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// ワークスペース名を設定し、 ウィンドウタイトルを <c>「名前 - ViewGrid」</c> にする。
+    /// 起動時に <c>App</c> が 1 回呼ぶ (切替はアプリ再起動なので、 プロセス内では変わらない)。
+    /// </summary>
+    public void SetWorkspace(string displayName)
+    {
+        WorkspaceName = displayName ?? string.Empty;
+        Title = string.IsNullOrWhiteSpace(WorkspaceName) ? "ViewGrid" : $"{WorkspaceName} - ViewGrid";
+    }
+
+    /// <summary>
+    /// 画面下部に出す、 閉じるまで残る通知 (画像取り込みの結果・ワークスペース欠落の案内など)。
+    /// 空なら非表示。 ステータスバーの一時的な表示と違い、 取り込みの成功 / 重複 / 失敗が混在したときの
+    /// 内訳を利用者が読み切れるよう、 <see cref="DismissNoticeCommand"/> で閉じるまで残る。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNotice))]
+    public partial string? NoticeMessage { get; set; }
+
+    /// <summary>通知を表示中か。</summary>
+    public bool HasNotice => !string.IsNullOrEmpty(NoticeMessage);
+
+    /// <summary>通知を表示する。</summary>
+    public void ShowNotice(string message) => NoticeMessage = message;
+
+    /// <summary>通知を閉じる。</summary>
+    [RelayCommand]
+    public void DismissNotice() => NoticeMessage = null;
+
+    /// <summary>画像取り込み・アセット削除の結果 (<see cref="AssetLibraryViewModel.StatusMessage"/>) を通知へ流す。</summary>
+    private void OnAssetLibraryPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AssetLibraryViewModel.StatusMessage)
+            && !string.IsNullOrEmpty(AssetLibrary.StatusMessage))
+            NoticeMessage = AssetLibrary.StatusMessage;
+    }
+
     /// <summary>Undo 可能な操作があるか。<see cref="UndoCommand"/> の CanExecute と連動する。</summary>
     [ObservableProperty]
     public partial bool CanUndo { get; set; }
@@ -181,6 +226,7 @@ public sealed partial class MainWindowViewModel
         // Stage 4: AssetLibrary は「+ 画像を追加」/ ファイルメニュー経由で件数だけが
         // 変動する。Assets.CollectionChanged で StatusSummary / CurrentHints を更新する。
         AssetLibrary.Assets.CollectionChanged += OnAssetLibraryAssetsChanged;
+        AssetLibrary.PropertyChanged += OnAssetLibraryPropertyChanged;
         GridList.PropertyChanged += OnGridListPropertyChanged;
         GridWorkspace.PropertyChanged += OnGridWorkspacePropertyChanged;
         // Stage 3: Inspector に統合された IsAnyDirty (placement + shared) を未保存バッジに転送
@@ -616,6 +662,7 @@ public sealed partial class MainWindowViewModel
         _history.Redone -= OnHistoryUndoneOrRedone;
         _loc.PropertyChanged -= OnLocPropertyChanged;
         AssetLibrary.Assets.CollectionChanged -= OnAssetLibraryAssetsChanged;
+        AssetLibrary.PropertyChanged -= OnAssetLibraryPropertyChanged;
         GridList.PropertyChanged -= OnGridListPropertyChanged;
         GridWorkspace.PropertyChanged -= OnGridWorkspacePropertyChanged;
         GridWorkspace.Inspector.PropertyChanged -= OnDirtyTrackedPropertyChanged;

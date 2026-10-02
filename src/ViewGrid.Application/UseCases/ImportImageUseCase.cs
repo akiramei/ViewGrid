@@ -47,9 +47,9 @@ public sealed partial class ImportImageUseCase(
         var existing = await _assetRepository.FindByHashAsync(fileHash, ct);
         if (existing is not null)
         {
-            var defaultCopy = await FindOrCreateDefaultCopyAsync(existing.Id, ct);
+            var (defaultCopy, created) = await FindOrCreateDefaultCopyAsync(existing.Id, ct);
             return defaultCopy.Match<ErrorOr<ImportImageResult>>(
-                copy => new ImportImageResult(existing, copy, WasDuplicate: true),
+                copy => new ImportImageResult(existing, copy, WasDuplicate: true, CreatedCopy: created),
                 errors => errors);
         }
 
@@ -106,13 +106,18 @@ public sealed partial class ImportImageUseCase(
         return new ImportImageResult(asset, copyResult.Value, WasDuplicate: false);
     }
 
-    private async Task<ErrorOr<ImageCopy>> FindOrCreateDefaultCopyAsync(Guid assetId, CancellationToken ct)
+    /// <summary>
+    /// 既存アセットの既定バリアントを返す。 無ければ作る (その場合 <c>Created</c>=true で、 候補ライブラリが変わる)。
+    /// 重複取り込みで何も作らなかったかを呼び出し側が判断できるよう、 作成したかを併せて返す。
+    /// </summary>
+    private async Task<(ErrorOr<ImageCopy> Copy, bool Created)> FindOrCreateDefaultCopyAsync(
+        Guid assetId, CancellationToken ct)
     {
         var copies = await _copyRepository.FindByAssetIdAsync(assetId, ct);
         if (copies.Count > 0)
-            return copies[0];
+            return (copies[0], false);
 
-        return await CreateDefaultCopyAsync(assetId, DateTimeOffset.UtcNow, ct);
+        return (await CreateDefaultCopyAsync(assetId, DateTimeOffset.UtcNow, ct), true);
     }
 
     private async Task<ErrorOr<ImageCopy>> CreateDefaultCopyAsync(Guid assetId, DateTimeOffset now, CancellationToken ct)

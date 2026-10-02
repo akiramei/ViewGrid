@@ -94,7 +94,7 @@
         Row 1 のキャンバス領域は伸縮し、上下の補助 UI と区別される。
         ヒントバーは <see cref="MainWindowViewModel.CurrentHints"/> が空のとき折り畳まれる。
     -->
-    <Grid RowDefinitions="Auto,*,Auto,Auto">
+    <Grid RowDefinitions="Auto,*,Auto,Auto,Auto">
         <DockPanel Grid.Row="0" LastChildFill="False">
             <!-- P3: メニューバー (ファイル / 編集 / ヘルプ)。 i18n: {loc:Tr} で全文字列を切替 -->
             <Menu DockPanel.Dock="Left">
@@ -235,12 +235,44 @@
             中央: 未保存バッジ（CopyProperties / PlacementInspector の IsDirty 集計）。アクセント色で強調。
             右: 履歴件数（履歴: 5/12）
         -->
-        <Border Grid.Row="3" Classes="StatusBar">
-            <Grid ColumnDefinitions="*,Auto,Auto">
+        <!--
+            通知バー（Row 3）: 画像取り込みの結果 (成功 / 重複 / 失敗の内訳と失敗したファイル名・理由) や、
+            起動時のワークスペース欠落の案内など、 利用者が読み切れるよう閉じるまで残る通知を出す。
+            空のときは折り畳む。 失敗があれば「失敗分を再試行」 を出す。
+        -->
+        <Border Grid.Row="3"
+                Classes="HintStripe"
+                IsVisible="{Binding HasNotice}">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0"
+                           Classes="HintStripeText"
+                           Text="{Binding NoticeMessage}"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1"
+                        Content="{loc:Tr Notice_RetryFailedImports}"
+                        Command="{Binding AssetLibrary.RetryFailedImportsCommand}"
+                        IsVisible="{Binding AssetLibrary.HasFailedImports}" />
+                <Button Grid.Column="2"
+                        Content="{loc:Tr Common_Close}"
+                        Command="{Binding DismissNoticeCommand}" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="4" Classes="StatusBar">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <!-- 現在のワークスペース名を常設 (別案件との取り違え防止。 ウィンドウタイトルにも出ている) -->
                 <TextBlock Grid.Column="0"
                            Classes="StatusBarText"
-                           Text="{Binding StatusSummary}" />
+                           FontWeight="SemiBold"
+                           Margin="0,0,16,0"
+                           Text="{Binding WorkspaceName}"
+                           ToolTip.Tip="{loc:Tr StatusBar_Workspace_Tooltip}"
+                           IsVisible="{Binding WorkspaceName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 <TextBlock Grid.Column="1"
+                           Classes="StatusBarText"
+                           Text="{Binding StatusSummary}" />
+                <TextBlock Grid.Column="2"
                            Classes="StatusBarText"
                            Foreground="{DynamicResource SystemAccentColor}"
                            FontWeight="SemiBold"
@@ -249,7 +281,7 @@
                            Text="{Binding UnsavedSummary}"
                            ToolTip.Tip="{loc:Tr StatusBar_Unsaved_Tooltip}"
                            IsVisible="{Binding HasUnsavedChanges}" />
-                <TextBlock Grid.Column="2"
+                <TextBlock Grid.Column="3"
                            Classes="StatusBarText"
                            Text="{Binding HistorySummary}" />
             </Grid>

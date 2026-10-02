@@ -638,4 +638,60 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         (await _vm.ResolveUnsavedBeforeExitAsync()).Should().BeTrue();
         _confirm.UnsavedRequests.Should().BeEmpty();
     }
+
+    // ─── ワークスペース名の常設表示と通知 (ユーザビリティ評価) ──────────────────────
+
+    [Fact]
+    public void SetWorkspace_Puts_The_Name_In_The_Window_Title_And_Status_Bar()
+    {
+        _vm.Title.Should().Be("ViewGrid");
+
+        _vm.SetWorkspace("案件 A");
+
+        _vm.WorkspaceName.Should().Be("案件 A");
+        _vm.Title.Should().Be("案件 A - ViewGrid", "同じグリッド名の別案件を Alt+Tab とタイトルで区別できる");
+    }
+
+    [Fact]
+    public void SetWorkspace_With_A_Blank_Name_Keeps_The_Plain_Title()
+    {
+        _vm.SetWorkspace("   ");
+
+        _vm.Title.Should().Be("ViewGrid");
+    }
+
+    [Fact]
+    public void Notice_Is_Shown_Until_Dismissed()
+    {
+        _vm.HasNotice.Should().BeFalse();
+
+        _vm.ShowNotice("ワークスペースが見つかりません");
+
+        _vm.HasNotice.Should().BeTrue();
+        _vm.NoticeMessage.Should().Be("ワークスペースが見つかりません");
+
+        _vm.DismissNoticeCommand.Execute(null);
+
+        _vm.HasNotice.Should().BeFalse();
+        _vm.NoticeMessage.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Import_Result_Is_Surfaced_As_A_Notice_Including_Failed_Files()
+    {
+        var bogus = Path.Combine(Path.GetTempPath(), $"viewgrid-notice-{Guid.NewGuid():N}.png");
+        await File.WriteAllTextAsync(bogus, "not an image");
+        try
+        {
+            await _assetLibrary.AddFilesAsync([bogus]);
+
+            _vm.HasNotice.Should().BeTrue("取り込みの結果が画面に届く");
+            _vm.NoticeMessage.Should().Contain("Status_AssetImportFailedFmt")
+                .And.Contain(Path.GetFileName(bogus));
+        }
+        finally
+        {
+            File.Delete(bogus);
+        }
+    }
 }

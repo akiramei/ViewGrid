@@ -18,6 +18,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
     private AssetLibraryViewModel _vm = null!;
     private IFilePickerService _picker = null!;
     private WeakReferenceMessenger _messenger = null!;
+    private ViewGrid.Application.History.UndoRedoService _history = null!;
 
     public async Task InitializeAsync()
     {
@@ -38,6 +39,7 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
 
         _messenger = new WeakReferenceMessenger();
         var history = new ViewGrid.Application.History.UndoRedoService();
+        _history = history;
         _vm = new AssetLibraryViewModel(
             import,
             delete,
@@ -293,6 +295,138 @@ public sealed class AssetLibraryViewModelTests : IAsyncLifetime
         finally
         {
             File.Delete(file);
+        }
+    }
+
+    // ─── 取り込み結果の内訳・履歴・再試行 (ユーザビリティ評価) ──────────────────────
+
+    private async Task PushAnUndoableEditAsync()
+    {
+        var command = Substitute.For<ViewGrid.Application.History.IUndoableCommand>();
+        command.Description.Returns("edit");
+        command.ExecuteAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<ErrorOr.ErrorOr<ErrorOr.Success>>(ErrorOr.Result.Success));
+        (await _history.ExecuteAsync(command)).IsError.Should().BeFalse();
+        _history.CanUndo.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Importing_Only_A_Duplicate_Keeps_The_Undo_History_And_Does_Not_Notify_The_Library()
+    {
+        var file = TestImageFactory.WritePngToTempFile(100, 100);
+        try
+        {
+            await _vm.AddFilesAsync([file]);
+            await PushAnUndoableEditAsync();
+            var notified = 0;
+            _messenger.Register<object, CopyLibraryChangedMessage>(this, (_, _) => notified++);
+
+            await _vm.AddFilesAsync([file]); // 同じ画像 = 重複 (何も変わらない)
+
+            _history.CanUndo.Should().BeTrue("重複取り込みは参照関係を変えないので、 それ以前の編集を Undo できるまま残す");
+            notified.Should().Be(0);
+            _vm.StatusMessage.Should().Contain("Status_AssetDuplicatedFmt");
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task Importing_A_New_Image_Clears_The_History_And_Notifies_The_Library()
+    {
+        var first = TestImageFactory.WritePngToTempFile(100, 100);
+        var second = TestImageFactory.WritePngToTempFile(120, 90);
+        try
+        {
+            await _vm.AddFilesAsync([first]);
+            await PushAnUndoableEditAsync();
+            var notified = 0;
+            _messenger.Register<object, CopyLibraryChangedMessage>(this, (_, _) => notified++);
+
+            await _vm.AddFilesAsync([second]);
+
+            _history.CanUndo.Should().BeFalse("新規アセットは Undo 対象外で、 履歴の参照整合性のため消す");
+            notified.Should().Be(1);
+        }
+        finally
+        {
+            File.Delete(first);
+            File.Delete(second);
+        }
+    }
+
+    [Fact]
+    public async Task Mixed_Import_Lists_Each_Failed_File_With_Its_Reason_And_Counts_All_Three_Outcomes()
+    {
+        var good = TestImageFactory.WritePngToTempFile(100, 100);
+        var bogus = Path.Combine(Path.GetTempPath(), $"viewgrid-bogus-{Guid.NewGuid():N}.png");
+        await File.WriteAllTextAsync(bogus, "not an image");
+        try
+        {
+            await _vm.AddFilesAsync([good]);
+
+            await _vm.AddFilesAsync([good, bogus]); // 重複 1 + 失敗 1
+
+            var lines = _vm.StatusMessage!.Split('\n');
+            lines[0].Should().Contain("Status_AssetDuplicatedFmt(1)").And.Contain("Status_AssetImportFailedFmt(1)");
+            lines.Should().Contain(l => l.Contains("Status_AssetImportFailureDetailFmt(" + Path.GetFileName(bogus) + ","),
+                "失敗したファイル名と理由がログを見なくても分かる");
+            _vm.HasFailedImports.Should().BeTrue();
+        }
+        finally
+        {
+            File.Delete(good);
+            File.Delete(bogus);
+        }
+    }
+
+    [Fact]
+    public async Task Retry_Failed_Imports_Imports_Only_The_Failed_Files_After_They_Are_Fixed()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"viewgrid-retry-{Guid.NewGuid():N}.png");
+        await File.WriteAllTextAsync(path, "not an image yet");
+        try
+        {
+            await _vm.AddFilesAsync([path]);
+            _vm.Assets.Should().BeEmpty();
+            _vm.RetryFailedImportsCommand.CanExecute(null).Should().BeTrue();
+
+            await File.WriteAllBytesAsync(path, TestImageFactory.CreatePng(64, 64)); // 直した
+            await _vm.RetryFailedImportsAsync();
+
+            _vm.Assets.Should().HaveCount(1);
+            _vm.HasFailedImports.Should().BeFalse("成功したので再試行の対象が残らない");
+            _vm.RetryFailedImportsCommand.CanExecute(null).Should().BeFalse();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Failure_List_Is_Capped_With_A_More_Line()
+    {
+        var bogus = new List<string>();
+        for (var i = 0; i < 7; i++)
+        {
+            var p = Path.Combine(Path.GetTempPath(), $"viewgrid-many-{i}-{Guid.NewGuid():N}.png");
+            await File.WriteAllTextAsync(p, "x");
+            bogus.Add(p);
+        }
+        try
+        {
+            await _vm.AddFilesAsync(bogus);
+
+            var lines = _vm.StatusMessage!.Split('\n');
+            lines.Count(l => l.Contains("Status_AssetImportFailureDetailFmt")).Should().Be(5);
+            lines.Last().Should().Contain("Status_AssetImportFailureMoreFmt(2)");
+        }
+        finally
+        {
+            foreach (var p in bogus) File.Delete(p);
         }
     }
 }

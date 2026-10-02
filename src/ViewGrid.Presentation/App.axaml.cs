@@ -70,6 +70,7 @@ public partial class App : global::Avalonia.Application
             else
             {
                 var vm = _services.GetRequiredService<MainWindowViewModel>();
+                ShowWorkspaceIdentity(vm, _services);
                 var window = new MainWindow { DataContext = vm };
 
                 // FilePickerService は MainWindow を owner として使うので、ここで注入する
@@ -177,6 +178,37 @@ public partial class App : global::Avalonia.Application
         catch { /* 永続化失敗 / auto-save 失敗は致命的でないので無視 */ }
         DisposeMainVmOnce(mainVm);
         desktop.Shutdown();
+    }
+
+    /// <summary>
+    /// 開いているワークスペースの表示名をウィンドウタイトル / ステータスバーに出し、 要求されたワークスペースの
+    /// データが見つからなかった場合は、 その旨を通知に出す (黙って別の / 空のワークスペースを開かない)。
+    /// 表示名の取得失敗は致命的でないので、 内部名にフォールバックする。
+    /// </summary>
+    private static void ShowWorkspaceIdentity(MainWindowViewModel vm, IServiceProvider services)
+    {
+        var info = services.GetRequiredService<WorkspaceStartupInfo>();
+        var displayName = info.ActiveName;
+        try
+        {
+            var manager = services.GetRequiredService<IWorkspaceManager>();
+            // UI スレッドの同期コンテキストを避けるため Task.Run 上で待つ (起動時の 1 回だけ)。
+            var manifests = Task.Run(() => manager.ListAsync()).GetAwaiter().GetResult();
+            displayName = manifests
+                .FirstOrDefault(m => string.Equals(m.Name, info.ActiveName, StringComparison.OrdinalIgnoreCase))
+                ?.DisplayName ?? info.ActiveName;
+        }
+        catch { /* 内部名のまま表示する */ }
+
+        vm.SetWorkspace(displayName);
+
+        if (info.MissingWorkspaceName is { } missing)
+        {
+            var loc = LocService.Instance;
+            vm.ShowNotice(string.Equals(missing, info.ActiveName, StringComparison.OrdinalIgnoreCase)
+                ? loc.Format("Notice_WorkspaceMissingRecreatedFmt", missing)
+                : loc.Format("Notice_WorkspaceMissingFallbackFmt", missing, displayName));
+        }
     }
 
     private void DisposeMainVmOnce(MainWindowViewModel mainVm)
