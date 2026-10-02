@@ -145,7 +145,12 @@ caption: Layout of the preview window
 
 ### 6.18.2 Regeneration
 
-A preview is a **snapshot of the content at the moment it was opened**; it is not updated automatically while it stays open. After changing a placement or a setting, close the preview and press the **Preview** button again.
+The preview is a separate window, and you can **keep it open** while you edit placements, settings and output options. **It is rebuilt automatically a moment after saved content changes** (the zoom level and scroll position are kept). It applies while the info line at the top of the window shows "auto-updates with saved changes".
+
+- Only **saved content** is reflected. In manual-save mode (auto-save OFF), values you are still editing **do not appear in the preview until you save** (exports also use the saved values; see [§9.26.3](09-settings.md))
+- With auto-save ON, the preview updates after the edit is auto-saved (about 1 second for auto-save plus about 0.3 seconds for the refresh). Undo / Redo, switching grids, and changing the trim mode, output mode or photo-board settings also update it
+- Pressing the **Preview** button again saves any pending edits, rebuilds with the latest content and brings the window to the front
+- If an update is not possible (no grid to show, an image failed to load, etc.), the previous image stays and the info line says so
 
 ## 6.19 PNG Export
 

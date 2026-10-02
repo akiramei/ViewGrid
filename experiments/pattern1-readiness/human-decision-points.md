@@ -77,7 +77,7 @@ deliberate_decisions:
 | 項目 | 内容 |
 | --- | --- |
 | subject | auto-save の保留中編集があるときの Undo / Redo / 履歴ジャンプの意味 |
-| 現挙動 | `MainWindowViewModel.cs:228,238,253` の 3 経路が履歴再生の前に `FlushPendingEditsBeforeHistoryAsync` (:266) → `GridWorkspaceViewModel.FlushAllPendingEditsAsync` (:1416) を呼ぶ。修正前は履歴再生が先で、続く再読込が選択を外した際に旧 Inspector の保留保存が発火し、Undo の上に新規コマンドが積まれて Redo が消え、Undo 後の値が編集中の値で上書きされた。 |
+| 現挙動 | `MainWindowViewModel` の Undo / Redo / ジャンプの 3 経路が履歴再生の前に `FlushPendingEditsBeforeHistoryAsync` → `GridWorkspaceViewModel.FlushAllPendingEditsAsync` を呼ぶ。修正前は履歴再生が先で、続く再読込が選択を外した際に旧 Inspector の保留保存が発火し、Undo の上に新規コマンドが積まれて Redo が消え、Undo 後の値が編集中の値で上書きされた。 |
 | provenance (as-built) | 修正前は競合による偶発挙動。修正後は意図した前処理。 |
 | 選択肢 | **(a) flush-then-undo**: 保留編集を確定してから履歴再生 (Undo = 確定した直前の編集を取り消す。Redo 可) / (b) discard-then-undo: 保留編集を破棄してから Undo (保存済みの 1 つ前へ戻る) |
 | 影響 | どちらも報告の再現テストを満たす。(b) は auto-save が保存するはずだった入力を黙って捨てる。(a) は編集を失わず Undo の意味と一致する。 |
@@ -90,7 +90,7 @@ deliberate_decisions:
 | 項目 | 内容 |
 | --- | --- |
 | subject | 出力時に未保存の編集 (draft) をどう扱うか。特に手動保存モード |
-| 現挙動 | `GridOutputViewModel.cs:194,214,250` が出力前に保留保存を確定 (`FlushAllPendingEditsAsync`)。auto-save ON で保存失敗が残れば `Status_OutputAbortedSaveFailed` で中止。auto-save OFF は draft を保存せず DB の保存済み値で出力。 |
+| 現挙動 | `GridOutputViewModel` の `RequestPreviewAsync` / `ExportToPngAsync` が出力前に保留保存を確定 (`FlushAllPendingEditsAsync`)。auto-save ON で保存失敗が残れば `Status_OutputAbortedSaveFailed` で中止。auto-save OFF は draft を保存せず DB の保存済み値で出力。 |
 | 選択肢 | **(a) 現状**: 出力は保存済み値。auto-save ON は出力前に確定し、失敗なら中止 / (b) 手動保存モードでも出力前に自動保存 / (c) draft をそのままレンダラーへ渡す (画面と出力が一致) |
 | 影響 | (b) は「Save するまで永続化しない」を崩し、意図しない履歴が積まれる。(c) はレンダラーが永続値以外を入力に持つ契約変更になり、出力内容が保存されないまま消える。(a) は手動保存モードで画面と出力がずれうるが、保存の意味を保つ。 |
 | ★ 裁定 | ✅ **(a) 現状のまま確定** (2026-10-02 ユーザー裁定) |
@@ -115,7 +115,7 @@ deliberate_decisions:
 | 項目 | 内容 |
 | --- | --- |
 | subject | 候補ツリーで画像グループの見出しを選んだとき、候補向けコマンド (削除・配置・複製) の対象をどうするか |
-| 現挙動 | `GridWorkspaceViewModel.SelectedCandidateNode` (:83) が見出しと候補の両方を受け、見出しを選ぶと `SelectedCandidate=null`。候補向けコマンドは無効。再読込は見出し選択を奪わない。修正前は型変換の失敗で前の候補が対象のまま残り、削除が最後のバリアントなら画像本体まで消した。 |
+| 現挙動 | `GridWorkspaceViewModel.SelectedCandidateNode` が見出しと候補の両方を受け、見出しを選ぶと `SelectedCandidate=null`。候補向けコマンドは無効。再読込は見出し選択を奪わない。修正前は型変換の失敗で前の候補が対象のまま残り、削除が最後のバリアントなら画像本体まで消した。 |
 | 選択肢 | **(a) 見出し選択で対象を空にする (コマンド無効)** / (b) 見出し選択でも直前の候補を保持する / (c) 見出し選択で先頭候補を自動選択する |
 | 影響 | (b) は元の不具合そのもの (見た目の選択と操作対象がずれる)。(c) はユーザーが選んだ見出しを奪い、見出し選択を表現できない。(a) は選択と対象を一致させ、破壊的操作の安全側に倒れる。 |
 | ★ 裁定 | ✅ **(a) 見出し選択で対象を空にする** (2026-10-02、推奨かつ現状の実装を確定) |
@@ -127,11 +127,23 @@ deliberate_decisions:
 | 項目 | 内容 |
 | --- | --- |
 | subject | 手動 crop の数値入力 (X / Y / 幅 / 高さ) で、空欄・0・範囲外の値をどう扱うか |
-| 現挙動 | `CopyPropertiesViewModel.cs:225-313`。空欄は直前の有効値を維持 (保存しても crop は消えない)、0 は未確定 (永続化しない)、X / Y は size-1 にクランプ、原点移動で幅・高さを切り詰め、入力欄の有効無効は矩形の値に依存しない。修正前は幅を消す・0 にすると全欄が無効化されて入力を続けられず、範囲外の値でドラッグが例外になった。 |
+| 現挙動 | `CopyPropertiesViewModel` の手動 crop 入力 (`NormalizeManualCropRect` ほか)。空欄は直前の有効値を維持 (保存しても crop は消えない)、0 は未確定 (永続化しない)、X / Y は size-1 にクランプ、原点移動で幅・高さを切り詰め、入力欄の有効無効は矩形の値に依存しない。修正前は幅を消す・0 にすると全欄が無効化されて入力を続けられず、範囲外の値でドラッグが例外になった。 |
 | 選択肢 | **(a) 空欄=直前の有効値を維持 + 範囲はクランプ** / (b) 空欄=crop 削除 / (c) 範囲外は拒否して元の値へ戻す |
 | 影響 | (b) は入力の途中や空欄中の auto-save で保存済みの crop を黙って消す。(c) は打鍵の途中の値を弾いて入力しにくい。(a) は入力が常に有効で、ドラッグが前提とする W <= 画像幅 を保つ。crop を消す操作は「手動」の OFF のまま。 |
 | ★ 裁定 | ✅ **(a) 空欄は直前の有効値を維持 + クランプ** (2026-10-02、推奨かつ現状の実装を確定) |
 | 反映先 | IMAGE_VARIANT BOM の `deliberate_decisions` に `D-CROP-INPUT` (anchor: `C06_*` 7 件)。実コード変更なし。 |
+
+## D-LIVE-PREVIEW — 開きっぱなしのプレビューの自動更新 (2026-10-02 追補)
+ユーザビリティ評価 (2026-10-02) の「見本を見ながら調整する」(文書は自動再生成を説明するが、実装はモーダルの固定スナップショット)。
+新しい人間裁定ではなく、C02 の裁定 (D-OUTPUT-PENDING: 出力は保存済みの値) から導いた実装判断の記録。
+
+| 項目 | 内容 |
+| --- | --- |
+| subject | プレビューを開いたまま編集できるようにし、どの内容の変化に合わせて、どの経路で更新するか |
+| 現挙動 | モードレスの `PreviewWindow` が `GridOutputViewModel.StartLivePreview` に参加。保存済みの内容 (履歴の変化・候補ライブラリの変更・表示グリッドの切替) と出力オプションの変更で、300ms の静止後に最新の 1 回だけ、専用 DI スコープ (専用 DbContext) で再描画する。flush も IsBusy も使わない。 |
+| 選択肢 | **(a) 保存済みの値だけで自動更新 (専用スコープ)** / (b) 編集のたびに draft ごと flush して更新 / (c) draft をレンダラーへ渡して更新 / (d) 文書を実装 (固定スナップショット) に合わせるだけ |
+| 影響 | (b) は手動保存の意味と履歴の粒度を崩す。(c) は D-OUTPUT-PENDING が退けた契約変更。(d) は「見本を見ながら調整」の摩擦を残す。(a) は手動保存モードの draft が保存まで見えないが、契約は保たれる。共有 DbContext は並行操作に弱いので、描画は専用スコープに分ける。 |
+| 反映先 | RENDERING BOM の `deliberate_decisions` に `D-LIVE-PREVIEW`。文書 `06-output.md` §6.18.2 (ja/en)。 |
 
 ## 反映 (裁定後・実施済)
 1. ✅ ユーザー裁定 (3 件とも推奨採用、2026-06-01)。

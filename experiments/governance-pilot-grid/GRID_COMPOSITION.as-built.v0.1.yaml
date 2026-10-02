@@ -265,7 +265,7 @@ deliberate_decisions:
 
   - id: D-UNDO-PENDING
     subject: "auto-save の保留中編集 (未保存 draft) がある状態での Undo / Redo / 履歴ジャンプの意味"
-    current_behavior: "MainWindowViewModel の UndoAsync / RedoAsync / JumpToHistoryAsync は、履歴を再生する前に FlushPendingEditsBeforeHistoryAsync (MainWindowViewModel.cs:228,238,253 → :266) で GridWorkspace.FlushAllPendingEditsAsync (GridWorkspaceViewModel.cs:1416) を呼び、Inspector・候補単体編集・グリッド一覧の保留 auto-save を確定してから再生する。確定した編集は通常どおり 1 件の履歴コマンドになり (UndoRedoService.ExecuteAsync は Redo スタックを破棄)、直後の Undo はその編集を取り消す。(修正前: 履歴再生が先 → 続く再読込が選択を外した瞬間に旧 Inspector の保留保存が発火 → Undo 結果の上に新規コマンドが積まれて Redo が消え、Undo 後の値が編集中の値で上書きされた。)"
+    current_behavior: "MainWindowViewModel の UndoAsync / RedoAsync / JumpToHistoryAsync は、履歴を再生する前に FlushPendingEditsBeforeHistoryAsync で GridWorkspace.FlushAllPendingEditsAsync を呼び、Inspector・候補単体編集・グリッド一覧の保留 auto-save を確定してから再生する。確定した編集は通常どおり 1 件の履歴コマンドになり (UndoRedoService.ExecuteAsync は Redo スタックを破棄)、直後の Undo はその編集を取り消す。(修正前: 履歴再生が先 → 続く再読込が選択を外した瞬間に旧 Inspector の保留保存が発火 → Undo 結果の上に新規コマンドが積まれて Redo が消え、Undo 後の値が編集中の値で上書きされた。)"
     decision: deliberate-flush-then-undo
     contract: "Undo / Redo / ジャンプは「保留中の編集を確定 → その結果を含めて履歴を再生」する。Undo = 直前の編集 (確定済みの保留編集を含む) を取り消す。履歴再生と再読込の間に旧編集の auto-save が割り込まない。auto-save OFF の未保存 draft は従来どおり保存されず、再読込で破棄される (本決定の対象外)。"
     provenance: deliberate   # 2026-10-02 裁定 (不具合調査報告 D02。旧: 競合による偶発挙動)
@@ -287,7 +287,7 @@ deliberate_decisions:
 
   - id: D-HEADER-SELECT
     subject: "候補ツリーで画像グループの見出しを選んだときの、候補 (SelectedCandidate) と候補向けコマンドの扱い"
-    current_behavior: "GridWorkspaceViewModel.SelectedCandidateNode (GridWorkspaceViewModel.cs:83) が TreeView.SelectedItem の双方向バインド先で、見出し (CandidateGroupViewModel) と候補 (CopyCandidateViewModel) の両方を受ける。見出しを選ぶと SelectedCandidate を null にし、削除・配置・複製など候補向けコマンドは CanExecute=false になる。ツリー上の見出し選択は維持される。候補一覧の再読込 (LoadCandidatesAsync) は、見出し選択中に先頭候補を自動選択して見出し選択を奪わない。見出しの後で候補を選べば候補選択へ戻る。(修正前: TreeView が候補型だけにバインドされ、見出しを選んでも型変換に失敗して SelectedCandidate が前の候補のまま残り、削除・配置・複製が『見た目で選んでいない候補』に作用した。最後のバリアントなら画像本体まで削除された。)"
+    current_behavior: "GridWorkspaceViewModel.SelectedCandidateNode が TreeView.SelectedItem の双方向バインド先で、見出し (CandidateGroupViewModel) と候補 (CopyCandidateViewModel) の両方を受ける。見出しを選ぶと SelectedCandidate を null にし、削除・配置・複製など候補向けコマンドは CanExecute=false になる。ツリー上の見出し選択は維持される。候補一覧の再読込 (LoadCandidatesAsync) は、見出し選択中に先頭候補を自動選択して見出し選択を奪わない。見出しの後で候補を選べば候補選択へ戻る。(修正前: TreeView が候補型だけにバインドされ、見出しを選んでも型変換に失敗して SelectedCandidate が前の候補のまま残り、削除・配置・複製が『見た目で選んでいない候補』に作用した。最後のバリアントなら画像本体まで削除された。)"
     decision: deliberate-header-clears-candidate
     contract: "候補向けコマンドの対象は、ツリー上で今選ばれている候補だけ。見出し選択中は対象なし (SelectedCandidate=null) で、コマンドは無効。再読込・リスト更新といったプログラム起因の処理が、ユーザーの見出し選択を別の候補へ置き換えない。"
     provenance: deliberate   # 2026-10-02 裁定 (不具合調査報告 D01。旧: TreeView の型不一致による偶発挙動)

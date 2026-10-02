@@ -319,7 +319,7 @@ deliberate_decisions:
 
   - id: D-CROP-INPUT
     subject: "手動 crop の数値入力 (X / Y / 幅 / 高さ) で、空欄・0・範囲外の値をどう扱うか"
-    current_behavior: "CopyPropertiesViewModel (CopyPropertiesViewModel.cs:225-313)。(1) 空欄 (null) の項目は『入力し直しの途中』で、矩形は直前の有効値 (_lastCropX/Y/W/H) を使い続ける。空欄の最中に保存しても保存済みの crop は null (削除) にならない。(2) 0 は従来どおり『未確定』(IsManualCropDefined=false) で、保存時に crop として永続化しない。(3) 入力欄の IsEnabled (IsManualCropInputEnabled) は『手動モードか』と『元画像サイズが既知か』だけで決まり、矩形の値に依存しない。(4) X / Y は 0..(画像サイズ-1) にクランプし、幅・高さは 0..(画像サイズ-原点) にクランプする。原点を動かして右端・下端を超えるときは幅・高さを切り詰め、数値欄の表示も正規化後の値へ更新する。空欄の項目と Attach 中 (DB 値の取り込み) は触らない。(修正前: 幅を消す・0 にすると IsManualCropDefined が偽になり、それに依存した IsEnabled で全欄が無効化されて入力を続けられなかった。範囲外の値でドラッグの Math.Clamp の上限が負になり例外になった。)"
+    current_behavior: "CopyPropertiesViewModel。(1) 空欄 (null) の項目は『入力し直しの途中』で、矩形は直前の有効値 (_lastCropX/Y/W/H) を使い続ける。空欄の最中に保存しても保存済みの crop は null (削除) にならない。(2) 0 は従来どおり『未確定』(IsManualCropDefined=false) で、保存時に crop として永続化しない。(3) 入力欄の IsEnabled (IsManualCropInputEnabled) は『手動モードか』と『元画像サイズが既知か』だけで決まり、矩形の値に依存しない。(4) X / Y は 0..(画像サイズ-1) にクランプし、幅・高さは 0..(画像サイズ-原点) にクランプする。原点を動かして右端・下端を超えるときは幅・高さを切り詰め、数値欄の表示も正規化後の値へ更新する。空欄の項目と Attach 中 (DB 値の取り込み) は触らない。(修正前: 幅を消す・0 にすると IsManualCropDefined が偽になり、それに依存した IsEnabled で全欄が無効化されて入力を続けられなかった。範囲外の値でドラッグの Math.Clamp の上限が負になり例外になった。)"
     decision: deliberate-blank-keeps-last-valid-and-clamp
     contract: "空欄=直前の有効値を維持 (crop の削除ではない) / 0=未確定 (永続化しない) / X,Y は size-1 にクランプ / 原点移動で幅・高さを切り詰める / 入力欄の有効無効は矩形の値に依存させない。crop を消す操作は『手動』の OFF で、空欄ではない。"
     provenance: deliberate   # 2026-10-02 裁定 (不具合調査報告 C06。旧: 欄の有効無効が自身の値に依存した偶発挙動)

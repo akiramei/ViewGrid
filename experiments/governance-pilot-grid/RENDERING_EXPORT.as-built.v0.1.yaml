@@ -137,7 +137,7 @@ deliberate_decisions_pending:
 deliberate_decisions:
   - id: D-OUTPUT-PENDING
     subject: "出力 (Preview / PNG) 時に、未保存の編集 (draft) をどう扱うか"
-    current_behavior: "GridOutputViewModel の RequestPreviewAsync / ExportToPngAsync は、レンダリング前に FlushPendingEditsOrReportAsync (GridOutputViewModel.cs:194,214,250) → GridWorkspaceViewModel.FlushAllPendingEditsAsync で Inspector・候補単体編集・グリッド一覧の保留 auto-save を確定する。auto-save ON で保存に失敗し未保存編集が残った場合は Status_OutputAbortedSaveFailed を出して出力を中止する (古い内容を黙って出さない)。auto-save OFF (手動保存モード) は draft を保存せず、レンダラーは DB の保存済み値を読む。画面 (draft のライブプレビュー) と出力が食い違いうるが、これは手動保存の意味 (Save するまで永続化しない) の帰結。(修正前: auto-save ON でも 1 秒のデバウンス中は保存を待たず、画面は crop+Bottom なのに出力は crop なし・Center だった。)"
+    current_behavior: "GridOutputViewModel の RequestPreviewAsync / ExportToPngAsync は、レンダリング前に FlushPendingEditsOrReportAsync → GridWorkspaceViewModel.FlushAllPendingEditsAsync で Inspector・候補単体編集・グリッド一覧の保留 auto-save を確定する。auto-save ON で保存に失敗し未保存編集が残った場合は Status_OutputAbortedSaveFailed を出して出力を中止する (古い内容を黙って出さない)。auto-save OFF (手動保存モード) は draft を保存せず、レンダラーは DB の保存済み値を読む。画面 (draft のライブプレビュー) と出力が食い違いうるが、これは手動保存の意味 (Save するまで永続化しない) の帰結。(修正前: auto-save ON でも 1 秒のデバウンス中は保存を待たず、画面は crop+Bottom なのに出力は crop なし・Center だった。)"
     decision: deliberate-flush-then-render-saved-values
     contract: "出力は常に DB の保存済み値から作る。auto-save ON なら出力前に保留保存を確定し、失敗が残れば中止する。auto-save OFF の draft は出力に反映せず、出力のために保存もしない (出力は編集状態を変えない)。"
     provenance: deliberate   # 2026-10-02 裁定 (「現状のまま確定」。旧: 競合による偶発挙動)
@@ -145,6 +145,18 @@ deliberate_decisions:
     anchor: "tests/ViewGrid.Application.Tests/ViewModels/AuditFixRegressionTests.cs::C02_Manual_Save_Mode_Does_Not_Save_Drafts_On_Output (+ C02_Preview_Flushes_Pending_AutoSave_*, C02_Preview_Is_Aborted_When_A_Pending_Edit_Cannot_Be_Saved)"
     do_not: "手動保存モードで出力前に draft を自動保存しない / auto-save ON の出力前 flush を外さない / 保存失敗時に古い値で黙って出力しない / レンダラーに draft (未保存値) を直接渡す経路を足さない。"
     open_ux_note: "手動保存モードで未保存の draft があるまま出力すると画面と出力がずれる。警告表示などの UX 改善は別判断 (本決定は挙動の契約のみ)。"
+
+  - id: D-LIVE-PREVIEW
+    subject: "開きっぱなしのプレビューを、どの内容の変化に合わせて、どの経路で自動更新するか"
+    current_behavior: "PreviewWindow はモードレス (Show(owner)) で、開いたまま配置・設定・出力オプションを編集できる。ウィンドウは GridOutputViewModel.StartLivePreview に参加し、保存済みの内容が変わったとき (IUndoRedoService.StateChanged = 確定した編集・Undo/Redo・行列追加、CopyLibraryChangedMessage = バリアント・画像の変更、表示グリッドの切替 (OnCurrentGridChanged)、出力オプション SelectedOutputMode / SelectedTrimMode / SelectedPhotoBoardStyle / SelectedPhotoBoardIntensity の変更) に NotifySavedStateChanged が LivePreviewRefresher.Request を呼ぶ。LivePreviewRefresher は 300ms の静止後に最新の 1 回だけ描画し、描画中に新しい要求が来たら古い結果を捨て、描画は同時に 1 本。描画は flush も IsBusy も使わず、ScopedGridRenderer が描画ごとに専用 DI スコープ (= 専用 DbContext) を作って RenderGridUseCase を実行する。結果は PreviewWindow.ApplyRefresh がズーム・スクロール位置を保ったまま差し替える。表示できるグリッドがない・描画に失敗したときは直前の画像を残して情報欄に示す。「プレビュー」ボタンの再押下は従来どおり flush + 描画して既存ウィンドウを更新し前面へ出す。(変更前: ShowDialog のモーダルで固定スナップショット。開いたまま編集できず、文書は自動再生成を説明していた。)"
+    decision: deliberate-live-refresh-saved-values-isolated-scope
+    contract: "自動更新は D-OUTPUT-PENDING の契約の延長: プレビューは常に保存済みの値から作る。手動保存モードの draft は保存されるまで反映されない。自動更新の描画は未保存の編集を保存せず (flush しない)、IsBusy も立てず、共有 DbContext に触れない。"
+    provenance: deliberate   # 2026-10-02 (ユーザビリティ評価の『見本を見ながら調整する』への対応。D-OUTPUT-PENDING の契約から導いた実装判断)
+    rationale: "アプリの DbContext は 1 本を全 VM が共有し、並行操作に弱い (EF の second operation)。自動更新は編集中に裏で走るので、既定スコープで描画すると保存・選択の再読込と重なる。専用スコープなら共有コンテキストを汚さず、SQLite の busy timeout で書込みとも直列化される。draft を反映するには D-OUTPUT-PENDING が退けた『レンダラーへ draft を渡す』契約変更が要るため、保存済みのみとした。"
+    anchor: "tests/ViewGrid.Application.Tests/ViewModels/AuditFixRegressionTests.cs::Live_Preview_Refreshes_After_A_Committed_Edit_But_Not_For_An_Unsaved_Draft (+ Live_Preview_Does_Not_Flush_Pending_Edits_Or_Hold_Busy / Live_Preview_Follows_Output_Options_And_Coalesces_A_Burst_Into_One_Render / Live_Preview_Follows_The_Displayed_Grid / Live_Preview_Stops_After_It_Is_Disposed)、tests/ViewGrid.Application.Tests/Preview/LivePreviewRefresherTests.cs (+ ScopedGridRenderer_Uses_A_Different_DbContext_Than_The_Root_Scope)"
+    do_not: "自動更新の描画で未保存の draft を保存 (flush) しない / 自動更新で IsBusy を立てない / 自動更新の描画を共有 DbContext (RenderGridUseCase の既定スコープ) で走らせない / 手動保存モードの draft をプレビューへ直接渡す経路を足さない / GridOutputViewModel の isolatedRenderer を省略可能にして共有コンテキストへ退避させない。"
+    cross_capability: "D-OUTPUT-PENDING (出力は保存済みの値) と同じ契約。トリガーは GRID_COMPOSITION の履歴 (IUndoRedoService) と IMAGE_VARIANT_MANAGEMENT の CopyLibraryChangedMessage、表示グリッドの切替に依存する。これらの発火点を減らすとプレビューが更新されなくなる。"
+    open_ux_note: "手動保存モードの draft がプレビューに出ないことは、画面 (キャンバスのライブ表示) とのずれとして現れる (D-OUTPUT-PENDING と同じ)。警告表示は別判断。"
 
 # ──────────────────────────────────────────────────────────────────────
 # cross_capability_consistency — 3 つ目で三角形が閉じる
