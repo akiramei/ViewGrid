@@ -84,25 +84,30 @@ public sealed partial class GridCanvasItemViewModel : ObservableObject
     partial void OnEditingCanvasWidthChanged(int? value) => RecomputeIsDirty();
     partial void OnEditingCanvasHeightChanged(int? value) => RecomputeIsDirty();
 
-    partial void OnNameChanged(string value)
+    // Source → Draft 同期: 保存完了後 / 外部からの再ロード時はドラフトも追従する。 ただし追従するのは
+    // ドラフトが「旧い永続値のまま (= 未編集)」 のときだけ。 保存中 (await 中) にユーザーが入力した新しい値は、
+    // 保存した値 (= 保存開始時点のスナップショット) で上書きせずドラフトとして残し、 IsDirty を維持して
+    // 次回の保存へ回す。 Editing 値が既に同値の場合 OnEditingXxxChanged は呼ばれないので、 末尾で
+    // 明示的に IsDirty を再評価する (保存後の IsDirty=false 確定経路)。
+    partial void OnNameChanged(string oldValue, string newValue)
     {
-        // Source → Draft 同期: 保存完了後 / 外部からの再ロード時はドラフトも追従。
-        // Editing 値が既に同値の場合 OnEditingNameChanged は呼ばれないので、
-        // ここから明示的に IsDirty を再評価する (保存後の IsDirty=false 確定経路)。
-        EditingName = value;
+        if ((EditingName?.Trim() ?? string.Empty) == (oldValue?.Trim() ?? string.Empty))
+            EditingName = newValue;
         RecomputeIsDirty();
     }
 
-    partial void OnCanvasWidthChanged(int value)
+    partial void OnCanvasWidthChanged(int oldValue, int newValue)
     {
-        EditingCanvasWidth = value;
+        if (EditingCanvasWidth == oldValue)
+            EditingCanvasWidth = newValue;
         OnPropertyChanged(nameof(CanvasSizeLabel));
         RecomputeIsDirty();
     }
 
-    partial void OnCanvasHeightChanged(int value)
+    partial void OnCanvasHeightChanged(int oldValue, int newValue)
     {
-        EditingCanvasHeight = value;
+        if (EditingCanvasHeight == oldValue)
+            EditingCanvasHeight = newValue;
         OnPropertyChanged(nameof(CanvasSizeLabel));
         RecomputeIsDirty();
     }

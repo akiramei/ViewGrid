@@ -187,6 +187,18 @@ public sealed partial class GridOutputViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 出力前に保留中の編集を保存し切る。 レンダラーは DB の値を読むので、 画面 (draft) では crop・縦揃えが
+    /// 効いているのに出力だけ古い値、 という食い違いを防ぐ。 保存に失敗して未保存編集が残る場合は
+    /// 古い内容を黙って出力せず、 理由をステータスに出して <c>false</c> (出力中止) を返す。
+    /// </summary>
+    private async Task<bool> FlushPendingEditsOrReportAsync(CancellationToken ct)
+    {
+        if (await Context.FlushAllPendingEditsAsync(ct)) return true;
+        Context.StatusMessage = _loc["Status_OutputAbortedSaveFailed"];
+        return false;
+    }
+
+    /// <summary>
     /// 現在のグリッドをレンダリングして PNG バイト列を返す (プレビュー用)。
     /// 失敗時は <c>null</c> を返し、 親 (<see cref="IGridOutputContext.StatusMessage"/>) にエラーを格納する。
     /// </summary>
@@ -199,6 +211,7 @@ public sealed partial class GridOutputViewModel : ViewModelBase
         try
         {
             Context.IsBusy = true;
+            if (!await FlushPendingEditsOrReportAsync(ct)) return null;
             var options = BuildRenderOptions();
             var result = await _renderUseCase.ExecuteAsync(grid.GridId, options, ct);
             sw.Stop();
@@ -234,6 +247,7 @@ public sealed partial class GridOutputViewModel : ViewModelBase
         try
         {
             Context.IsBusy = true;
+            if (!await FlushPendingEditsOrReportAsync(ct)) return;
             var options = BuildRenderOptions();
             var result = await _exportUseCase.ExecuteAsync(grid.GridId, path, options, ct);
             sw.Stop();
@@ -307,4 +321,11 @@ public interface IGridOutputContext
 
     /// <summary>グローバルステータスバー表示用メッセージ。 ローカライズ済み文字列または <c>null</c>。</summary>
     string? StatusMessage { get; set; }
+
+    /// <summary>
+    /// 出力 (Preview / PNG) の前に、 保留中の編集 (Inspector・候補単体・グリッド一覧の auto-save 待ち) を
+    /// すべて保存して完了を待つ。 レンダラーは DB の値を読むため、 保存前に出力すると画面の見た目と
+    /// 古い値の出力が食い違う。 保存に失敗して未保存編集が残ったとき <c>false</c>。
+    /// </summary>
+    Task<bool> FlushAllPendingEditsAsync(CancellationToken ct = default);
 }

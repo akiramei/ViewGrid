@@ -185,6 +185,9 @@ public sealed partial class MainWindowViewModel
         GridWorkspace.PropertyChanged += OnGridWorkspacePropertyChanged;
         // Stage 3: Inspector に統合された IsAnyDirty (placement + shared) を未保存バッジに転送
         GridWorkspace.Inspector.PropertyChanged += OnDirtyTrackedPropertyChanged;
+        // グリッド一覧 (グリッド名・キャンバスサイズ編集) の auto-save も、 出力前・履歴操作前・終了時の
+        // 「保留中の編集をすべて確定」 に参加させる。
+        GridWorkspace.RegisterExternalFlush(GridList.FlushAutoSaveAsync);
 
         // 言語切替時に computed property (CurrentHints / StatusSummary / HistorySummary /
         // UnsavedSummary / UndoLabel / RedoLabel) を再評価するため LocService の
@@ -222,6 +225,7 @@ public sealed partial class MainWindowViewModel
     [RelayCommand(CanExecute = nameof(CanUndoCommand))]
     public async Task UndoAsync(CancellationToken ct = default)
     {
+        await FlushPendingEditsBeforeHistoryAsync(ct);
         var result = await _history.UndoAsync(ct);
         if (!result.IsError)
             await RefreshAfterHistoryAsync(ct);
@@ -231,6 +235,7 @@ public sealed partial class MainWindowViewModel
     [RelayCommand(CanExecute = nameof(CanRedoCommand))]
     public async Task RedoAsync(CancellationToken ct = default)
     {
+        await FlushPendingEditsBeforeHistoryAsync(ct);
         var result = await _history.RedoAsync(ct);
         if (!result.IsError)
             await RefreshAfterHistoryAsync(ct);
@@ -245,9 +250,23 @@ public sealed partial class MainWindowViewModel
     [RelayCommand]
     public async Task JumpToHistoryAsync(int targetIndex, CancellationToken ct = default)
     {
+        await FlushPendingEditsBeforeHistoryAsync(ct);
         var result = await _history.JumpToAsync(targetIndex, ct);
         if (!result.IsError)
             await RefreshAfterHistoryAsync(ct);
+    }
+
+    /// <summary>
+    /// 履歴操作 (Undo / Redo / ジャンプ) の直前に、 保留中の編集 (auto-save 待ち) を確定する。
+    /// 先に履歴を再生すると、 続く再読込が選択を外した瞬間に旧 Inspector の保留保存が発火し、
+    /// Undo の結果の上に新規コマンドを積んで Redo スタックを消してしまう (Undo 後の値が編集中の値で上書きされる)。
+    /// 確定してから履歴を再生することで、 「Undo = 直前の編集を取り消す」 に揃える。
+    /// auto-save OFF の未保存 draft は従来どおり保存されない (履歴操作後の再読込で破棄される)。
+    /// </summary>
+    private async Task FlushPendingEditsBeforeHistoryAsync(CancellationToken ct)
+    {
+        try { await GridWorkspace.FlushAllPendingEditsAsync(ct); }
+        catch { /* 保存失敗は各 VM の StatusMessage に反映済み。 履歴操作は続行 */ }
     }
 
     /// <summary>
@@ -467,8 +486,9 @@ public sealed partial class MainWindowViewModel
     /// </summary>
     public async Task FlushAllAutoSavesAsync(CancellationToken ct = default)
     {
-        try { await GridWorkspace.Inspector.FlushAutoSaveAsync(ct); } catch { }
-        try { await GridList.FlushAutoSaveAsync(ct); } catch { }
+        // Inspector・候補単体編集 (VariantProperties)・グリッド一覧 (外部 flush として登録済み) をまとめて待つ。
+        // 候補単体編集を待たないと、 終了処理後の Dispose がタイマーを取り消して編集が失われる。
+        try { await GridWorkspace.FlushAllPendingEditsAsync(ct); } catch { }
     }
 
     /// <summary>

@@ -502,12 +502,10 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
         }
         if (savedAny)
         {
-            // 保存完了後の defensive sync: RenameInternalAsync / UpdateCanvasSizeInternalAsync
-            // 内で target.Name / CanvasWidth / CanvasHeight を更新すると OnNameChanged 等の
-            // partial method 経由で Editing も同期されるが、 同値スキップやタイミング差で
-            // IsDirty=true が残る稀なケースを防ぐため、 ここで RevertEditing で確実に揃える
-            // (Editing は最新の永続化値と一致 → IsDirty=false)。
-            target.RevertEditing();
+            // 保存完了後に RevertEditing で全ドラフトを永続値へ戻してはいけない。 保存中 (await 中) に
+            // 入力された新しい値まで巻き戻って IsDirty=false になり、 編集が静かに消える。
+            // target.Name / CanvasWidth / CanvasHeight の更新時に、 ドラフトが未編集の項目だけが追従し、
+            // IsDirty も項目ごとのドラフトと永続値の差で再計算される (GridCanvasItemViewModel 参照)。
             StatusMessage = _loc["Status_GridSaved"];
         }
         return true;

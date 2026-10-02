@@ -105,6 +105,46 @@ public sealed partial class CopyItemViewModel : ObservableObject
         SourceHeight = sourceHeight;
     }
 
+    /// <summary>
+    /// 別スナップショット (<paramref name="other"/>) と編集対象の値が完全に一致するか。 2 つの編集パネル
+    /// (Inspector 内 / 候補単体) が同じ CopyId の別スナップショットを持つため、 片方の保存後に
+    /// もう片方が古いかどうかを判定して再同期の要否を決めるのに使う。 表示専用の
+    /// (サムネ・原画像パス) は比較しない。
+    /// </summary>
+    public bool HasSameContentAs(CopyItemViewModel other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        return CopyId == other.CopyId
+            && string.Equals(CopyName, other.CopyName, StringComparison.Ordinal)
+            && Rotation == other.Rotation
+            && FlipX == other.FlipX
+            && FlipY == other.FlipY
+            && ScalingMode == other.ScalingMode
+            && Alignment == other.Alignment
+            && AutoCrop == other.AutoCrop
+            && ManualCrop == other.ManualCrop
+            && SourceWidth == other.SourceWidth
+            && SourceHeight == other.SourceHeight
+            && RegionsEqual(Regions, other.Regions);
+    }
+
+    private static bool RegionsEqual(ImmutableArray<ProtectedRegion> a, ImmutableArray<ProtectedRegion> b)
+    {
+        var left = a.IsDefault ? ImmutableArray<ProtectedRegion>.Empty : a;
+        var right = b.IsDefault ? ImmutableArray<ProtectedRegion>.Empty : b;
+        if (left.Length != right.Length) return false;
+        for (var i = 0; i < left.Length; i++)
+        {
+            var x = left[i];
+            var y = right[i];
+            if (x.Id != y.Id || x.Rect != y.Rect || x.FillMode != y.FillMode || x.FillColor != y.FillColor
+                || x.OffsetXPx != y.OffsetXPx || x.OffsetYPx != y.OffsetYPx || x.Rotation != y.Rotation
+                || x.FlipX != y.FlipX || x.FlipY != y.FlipY || x.SortOrder != y.SortOrder)
+                return false;
+        }
+        return true;
+    }
+
     public string DisplayName =>
         string.IsNullOrWhiteSpace(CopyName) ? LocAccessor.Current[Terminology.VariantUnnamedKey] : CopyName!;
 

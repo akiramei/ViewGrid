@@ -21,10 +21,15 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
     private WeakReferenceMessenger _messenger = null!;
     private UndoRedoService _history = null!;
     private GridWorkspaceViewModel _vm = null!;
+    private IImageCropResolver _auditCropResolver = null!;
 
     public async Task InitializeAsync()
     {
         _fx = await UseCaseFixture.CreateAsync();
+        _auditCropResolver = Substitute.For<IImageCropResolver>();
+        _auditCropResolver.ResolveAsync(Arg.Any<ImageCopy>(), Arg.Any<ImageAsset>(), Arg.Any<CancellationToken>())
+            .Returns(call => _fx.CropResolver.ResolveAsync(
+                call.Arg<ImageCopy>(), call.Arg<ImageAsset>(), call.Arg<CancellationToken>()));
         _messenger = new WeakReferenceMessenger();
 
         var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
@@ -94,7 +99,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             _fx.AssetRepository,
             _fx.PlacementRepository,
             _fx.Thumbnails,
-            _fx.CropResolver,
+            _auditCropResolver,
             place,
             remove,
             move,
@@ -1221,5 +1226,31 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
 
         (await _fx.CopyRepository.FindByIdAsync(copyB.Id))!.AutoCrop
             .Should().NotBeNull("セル切替後の自動保存で AutoCrop が消えてはならない");
+    }
+
+    [Fact]
+    public async Task Audit_LateGridLoadMustNotOverwriteNewerGrid()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copyA = await _fx.SeedCopyAsync(asset.Id, "A");
+        var copyB = await _fx.SeedCopyAsync(asset.Id, "B");
+        var gridA = await SeedActiveGridAsync(2, 2);
+        var gridB = await SeedActiveGridAsync(3, 3);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        var placementA = (await place.ExecuteAsync(gridA.Id, copyA.Id, new CellPosition(0, 0))).Value;
+        var placementB = (await place.ExecuteAsync(gridB.Id, copyB.Id, new CellPosition(0, 0))).Value;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<CropFraction?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _auditCropResolver.ResolveAsync(Arg.Is<ImageCopy>(c => c.Id == copyA.Id), Arg.Any<ImageAsset>(), Arg.Any<CancellationToken>())
+            .Returns(_ => { entered.SetResult(); return release.Task; });
+        var oldLoad = _vm.LoadGridAsync(new GridCanvasItemViewModel(gridA));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(gridB));
+        _vm.Placements.Single().PlacementId.Should().Be(placementB.Id);
+        release.SetResult(null);
+        await oldLoad;
+        _vm.CurrentGrid!.GridId.Should().Be(gridB.Id);
+        _vm.Placements.Single().PlacementId.Should().Be(placementB.Id,
+            "finishing a superseded load must not install grid A placements under grid B");
     }
 }

@@ -225,7 +225,15 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
     /// <summary>
     /// 保留中の auto-save を即実行 + その完了を待つ。 グリッド切替 / placement 切替 / アプリ終了時に呼ぶ。
     /// </summary>
-    public Task FlushAutoSaveAsync(CancellationToken ct = default) => _autoSave.FlushAsync(ct);
+    public async Task FlushAutoSaveAsync(CancellationToken ct = default)
+    {
+        await _autoSave.FlushAsync(ct);
+
+        // auto-save OFF → ON の切替直後など、 タイマー予約が無いまま dirty が残るケースの取りこぼし防止
+        // (FlushAndCommitOldSourceIfNeededAsync と同方針)。 OFF のままなら手動保存待ちを尊重する。
+        if (_appSettings.Current.EnableAutoSave && IsAnyDirty)
+            await TrySaveAllAsync(ct);
+    }
 
     private void OnCopyPropertiesPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -405,19 +413,7 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
 
         try
         {
-            var copy = await _copyRepository.FindByIdAsync(source.CopyId, ct);
-            var asset = copy is null
-                ? null
-                : await _assetRepository.FindByIdAsync(copy.AssetId, ct);
-            if (copy is null || asset is null)
-            {
-                CopyProperties.Attach(null);
-                return;
-            }
-
-            var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
-            var sourcePath = _imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
-            var item = new CopyItemViewModel(copy, thumb, sourcePath, asset.Size.Width, asset.Size.Height);
+            var item = await BuildCopyItemAsync(source.CopyId, ct);
             CopyProperties.Attach(item);
         }
         catch (OperationCanceledException) { throw; }
@@ -425,6 +421,48 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         {
             CopyProperties.Attach(null);
         }
+    }
+
+    /// <summary>DB 上の最新の <see cref="ImageCopy"/> から編集対象スナップショットを作る。 見つからなければ <c>null</c>。</summary>
+    private async Task<CopyItemViewModel?> BuildCopyItemAsync(Guid copyId, CancellationToken ct)
+    {
+        var copy = await _copyRepository.FindByIdAsync(copyId, ct);
+        var asset = copy is null
+            ? null
+            : await _assetRepository.FindByIdAsync(copy.AssetId, ct);
+        if (copy is null || asset is null)
+            return null;
+
+        var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
+        var sourcePath = _imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
+        return new CopyItemViewModel(copy, thumb, sourcePath, asset.Size.Width, asset.Size.Height);
+    }
+
+    /// <summary>現在 attach 中の配置 VM (未選択なら <c>null</c>)。 再ロード側が draft 保護の判定に使う。</summary>
+    internal PlacementItemViewModel? AttachedSource => _source;
+
+    /// <summary>
+    /// 現在の配置が参照するバリアントの最新値で <see cref="CopyProperties"/> を同期する。
+    /// 再ロード (<see cref="Messages.CopyLibraryChangedMessage"/>) 後に、 Fork による CopyId 付け替えや
+    /// 別の編集パネルでの保存結果を取り込む。 <see cref="AttachAsync"/> と違い配置固有の編集バッファ
+    /// (ΔX/ΔY・占有) と auto-save の対象は触らない (未保存の配置固有 draft を壊さない)。
+    /// 同じバリアントを編集中なら <see cref="CopyPropertiesViewModel.RefreshFromSourceIfClean"/> が draft を保持する。
+    /// </summary>
+    public async Task RefreshCopyPropertiesFromDbAsync(CancellationToken ct = default)
+    {
+        var source = _source;
+        if (source is null) return;
+
+        try
+        {
+            var item = await BuildCopyItemAsync(source.CopyId, ct);
+            // await 中に別配置へ切り替わっていたら、 その切替側の attach に任せる。
+            if (!ReferenceEquals(_source, source)) return;
+            if (item is null) return;
+            CopyProperties.RefreshFromSourceIfClean(item);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { /* 読込失敗は現状維持 (次の attach / 再読込で整合される) */ }
     }
 
     /// <summary>
@@ -678,6 +716,11 @@ public sealed partial class PlacementInspectorViewModel : ObservableObject, IDis
         var source = _source;
         var grid = _grid;
         if (source is null || grid is null) return;
+
+        // 保留中の auto-save (旧バリアント宛て) を分岐前に確定する。 分岐後は CopyProperties が新バリアントへ
+        // 付け替わるので、 flush しないと旧バリアントへの編集が宙に浮く。
+        try { await _autoSave.FlushAsync(ct); }
+        catch { /* 失敗しても分岐は続行 (StatusMessage に反映済み想定) */ }
 
         // 元バリアント名はラベル（"アセット名 / バリアント名" の形式）から取得しても良いが、
         // Description にはバリアント名のみ載せたいので Repository から確実に取得する。

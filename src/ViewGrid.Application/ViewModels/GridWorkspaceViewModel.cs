@@ -68,6 +68,49 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     [ObservableProperty]
     public partial PlacementItemViewModel? SelectedPlacement { get; set; }
 
+    /// <summary>候補ツリーでいま選択中の画像グループ見出し。 候補 (葉) を選んでいる間は <c>null</c>。</summary>
+    private CandidateGroupViewModel? _selectedGroupHeader;
+
+    /// <summary>
+    /// 候補ツリー (<c>TreeView.SelectedItem</c>) の双方向バインド先。 ツリーの選択は画像グループ見出し
+    /// (<see cref="CandidateGroupViewModel"/>) と候補 (<see cref="CopyCandidateViewModel"/>) の両方を取りうる。
+    /// 以前は候補型だけにバインドしていたため、 見出しを選んでも型変換に失敗して <see cref="SelectedCandidate"/>
+    /// が前の候補のまま残り、 削除・配置・複製が「見た目で選んでいない候補」 に作用していた
+    /// (最後のバリアントなら画像本体まで削除される)。
+    /// 見出しを選択したときは <see cref="SelectedCandidate"/> を <c>null</c> にして、 候補向けコマンドを無効化する。
+    /// </summary>
+    public object? SelectedCandidateNode
+    {
+        get => (object?)SelectedCandidate ?? _selectedGroupHeader;
+        set
+        {
+            switch (value)
+            {
+                case CandidateGroupViewModel group:
+                    _selectedGroupHeader = group;
+                    if (SelectedCandidate is not null)
+                        SelectedCandidate = null; // OnSelectedCandidateChanged が通知する
+                    else
+                        OnPropertyChanged(nameof(SelectedCandidateNode));
+                    break;
+                case CopyCandidateViewModel candidate:
+                    _selectedGroupHeader = null;
+                    if (!ReferenceEquals(SelectedCandidate, candidate))
+                        SelectedCandidate = candidate;
+                    else
+                        OnPropertyChanged(nameof(SelectedCandidateNode));
+                    break;
+                default:
+                    _selectedGroupHeader = null;
+                    if (SelectedCandidate is not null)
+                        SelectedCandidate = null;
+                    else
+                        OnPropertyChanged(nameof(SelectedCandidateNode));
+                    break;
+            }
+        }
+    }
+
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
@@ -455,6 +498,38 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     private Task _pendingInspectorTask = Task.CompletedTask;
 
     /// <summary>
+    /// 直近の候補切替に伴う「旧候補の保留編集 flush → VariantProperties の attach」の Task。
+    /// <see cref="_pendingInspectorTask"/> と同様に前の task を await してから実行することで、
+    /// 連続切替でも flush → attach が厳密に直列化される (切替が保留中の候補編集を捨てない)。
+    /// </summary>
+    private Task _pendingVariantTask = Task.CompletedTask;
+
+    /// <summary>直近の候補切替 (flush + attach) の完了を待つ。 テスト・終了処理・出力前処理が使う。</summary>
+    public Task WaitPendingVariantAttachAsync() => _pendingVariantTask;
+
+    /// <summary>
+    /// グリッド / 配置読込の世代番号。 <see cref="LoadGridAsync"/> と <see cref="ReloadFromMessageAsync"/> が
+    /// 開始のたびに進め、 <see cref="LoadPlacementsAsync"/> は await 後にこの値が開始時と変わっていれば
+    /// (= より新しい読込が始まっていれば) 結果を採用しない。 遅れて完了した古い読込が新しい選択の
+    /// 配置一覧を上書きし、 CurrentGrid と表示配置が食い違うのを防ぐ。
+    /// </summary>
+    private int _loadGeneration;
+
+    /// <summary><see cref="LoadGridAsync"/> だけが進める版番号。 <see cref="IsBusy"/> を戻す責務の判定に使う
+    /// (再ロードは IsBusy を立てないので <see cref="_loadGeneration"/> とは分ける)。</summary>
+    private int _gridLoadVersion;
+
+    /// <summary>
+    /// <see cref="FlushAllPendingEditsAsync"/> が Inspector / 候補編集に加えて待つ外部の保留保存
+    /// (グリッド一覧のグリッド名・キャンバスサイズ編集など、 本 VM の外にある auto-save)。
+    /// <see cref="MainWindowViewModel"/> が登録する。
+    /// </summary>
+    private Func<CancellationToken, Task>? _externalFlush;
+
+    /// <summary>外部の保留保存 (グリッド一覧側など) を <see cref="FlushAllPendingEditsAsync"/> に参加させる。</summary>
+    public void RegisterExternalFlush(Func<CancellationToken, Task> flush) => _externalFlush = flush;
+
+    /// <summary>
     /// 配置選択に伴う候補同期 (<see cref="SyncCandidateToPlacement"/>) 実行中フラグ。
     /// この間の <see cref="SelectedCandidate"/> 変更はユーザー操作ではないので、
     /// <see cref="OnSelectedCandidateChanged"/> の「配置選択解除」を抑止する。
@@ -574,9 +649,17 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
     private async Task ReloadFromMessageAsync()
     {
+        var generation = Interlocked.Increment(ref _loadGeneration);
         try
         {
             await LoadCandidatesAsync();
+            if (generation != Volatile.Read(ref _loadGeneration)) return;
+
+            // 別の編集パネルが保存した結果 (例: Inspector で保存した crop) を候補単体編集へ取り込む。
+            // 取り込まないと、 非表示だった側が古いスナップショットのまま表示・保存され、
+            // 保存済みの crop が ClearManualCrop=true で消える。 未保存の draft は保持される。
+            await RefreshVariantPropertiesFromDbAsync();
+            if (generation != Volatile.Read(ref _loadGeneration)) return;
 
             // 候補ライブラリ変更は cascade（Asset/Copy 削除 → 配置も削除）を伴うため、
             // DB 上の最新状態に追随するよう配置済み一覧も再ロードする。
@@ -586,11 +669,16 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
             var grid = CurrentGrid;
             if (grid is null) return;
 
-            await LoadPlacementsAsync(grid.GridId, default);
+            await LoadPlacementsAsync(grid.GridId, generation, default);
+            if (generation != Volatile.Read(ref _loadGeneration)) return;
 
             // SelectedPlacement が cascade 削除で消えていたら null にフォールバック。
             if (SelectedPlacement is not null && !Placements.Contains(SelectedPlacement))
                 SelectedPlacement = null;
+
+            // Fork で placement の CopyId が付け替わった場合や、 候補側で保存された場合に、
+            // Inspector 内の共有特性編集を現在の配置のバリアント最新値へ同期する。
+            await RefreshInspectorCopyPropertiesFromDbAsync();
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -604,6 +692,10 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// </summary>
     public async Task LoadGridAsync(GridCanvasItemViewModel? grid, CancellationToken ct = default)
     {
+        // 読込世代を進める (同期的に、 最初の await より前)。 先行して走っている別グリッド / 同グリッドの
+        // 読込は、 完了時にこの世代変化を検出して結果を捨てる (LoadPlacementsAsync 参照)。
+        var generation = Interlocked.Increment(ref _loadGeneration);
+        var gridLoadVersion = Interlocked.Increment(ref _gridLoadVersion);
         CurrentGrid = grid;
         OnPropertyChanged(nameof(HasGrid));
 
@@ -629,16 +721,24 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         catch { /* StatusMessage に反映済み想定。 続行する */ }
 
         if (grid is null)
+        {
+            // 先行読込が立てた IsBusy を残さない (その読込は世代不一致で IsBusy を戻さないため)。
+            if (gridLoadVersion == Volatile.Read(ref _gridLoadVersion)) IsBusy = false;
             return;
+        }
 
         try
         {
             IsBusy = true;
             await LoadCandidatesAsync(ct);
-            await LoadPlacementsAsync(grid.GridId, ct);
+            await LoadPlacementsAsync(grid.GridId, generation, ct);
         }
         catch (OperationCanceledException) { }
-        finally { IsBusy = false; }
+        finally
+        {
+            // 古い読込が後から完了しても、 新しい LoadGridAsync が処理中の IsBusy を落とさない。
+            if (gridLoadVersion == Volatile.Read(ref _gridLoadVersion)) IsBusy = false;
+        }
     }
 
     /// <summary>
@@ -688,7 +788,15 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         // 消えていれば null に落として最初の候補にフォールバック。
         if (SelectedCandidate is not null && !Candidates.Contains(SelectedCandidate))
             SelectedCandidate = null;
-        SelectedCandidate ??= Candidates.FirstOrDefault();
+        // 見出し (グループ) を選んでいる間は候補を自動選択しない (見出し選択を再ロードで奪わない)。
+        // 見出しが消えたら (最後のバリアント削除でアセットごと消えた等) 選択を解く。
+        if (_selectedGroupHeader is not null && !CandidateGroups.Contains(_selectedGroupHeader))
+        {
+            _selectedGroupHeader = null;
+            OnPropertyChanged(nameof(SelectedCandidateNode));
+        }
+        if (_selectedGroupHeader is null)
+            SelectedCandidate ??= Candidates.FirstOrDefault();
 
         LogCandidatesLoaded(_logger, Candidates.Count);
     }
@@ -775,14 +883,16 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// 参照同一性を維持、(3) GridCanvasView の <c>OnPlacementItemPropertyChanged</c>
     /// 経由で位置・占有・PixelOffset の最小更新パスを生かす。
     /// </summary>
-    private async Task LoadPlacementsAsync(Guid gridId, CancellationToken ct)
+    private async Task LoadPlacementsAsync(Guid gridId, int generation, CancellationToken ct)
     {
         var placements = await _placementRepository.FindByGridIdAsync(gridId, ct);
 
+        // DB 読込 + crop 解決 (どちらも await を伴う) を先に全件済ませ、 VM への反映は最後に同期で行う。
+        // await の途中でより新しい読込が始まっていたら (別グリッド選択など)、 結果を採用せず既存 VM も
+        // 一切触らない (古い読込が新しい選択の配置を上書きするのを防ぐ)。
         var copyCache = new Dictionary<Guid, ImageCopy>();
         var assetCache = new Dictionary<Guid, ImageAsset>();
-        var existingByPlacementId = Placements.ToDictionary(p => p.PlacementId);
-        var desired = new List<PlacementItemViewModel>(placements.Count);
+        var loaded = new List<(GridPlacement Placement, ImageCopy Copy, ImageAsset Asset, CropFraction? Crop)>(placements.Count);
 
         foreach (var p in placements)
         {
@@ -800,36 +910,61 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 assetCache[copy.AssetId] = asset;
             }
 
-            PlacementItemViewModel item;
-            if (existingByPlacementId.TryGetValue(p.Id, out var existing))
-            {
-                // 既存インスタンスを最新の DB 値で同期（参照同一性を保つ）。
-                // ApplyCopyChanges で共有特性を、各 setter で配置固有特性を反映。
-                existing.Position = p.Position;
-                existing.OccupySize = p.OccupySize;
-                existing.PixelOffsetX = p.PixelOffsetX;
-                existing.PixelOffsetY = p.PixelOffsetY;
-                existing.ApplyCopyChanges(copy);
-                item = existing;
-            }
-            else
-            {
-                var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
-                item = new PlacementItemViewModel(p, copy, asset, thumb);
-            }
-
             // ManualCrop / AutoCrop の優先順位を Resolver で解決し、実効的なクロップ比率を
             // PlacementItemViewModel.EffectiveCropFraction に保存。Renderer / View / Use case が
             // 同一比率を共有することで、自動と手動の表示が揃う。
+            CropFraction? crop;
             try
             {
-                item.EffectiveCropFraction = await _cropResolver.ResolveAsync(copy, asset, ct);
+                crop = await _cropResolver.ResolveAsync(copy, asset, ct);
             }
             catch (OperationCanceledException) { throw; }
             catch
             {
                 // 走査失敗時はクロップなしで表示（fallback）
-                item.EffectiveCropFraction = null;
+                crop = null;
+            }
+
+            loaded.Add((p, copy, asset, crop));
+        }
+
+        if (generation != Volatile.Read(ref _loadGeneration) || CurrentGrid?.GridId != gridId)
+            return;
+
+        var existingByPlacementId = Placements.ToDictionary(p => p.PlacementId);
+        var desired = new List<PlacementItemViewModel>(loaded.Count);
+
+        foreach (var (p, copy, asset, crop) in loaded)
+        {
+            PlacementItemViewModel item;
+            if (existingByPlacementId.TryGetValue(p.Id, out var existing))
+            {
+                // 既存インスタンスを最新の DB 値で同期（参照同一性を保つ）。
+                existing.Position = p.Position;
+
+                // Inspector が未保存の配置固有 draft (ΔX/ΔY・占有) を抱えている配置は、 DB 値で
+                // 上書きしない (改名など無関係な再ロードで入力中の値が canvas / 入力欄から消えるのを防ぐ)。
+                var keepPlacementDraft = Inspector.IsDirty && ReferenceEquals(Inspector.AttachedSource, existing);
+                if (!keepPlacementDraft)
+                {
+                    existing.OccupySize = p.OccupySize;
+                    existing.PixelOffsetX = p.PixelOffsetX;
+                    existing.PixelOffsetY = p.PixelOffsetY;
+                }
+
+                // Fork で DB 上の CopyId が付け替わっていても PlacementId は同じなので、 参照先とラベルへ追従する。
+                existing.ApplyIdentity(p, copy, asset);
+                // 共有特性 + 実効 crop をまとめて反映 (EffectiveCropFraction は最後に代入される)。
+                existing.ApplyCopyChanges(copy, crop);
+                item = existing;
+            }
+            else
+            {
+                var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
+                item = new PlacementItemViewModel(p, copy, asset, thumb)
+                {
+                    EffectiveCropFraction = crop,
+                };
             }
 
             desired.Add(item);
@@ -837,7 +972,32 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
         SyncObservableCollection(Placements, desired);
 
+        // DB 値で上書きした共有特性のうち、 編集パネルが未保存 draft として抱えているものは
+        // ライブプレビューを再適用する (改名やライブラリ更新で canvas だけ元画像へ戻る不整合を防ぐ)。
+        ReapplyDirtyDraftsToPlacements();
+
         LogPlacementsLoaded(_logger, gridId, Placements.Count);
+    }
+
+    /// <summary>
+    /// 編集パネル (Inspector 内 / 候補単体) が未保存の draft を持つ場合、 その draft を当該 CopyId の配置へ
+    /// 再 push する。 再ロードは DB の値で placement VM を更新するため、 draft のライブプレビューが消える。
+    /// </summary>
+    private void ReapplyDirtyDraftsToPlacements()
+    {
+        ReapplyDirtyDraft(Inspector.CopyProperties);
+        ReapplyDirtyDraft(VariantProperties);
+    }
+
+    private void ReapplyDirtyDraft(CopyPropertiesViewModel cp)
+    {
+        if (!cp.IsDirty || cp.AttachedCopyId is not Guid copyId) return;
+        PushSharedPropertyLivePreview(cp, copyId, nameof(CopyPropertiesViewModel.Rotation));
+        PushSharedPropertyLivePreview(cp, copyId, nameof(CopyPropertiesViewModel.FlipX));
+        PushSharedPropertyLivePreview(cp, copyId, nameof(CopyPropertiesViewModel.FlipY));
+        PushSharedPropertyLivePreview(cp, copyId, nameof(CopyPropertiesViewModel.ScalingMode));
+        PushSharedPropertyLivePreview(cp, copyId, nameof(CopyPropertiesViewModel.AlignX));
+        PushCropLivePreview(cp, copyId);
     }
 
     /// <summary>
@@ -1042,7 +1202,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     {
         // 差分更新により Clear は不要（LoadPlacementsAsync が消えた placement を Remove する）。
         // SelectedPlacement の参照同一性も維持される。
-        await LoadPlacementsAsync(gridId, ct);
+        await LoadPlacementsAsync(gridId, Volatile.Read(ref _loadGeneration), ct);
     }
 
     /// <summary>
@@ -1192,6 +1352,11 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     {
         Variants.NotifyContextChanged();
 
+        // 候補を選んだら見出し選択は解ける (TreeView の選択ノードは 1 つだけ)。
+        if (value is not null)
+            _selectedGroupHeader = null;
+        OnPropertyChanged(nameof(SelectedCandidateNode));
+
         // ユーザーが候補リストで配置中とは別のバリアントを選んだら、配置選択を解除して
         // 右ペインをバリアント単体編集 (VariantSelection) に切り替える。配置選択が優先される
         // 仕様上、これをしないと「セル選択中はバリアントを変えても右ペインが無反応」になる。
@@ -1205,7 +1370,118 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         }
 
         NotifySelectionChanged();
-        _ = AttachVariantPropertiesAsync(value);
+
+        // 旧候補の保留中編集 (auto-save 待ち) を確定してから新候補を attach する。 先に attach すると
+        // VariantProperties.Attach が draft と IsDirty を捨て、 1 秒以内の候補切替で編集が消える。
+        var previous = _pendingVariantTask;
+        _pendingVariantTask = FlushThenAttachVariantAsync(previous, value);
+    }
+
+    private async Task FlushThenAttachVariantAsync(Task previous, CopyCandidateViewModel? candidate)
+    {
+        // 先行の切替の完了を待つ (失敗は握る — 今回の attach は継続させる)。
+        try { await previous; } catch { }
+
+        try { await FlushVariantEditsCoreAsync(CancellationToken.None); }
+        catch { /* StatusMessage に反映済み想定。 attach は継続 */ }
+
+        await AttachVariantPropertiesAsync(candidate);
+    }
+
+    /// <summary>
+    /// 候補単体編集 (<see cref="VariantProperties"/>) の保留中 auto-save を即実行して完了を待つ。
+    /// 終了処理・Undo/Redo・出力の前に呼び、 「編集直後に取りこぼす」 経路を塞ぐ。
+    /// </summary>
+    public async Task FlushVariantAutoSaveAsync(CancellationToken ct = default)
+    {
+        try { await _pendingVariantTask; } catch { }
+        await FlushVariantEditsCoreAsync(ct);
+    }
+
+    private async Task FlushVariantEditsCoreAsync(CancellationToken ct)
+    {
+        await _variantAutoSave.FlushAsync(ct);
+
+        // auto-save OFF → ON の切替直後など、 タイマー予約が無いまま dirty が残るケースの取りこぼし防止
+        // (Inspector.FlushAndCommitOldSourceIfNeededAsync と同方針)。 OFF のままなら手動保存待ちを尊重する。
+        if (_appSettings.Current.EnableAutoSave && VariantProperties.HasCopy && VariantProperties.IsDirty)
+            await VariantProperties.TrySaveAsync(ct);
+    }
+
+    /// <summary>
+    /// 本 VM が抱える保留中の編集 (Inspector・候補単体・登録済みの外部保存) をすべて確定する。
+    /// 出力 (Preview / PNG) と履歴操作の直前、 終了時に呼ぶ。 auto-save が ON の状態で未保存編集が
+    /// 残った (= 保存に失敗した) とき <c>false</c>。 OFF のときは draft を保存しない運用なので <c>true</c>。
+    /// </summary>
+    public async Task<bool> FlushAllPendingEditsAsync(CancellationToken ct = default)
+    {
+        try { await _pendingInspectorTask; } catch { }
+        try { await Inspector.FlushAutoSaveAsync(ct); } catch { }
+        try { await FlushVariantAutoSaveAsync(ct); } catch { }
+        if (_externalFlush is { } external)
+        {
+            try { await external(ct); } catch { }
+        }
+
+        if (!_appSettings.Current.EnableAutoSave) return true;
+        return !Inspector.IsAnyDirty && !VariantProperties.IsDirty;
+    }
+
+    /// <summary>
+    /// 候補単体編集 (<see cref="VariantProperties"/>) を DB の最新値へ同期する。 他の編集パネルが同じバリアントを
+    /// 保存した後に、 古いスナップショットのまま保存して保存済み値を消さないための再同期。 未保存 draft は保持。
+    /// </summary>
+    private async Task RefreshVariantPropertiesFromDbAsync()
+    {
+        var previous = _pendingVariantTask;
+        _pendingVariantTask = RefreshVariantAfterAsync(previous);
+        await _pendingVariantTask;
+    }
+
+    private async Task RefreshVariantAfterAsync(Task previous)
+    {
+        try { await previous; } catch { }
+
+        var candidate = SelectedCandidate;
+        if (candidate is null) return;
+        try
+        {
+            var item = await BuildCopyItemAsync(candidate.CopyId, CancellationToken.None);
+            // await 中に別候補へ切り替わっていたら、 その切替側の attach に任せる。
+            if (!ReferenceEquals(SelectedCandidate, candidate) || item is null) return;
+            if (VariantProperties.RefreshFromSourceIfClean(item))
+                _variantAutoSave.ResetFailureGuard();
+        }
+        catch { /* 読込失敗は現状維持 (次の attach / 再読込で整合される) */ }
+    }
+
+    /// <summary>
+    /// <see cref="Inspector"/> 内の共有特性編集を、 現在の配置のバリアント最新値へ同期する。 先行する
+    /// 選択切替 (<see cref="_pendingInspectorTask"/>) の attach 完了後に直列で実行する。
+    /// </summary>
+    private async Task RefreshInspectorCopyPropertiesFromDbAsync()
+    {
+        var previous = _pendingInspectorTask;
+        _pendingInspectorTask = RefreshInspectorAfterAsync(previous);
+        await _pendingInspectorTask;
+    }
+
+    private async Task RefreshInspectorAfterAsync(Task previous)
+    {
+        try { await previous; } catch { }
+        await Inspector.RefreshCopyPropertiesFromDbAsync();
+    }
+
+    /// <summary>DB 上の最新の <see cref="ImageCopy"/> から編集対象スナップショットを作る。 見つからなければ <c>null</c>。</summary>
+    private async Task<CopyItemViewModel?> BuildCopyItemAsync(Guid copyId, CancellationToken ct)
+    {
+        var copy = await _copyRepository.FindByIdAsync(copyId, ct);
+        var asset = copy is null ? null : await _assetRepository.FindByIdAsync(copy.AssetId, ct);
+        if (copy is null || asset is null) return null;
+
+        var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
+        var sourcePath = _imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
+        return new CopyItemViewModel(copy, thumb, sourcePath, asset.Size.Width, asset.Size.Height);
     }
 
     /// <summary>
@@ -1222,16 +1498,12 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
 
         try
         {
-            var copy = await _copyRepository.FindByIdAsync(candidate.CopyId);
-            var asset = copy is null ? null : await _assetRepository.FindByIdAsync(copy.AssetId);
-            if (copy is null || asset is null)
+            var item = await BuildCopyItemAsync(candidate.CopyId, CancellationToken.None);
+            if (item is null)
             {
                 VariantProperties.Attach(null);
                 return;
             }
-            var thumb = _thumbnailService.TryResolveAbsolutePath(asset.FileHash);
-            var sourcePath = _imageStorage.ResolveAbsolutePath(asset.StoredRelativePath);
-            var item = new CopyItemViewModel(copy, thumb, sourcePath, asset.Size.Width, asset.Size.Height);
             VariantProperties.Attach(item);
             _variantAutoSave.ResetFailureGuard();
         }

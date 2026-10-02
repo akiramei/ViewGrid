@@ -310,4 +310,38 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
 
         _vm.StatusMessage.Should().Be(status);
     }
+
+    [Fact]
+    public async Task Audit_SaveCompletionMustNotDiscardEditsMadeWhileSaving()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<ErrorOr.ErrorOr<ErrorOr.Success>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var history = NSubstitute.Substitute.For<IUndoRedoService>();
+        NSubstitute.SubstituteExtensions.Returns(history.ExecuteAsync(NSubstitute.Arg.Any<IUndoableCommand>(), NSubstitute.Arg.Any<CancellationToken>()),
+            _ => { entered.SetResult(); return release.Task; });
+        using var vm = new GridCanvasListViewModel(
+            _fx.GridRepository, new CreateGridCanvasUseCase(_fx.GridRepository),
+            new DeleteGridCanvasUseCase(_fx.GridRepository), new RenameGridCanvasUseCase(_fx.GridRepository),
+            new UpdateGridCanvasSizeUseCase(_fx.GridRepository), _fx.AppSettings, history,
+            new NullLocalizationService(), NullLogger<GridCanvasListViewModel>.Instance);
+        var target = new GridCanvasItemViewModel(new GridCanvas
+        {
+            Id = Guid.NewGuid(), Name = "original", GridRows = 1, GridCols = 1,
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+            CanvasSize = new PixelSize(400, 400),
+            ColWeights = GridCanvas.UniformWeights(1), RowWeights = GridCanvas.UniformWeights(1),
+        });
+        target.EditingName = "first";
+        var save = vm.TryCommitEditingForAsync(target);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        target.EditingName = "second";
+        target.EditingCanvasWidth = 800;
+        release.SetResult(ErrorOr.Result.Success);
+        await save;
+        using var auditScope = new FluentAssertions.Execution.AssertionScope();
+        target.Name.Should().Be("first");
+        target.EditingName.Should().Be("second", "the second edit was made after the first save snapshot");
+        target.EditingCanvasWidth.Should().Be(800);
+        target.IsDirty.Should().BeTrue();
+    }
 }

@@ -65,6 +65,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _autoCropPreviewCts;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsManualCropInputEnabled))]
     public partial bool HasCopy { get; set; }
 
     [ObservableProperty]
@@ -119,6 +120,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// AutoCrop と排他で、こちらを ON にすると AutoCropEnabled が自動的に OFF になる。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CropMode))]
+    [NotifyPropertyChangedFor(nameof(IsManualCropInputEnabled))]
     public partial bool ManualCropEnabled { get; set; }
 
     // ManualCropPixel* は int? で保持。 編集 UI 内の真実をピクセル整数に揃え、
@@ -209,10 +211,106 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         region.FillMode = ProtectedRegionFillMode.Custom;
     }
 
+    // 数値欄の空欄 (null) は「入力し直している最中」 の一時状態で、 「0」 や crop 削除を意味しない。
+    // 空欄の間は直前の有効値を使い続け、 空欄を保存で crop の消失へ変換しないために保持する。
+    private int _lastCropX;
+    private int _lastCropY;
+    private int _lastCropW;
+    private int _lastCropH;
+
+    /// <summary>矩形左上 X の有効値 (空欄入力中は直前の有効値)。</summary>
+    private int EffectiveCropX => ManualCropPixelX ?? _lastCropX;
+    private int EffectiveCropY => ManualCropPixelY ?? _lastCropY;
+    private int EffectiveCropW => ManualCropPixelWidth ?? _lastCropW;
+    private int EffectiveCropH => ManualCropPixelHeight ?? _lastCropH;
+
+    /// <summary>
+    /// 現在の矩形 (元画像ピクセル) を返す。 入力欄が空欄の項目は直前の有効値。
+    /// View のオーバーレイ描画・ドラッグ開始が、 空欄入力中に矩形が消える/飛ぶのを避けるために使う。
+    /// </summary>
+    public (int X, int Y, int Width, int Height) GetManualCropRect() =>
+        (EffectiveCropX, EffectiveCropY, EffectiveCropW, EffectiveCropH);
+
     /// <summary>矩形が確定しているか（W&gt;0 かつ H&gt;0）。「手動」ラジオ ON 直後でドラッグ前は false。
-    /// 数値入力フィールドや矩形ハンドルの IsEnabled、Save 時の永続化判定に使う。</summary>
-    public bool IsManualCropDefined =>
-        (ManualCropPixelWidth ?? 0) > 0 && (ManualCropPixelHeight ?? 0) > 0;
+    /// Save 時の永続化判定に使う。 入力欄の IsEnabled には使わない
+    /// (自身の値に依存させると、 幅・高さを消した/0 にした瞬間に全欄が無効化され入力を続けられない
+    /// → <see cref="IsManualCropInputEnabled"/>)。</summary>
+    public bool IsManualCropDefined => EffectiveCropW > 0 && EffectiveCropH > 0;
+
+    /// <summary>
+    /// 手動 crop の数値入力欄 (X/Y/W/H) の入力可否。 決めるのは「手動モードか」 と「元画像サイズが既知か」
+    /// だけで、 矩形の値 (空欄・0) には依存しない。
+    /// </summary>
+    public bool IsManualCropInputEnabled =>
+        HasCopy && ManualCropEnabled && SourceWidth > 0 && SourceHeight > 0;
+
+    private bool _normalizingManualCrop;
+
+    /// <summary>
+    /// 矩形を元画像の範囲に収める。 X/Y は 0..(画像サイズ-1)、 W/H は 0..(画像サイズ-原点)。
+    /// 原点を動かして右端・下端を超える場合は幅・高さを切り詰める (数値欄の表示も正規化後の値へ更新される)。
+    /// 空欄 (null) の項目は編集中なので触らない。 Attach 中は DB 値をそのまま取り込むため行わない。
+    /// </summary>
+    private void NormalizeManualCropRect()
+    {
+        if (_suppressDirty || _normalizingManualCrop) return;
+        var sw = SourceWidth;
+        var sh = SourceHeight;
+        if (sw <= 0 || sh <= 0) return;
+
+        _normalizingManualCrop = true;
+        try
+        {
+            if (ManualCropPixelX is { } x)
+            {
+                var nx = Math.Clamp(x, 0, sw - 1);
+                if (nx != x) ManualCropPixelX = nx;
+            }
+            if (ManualCropPixelY is { } y)
+            {
+                var ny = Math.Clamp(y, 0, sh - 1);
+                if (ny != y) ManualCropPixelY = ny;
+            }
+            if (ManualCropPixelWidth is { } w)
+            {
+                var nw = Math.Clamp(w, 0, Math.Max(0, sw - EffectiveCropX));
+                if (nw != w) ManualCropPixelWidth = nw;
+            }
+            if (ManualCropPixelHeight is { } h)
+            {
+                var nh = Math.Clamp(h, 0, Math.Max(0, sh - EffectiveCropY));
+                if (nh != h) ManualCropPixelHeight = nh;
+            }
+        }
+        finally
+        {
+            _normalizingManualCrop = false;
+        }
+    }
+
+    partial void OnManualCropPixelXChanged(int? value)
+    {
+        if (value is { } v) _lastCropX = v;
+        NormalizeManualCropRect();
+    }
+
+    partial void OnManualCropPixelYChanged(int? value)
+    {
+        if (value is { } v) _lastCropY = v;
+        NormalizeManualCropRect();
+    }
+
+    partial void OnManualCropPixelWidthChanged(int? value)
+    {
+        if (value is { } v) _lastCropW = v;
+        NormalizeManualCropRect();
+    }
+
+    partial void OnManualCropPixelHeightChanged(int? value)
+    {
+        if (value is { } v) _lastCropH = v;
+        NormalizeManualCropRect();
+    }
 
     /// <summary>
     /// 編集バッファ上の ManualCrop（永続化と同じ判定 = 「手動 ON + 矩形確定 + 元画像サイズ既知」の
@@ -295,10 +393,12 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
 
     /// <summary>原画像のピクセル幅。サムネクリック座標 → 原画像座標への換算に使う。</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsManualCropInputEnabled))]
     public partial int SourceWidth { get; set; }
 
     /// <summary>原画像のピクセル高さ。同上。</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsManualCropInputEnabled))]
     public partial int SourceHeight { get; set; }
 
     /// <summary>カスタム HEX / 画像ピッカーを表示するかの派生プロパティ。</summary>
@@ -517,6 +617,33 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// 別の編集パネルが同じバリアントを保存した後などに、 DB から読み直した最新スナップショット
+    /// (<paramref name="fresh"/>) へ編集対象を同期する。
+    /// <para>
+    /// Inspector 内 (<see cref="PlacementInspectorViewModel.CopyProperties"/>) と候補単体
+    /// (<c>GridWorkspaceViewModel.VariantProperties</c>) は同じ CopyId に対して別々のスナップショットを持つ。
+    /// 非表示側が古いまま表示・保存されると、 古い crop OFF 状態が全項目保存で <c>ClearManualCrop=true</c>
+    /// として DB へ書き込まれ保存済み crop が消える。 これを防ぐため、 保存や再読込のたびに呼んで最新化する。
+    /// </para>
+    /// 同じバリアントを編集中 (<see cref="IsDirty"/>) の場合は未保存 draft を壊さないため何もしない。
+    /// 対象バリアントが変わっている (<c>_source</c> の CopyId が違う / 未 attach) ときは、
+    /// 旧バリアントの draft は意味を失うので通常の <see cref="Attach"/> で差し替える。
+    /// </summary>
+    /// <returns>再 attach した場合 <c>true</c>。</returns>
+    public bool RefreshFromSourceIfClean(CopyItemViewModel fresh)
+    {
+        ArgumentNullException.ThrowIfNull(fresh);
+        if (_source is { } current && current.CopyId == fresh.CopyId)
+        {
+            if (IsDirty) return false;
+            if (current.HasSameContentAs(fresh)) return false;
+        }
+
+        Attach(fresh);
+        return true;
+    }
+
+    /// <summary>
     /// 「保存」 ボタン用の RelayCommand エントリ。 auto-save 経路は <see cref="TrySaveAsync"/> を直接呼ぶ。
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
@@ -641,11 +768,12 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     private ManualCropFraction? BuildAfterManualCrop()
     {
         if (!CanBuildManualCropFraction()) return null;
+        // 空欄 (入力し直し中) の項目は直前の有効値を使う。 0 扱いにすると crop が消える。
         return new ManualCropFraction(
-            PixelToFraction(ManualCropPixelX, SourceWidth),
-            PixelToFraction(ManualCropPixelY, SourceHeight),
-            PixelToFraction(ManualCropPixelWidth, SourceWidth),
-            PixelToFraction(ManualCropPixelHeight, SourceHeight));
+            PixelToFraction(EffectiveCropX, SourceWidth),
+            PixelToFraction(EffectiveCropY, SourceHeight),
+            PixelToFraction(EffectiveCropW, SourceWidth),
+            PixelToFraction(EffectiveCropH, SourceHeight));
     }
 
     /// <summary>ManualCrop の永続化条件: 「手動」 ラジオ + 矩形確定 + 元画像サイズが既知。</summary>
@@ -751,11 +879,16 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         return AutoCropSettings.White.TargetColorArgb;
     }
 
-    /// <summary>ARGB 32-bit を "#RRGGBB" 形式の HEX 文字列にフォーマット（α は捨てる）。</summary>
+    /// <summary>
+    /// ARGB 32-bit を HEX 文字列にフォーマットする。 不透明 (α=0xFF) は <c>#RRGGBB</c>、
+    /// それ以外は α を落とさず <c>#AARRGGBB</c>。 <see cref="ParseHexColorOrDefault"/> と可逆
+    /// (再 attach → 無関係な項目の保存で半透明カスタム色が不透明化しない)。
+    /// </summary>
     internal static string FormatHex(uint argb)
     {
-        var rgb = argb & 0x00FFFFFFu;
-        return $"#{rgb:X6}";
+        if ((argb >> 24) == 0xFFu)
+            return $"#{argb & 0x00FFFFFFu:X6}";
+        return $"#{argb:X8}";
     }
 
     /// <summary>
@@ -1061,6 +1194,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
             or nameof(AutoCropPreviewFraction) or nameof(AutoCropPreviewMessage)
             or nameof(HasAutoCropPreview)
             or nameof(CropMode)
+            or nameof(IsManualCropInputEnabled)
             or nameof(SelectedRegion))
             return;
 

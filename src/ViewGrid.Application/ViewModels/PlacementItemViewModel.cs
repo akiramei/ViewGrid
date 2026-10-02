@@ -14,7 +14,14 @@ public sealed partial class PlacementItemViewModel : ObservableObject
 {
     public Guid PlacementId { get; }
     public Guid GridId { get; }
-    public Guid CopyId { get; }
+
+    /// <summary>
+    /// この配置が参照する論理コピーの Id。 「別バリアントに分岐 (Fork)」 は DB 上の placement.CopyId を
+    /// 付け替えるため、 PlacementId で再利用される既存 VM も再ロード時に追従させる必要がある
+    /// (<see cref="ApplyIdentity"/>)。 追従しないと編集・ライブプレビューが旧バリアントを向き続ける。
+    /// </summary>
+    [ObservableProperty]
+    public partial Guid CopyId { get; set; }
 
     /// <summary>
     /// この配置が参照する論理コピーの基となるアセット ID。Inspector embed の
@@ -72,7 +79,10 @@ public sealed partial class PlacementItemViewModel : ObservableObject
     public partial int PixelOffsetY { get; set; }
 
     public string? ThumbnailPath { get; }
-    public string Label { get; }
+
+    /// <summary>「アセット名 / バリアント名」 表示。 バリアントの改名・分岐で変わるため <see cref="ApplyIdentity"/> で更新される。</summary>
+    [ObservableProperty]
+    public partial string Label { get; set; }
 
     /// <summary>元画像（回転前）のピクセル幅。Stretch.None 表示と Renderer の整合に使う。</summary>
     public int SourceWidth { get; }
@@ -109,9 +119,28 @@ public sealed partial class PlacementItemViewModel : ObservableObject
         ThumbnailPath = thumbnailPath;
         SourceWidth = asset.Size.Width;
         SourceHeight = asset.Size.Height;
+        Label = BuildLabel(copy, asset);
+    }
+
+    private static string BuildLabel(ImageCopy copy, ImageAsset asset)
+    {
         var assetLabel = asset.OriginalFilename ?? asset.FileHash[..8];
         var copyLabel = string.IsNullOrWhiteSpace(copy.CopyName) ? LocAccessor.Current[Terminology.VariantUnnamedKey] : copy.CopyName!;
-        Label = $"{assetLabel} / {copyLabel}";
+        return $"{assetLabel} / {copyLabel}";
+    }
+
+    /// <summary>
+    /// 再ロードで DB 上の参照先バリアント (<see cref="GridPlacement.CopyId"/>) とラベルへ追従する。
+    /// <see cref="PlacementId"/> が同じでも Fork で CopyId が変わりうるため、 差分更新で再利用する既存 VM に
+    /// 必ず適用する。 呼び出し側は直後に <see cref="ApplyCopyChanges(ImageCopy, CropFraction?)"/> で共有特性も揃える。
+    /// </summary>
+    public void ApplyIdentity(GridPlacement placement, ImageCopy copy, ImageAsset asset)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+        ArgumentNullException.ThrowIfNull(copy);
+        ArgumentNullException.ThrowIfNull(asset);
+        CopyId = placement.CopyId;
+        Label = BuildLabel(copy, asset);
     }
 
     /// <summary>編集後の <see cref="ImageCopy"/> から共有特性を反映する。

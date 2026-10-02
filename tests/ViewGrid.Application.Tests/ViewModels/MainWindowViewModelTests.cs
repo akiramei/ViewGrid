@@ -438,4 +438,53 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         _vm.HasUnsavedChanges.Should().BeFalse();
         _vm.UnsavedSummary.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task Audit_ShutdownFlushMustSaveStandaloneVariantDraft()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id, "variant");
+        await _fx.AppSettings.UpdateAsync(s => s with { EnableAutoSave = true });
+        await _gridWorkspace.LoadCandidatesAsync();
+        _gridWorkspace.VariantProperties.HasCopy.Should().BeTrue();
+        _gridWorkspace.VariantProperties.Rotation = ViewGrid.Core.Entities.Rotation.Cw90;
+        _gridWorkspace.VariantProperties.IsDirty.Should().BeTrue();
+        await _vm.FlushAllAutoSavesAsync();
+        _vm.Dispose();
+        var saved = (await _fx.CopyRepository.FindByIdAsync(copy.Id))!;
+        saved.Transform.Rotation.Should().Be(ViewGrid.Core.Entities.Rotation.Cw90,
+            "the shutdown flush promises to finish all scheduled auto-saves before disposal");
+    }
+
+    [Fact]
+    public async Task Audit_UndoMustNotSavePendingDraftAfterUndoAndDestroyRedo()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id);
+        var grid = new ViewGrid.Core.Entities.GridCanvas
+        {
+            Id = Guid.NewGuid(), Name = "grid", GridRows = 2, GridCols = 2,
+            ColWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            RowWeights = ViewGrid.Core.Entities.GridCanvas.UniformWeights(2),
+            CanvasSize = new ViewGrid.Core.Entities.PixelSize(400, 400),
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        await _fx.GridRepository.AddAsync(grid);
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        var placed = (await place.ExecuteAsync(grid.Id, copy.Id, new ViewGrid.Core.Entities.CellPosition(0, 0))).Value;
+        await _gridList.LoadAsync();
+        await _gridWorkspace.LoadGridAsync(_gridList.SelectedGrid);
+        _gridWorkspace.SelectedPlacement = _gridWorkspace.Placements.Single();
+        await _gridWorkspace.WaitPendingInspectorAttachAsync();
+        _gridWorkspace.Inspector.PixelOffsetX = 10;
+        await _gridWorkspace.Inspector.SaveAllAsync();
+        await _fx.AppSettings.UpdateAsync(s => s with { EnableAutoSave = true });
+        _gridWorkspace.Inspector.PixelOffsetX = 20;
+        await _vm.UndoAsync();
+        var saved = (await _fx.PlacementRepository.FindByIdAsync(placed.Id))!;
+        using var auditScope = new FluentAssertions.Execution.AssertionScope();
+        saved.PixelOffsetX.Should().NotBe(20,
+            "Undo must not commit the pending 20 draft as a new history item after applying the undo");
+        _vm.CanRedo.Should().BeTrue("an Undo should leave its undone command redoable");
+    }
 }

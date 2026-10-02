@@ -410,6 +410,7 @@
   <data name="Status_VariantCreatedFmt" xml:space="preserve"><value>「{0}」を作成しました。</value></data>
   <data name="Status_VariantDeletedFmt" xml:space="preserve"><value>「{0}」を削除しました。</value></data>
   <data name="Status_PngExportedFmt" xml:space="preserve"><value>出力しました: {0} ({1} bytes)</value></data>
+  <data name="Status_OutputAbortedSaveFailed" xml:space="preserve"><value>未保存の編集を保存できなかったため、出力を中止しました。</value></data>
   <data name="Status_SaveFailedFmt" xml:space="preserve"><value>保存に失敗しました: {0}</value></data>
   <data name="Status_PlacementNotFoundFmt" xml:space="preserve"><value>GridPlacement {0} が見つかりません。</value></data>
   <data name="Status_CopyNotFoundFmt" xml:space="preserve"><value>ImageCopy {0} が見つかりません。</value></data>
