@@ -829,11 +829,67 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     public void Receive(CopyLibraryChangedMessage message)
     {
         Output.NotifySavedStateChanged(); // 保存済みのバリアント・画像が変わった (プレビューの自動更新)
-        _ = ReloadFromMessageAsync();
+        _ = QueueReloadFromMessage();
     }
 
-    /// <summary>テスト専用: Receive を await できる形で実行する。</summary>
-    internal Task ReloadFromMessageAsyncForTests() => ReloadFromMessageAsync();
+    /// <summary>
+    /// 候補ライブラリ変更に伴う再読込の、 直近の要求の完了を表す Task。 要求は 1 本の連鎖で直列に実行する
+    /// (<see cref="QueueReloadFromMessage"/>)。
+    /// </summary>
+    private Task _pendingReloadTask = Task.CompletedTask;
+
+    /// <summary>再読込の要求の通し番号。 後続の要求がある (より新しい通知が来ている) 古い要求は、 実行せずに譲る。</summary>
+    private int _reloadRequestSeq;
+
+    /// <summary>
+    /// 再読込を直列の連鎖に積む。 保存のたびに <see cref="CopyLibraryChangedMessage"/> が届き、 以前は通知ごとに
+    /// 再読込 (<see cref="ReloadFromMessageAsync"/>) を並行に走らせていた。 アプリの DbContext は 1 本を共有していて
+    /// 並行操作に弱いので、 通知が立て続けに届くと再読込どうしが重なって EF の 「同時に 2 つの操作」 例外になり
+    /// (握りつぶされて) 候補・配置の一覧が古いまま残りうる。 前の再読込の完了を待ってから実行し、
+    /// 後続の要求がある古い要求は読み込まずに譲る (最新の 1 回が全体を読み込む)。
+    /// </summary>
+    private Task QueueReloadFromMessage()
+    {
+        var seq = Interlocked.Increment(ref _reloadRequestSeq);
+        var task = ReloadAfterAsync(_pendingReloadTask, seq);
+        _pendingReloadTask = task;
+        return task;
+    }
+
+    private async Task ReloadAfterAsync(Task previous, int seq)
+    {
+        try { await previous; } catch { }
+        if (seq != Volatile.Read(ref _reloadRequestSeq)) return;
+        await ReloadFromMessageAsync();
+    }
+
+    /// <summary>
+    /// 保存に伴う非同期の後処理 (候補ライブラリ変更の再読込・選択切替の attach・候補単体の attach) が、
+    /// すべて完了するまで待つ。 保存・編集の直後に、 同じ DbContext を別の経路 (テストの検証読取りなど) から
+    /// 読む前の同期点として使う。 待つ間に新しい後処理が積まれたら、 それも待つ。
+    /// </summary>
+    public async Task WaitForBackgroundWorkAsync()
+    {
+        while (true)
+        {
+            var reload = _pendingReloadTask;
+            var inspector = _pendingInspectorTask;
+            var variant = _pendingVariantTask;
+            try { await Task.WhenAll(reload, inspector, variant); }
+            catch { /* 各処理の失敗は StatusMessage 等に反映済み。 ここでは完了だけを待つ */ }
+            if (ReferenceEquals(reload, _pendingReloadTask)
+                && ReferenceEquals(inspector, _pendingInspectorTask)
+                && ReferenceEquals(variant, _pendingVariantTask))
+                return;
+        }
+    }
+
+    /// <summary>テスト専用: 再読込を直列の連鎖に積み、 その完了と他の後処理の完了まで待つ。</summary>
+    internal async Task ReloadFromMessageAsyncForTests()
+    {
+        await QueueReloadFromMessage();
+        await WaitForBackgroundWorkAsync();
+    }
 
     private async Task ReloadFromMessageAsync()
     {
