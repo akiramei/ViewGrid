@@ -16,6 +16,9 @@ public partial class GridWorkspaceView : UserControl
     private CopyCandidateViewModel? _pressItem;
     private PointerPressedEventArgs? _pressEvent;
 
+    /// <summary>開いているプレビューウィンドウ (モードレス・自動更新)。 閉じたら <c>null</c>。</summary>
+    private PreviewWindow? _previewWindow;
+
     public GridWorkspaceView()
     {
         InitializeComponent();
@@ -96,13 +99,28 @@ public partial class GridWorkspaceView : UserControl
             if (bytes is null || bytes.Length == 0)
                 return;
 
+            // 既に開いているなら、 新しいウィンドウを重ねず中身を差し替えて前面へ出す。
+            if (_previewWindow is { } existing)
+            {
+                existing.ApplyRefresh(bytes);
+                existing.Activate();
+                return;
+            }
+
             var owner = TopLevel.GetTopLevel(this) as Window;
             if (owner is null)
                 return;
 
+            // モードレス: 開いたまま配置や設定を編集でき、 保存済みの内容が変わるたびに自動で更新される。
             var preview = new PreviewWindow();
             preview.SetSource(bytes, vm);
-            await preview.ShowDialog(owner);
+            preview.Closed += (_, _) =>
+            {
+                if (ReferenceEquals(_previewWindow, preview))
+                    _previewWindow = null;
+            };
+            _previewWindow = preview;
+            preview.Show(owner);
         }
         finally
         {

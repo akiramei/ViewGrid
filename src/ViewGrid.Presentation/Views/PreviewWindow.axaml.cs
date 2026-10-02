@@ -4,6 +4,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
+using ViewGrid.Application.Localization;
 using ViewGrid.Application.ViewModels;
 
 namespace ViewGrid.Presentation.Views;
@@ -29,6 +31,12 @@ public partial class PreviewWindow : Window
 
     private byte[]? _bytes;
     private GridWorkspaceViewModel? _workspace;
+
+    /// <summary>ワークスペースの自動更新への参加 (ウィンドウを閉じるまで)。</summary>
+    private IDisposable? _liveUpdate;
+
+    /// <summary>閉じた後にスレッドプールから遅れて届く更新を捨てるためのフラグ。</summary>
+    private bool _closed;
 
     /// <summary>現在のズーム倍率。 1.0 = 物理ピクセル等倍。</summary>
     private double _zoom = 1.0;
@@ -181,13 +189,64 @@ public partial class PreviewWindow : Window
 
         _bytes = pngBytes;
         _workspace = workspace;
+        ShowBitmap(pngBytes);
+    }
 
+    /// <summary>PNG を表示し (縮小マップにも同じビットマップを使う)、 情報欄を更新する。 前のビットマップを返す。</summary>
+    private Bitmap? ShowBitmap(byte[] pngBytes)
+    {
+        var previous = PreviewImage.Source as Bitmap;
         using var stream = new MemoryStream(pngBytes);
         var bitmap = new Bitmap(stream);
         PreviewImage.Source = bitmap;
-        // 縮小マップは同じビットマップを縮図表示する。
         MinimapImage.Source = bitmap;
-        InfoText.Text = $"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} px / {pngBytes.Length:N0} bytes";
+        InfoText.Text = $"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} px / {pngBytes.Length:N0} bytes"
+            + (_liveUpdate is null ? string.Empty : $" · {LocAccessor.Current["Preview_AutoUpdating"]}");
+        return previous;
+    }
+
+    /// <summary>
+    /// 表示中のプレビューを新しい内容へ差し替える (自動更新・「プレビュー」ボタンの再押下)。
+    /// ズーム倍率 (フィット中ならフィットのまま) とスクロール位置は保つ。 <c>null</c> は表示できる内容がない / 描画に
+    /// 失敗したことを表し、 直前の画像は残して情報欄に更新できなかったことだけ示す。
+    /// </summary>
+    public void ApplyRefresh(byte[]? pngBytes)
+    {
+        if (_closed) return;
+        if (pngBytes is null || pngBytes.Length == 0)
+        {
+            InfoText.Text = LocAccessor.Current["Preview_RefreshFailed"];
+            return;
+        }
+
+        _bytes = pngBytes;
+        var previous = ShowBitmap(pngBytes);
+        if (_isFitMode) ApplyFitZoom(); else ApplyZoom();
+
+        // 描画スレッドがまだ前のビットマップを使っている可能性があるので、 描画が一巡してから解放する。
+        if (previous is not null)
+            Dispatcher.UIThread.Post(previous.Dispose, DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// ワークスペースの自動更新に参加する。 保存済みの内容が変わるたびにこのウィンドウの画像が差し替わる。
+    /// 通知はスレッドプールから届くので UI スレッドへ戻して反映する。 ウィンドウを閉じると停止する。
+    /// </summary>
+    private void StartLiveUpdate()
+    {
+        if (_workspace is null || _liveUpdate is not null) return;
+        _liveUpdate = _workspace.Output.StartLivePreview(
+            bytes => Dispatcher.UIThread.Post(() => ApplyRefresh(bytes)));
+        // 起動時の情報欄にも「自動更新」の表示を出す。
+        if (_bytes is not null) InfoText.Text += $" · {LocAccessor.Current["Preview_AutoUpdating"]}";
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _closed = true;
+        _liveUpdate?.Dispose();
+        _liveUpdate = null;
+        base.OnClosed(e);
     }
 
     // -------------------- ズーム --------------------
@@ -384,6 +443,7 @@ public partial class PreviewWindow : Window
     {
         Opened -= OnOpenedFirst;
         ApplyFitZoom();
+        StartLiveUpdate();
     }
 
     /// <summary>

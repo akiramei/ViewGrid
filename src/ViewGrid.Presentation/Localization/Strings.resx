@@ -146,6 +146,8 @@
   <data name="Preview_Map" xml:space="preserve"><value>マップ</value></data>
   <data name="Preview_Map_Tooltip" xml:space="preserve"><value>縮小マップ (拡大時のナビゲーション)。クリック / ドラッグで表示位置を移動</value></data>
   <data name="Preview_SaveAsPng" xml:space="preserve"><value>PNG として保存</value></data>
+  <data name="Preview_AutoUpdating" xml:space="preserve"><value>保存済みの内容に合わせて自動更新</value></data>
+  <data name="Preview_RefreshFailed" xml:space="preserve"><value>更新できませんでした (直前の内容を表示中)</value></data>
 
   <!-- グリッド一覧バー -->
   <data name="GridList_Grid_Label" xml:space="preserve"><value>グリッド:</value></data>
