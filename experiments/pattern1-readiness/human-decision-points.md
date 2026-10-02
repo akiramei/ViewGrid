@@ -70,6 +70,20 @@ deliberate_decisions:
 
 **3 件とも推奨どおり「実コード変更なし・現挙動を deliberate として明文化」で裁定** = 既存挙動を壊さず decision ownership だけ強める純粋な「閉じる」作業。実コード/oracle への波及はゼロ (いずれも preserve)。
 
+## D02 — auto-save 保留中の編集がある状態での Undo / Redo / ジャンプ (2026-10-02 追補)
+不具合調査報告 (2026-10-02) の D02 で表面化した設計判断。実コード修正 (797f13c) は flush-then-undo で実装済みで、
+本節はその意図を人間決定として確定・記録する。
+
+| 項目 | 内容 |
+| --- | --- |
+| subject | auto-save の保留中編集があるときの Undo / Redo / 履歴ジャンプの意味 |
+| 現挙動 | `MainWindowViewModel.cs:228,238,253` の 3 経路が履歴再生の前に `FlushPendingEditsBeforeHistoryAsync` (:266) → `GridWorkspaceViewModel.FlushAllPendingEditsAsync` (:1416) を呼ぶ。修正前は履歴再生が先で、続く再読込が選択を外した際に旧 Inspector の保留保存が発火し、Undo の上に新規コマンドが積まれて Redo が消え、Undo 後の値が編集中の値で上書きされた。 |
+| provenance (as-built) | 修正前は競合による偶発挙動。修正後は意図した前処理。 |
+| 選択肢 | **(a) flush-then-undo**: 保留編集を確定してから履歴再生 (Undo = 確定した直前の編集を取り消す。Redo 可) / (b) discard-then-undo: 保留編集を破棄してから Undo (保存済みの 1 つ前へ戻る) |
+| 影響 | どちらも報告の再現テストを満たす。(b) は auto-save が保存するはずだった入力を黙って捨てる。(a) は編集を失わず Undo の意味と一致する。 |
+| 推奨 / ★ 裁定 | ✅ **(a) flush-then-undo** (2026-10-02 ユーザー裁定) |
+| 反映先 | GRID BOM の `deliberate_decisions` に `D-UNDO-PENDING` (anchor: `Audit_UndoMustNotSavePendingDraftAfterUndoAndDestroyRedo`)。実コード変更なし (実装済み)。 |
+
 ## 反映 (裁定後・実施済)
 1. ✅ ユーザー裁定 (3 件とも推奨採用、2026-06-01)。
 2. ✅ `deliberate_decisions` を該当 BOM へ反映: IMAGE_VARIANT=D2a/D2b、GRID=D-PV。

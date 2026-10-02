@@ -263,6 +263,17 @@ deliberate_decisions:
     anchor: "tests/ViewGrid.Core.Tests/UseCases/PlacementValidatorTests.cs::ConflictingPlacementId_Is_First_In_Collection_Order_AsBuilt"
     do_not: "validator の入力順保存を崩さない / caller の FindByGridIdAsync の OrderBy(PlacementOrder) を外さない。"
 
+  - id: D-UNDO-PENDING
+    subject: "auto-save の保留中編集 (未保存 draft) がある状態での Undo / Redo / 履歴ジャンプの意味"
+    current_behavior: "MainWindowViewModel の UndoAsync / RedoAsync / JumpToHistoryAsync は、履歴を再生する前に FlushPendingEditsBeforeHistoryAsync (MainWindowViewModel.cs:228,238,253 → :266) で GridWorkspace.FlushAllPendingEditsAsync (GridWorkspaceViewModel.cs:1416) を呼び、Inspector・候補単体編集・グリッド一覧の保留 auto-save を確定してから再生する。確定した編集は通常どおり 1 件の履歴コマンドになり (UndoRedoService.ExecuteAsync は Redo スタックを破棄)、直後の Undo はその編集を取り消す。(修正前: 履歴再生が先 → 続く再読込が選択を外した瞬間に旧 Inspector の保留保存が発火 → Undo 結果の上に新規コマンドが積まれて Redo が消え、Undo 後の値が編集中の値で上書きされた。)"
+    decision: deliberate-flush-then-undo
+    contract: "Undo / Redo / ジャンプは「保留中の編集を確定 → その結果を含めて履歴を再生」する。Undo = 直前の編集 (確定済みの保留編集を含む) を取り消す。履歴再生と再読込の間に旧編集の auto-save が割り込まない。auto-save OFF の未保存 draft は従来どおり保存されず、再読込で破棄される (本決定の対象外)。"
+    provenance: deliberate   # 2026-10-02 裁定 (不具合調査報告 D02。旧: 競合による偶発挙動)
+    rationale: "代替案「保留中の編集を破棄してから Undo」は、ユーザーが入力した値 (auto-save が間もなく保存するはずだった値) を黙って捨てる。flush-then-undo は編集を失わず、Undo の意味 (直前の操作を取り消す) と一致し、Redo も保たれる。"
+    anchor: "tests/ViewGrid.Application.Tests/ViewModels/MainWindowViewModelTests.cs::Audit_UndoMustNotSavePendingDraftAfterUndoAndDestroyRedo"
+    do_not: "履歴再生の前の flush を外さない / 保留編集を黙って破棄する方式へ変えない / Undo・Redo・ジャンプのいずれかだけ flush を省かない (3 経路とも同じ前処理)。"
+    cross_capability: "共有特性 (crop など) の保存は IMAGE_VARIANT_MANAGEMENT 側の編集だが、flush の前処理は GRID_COMPOSITION の履歴操作に属する。両 BOM から同じ契約を参照すること。"
+
 # ────────────────────────────────────────────────────────────────────────
 # boundaries
 # ────────────────────────────────────────────────────────────────────────
