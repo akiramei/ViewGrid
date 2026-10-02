@@ -146,6 +146,7 @@
   <data name="Preview_Map" xml:space="preserve"><value>Map</value></data>
   <data name="Preview_Map_Tooltip" xml:space="preserve"><value>Navigator map (for panning while zoomed). Click / drag to move the view</value></data>
   <data name="Preview_SaveAsPng" xml:space="preserve"><value>Save as PNG</value></data>
+  <data name="Status_SwitchAbortedSaveFailed" xml:space="preserve"><value>The workspace was not switched because some edits could not be saved. Check the edits, save them, and try switching again.</value></data>
   <data name="Preview_AutoUpdating" xml:space="preserve"><value>auto-updates with saved changes</value></data>
   <data name="Preview_RefreshFailed" xml:space="preserve"><value>Could not update (showing the previous content)</value></data>
 

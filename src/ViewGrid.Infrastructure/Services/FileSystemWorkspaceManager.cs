@@ -422,7 +422,7 @@ internal sealed class FileSystemWorkspaceManager : IWorkspaceManager, IDisposabl
             // 登録・切替の前に、展開したワークスペースが実際に開けるかを検証する。
             // 壊れた DB / DB 欠落 / 画像欠落のまま登録すると「取り込み成功」の後で編集を再開できない。
             // 拒否するときは展開先を掃除し、マニフェスト (= 既存のワークスペース一覧) は変えない。
-            var contentErr = ImportedWorkspaceValidator.Validate(destDir);
+            var contentErr = await ImportedWorkspaceValidator.ValidateAsync(destDir, ct);
             if (contentErr is { } e4)
             {
                 CleanupPartialExtraction(destDir);

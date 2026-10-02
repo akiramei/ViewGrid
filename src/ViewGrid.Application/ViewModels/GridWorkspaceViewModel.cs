@@ -674,6 +674,30 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         }
         finally { _restoringSelection = false; }
         NotifySelectionChanged();
+        ReattachVariantPropertiesToSelection();
+    }
+
+    /// <summary>
+    /// 「戻る」で選択を元へ戻した後、 候補単体編集 (<see cref="VariantProperties"/>) の接続先を、 いま選択中の
+    /// バリアントへ揃える。 配置の切替確認を待っている間も、 切替に伴う候補選択 (別バリアント) の attach は
+    /// 先に進んでしまう。 「戻る」 の書き戻しはその attach をやり直さない (<c>_restoringSelection</c>) ので、
+    /// 揃えないと、 表示上の選択は A のまま編集パネルは B に接続され、 続けて編集・保存すると
+    /// 選んでいない B が変わる。 未保存の編集 (draft) が残っているときは触らない。
+    /// </summary>
+    private void ReattachVariantPropertiesToSelection()
+    {
+        var previous = _pendingVariantTask;
+        _pendingVariantTask = ReattachVariantPropertiesAsync(previous);
+    }
+
+    private async Task ReattachVariantPropertiesAsync(Task previous)
+    {
+        try { await previous; } catch { }
+
+        var candidate = SelectedCandidate;
+        if (VariantProperties.AttachedCopyId == candidate?.CopyId) return;
+        if (VariantProperties.HasCopy && VariantProperties.IsDirty) return;
+        await AttachVariantPropertiesAsync(candidate);
     }
 
     /// <summary>「戻る」: 候補の選択を、 いま候補単体編集に attach 済みのバリアントへ書き戻す。</summary>
@@ -691,6 +715,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         Variants.NotifyContextChanged();
         OnPropertyChanged(nameof(SelectedCandidateNode));
         NotifySelectionChanged();
+        ReattachVariantPropertiesToSelection();
     }
 
     /// <summary>

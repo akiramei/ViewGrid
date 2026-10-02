@@ -130,6 +130,79 @@ public sealed class WorkspaceImportValidationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Import_Rejects_A_Database_That_Lacks_A_Required_Table_Even_When_Migrations_Are_Recorded()
+    {
+        // マイグレーション履歴は「適用済み」 のまま image_copy_regions だけが無い旧版 DB。 起動時のマイグレーションは
+        // 何もせず、 読んだ時点で "no such table" になる。 登録・切替の前に拒否する。
+        var zip = CreateZip("noregions", dir =>
+        {
+            var db = Path.Combine(dir, "viewgrid.db");
+            WorkspaceTestDatabase.Create(db, "assets/ab/abdef.png");
+            WorkspaceTestDatabase.DropTable(db, "image_copy_regions");
+            PutImage(dir, "assets/ab/abdef.png");
+        });
+
+        await AssertRejectedAsync(zip, "Workspace.ImportDatabaseUnusable");
+    }
+
+    [Fact]
+    public async Task Import_Rejects_A_Database_Without_The_Assets_Table_Instead_Of_Skipping_The_Image_Check()
+    {
+        // 画像テーブルが無い DB を「画像参照なし」 と見なして素通りさせない (実テーブル名は image_assets)。
+        var zip = CreateZip("noassets", dir =>
+        {
+            var db = Path.Combine(dir, "viewgrid.db");
+            WorkspaceTestDatabase.Create(db);
+            WorkspaceTestDatabase.DropTable(db, "image_assets");
+        });
+
+        await AssertRejectedAsync(zip, "Workspace.ImportDatabaseUnusable");
+    }
+
+    [Fact]
+    public async Task Import_Accepts_An_Older_Database_That_Startup_Migrations_Can_Bring_Up_To_Date()
+    {
+        var zip = CreateZip("older", dir => WorkspaceTestDatabase.CreateWithoutLatestMigration(Path.Combine(dir, "viewgrid.db")));
+
+        var result = await _manager.ImportAsync(zip, "imported", "取り込み");
+
+        result.IsError.Should().BeFalse("対応する旧版のバックアップは起動時の移行で開ける");
+    }
+
+    [Fact]
+    public async Task Import_Does_Not_Modify_The_Zip_Database_While_Validating()
+    {
+        var zip = CreateZip("readonly-check", dir =>
+        {
+            WorkspaceTestDatabase.Create(Path.Combine(dir, "viewgrid.db"), "assets/ab/abdef.png");
+            PutImage(dir, "assets/ab/abdef.png");
+        });
+
+        // 一時領域は他のテストや前回の異常終了のものも含むので、 この取り込みで増えた分だけを見る。
+        var scratchBefore = Directory.GetDirectories(Path.GetTempPath(), "viewgrid-import-check-*").ToHashSet();
+
+        var result = await _manager.ImportAsync(zip, "imported", "取り込み");
+
+        result.IsError.Should().BeFalse();
+        // 検証は一時コピーで行う: 展開先に検証用の一時ファイルを残さない (SQLite 自身の -wal / -shm は DB の一部)。
+        Directory.GetFiles(Path.Combine(_root.FullName, "workspaces", "imported"), "*", SearchOption.TopDirectoryOnly)
+            .Select(f => Path.GetFileName(f)!)
+            .Where(n => !n.StartsWith("viewgrid.db", StringComparison.Ordinal))
+            .Should().BeEmpty();
+        // 並行して走る別のテストの取り込み (検証の最中の一時コピー) に誤って反応しないよう、 少し待っても残る分だけを見る。
+        var until = Environment.TickCount64 + 5000;
+        string[] leftover;
+        do
+        {
+            leftover = Directory.GetDirectories(Path.GetTempPath(), "viewgrid-import-check-*")
+                .Where(d => !scratchBefore.Contains(d)).ToArray();
+            if (leftover.Length == 0) break;
+            await Task.Delay(50);
+        } while (Environment.TickCount64 < until);
+        leftover.Should().BeEmpty("検証用の一時コピーは後始末される");
+    }
+
+    [Fact]
     public async Task Import_Rejects_A_Referenced_Image_Path_That_Escapes_The_Workspace()
     {
         var zip = CreateZip("escape", dir =>

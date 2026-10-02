@@ -175,15 +175,20 @@ public partial class WorkspaceSwitchDialog : Window
     {
         if (DataContext is not WorkspaceSwitchDialogViewModel vm) return;
 
-        // 切替はアプリを再起動する。 手動保存モードで未保存の編集があるまま再起動すると失われるので、
-        // active.json の書き換えと新プロセスの起動より前に 保存 / 破棄 / 戻る を確認する
-        // (終了時の確認 ShutdownRequested では、 新プロセスが既に起動していて遅い)。 「戻る」 なら切替しない。
-        if (Owner is Window { DataContext: MainWindowViewModel mainVm } && mainVm.HasUnsavedManualEdits)
+        // 切替は新プロセスを起動して今のプロセスを desktop.Shutdown(0) (強制終了) で終える。 強制終了は
+        // ShutdownRequested の保存待ちを通らないので、 active.json の書き換えと新プロセスの起動より前に、
+        // 現ワークスペースの保存をここですべて終わらせる:
+        //   - 手動保存モードの未保存の編集: 保存 / 破棄 / 戻る を確認 (「戻る」 なら切替しない)
+        //   - 自動保存の保留分・保存中の編集: 完了まで待つ。 保存に失敗したら編集を失わないよう切替しない
+        if (Owner is Window { DataContext: MainWindowViewModel mainVm })
         {
-            bool proceed;
-            try { proceed = await mainVm.ResolveUnsavedBeforeExitAsync(); }
-            catch { proceed = false; }
-            if (!proceed) return;
+            var preparation = await mainVm.PrepareForWorkspaceSwitchAsync();
+            if (preparation == ExitPreparation.Cancelled) return;
+            if (preparation == ExitPreparation.SaveFailed)
+            {
+                vm.StatusMessage = LocService.Instance["Status_SwitchAbortedSaveFailed"];
+                return;
+            }
         }
 
         var newName = await vm.ApplyAsync();

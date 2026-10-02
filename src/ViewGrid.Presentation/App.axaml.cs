@@ -112,9 +112,9 @@ public partial class App : global::Avalonia.Application
     }
 
     /// <summary>
-    /// シャットダウン要求の再入防止フラグ。 一度 await してから <c>desktop.Shutdown()</c> を再呼出しすると
-    /// <see cref="IClassicDesktopStyleApplicationLifetime.ShutdownRequested"/> が再発火するので、
-    /// 2 回目以降は素通しする。
+    /// シャットダウン要求の再入防止フラグ。 保存待ちの間に別の終了要求 (OS のシャットダウンなど) が重なっても、
+    /// 2 回目以降は素通しして二重に待たない。 なお <c>desktop.Shutdown()</c> は強制終了 (force) 扱いで
+    /// <see cref="IClassicDesktopStyleApplicationLifetime.ShutdownRequested"/> を再発火しない (Avalonia 12.0.0)。
     /// </summary>
     private bool _shutdownAwaited;
 
@@ -140,28 +140,13 @@ public partial class App : global::Avalonia.Application
         if (sender is not IClassicDesktopStyleApplicationLifetime desktop) return;
         if (desktop.MainWindow?.DataContext is not MainWindowViewModel mainVm) return;
 
-        // 手動保存モードで未保存の編集があるまま閉じると編集が失われるので、 保存 / 破棄 / 戻る を確認する。
-        // 「戻る」 なら終了しない。 保存・破棄を選んだら、 下の通常の終了処理 (確認済みなので 2 回目の
-        // ShutdownRequested では再確認しない) へ進む。 確認ダイアログは非同期なので、 先に Cancel しておく。
-        if (mainVm.HasUnsavedManualEdits)
-        {
-            e.Cancel = true;
-            _shutdownAwaited = true; // 確認中の再入 (閉じるボタンの連打など) を抑止
-            bool proceed;
-            try { proceed = await mainVm.ResolveUnsavedBeforeExitAsync(); }
-            catch { proceed = false; }
-            if (!proceed)
-            {
-                _shutdownAwaited = false;
-                return;
-            }
-
-            try { await Task.WhenAll(mainVm.GridList.LastOpenedSaveTask, mainVm.FlushAllAutoSavesAsync()); }
-            catch { /* 永続化失敗 / auto-save 失敗は致命的でないので無視 */ }
-            DisposeMainVmOnce(mainVm);
-            desktop.Shutdown();
-            return;
-        }
+        // 手動保存モードの未保存の編集の確認 (保存 / 破棄 / 戻る) は、 ここでは行わない。 ここは最後のウィンドウが
+        // 閉じた後に呼ばれるため、 確認ダイアログの親ウィンドウが既に無い (表示が例外になり、 e.Cancel だけが残って
+        // 画面のないプロセスが残る)。 閉じる前の MainWindow.OnClosing が確認する。 ここへ未保存の編集が残って
+        // 来るのは確認できない終了 (OS のシャットダウンなど) だけで、 自動保存の保留分だけ確定して終わらせる。
+        //
+        // 注意: IClassicDesktopStyleApplicationLifetime.Shutdown() は強制終了 (force) 扱いで、 この
+        // ShutdownRequested を再発火しない。 下の desktop.Shutdown() 呼び出し後に再入はしない。
 
         var pending = mainVm.GridList.LastOpenedSaveTask;
         var flushAll = mainVm.FlushAllAutoSavesAsync();

@@ -606,6 +606,42 @@ public sealed partial class MainWindowViewModel
             forExit: true, ct);
 
     /// <summary>
+    /// ウィンドウを閉じてよいか。 手動保存モードの未保存の編集を 保存 / 破棄 / 戻る で解決する。 閉じてよいとき <c>true</c>、
+    /// 「戻る」 または保存失敗 (編集を捨てない) のとき <c>false</c>。 View の <c>Closing</c> で、 ウィンドウがまだ開いている
+    /// うちに呼ぶ (閉じた後の <c>ShutdownRequested</c> では、 確認ダイアログの親ウィンドウが既に無く例外になる)。
+    /// 自動保存 ON の保留分の確定は、 閉じた後の終了処理 (<c>App.OnShutdownRequested</c>) が待つ。
+    /// </summary>
+    public async Task<bool> PrepareToCloseAsync(CancellationToken ct = default)
+    {
+        try { return await ResolveUnsavedBeforeExitAsync(ct); }
+        catch (Exception) { return false; }
+    }
+
+    /// <summary>
+    /// ワークスペース切替 (= 新しいプロセスを起動して今のプロセスを強制終了する) の前に呼ぶ。 強制終了は終了時の
+    /// 保存待ち (<c>ShutdownRequested</c>) を通らないので、 ここで現ワークスペースの保存をすべて終わらせる。
+    /// 手動保存の未保存編集の 保存 / 破棄 / 戻る → 自動保存の保留分・保存中の確定 → 最終参照グリッドの永続化、 の順。
+    /// <see cref="ExitPreparation.Proceed"/> のときだけ切替へ進んでよい。
+    /// </summary>
+    public async Task<ExitPreparation> PrepareForWorkspaceSwitchAsync(CancellationToken ct = default)
+    {
+        bool resolved;
+        try { resolved = await ResolveUnsavedBeforeExitAsync(ct); }
+        catch (Exception) { return ExitPreparation.Cancelled; }
+        if (!resolved) return ExitPreparation.Cancelled;
+
+        bool flushed;
+        try { flushed = await GridWorkspace.FlushAllPendingEditsAsync(ct); }
+        catch (Exception) { flushed = false; }
+
+        // 最終参照グリッドの永続化は失敗しても利用者のデータではないので、 待つだけで切替は止めない。
+        try { await GridList.LastOpenedSaveTask; }
+        catch (Exception) { /* 次回起動で先頭のグリッドが開くだけ */ }
+
+        return flushed ? ExitPreparation.Proceed : ExitPreparation.SaveFailed;
+    }
+
+    /// <summary>
     /// アプリ終了時 / ワークスペース切替時に、 全 auto-save dispatcher の保留分を
     /// 即実行 + 完了待機する。 Inspector / GridList の順 (UI ハイヤラルキ通り)。
     /// 失敗は飲んで続行する (終了経路で例外を投げると確実な終了が阻害されるため)。
@@ -670,4 +706,17 @@ public sealed partial class MainWindowViewModel
         GridWorkspace.Dispose();
         GridList.Dispose();
     }
+}
+
+/// <summary>ワークスペース切替の前処理 (<see cref="MainWindowViewModel.PrepareForWorkspaceSwitchAsync"/>) の結果。</summary>
+public enum ExitPreparation
+{
+    /// <summary>保存がすべて済んだ。 切替へ進んでよい。</summary>
+    Proceed,
+
+    /// <summary>利用者が「戻る」 を選んだ (または確認が成立しなかった)。 切替しない。 理由は利用者が分かっているので表示しない。</summary>
+    Cancelled,
+
+    /// <summary>自動保存の保留分・保存中の編集を保存できなかった。 編集を失わないよう切替しない。</summary>
+    SaveFailed,
 }

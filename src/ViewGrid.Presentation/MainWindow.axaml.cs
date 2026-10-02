@@ -57,8 +57,46 @@ public partial class MainWindow : Window
             await vm.AssetLibrary.AddFilesAsync(paths);
     }
 
-    /// <summary>「ファイル → 終了」: Window を閉じる。</summary>
+    /// <summary>「ファイル → 終了」: Window を閉じる (未保存の編集の確認は <see cref="OnClosing"/> が行う)。</summary>
     private void OnExitClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Close();
+
+    /// <summary>確認の結果、 閉じてよいと決まった。 以後の <see cref="OnClosing"/> は素通しする。</summary>
+    private bool _closeApproved;
+
+    /// <summary>未保存の編集の確認ダイアログが出ている間 true (閉じるボタンの連打などで確認を重ねない)。</summary>
+    private bool _closePromptInFlight;
+
+    /// <summary>
+    /// 閉じるボタン・「ファイル → 終了」 で、 手動保存モードの未保存の編集があれば、 閉じる前に
+    /// 保存 / 破棄 / 戻る を確認する。 確認ダイアログはウィンドウがまだ開いているこの時点でしか出せない:
+    /// 最後のウィンドウが閉じた後に発火する <c>ShutdownRequested</c> では、 親ウィンドウが既に無く
+    /// ダイアログの表示が例外になり、 終了だけが取り消されて画面のないプロセスが残る。
+    /// 閉じるのをいったん取り消し (<c>Cancel</c> は最初の <c>await</c> より前に立てる)、 解決できたら閉じ直す。
+    /// OS のシャットダウン・アプリの強制終了 (ワークスペース切替の再起動など) は確認できないので素通しする。
+    /// </summary>
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        base.OnClosing(e);
+        if (e.Cancel || _closeApproved) return;
+        if (e.CloseReason != WindowCloseReason.WindowClosing) return;
+        if (DataContext is not MainWindowViewModel vm || !vm.HasUnsavedManualEdits) return;
+
+        e.Cancel = true;
+        if (_closePromptInFlight) return;
+        _closePromptInFlight = true;
+        _ = ConfirmThenCloseAsync(vm);
+    }
+
+    private async Task ConfirmThenCloseAsync(MainWindowViewModel vm)
+    {
+        bool proceed;
+        try { proceed = await vm.PrepareToCloseAsync(); }
+        finally { _closePromptInFlight = false; }
+
+        if (!proceed) return; // 「戻る」 / 保存失敗: 編集できる画面をそのまま残す
+        _closeApproved = true;
+        Close();
+    }
 
     /// <summary>
     /// 「ファイル → 設定...」 (Ctrl+,) で設定ダイアログを開く。 VM は DI から取得。
