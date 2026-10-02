@@ -98,10 +98,12 @@ public sealed partial class FitGridWeightToPlacementUseCase(
             grid, placement, copy, cellRect, drawX, drawW,
             effectiveSourceW, effectiveSourceH);
 
+        var drawXRounded = (int)Math.Round(drawX);
+        var drawWRounded = (int)Math.Round(drawW);
         LogFitDiagColumn(logger,
             copy.ScalingMode, effectiveSourceW, effectiveSourceH,
             cellRect.X, cellRect.Width,
-            (int)Math.Round(drawX), (int)Math.Round(drawW),
+            drawXRounded, drawWRounded,
             (int)leftPad, (int)inner, (int)rightPad);
 
         if (inner <= 0) return Result.Success;
@@ -165,10 +167,12 @@ public sealed partial class FitGridWeightToPlacementUseCase(
             grid, placement, copy, cellRect, drawY, drawH,
             effectiveSourceW, effectiveSourceH);
 
+        var drawYRounded = (int)Math.Round(drawY);
+        var drawHRounded = (int)Math.Round(drawH);
         LogFitDiagRow(logger,
             copy.ScalingMode, effectiveSourceW, effectiveSourceH,
             cellRect.Y, cellRect.Height,
-            (int)Math.Round(drawY), (int)Math.Round(drawH),
+            drawYRounded, drawHRounded,
             (int)topPad, (int)inner, (int)bottomPad);
 
         if (inner <= 0) return Result.Success;
