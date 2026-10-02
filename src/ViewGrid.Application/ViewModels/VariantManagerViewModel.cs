@@ -28,6 +28,7 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
     private readonly CreateLogicalCopyUseCase _createCopyUseCase;
     private readonly UpdateImageCopyUseCase _updateCopyUseCase;
     private readonly DeleteImageAssetUseCase _deleteAssetUseCase;
+    private readonly DuplicateImageCopyUseCase _duplicateCopyUseCase;
     private readonly IImageCopyRepository _copyRepository;
     private readonly IGridPlacementRepository _placementRepository;
     private readonly IConfirmationService _confirmation;
@@ -64,6 +65,7 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
         CreateLogicalCopyUseCase createCopyUseCase,
         UpdateImageCopyUseCase updateCopyUseCase,
         DeleteImageAssetUseCase deleteAssetUseCase,
+        DuplicateImageCopyUseCase duplicateCopyUseCase,
         IImageCopyRepository copyRepository,
         IGridPlacementRepository placementRepository,
         IConfirmationService confirmation,
@@ -75,6 +77,7 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
         _createCopyUseCase = createCopyUseCase;
         _updateCopyUseCase = updateCopyUseCase;
         _deleteAssetUseCase = deleteAssetUseCase;
+        _duplicateCopyUseCase = duplicateCopyUseCase;
         _copyRepository = copyRepository;
         _placementRepository = placementRepository;
         _confirmation = confirmation;
@@ -109,6 +112,44 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
     }
 
     private bool CanBeginCreateVariant() => Context.SelectedCandidate is not null && !Context.IsBusy;
+
+    /// <summary>
+    /// 選択中のバリアントを、 設定 (回転・crop・スケーリング・保護領域など) ごと複製して新しい候補を作る。
+    /// 「新規バリアント」 (元画像から初期値で作る) と違い、 いまの案を土台に別案を増やす用途。
+    /// 配置は触らないので、 元のバリアントと既存の配置は変わらない。 複製された候補を選択状態にする。
+    /// 新しい候補は既存の履歴コマンドの参照を壊さないので、 履歴は消さない。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanDuplicateSelectedCandidate))]
+    public async Task DuplicateSelectedCandidateAsync(CancellationToken ct = default)
+    {
+        var source = Context.SelectedCandidate;
+        if (source is null || Context.IsBusy) return;
+
+        try
+        {
+            Context.IsBusy = true;
+            var name = _loc.Format("Variant_DuplicateNameFmt", source.CopyDisplayName);
+            var result = await _duplicateCopyUseCase.ExecuteAsync(source.CopyId, name, ct);
+            if (result.IsError)
+            {
+                Context.StatusMessage = string.Join(", ", result.Errors);
+                return;
+            }
+
+            Context.StatusMessage = _loc.Format("Status_VariantDuplicatedFmt", source.CopyDisplayName, name);
+            _messenger.Send(new CopyLibraryChangedMessage());
+            await Context.LoadCandidatesAsync(ct);
+            Context.SelectedCandidate =
+                Context.Candidates.FirstOrDefault(c => c.CopyId == result.Value.Id) ?? Context.SelectedCandidate;
+            LogVariantDuplicated(_logger, source.CopyId, result.Value.Id);
+        }
+        finally
+        {
+            Context.IsBusy = false;
+        }
+    }
+
+    private bool CanDuplicateSelectedCandidate() => Context.SelectedCandidate is not null && !Context.IsBusy;
 
     /// <summary>新規作成フライアウトを閉じる (作成しない)。</summary>
     [RelayCommand]
@@ -341,10 +382,14 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
     {
         BeginCreateVariantCommand.NotifyCanExecuteChanged();
         DeleteSelectedCandidateCommand.NotifyCanExecuteChanged();
+        DuplicateSelectedCandidateCommand.NotifyCanExecuteChanged();
     }
 
     [LoggerMessage(EventId = 5004, Level = LogLevel.Information, Message = "配置タブから新規バリアント作成: asset={AssetId} copy={CopyId}")]
     private static partial void LogVariantCreated(ILogger logger, Guid assetId, Guid copyId);
+
+    [LoggerMessage(EventId = 5010, Level = LogLevel.Information, Message = "配置タブからバリアントを複製: source={SourceCopyId} new={NewCopyId}")]
+    private static partial void LogVariantDuplicated(ILogger logger, Guid sourceCopyId, Guid newCopyId);
 
     [LoggerMessage(EventId = 5005, Level = LogLevel.Information, Message = "配置タブからバリアント削除: copy={CopyId}")]
     private static partial void LogVariantDeleted(ILogger logger, Guid copyId);

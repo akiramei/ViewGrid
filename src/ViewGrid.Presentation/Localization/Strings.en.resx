@@ -432,6 +432,14 @@
   <data name="StatusBar_Workspace_Tooltip" xml:space="preserve"><value>The workspace currently open (switch it from File → Workspace)</value></data>
   <data name="Notice_WorkspaceMissingFallbackFmt" xml:space="preserve"><value>The data for workspace "{0}" was not found, so "{1}" was opened. If you moved the original data, switch from File → Workspace or import a backup zip.</value></data>
   <data name="Notice_WorkspaceMissingRecreatedFmt" xml:space="preserve"><value>The data for workspace "{0}" was not found, so it was recreated as an empty workspace. If you moved the original data, import a backup zip.</value></data>
+  <data name="Workspace_DuplicateVariant" xml:space="preserve"><value>Duplicate</value></data>
+  <data name="Workspace_DuplicateVariant_Tooltip" xml:space="preserve"><value>Duplicate the selected Variant together with its settings (crop, rotation, protected regions, and so on). Placements are not changed</value></data>
+  <data name="Variant_DuplicateNameFmt" xml:space="preserve"><value>{0} (copy)</value></data>
+  <data name="Status_VariantDuplicatedFmt" xml:space="preserve"><value>Duplicated "{0}": "{1}"</value></data>
+  <data name="Candidate_CropManualFmt" xml:space="preserve"><value>crop {0}×{1}</value></data>
+  <data name="Candidate_CropManual" xml:space="preserve"><value>crop</value></data>
+  <data name="Candidate_CropAuto" xml:space="preserve"><value>auto crop</value></data>
+  <data name="Candidate_RegionsFmt" xml:space="preserve"><value>protected regions {0}</value></data>
   <data name="Status_NoChange" xml:space="preserve"><value>No changes</value></data>
   <data name="Status_AssetDeletedSingleFmt" xml:space="preserve"><value>Deleted {0}.</value></data>
   <data name="Status_AssetDeletedCountFmt" xml:space="preserve"><value>Deleted {0} items.</value></data>

@@ -178,6 +178,14 @@
                                 <TextBlock Text="{loc:Tr Workspace_NewVariant}" />
                             </StackPanel>
                         </Button>
+                        <!-- 設定ごと複製: いまの案 (crop・回転・保護領域など) を土台に別案を増やす (新規バリアントは元画像から初期値) -->
+                        <Button Command="{Binding Variants.DuplicateSelectedCandidateCommand}"
+                                Classes="iconAccent"
+                                ToolTip.Tip="{loc:Tr Workspace_DuplicateVariant_Tooltip}">
+                            <StackPanel Classes="IconButtonContent">
+                                <TextBlock Text="{loc:Tr Workspace_DuplicateVariant}" />
+                            </StackPanel>
+                        </Button>
                         <Button Command="{Binding Variants.DeleteSelectedCandidateCommand}"
                                 Classes="iconDanger"
                                 ToolTip.Tip="{loc:Tr Workspace_DeleteVariant_Tooltip}">
@@ -308,6 +316,13 @@
                                              controls:FocusOnVisible.IsEnabled="True"
                                              KeyDown="OnEditingCandidateKeyDown"
                                              LostFocus="OnEditingCandidateLostFocus" />
+                                    <!-- 加工内容のバッジ (crop の寸法・自動 crop・保護領域の数)。 サムネは元画像と共通なので文字で見分ける -->
+                                    <TextBlock Text="{Binding BadgeLine}"
+                                               FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource SystemAccentColor}"
+                                               IsVisible="{Binding HasBadges}"
+                                               TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding SummaryLine}"
                                                FontSize="10"
                                                Opacity="0.55"

@@ -925,6 +925,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
                 // 別 Save 経路で View が直接更新される。SummaryLine のリアルタイム更新が必要なら
                 // CopyCandidateViewModel 側に [ObservableProperty] 化が必要になるが、現状は不要）。
                 existing.CopyName = copy.CopyName;
+                existing.ApplyCopy(copy); // 回転・crop・保護領域の要約も最新へ (保存・Undo 後に古い表示を残さない)
                 desiredCandidates.Add(existing);
             }
             else

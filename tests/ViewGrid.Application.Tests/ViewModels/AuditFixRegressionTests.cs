@@ -74,7 +74,7 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
             render, export, _picker, new NullLocalizationService(),
             NullLogger<GridOutputViewModel>.Instance);
         var variants = new VariantManagerViewModel(
-            createCopy, updateCopy, deleteAsset, _fx.CopyRepository, _fx.PlacementRepository, _confirm,
+            createCopy, updateCopy, deleteAsset, new DuplicateImageCopyUseCase(_fx.CopyRepository), _fx.CopyRepository, _fx.PlacementRepository, _confirm,
             _history, _messenger, new NullLocalizationService(),
             NullLogger<VariantManagerViewModel>.Instance);
         var structure = new GridStructureEditorViewModel(
@@ -794,5 +794,93 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
             Last = items.Select(i => (i.Copy.Id, i.Copy.ManualCrop, i.Copy.Alignment)).ToList();
             return new SkiaGridImageRenderer(new AutoCropCache()).RenderPngAsync(grid, items, options, ct);
         }
+    }
+
+    // ─── 候補の複製・識別 (ユーザビリティ評価) ───────────────────────────────
+
+    [Fact]
+    public async Task Duplicate_Selected_Candidate_Selects_The_Copy_Keeps_Settings_And_Leaves_The_Original()
+    {
+        var asset = await _fx.SeedAssetAsync(width: 100, height: 100);
+        var source = await _fx.SeedCopyAsync(asset.Id, "人物");
+        var edited = (await _fx.CopyRepository.FindByIdAsync(source.Id))!;
+        await _fx.CopyRepository.UpdateAsync(new ImageCopy
+        {
+            Id = edited.Id, AssetId = edited.AssetId, CopyName = edited.CopyName,
+            Transform = new ImageTransform(Rotation.Cw90, false, false),
+            ScalingMode = ScalingMode.UniformCover, Alignment = edited.Alignment, OccupySize = edited.OccupySize,
+            ManualCrop = new ManualCropFraction(0.1, 0.1, 0.5, 0.5),
+            CreatedAt = edited.CreatedAt, UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        await _vm.LoadCandidatesAsync();
+        _vm.SelectedCandidateNode = _vm.Candidates.Single(c => c.CopyId == source.Id);
+        await _vm.WaitPendingVariantAttachAsync();
+
+        await _vm.Variants.DuplicateSelectedCandidateAsync();
+
+        _vm.Candidates.Should().HaveCount(2);
+        var duplicate = _vm.SelectedCandidate!;
+        duplicate.CopyId.Should().NotBe(source.Id, "複製された候補が選択される");
+        duplicate.CopyName.Should().Be("Variant_DuplicateNameFmt(人物)");
+        var stored = (await _fx.CopyRepository.FindByIdAsync(duplicate.CopyId))!;
+        stored.ManualCrop.Should().NotBeNull("crop を引き継ぐ");
+        stored.Transform.Rotation.Should().Be(Rotation.Cw90);
+        (await _fx.CopyRepository.FindByIdAsync(source.Id))!.CopyName.Should().Be("人物");
+    }
+
+    [Fact]
+    public async Task Duplicate_Does_Not_Clear_The_Undo_History()
+    {
+        var (_, copy, placement) = await SeedSelectedPlacementAsync(autoSave: false);
+        await _vm.MoveOrSwapPlacementAsync(placement.Id, new CellPosition(1, 1));
+        _history.CanUndo.Should().BeTrue();
+        await _vm.LoadCandidatesAsync();
+        _vm.SelectedCandidateNode = _vm.Candidates.Single(c => c.CopyId == copy.Id);
+
+        await _vm.Variants.DuplicateSelectedCandidateAsync();
+
+        _history.CanUndo.Should().BeTrue("新しい候補は既存の履歴コマンドの参照を壊さない");
+    }
+
+    [Fact]
+    public async Task Duplicate_Is_Disabled_Without_A_Candidate_Selection()
+    {
+        var asset = await _fx.SeedAssetAsync();
+        await _fx.SeedCopyAsync(asset.Id, "A");
+        await _vm.LoadCandidatesAsync();
+        _vm.SelectedCandidateNode = _vm.CandidateGroups.Single(); // 見出し
+
+        _vm.Variants.DuplicateSelectedCandidateCommand.CanExecute(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Candidate_Badges_Show_The_Crop_And_Regions_And_Follow_Saved_Changes()
+    {
+        var (_, copy, _) = await SeedSelectedPlacementAsync(autoSave: false);
+        await _vm.LoadCandidatesAsync();
+        var candidate = _vm.Candidates.Single(c => c.CopyId == copy.Id);
+        candidate.HasBadges.Should().BeFalse("加工が無ければバッジは出ない");
+
+        SetManualCrop(_vm.Inspector.CopyProperties, 10, 10, 50, 40);
+        (await _vm.Inspector.CopyProperties.TrySaveAsync()).Should().BeTrue();
+        await _vm.ReloadFromMessageAsyncForTests();
+
+        candidate.HasBadges.Should().BeTrue("保存後の再読込で、 既存の候補 VM のバッジも更新される");
+        candidate.BadgeLine.Should().Contain("50").And.Contain("40", "crop の px 寸法が分かる");
+    }
+
+    [Fact]
+    public async Task Candidate_Summary_Rotation_Follows_Saved_Changes()
+    {
+        var (_, copy, _) = await SeedSelectedPlacementAsync(autoSave: false);
+        await _vm.LoadCandidatesAsync();
+        var candidate = _vm.Candidates.Single(c => c.CopyId == copy.Id);
+        candidate.SummaryLine.Should().EndWith("0°");
+
+        _vm.Inspector.CopyProperties.Rotation = Rotation.Cw90;
+        (await _vm.Inspector.CopyProperties.TrySaveAsync()).Should().BeTrue();
+        await _vm.ReloadFromMessageAsyncForTests();
+
+        candidate.SummaryLine.Should().EndWith("90°", "表示済みの要約値も保存後に同期する");
     }
 }

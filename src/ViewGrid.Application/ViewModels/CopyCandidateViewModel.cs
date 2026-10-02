@@ -17,7 +17,35 @@ public sealed partial class CopyCandidateViewModel : ObservableObject
     public string AssetFilename { get; }
     public string? ThumbnailPath { get; }
     public OccupySize OccupySize { get; }
-    public Rotation Rotation { get; }
+
+    /// <summary>元画像の幅 (px)。 手動 crop の寸法を px で示す要約に使う。</summary>
+    public int SourceWidth { get; }
+
+    /// <summary>元画像の高さ (px)。</summary>
+    public int SourceHeight { get; }
+
+    /// <summary>
+    /// 回転・crop・保護領域は、 候補リストの要約に出すため可変にして、 保存・Undo・再読込のたびに
+    /// <see cref="ApplyCopy"/> で DB の最新値へ同期する (古い要約が残ると候補の見分けが付かなくなる)。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SummaryLine))]
+    public partial Rotation Rotation { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BadgeLine))]
+    [NotifyPropertyChangedFor(nameof(HasBadges))]
+    public partial ManualCropFraction? ManualCrop { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BadgeLine))]
+    [NotifyPropertyChangedFor(nameof(HasBadges))]
+    public partial AutoCropSettings? AutoCrop { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BadgeLine))]
+    [NotifyPropertyChangedFor(nameof(HasBadges))]
+    public partial int RegionCount { get; set; }
 
     /// <summary>
     /// バリアント名。<c>null</c> または空白だけなら <see cref="CopyDisplayName"/> は
@@ -58,6 +86,49 @@ public sealed partial class CopyCandidateViewModel : ObservableObject
     public string SummaryLine =>
         $"{OccupySize.Width}×{OccupySize.Height} / {(int)Rotation}°";
 
+    /// <summary>
+    /// 同じ元画像から作った候補をサムネ (元アセットと共通) だけでは見分けられないため、 加工内容のバッジを
+    /// 文字で示す: 手動 crop (px 寸法) / 自動 crop / 保護領域の数。 加工が無ければ空。
+    /// </summary>
+    public string BadgeLine
+    {
+        get
+        {
+            var loc = LocAccessor.Current;
+            var parts = new List<string>();
+            if (ManualCrop is { } m)
+            {
+                var (_, _, w, h) = m.ToPixelBbox(SourceWidth, SourceHeight);
+                parts.Add(SourceWidth > 0 && SourceHeight > 0 && w > 0 && h > 0
+                    ? loc.Format("Candidate_CropManualFmt", w, h)
+                    : loc["Candidate_CropManual"]);
+            }
+            else if (AutoCrop is not null)
+            {
+                parts.Add(loc["Candidate_CropAuto"]);
+            }
+            if (RegionCount > 0)
+                parts.Add(loc.Format("Candidate_RegionsFmt", RegionCount));
+            return string.Join(" · ", parts);
+        }
+    }
+
+    /// <summary>加工バッジを出すか (View の IsVisible 用)。</summary>
+    public bool HasBadges => !string.IsNullOrEmpty(BadgeLine);
+
+    /// <summary>
+    /// DB の最新の <see cref="ImageCopy"/> から、 要約に出す加工内容 (回転・crop・保護領域) を同期する。
+    /// 名前の同期は呼び出し側 (<c>LoadCandidatesAsync</c>) が行う。
+    /// </summary>
+    public void ApplyCopy(ImageCopy copy)
+    {
+        ArgumentNullException.ThrowIfNull(copy);
+        Rotation = copy.Transform.Rotation;
+        ManualCrop = copy.ManualCrop;
+        AutoCrop = copy.AutoCrop;
+        RegionCount = copy.Regions.IsDefault ? 0 : copy.Regions.Length;
+    }
+
     public CopyCandidateViewModel(ImageCopy copy, ImageAsset asset, string? thumbnailPath)
     {
         ArgumentNullException.ThrowIfNull(copy);
@@ -68,6 +139,8 @@ public sealed partial class CopyCandidateViewModel : ObservableObject
         CopyName = copy.CopyName;
         ThumbnailPath = thumbnailPath;
         OccupySize = copy.OccupySize;
-        Rotation = copy.Transform.Rotation;
+        SourceWidth = asset.Size.Width;
+        SourceHeight = asset.Size.Height;
+        ApplyCopy(copy);
     }
 }

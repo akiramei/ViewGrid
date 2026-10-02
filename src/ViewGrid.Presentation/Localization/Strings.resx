@@ -432,6 +432,14 @@
   <data name="StatusBar_Workspace_Tooltip" xml:space="preserve"><value>いま開いているワークスペース（ファイル → ワークスペースで切替）</value></data>
   <data name="Notice_WorkspaceMissingFallbackFmt" xml:space="preserve"><value>ワークスペース「{0}」のデータが見つからなかったため、「{1}」を開きました。 元のデータを移動した場合は、 ファイル → ワークスペース から切り替えるか、 バックアップ zip を取り込んでください。</value></data>
   <data name="Notice_WorkspaceMissingRecreatedFmt" xml:space="preserve"><value>ワークスペース「{0}」のデータが見つからなかったため、 空のワークスペースとして作り直しました。 元のデータを移動した場合は、 バックアップ zip を取り込んでください。</value></data>
+  <data name="Workspace_DuplicateVariant" xml:space="preserve"><value>複製</value></data>
+  <data name="Workspace_DuplicateVariant_Tooltip" xml:space="preserve"><value>選択中のバリアントを、 crop・回転・保護領域などの設定ごと複製します。 配置は変わりません</value></data>
+  <data name="Variant_DuplicateNameFmt" xml:space="preserve"><value>{0} (複製)</value></data>
+  <data name="Status_VariantDuplicatedFmt" xml:space="preserve"><value>「{0}」を複製しました: 「{1}」</value></data>
+  <data name="Candidate_CropManualFmt" xml:space="preserve"><value>crop {0}×{1}</value></data>
+  <data name="Candidate_CropManual" xml:space="preserve"><value>crop</value></data>
+  <data name="Candidate_CropAuto" xml:space="preserve"><value>自動 crop</value></data>
+  <data name="Candidate_RegionsFmt" xml:space="preserve"><value>保護領域 {0}</value></data>
   <data name="Status_NoChange" xml:space="preserve"><value>変更なし</value></data>
   <data name="Status_AssetDeletedSingleFmt" xml:space="preserve"><value>{0} を削除しました。</value></data>
   <data name="Status_AssetDeletedCountFmt" xml:space="preserve"><value>{0} 件削除しました。</value></data>

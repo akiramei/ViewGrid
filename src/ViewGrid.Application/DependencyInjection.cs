@@ -24,6 +24,7 @@ public static class DependencyInjection
         // UseCases
         services.AddScoped<ImportImageUseCase>();
         services.AddScoped<CreateLogicalCopyUseCase>();
+        services.AddScoped<DuplicateImageCopyUseCase>();
         services.AddScoped<UpdateImageCopyUseCase>();
         services.AddScoped<DeleteImageAssetUseCase>();
         services.AddScoped<CreateGridCanvasUseCase>();
