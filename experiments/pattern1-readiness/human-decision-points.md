@@ -84,6 +84,18 @@ deliberate_decisions:
 | 推奨 / ★ 裁定 | ✅ **(a) flush-then-undo** (2026-10-02 ユーザー裁定) |
 | 反映先 | GRID BOM の `deliberate_decisions` に `D-UNDO-PENDING` (anchor: `Audit_UndoMustNotSavePendingDraftAfterUndoAndDestroyRedo`)。実コード変更なし (実装済み)。 |
 
+## C02 — 出力 (Preview / PNG) 時の未保存編集の扱い (2026-10-02 追補)
+不具合調査報告 (2026-10-02) の C02 で表面化。実コード修正 (797f13c) は現状の挙動で実装済みで、本節はその意図を確定・記録する。
+
+| 項目 | 内容 |
+| --- | --- |
+| subject | 出力時に未保存の編集 (draft) をどう扱うか。特に手動保存モード |
+| 現挙動 | `GridOutputViewModel.cs:194,214,250` が出力前に保留保存を確定 (`FlushAllPendingEditsAsync`)。auto-save ON で保存失敗が残れば `Status_OutputAbortedSaveFailed` で中止。auto-save OFF は draft を保存せず DB の保存済み値で出力。 |
+| 選択肢 | **(a) 現状**: 出力は保存済み値。auto-save ON は出力前に確定し、失敗なら中止 / (b) 手動保存モードでも出力前に自動保存 / (c) draft をそのままレンダラーへ渡す (画面と出力が一致) |
+| 影響 | (b) は「Save するまで永続化しない」を崩し、意図しない履歴が積まれる。(c) はレンダラーが永続値以外を入力に持つ契約変更になり、出力内容が保存されないまま消える。(a) は手動保存モードで画面と出力がずれうるが、保存の意味を保つ。 |
+| ★ 裁定 | ✅ **(a) 現状のまま確定** (2026-10-02 ユーザー裁定) |
+| 反映先 | RENDERING BOM の `deliberate_decisions` に `D-OUTPUT-PENDING`。実コード変更なし。画面と出力のずれへの警告表示は別判断として `open_ux_note` に残す。 |
+
 ## 反映 (裁定後・実施済)
 1. ✅ ユーザー裁定 (3 件とも推奨採用、2026-06-01)。
 2. ✅ `deliberate_decisions` を該当 BOM へ反映: IMAGE_VARIANT=D2a/D2b、GRID=D-PV。
