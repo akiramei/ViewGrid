@@ -1034,6 +1034,8 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
     public async Task Live_Preview_Follows_Output_Options_And_Coalesces_A_Burst_Into_One_Render()
     {
         await SeedSelectedPlacementAsync(autoSave: false);
+        // まとめる窓を長めにする: 4 回の変更が負荷で数十 ms 離れても同じ窓に入る (短い窓だと 2 回に分かれて偶発的に失敗する)。
+        _vm.Output.LivePreviewDebounce = TimeSpan.FromMilliseconds(1500);
         var (handle, _) = await StartLiveAsync();
         using var live = handle;
 

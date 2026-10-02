@@ -31,8 +31,9 @@ public sealed class LivePreviewRefresherTests
     {
         var renders = 0;
         var results = new List<byte[]?>();
+        // まとめる窓を長めにする: 20 回の要求が負荷で途中で止まっても同じ窓に入る (短い窓だと偶発的に 2 回に分かれる)。
         using var refresher = new LivePreviewRefresher(
-            Short,
+            TimeSpan.FromMilliseconds(1000),
             _ => Task.FromResult<byte[]?>([(byte)Interlocked.Increment(ref renders)]),
             b => { lock (results) results.Add(b); });
 

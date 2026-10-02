@@ -29,6 +29,31 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
         await Vm.WaitPendingVariantAttachAsync();
     }
 
+    // ─── 検証用の DB 読取り ──────────────────────────────────────────────────
+    // アプリの DbContext は 1 本を全 VM が共有していて、 並行して使うと EF が「同時に 2 つの操作」 例外を投げる。
+    // 保存のたびに非同期の後処理 (候補ライブラリ変更の再読込・選択切替の attach) が走るので、 保存・編集の直後に
+    // テストが直接読むと、 その後処理と重なって失敗する。 読む前に、 後処理がすべて終わる同期点を挟む
+    // (固定時間の待機や再試行ではなく、 完了を待つ)。 製品側の並行アクセスは隠さない:
+    // 独立した DbContext は使わず、 EF の同時利用の検出もそのまま有効にしている。
+
+    private async Task<ImageCopy?> ReadCopyAsync(Guid id)
+    {
+        await Vm.WaitForBackgroundWorkAsync();
+        return await _h.Fx.CopyRepository.FindByIdAsync(id);
+    }
+
+    private async Task<GridCanvas?> ReadGridAsync(Guid id)
+    {
+        await Vm.WaitForBackgroundWorkAsync();
+        return await _h.Fx.GridRepository.FindByIdAsync(id);
+    }
+
+    private async Task<IReadOnlyList<ImageCopy>> ReadAllCopiesAsync()
+    {
+        await Vm.WaitForBackgroundWorkAsync();
+        return await _h.Fx.CopyRepository.FindAllAsync();
+    }
+
     /// <summary>配置 A を選び、 A の共有特性に未保存の編集 (左右反転) を入れる。</summary>
     private async Task<(ImageCopy A, ImageCopy B)> SeedAndEditAsync(bool autoSave)
     {
@@ -40,7 +65,7 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
     }
 
     private async Task<bool> FlipXStoredAsync(Guid copyId) =>
-        (await _h.Fx.CopyRepository.FindByIdAsync(copyId))!.Transform.FlipX;
+        (await ReadCopyAsync(copyId))!.Transform.FlipX;
 
     // ─── R01: 選択を戻しても編集対象が別のバリアントに残る ──────────────────────────
 
@@ -77,8 +102,8 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
         // この状態で編集・保存しても、 変わるのは選択中の A だけ。
         Vm.VariantProperties.FlipX = true;
         (await Vm.VariantProperties.TrySaveAsync()).Should().BeTrue();
-        (await _h.Fx.CopyRepository.FindByIdAsync(a.Id))!.Transform.FlipX.Should().BeTrue();
-        (await _h.Fx.CopyRepository.FindByIdAsync(b.Id))!.Transform.FlipX.Should().BeFalse("選択していない B を変更してはならない");
+        (await ReadCopyAsync(a.Id))!.Transform.FlipX.Should().BeTrue();
+        (await ReadCopyAsync(b.Id))!.Transform.FlipX.Should().BeFalse("選択していない B を変更してはならない");
     }
 
     [Fact]
@@ -191,7 +216,7 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
         _confirm.Answer(UnsavedChoice.Save);
 
         (await closing).Should().BeTrue();
-        (await _h.Fx.GridRepository.FindByIdAsync(grid.Id))!.Name.Should().Be("after");
+        (await ReadGridAsync(grid.Id))!.Name.Should().Be("after");
     }
 
     // ─── R05: 編集直後の複製が古い保存値を引き継ぐ ──────────────────────────────────
@@ -202,7 +227,7 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
     {
         await Vm.LoadCandidatesAsync();
         Vm.SelectedCandidate = Vm.Candidates.Single(c => c.CopyId == sourceCopyId);
-        var before = (await _h.Fx.CopyRepository.FindAllAsync()).Select(c => c.Id).ToHashSet();
+        var before = (await ReadAllCopiesAsync()).Select(c => c.Id).ToHashSet();
 
         var duplicating = Vm.Variants.DuplicateSelectedCandidateAsync();
         if (waitForPrompt)
@@ -212,7 +237,7 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
         }
         await duplicating;
 
-        var after = await _h.Fx.CopyRepository.FindAllAsync();
+        var after = await ReadAllCopiesAsync();
         return after.SingleOrDefault(c => !before.Contains(c.Id));
     }
 
@@ -303,7 +328,7 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
         cp.FlipY.Should().BeTrue("画面の入力はそのまま残る");
 
         (await cp.TrySaveAsync()).Should().BeTrue();   // 次の保存 (明示保存または自動保存) で届く
-        (await _h.Fx.CopyRepository.FindByIdAsync(copyId))!.Transform.FlipY.Should().BeTrue();
+        (await ReadCopyAsync(copyId))!.Transform.FlipY.Should().BeTrue();
         cp.IsDirty.Should().BeFalse();
     }
 
@@ -359,8 +384,11 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
         while (Environment.TickCount64 < until && cp.IsDirty)
             await Task.Delay(50);
 
+        // 未保存フラグが消えた直後は、 保存の後処理 (再読込の通知) がまだ積まれる途中かもしれない。 保存の完了 (保留中の
+        // 自動保存を含む) を待ってから、 後処理の完了を待って読む。
+        (await Vm.FlushAllPendingEditsAsync()).Should().BeTrue();
         cp.IsDirty.Should().BeFalse("最後の入力まで自動保存された");
-        var stored = (await _h.Fx.CopyRepository.FindByIdAsync(a.Id))!;
+        var stored = (await ReadCopyAsync(a.Id))!;
         stored.Transform.FlipX.Should().BeTrue();
         stored.Transform.FlipY.Should().BeTrue("最後の入力が自動保存で DB へ届く");
     }
@@ -419,7 +447,7 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
 
         item.EditingName = "fixed";
         (await Vm.FlushAllPendingEditsAsync()).Should().BeTrue("訂正して保存できれば成功に戻る");
-        (await _h.Fx.GridRepository.FindByIdAsync(item.GridId))!.CanvasSize.Width.Should().Be(800);
+        (await ReadGridAsync(item.GridId))!.CanvasSize.Width.Should().Be(800);
     }
 
     // ─── R03: ワークスペース切替が自動保存完了を待たない ───────────────────────────

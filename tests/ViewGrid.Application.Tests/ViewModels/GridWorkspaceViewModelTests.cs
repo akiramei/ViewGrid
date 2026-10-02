@@ -1214,6 +1214,9 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         _vm.Inspector.CopyProperties.AutoCropPreset = AutoCropPreset.White;
         _vm.Inspector.CopyProperties.AutoCropThreshold = 10;
         (await _vm.Inspector.TrySaveAllAsync()).Should().BeTrue();
+        // 保存の後処理 (候補ライブラリ変更の再読込) が走っている間に、 同じ DbContext を直接読むと
+        // EF の同時利用の例外になる。 完了を待ってから読む。
+        await _vm.WaitForBackgroundWorkAsync();
         (await _fx.CopyRepository.FindByIdAsync(copyB.Id))!.AutoCrop
             .Should().NotBeNull("保存直後は AutoCrop が DB にあるべき");
 
@@ -1224,6 +1227,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
         // ここで自動保存が走る (別セル選択で flush + 直接 commit される経路を模す)
         await _vm.SelectPlacementAsync(cell00);
         await _vm.Inspector.FlushAutoSaveAsync();
+        await _vm.WaitForBackgroundWorkAsync();
 
         (await _fx.CopyRepository.FindByIdAsync(copyB.Id))!.AutoCrop
             .Should().NotBeNull("セル切替後の自動保存で AutoCrop が消えてはならない");

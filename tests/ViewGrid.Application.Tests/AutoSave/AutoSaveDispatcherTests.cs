@@ -59,8 +59,9 @@ public sealed class AutoSaveDispatcherTests
             return Task.CompletedTask;
         });
 
+        // Schedule 直後に (await を挟まず) Cancel する = 必ず保留中。 間に待機を挟むと、 負荷で遅れて debounce を
+        // 超えた場合に、 Cancel より先に saveAction が始まって偶発的に失敗する。
         dispatcher.Schedule();
-        await Task.Delay(30);
         dispatcher.Cancel();
         await Task.Delay(300);
 
@@ -150,8 +151,10 @@ public sealed class AutoSaveDispatcherTests
             Interlocked.Increment(ref calls);
         });
 
+        // Schedule 直後に (await を挟まず) Dispose する = 必ず保留中 (まだ saveAction は始まっていない)。
+        // 以前は間に Task.Delay(30) を挟んでいたが、 負荷で遅れて debounce (100ms) を超えると、 Dispose より先に
+        // saveAction が始まって偶発的に失敗した。
         dispatcher.Schedule();
-        await Task.Delay(30);  // 保留中 (まだ saveAction は始まっていない)
         dispatcher.Dispose();
         await Task.Delay(300);
 
