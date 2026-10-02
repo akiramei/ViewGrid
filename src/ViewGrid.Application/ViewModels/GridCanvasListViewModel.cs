@@ -31,6 +31,8 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
     private readonly DeleteGridCanvasUseCase _deleteUseCase;
     private readonly RenameGridCanvasUseCase _renameUseCase;
     private readonly UpdateGridCanvasSizeUseCase _updateCanvasSizeUseCase;
+    private readonly IGridPlacementRepository _placementRepository;
+    private readonly IConfirmationService _confirmation;
     private readonly IAppSettingsService _appSettings;
     private readonly IUndoRedoService _history;
     private readonly ILocalizationService _loc;
@@ -120,6 +122,8 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
         DeleteGridCanvasUseCase deleteUseCase,
         RenameGridCanvasUseCase renameUseCase,
         UpdateGridCanvasSizeUseCase updateCanvasSizeUseCase,
+        IGridPlacementRepository placementRepository,
+        IConfirmationService confirmation,
         IAppSettingsService appSettings,
         IUndoRedoService history,
         ILocalizationService loc,
@@ -130,6 +134,8 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
         _deleteUseCase = deleteUseCase;
         _renameUseCase = renameUseCase;
         _updateCanvasSizeUseCase = updateCanvasSizeUseCase;
+        _placementRepository = placementRepository;
+        _confirmation = confirmation;
         _appSettings = appSettings;
         _history = history;
         _loc = loc;
@@ -371,6 +377,19 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
     {
         var selected = SelectedGrid;
         if (selected is null || IsSaving || IsLoading) return;
+
+        // 削除は配置を cascade で消し、 履歴も全消去して Undo できない。 実行前に対象と影響 (配置の件数)
+        // を示して確認する。 取り消した場合は DB・履歴を一切変えない (IsSaving も立てない)。
+        var placementCount = (await _placementRepository.FindByGridIdAsync(selected.GridId, ct)).Count;
+        var confirmed = await _confirmation.ConfirmAsync(
+            _loc["Confirm_DeleteGrid_Title"],
+            _loc.Format("Confirm_DeleteGrid_MessageFmt", selected.Name, placementCount),
+            _loc["Common_Delete"],
+            ct);
+        if (!confirmed) return;
+        // 確認中に選択や処理状態が変わっていたら、 確認した対象と違うものを消さないよう中止する。
+        if (!ReferenceEquals(SelectedGrid, selected) || IsSaving || IsLoading) return;
+
         try
         {
             IsSaving = true;

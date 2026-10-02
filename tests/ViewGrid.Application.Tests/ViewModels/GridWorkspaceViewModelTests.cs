@@ -86,7 +86,7 @@ public sealed class GridWorkspaceViewModelTests : IAsyncLifetime
             render, export, picker, new NullLocalizationService(),
             NullLogger<GridOutputViewModel>.Instance);
         var variants = new VariantManagerViewModel(
-            createCopy, updateCopy, deleteAsset, _fx.CopyRepository,
+            createCopy, updateCopy, deleteAsset, _fx.CopyRepository, _fx.PlacementRepository, new AutoConfirmationService(),
             _history, _messenger, new NullLocalizationService(),
             NullLogger<VariantManagerViewModel>.Instance);
         var structure = new GridStructureEditorViewModel(

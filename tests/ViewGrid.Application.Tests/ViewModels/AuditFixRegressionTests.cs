@@ -29,6 +29,7 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
     private UndoRedoService _history = null!;
     private GridWorkspaceViewModel _vm = null!;
     private readonly CaptureRenderer _capture = new();
+    private readonly AutoConfirmationService _confirm = new();
     private readonly IFilePickerService _picker = Substitute.For<IFilePickerService>();
 
     public async Task InitializeAsync()
@@ -73,7 +74,7 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
             render, export, _picker, new NullLocalizationService(),
             NullLogger<GridOutputViewModel>.Instance);
         var variants = new VariantManagerViewModel(
-            createCopy, updateCopy, deleteAsset, _fx.CopyRepository,
+            createCopy, updateCopy, deleteAsset, _fx.CopyRepository, _fx.PlacementRepository, _confirm,
             _history, _messenger, new NullLocalizationService(),
             NullLogger<VariantManagerViewModel>.Instance);
         var structure = new GridStructureEditorViewModel(
@@ -295,6 +296,74 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
 
         _vm.SelectedCandidate.Should().BeSameAs(candidate);
         _vm.SelectedCandidateNode.Should().BeSameAs(candidate);
+    }
+
+    // ─── 削除の確認 (ユーザビリティ評価: 確認なしの不可逆削除) ───────────────────
+
+    [Fact]
+    public async Task Delete_Variant_Asks_With_Placement_Count_And_Deletes_On_Confirm()
+    {
+        var (_, copy, _) = await SeedSelectedPlacementAsync(autoSave: false);
+        var second = await _fx.SeedCopyAsync(copy.AssetId, "second"); // 最後のバリアントではない
+        await _vm.LoadCandidatesAsync();
+        _vm.SelectedCandidateNode = _vm.Candidates.Single(c => c.CopyId == copy.Id);
+
+        await _vm.Variants.DeleteSelectedCandidateAsync();
+
+        _confirm.Requests.Should().ContainSingle();
+        _confirm.Requests[0].Title.Should().Be("Confirm_DeleteVariant_Title");
+        _confirm.Requests[0].Message.Should().Be("Confirm_DeleteVariant_MessageFmt(original,1)");
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id)).Should().BeNull();
+        (await _fx.CopyRepository.FindByIdAsync(second.Id)).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Delete_Last_Variant_Warns_That_The_Image_Itself_Is_Deleted()
+    {
+        var (_, copy, _) = await SeedSelectedPlacementAsync(autoSave: false);
+        await _vm.LoadCandidatesAsync();
+        _vm.SelectedCandidateNode = _vm.Candidates.Single(c => c.CopyId == copy.Id);
+
+        await _vm.Variants.DeleteSelectedCandidateAsync();
+
+        _confirm.Requests.Should().ContainSingle();
+        _confirm.Requests[0].Message.Should().StartWith("Confirm_DeleteLastVariant_MessageFmt(original,");
+        _confirm.Requests[0].Message.Should().EndWith(",1)", "最後に配置件数 1 が渡る");
+    }
+
+    [Fact]
+    public async Task Delete_Variant_Declined_Changes_Nothing()
+    {
+        var (_, copy, placement) = await SeedSelectedPlacementAsync(autoSave: false);
+        await _fx.SeedCopyAsync(copy.AssetId, "second");
+        await _vm.LoadCandidatesAsync();
+        _vm.SelectedCandidateNode = _vm.Candidates.Single(c => c.CopyId == copy.Id);
+        _history.Clear();
+        // 履歴に 1 件積む (取消が履歴を全消去しないことを確認するため)。
+        await _vm.MoveOrSwapPlacementAsync(placement.Id, new CellPosition(1, 1));
+        _history.CanUndo.Should().BeTrue();
+        _confirm.Answer = false;
+
+        await _vm.Variants.DeleteSelectedCandidateAsync();
+
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id)).Should().NotBeNull("取消でバリアントは消えない");
+        (await _fx.PlacementRepository.FindByIdAsync(placement.Id)).Should().NotBeNull("配置も消えない");
+        _vm.Candidates.Should().Contain(c => c.CopyId == copy.Id);
+        _vm.IsBusy.Should().BeFalse();
+        _history.CanUndo.Should().BeTrue("取消した削除は履歴を全消去しない");
+    }
+
+    [Fact]
+    public async Task Delete_Variant_Declined_Keeps_The_Asset_Even_For_The_Last_Variant()
+    {
+        var (_, copy, _) = await SeedSelectedPlacementAsync(autoSave: false);
+        await _vm.LoadCandidatesAsync();
+        _vm.SelectedCandidateNode = _vm.Candidates.Single(c => c.CopyId == copy.Id);
+        _confirm.Answer = false;
+
+        await _vm.Variants.DeleteSelectedCandidateAsync();
+
+        (await _fx.AssetRepository.FindByIdAsync(copy.AssetId)).Should().NotBeNull("画像本体も消えない");
     }
 
     // ─── C01 (逆方向): 候補単体で保存 → Inspector 側の古いスナップショットを再同期 ──────

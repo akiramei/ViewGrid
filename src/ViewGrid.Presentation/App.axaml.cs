@@ -74,6 +74,8 @@ public partial class App : global::Avalonia.Application
 
                 // FilePickerService は MainWindow を owner として使うので、ここで注入する
                 _services.GetRequiredService<AvaloniaFilePickerService>().SetOwnerWindow(window);
+                // 削除などの確認ダイアログも MainWindow を owner にする
+                _services.GetRequiredService<AvaloniaConfirmationService>().SetOwnerWindow(window);
 
                 // キャプチャモードではウィンドウサイズを固定し、スクリーンショットの寸法を一定にする。
                 if (_services.GetRequiredService<CaptureModeState>().IsActive)

@@ -487,6 +487,17 @@
   <data name="Confirm_DeleteAsset_MessageFmt" xml:space="preserve"><value>アセット「{0}」と紐づく {1} バリアントを削除します。
 このアセットを参照している全配置も削除され、操作履歴はリセットされます。
 この操作は元に戻せません。続行しますか？</value></data>
+  <data name="Confirm_DeleteVariant_Title" xml:space="preserve"><value>バリアントの削除</value></data>
+  <data name="Confirm_DeleteVariant_MessageFmt" xml:space="preserve"><value>バリアント「{0}」を削除します。
+このバリアントを使っている配置 {1} 件も削除され、操作履歴はリセットされます。
+この操作は元に戻せません。続行しますか？</value></data>
+  <data name="Confirm_DeleteLastVariant_MessageFmt" xml:space="preserve"><value>「{0}」は画像「{1}」の最後のバリアントです。削除すると、ワークスペース内の画像とサムネイルも削除されます（取り込み元のファイルは削除されません）。
+この画像を使っている配置 {2} 件も削除され、操作履歴はリセットされます。
+この操作は元に戻せません。続行しますか？</value></data>
+  <data name="Confirm_DeleteGrid_Title" xml:space="preserve"><value>グリッドの削除</value></data>
+  <data name="Confirm_DeleteGrid_MessageFmt" xml:space="preserve"><value>グリッド「{0}」を削除します。
+このグリッドの配置 {1} 件も削除され、操作履歴はリセットされます。
+この操作は元に戻せません。続行しますか？</value></data>
   <data name="Confirm_DeleteWorkspace_Title" xml:space="preserve"><value>ワークスペースを削除</value></data>
   <data name="Confirm_DeleteWorkspace_MessageFmt" xml:space="preserve"><value>「{0}」を削除しますか?
 workspaces/.trash/ にバックアップが残るため、 必要なら手動で復元できます。</value></data>

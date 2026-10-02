@@ -64,7 +64,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         var renameGrid = new RenameGridCanvasUseCase(_fx.GridRepository);
         var updateGridSize = new UpdateGridCanvasSizeUseCase(_fx.GridRepository);
         _gridList = new GridCanvasListViewModel(
-            _fx.GridRepository, createGrid, deleteGrid, renameGrid, updateGridSize, _fx.AppSettings, sharedHistory,
+            _fx.GridRepository, createGrid, deleteGrid, renameGrid, updateGridSize, _fx.PlacementRepository, new AutoConfirmationService(), _fx.AppSettings, sharedHistory,
             new NullLocalizationService(),
             NullLogger<GridCanvasListViewModel>.Instance);
 
@@ -101,7 +101,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
             render, export, picker, new NullLocalizationService(),
             NullLogger<GridOutputViewModel>.Instance);
         var variants = new VariantManagerViewModel(
-            createCopy, updateCopy, deleteAsset, _fx.CopyRepository,
+            createCopy, updateCopy, deleteAsset, _fx.CopyRepository, _fx.PlacementRepository, new AutoConfirmationService(),
             sharedHistory, _messenger, new NullLocalizationService(),
             NullLogger<VariantManagerViewModel>.Instance);
         var structure = new GridStructureEditorViewModel(

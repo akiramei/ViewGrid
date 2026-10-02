@@ -29,6 +29,8 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
     private readonly UpdateImageCopyUseCase _updateCopyUseCase;
     private readonly DeleteImageAssetUseCase _deleteAssetUseCase;
     private readonly IImageCopyRepository _copyRepository;
+    private readonly IGridPlacementRepository _placementRepository;
+    private readonly IConfirmationService _confirmation;
     private readonly IUndoRedoService _history;
     private readonly IMessenger _messenger;
     private readonly ILocalizationService _loc;
@@ -63,6 +65,8 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
         UpdateImageCopyUseCase updateCopyUseCase,
         DeleteImageAssetUseCase deleteAssetUseCase,
         IImageCopyRepository copyRepository,
+        IGridPlacementRepository placementRepository,
+        IConfirmationService confirmation,
         IUndoRedoService history,
         IMessenger messenger,
         ILocalizationService loc,
@@ -72,6 +76,8 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
         _updateCopyUseCase = updateCopyUseCase;
         _deleteAssetUseCase = deleteAssetUseCase;
         _copyRepository = copyRepository;
+        _placementRepository = placementRepository;
+        _confirmation = confirmation;
         _history = history;
         _messenger = messenger;
         _loc = loc;
@@ -174,16 +180,32 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
         var target = Context.SelectedCandidate;
         if (target is null || Context.IsBusy) return;
 
+        var label = target.CopyDisplayName;
+
+        // このアセットの最後のバリアントか判定する。 そうなら親アセットごと
+        // cascade 削除する (孤児アセット = アセット件数だけ残って候補リストから
+        // 完全に見えなくなる状態を防止)。
+        var group = Context.CandidateGroups.FirstOrDefault(g => g.AssetId == target.AssetId);
+        var isLastVariant = group is not null && group.Variants.Count == 1;
+
+        // 削除は配置を cascade で消し、 履歴も全消去して Undo できない。 実行前に対象と影響
+        // (配置の件数・最後のバリアントなら画像本体も消えること) を示して確認する。
+        // 取り消した場合は DB・画像・履歴を一切変えない (IsBusy も立てない)。
+        var placementCount = (await _placementRepository.FindByCopyIdAsync(target.CopyId, ct)).Count;
+        var confirmed = await _confirmation.ConfirmAsync(
+            _loc["Confirm_DeleteVariant_Title"],
+            isLastVariant
+                ? _loc.Format("Confirm_DeleteLastVariant_MessageFmt", label, target.AssetFilename, placementCount)
+                : _loc.Format("Confirm_DeleteVariant_MessageFmt", label, placementCount),
+            _loc["Common_Delete"],
+            ct);
+        if (!confirmed) return;
+        // 確認中に選択や処理中状態が変わっていたら、 確認した対象と違うものを消さないよう中止する。
+        if (!ReferenceEquals(Context.SelectedCandidate, target) || Context.IsBusy) return;
+
         try
         {
             Context.IsBusy = true;
-            var label = target.CopyDisplayName;
-
-            // このアセットの最後のバリアントか判定する。 そうなら親アセットごと
-            // cascade 削除する (孤児アセット = アセット件数だけ残って候補リストから
-            // 完全に見えなくなる状態を防止)。
-            var group = Context.CandidateGroups.FirstOrDefault(g => g.AssetId == target.AssetId);
-            var isLastVariant = group is not null && group.Variants.Count == 1;
 
             if (isLastVariant)
             {

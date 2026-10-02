@@ -13,6 +13,8 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
 {
     private UseCaseFixture _fx = null!;
     private GridCanvasListViewModel _vm = null!;
+    private readonly AutoConfirmationService _confirm = new();
+    private UndoRedoService _history = null!;
 
     public async Task InitializeAsync()
     {
@@ -22,8 +24,9 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         var rename = new RenameGridCanvasUseCase(_fx.GridRepository);
         var updateSize = new UpdateGridCanvasSizeUseCase(_fx.GridRepository);
         var history = new UndoRedoService();
+        _history = history;
         _vm = new GridCanvasListViewModel(
-            _fx.GridRepository, create, delete, rename, updateSize, _fx.AppSettings, history,
+            _fx.GridRepository, create, delete, rename, updateSize, _fx.PlacementRepository, _confirm, _fx.AppSettings, history,
             new NullLocalizationService(),
             NullLogger<GridCanvasListViewModel>.Instance);
     }
@@ -108,7 +111,7 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         var updateSize = new UpdateGridCanvasSizeUseCase(_fx.GridRepository);
         var history = new UndoRedoService();
         var vm2 = new GridCanvasListViewModel(
-            _fx.GridRepository, create, delete, rename, updateSize, _fx.AppSettings, history,
+            _fx.GridRepository, create, delete, rename, updateSize, _fx.PlacementRepository, _confirm, _fx.AppSettings, history,
             new NullLocalizationService(),
             NullLogger<GridCanvasListViewModel>.Instance);
 
@@ -116,6 +119,60 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
 
         vm2.SelectedGrid.Should().NotBeNull();
         vm2.SelectedGrid!.Name.Should().Be("a");
+    }
+
+    [Fact]
+    public async Task DeleteSelectedAsync_Asks_For_Confirmation_With_Name_And_Placement_Count()
+    {
+        var grid = await SeedGridWithPlacementsAsync(2);
+        await _vm.LoadAsync();
+        _vm.SelectedGrid = _vm.Grids.Single(g => g.GridId == grid.Id);
+
+        await _vm.DeleteSelectedAsync();
+
+        _confirm.Requests.Should().ContainSingle();
+        _confirm.Requests[0].Title.Should().Be("Confirm_DeleteGrid_Title");
+        _confirm.Requests[0].Message.Should().Be($"Confirm_DeleteGrid_MessageFmt({grid.Name},2)");
+        (await _fx.GridRepository.FindByIdAsync(grid.Id)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DeleteSelectedAsync_Declined_Changes_Nothing_Including_History()
+    {
+        var grid = await SeedGridWithPlacementsAsync(1);
+        await _vm.LoadAsync();
+        _vm.SelectedGrid = _vm.Grids.Single(g => g.GridId == grid.Id);
+        // 履歴に 1 件積んでおく (取消した削除が履歴を全消去しないことを確認するため)。
+        _vm.SelectedGrid!.EditingName = "renamed-before-delete";
+        (await _vm.TryCommitEditingForAsync(_vm.SelectedGrid)).Should().BeTrue();
+        _history.CanUndo.Should().BeTrue();
+        _confirm.Answer = false;
+
+        await _vm.DeleteSelectedAsync();
+
+        (await _fx.GridRepository.FindByIdAsync(grid.Id)).Should().NotBeNull("取消でグリッドは消えない");
+        (await _fx.PlacementRepository.FindByGridIdAsync(grid.Id)).Should().HaveCount(1, "配置も消えない");
+        _vm.Grids.Should().Contain(g => g.GridId == grid.Id);
+        _vm.IsBusy.Should().BeFalse();
+        _history.CanUndo.Should().BeTrue("取消した削除は履歴を全消去しない");
+    }
+
+    private async Task<GridCanvas> SeedGridWithPlacementsAsync(int placementCount)
+    {
+        var asset = await _fx.SeedAssetAsync();
+        var copy = await _fx.SeedCopyAsync(asset.Id, "c");
+        var grid = new GridCanvas
+        {
+            Id = Guid.NewGuid(), Name = "to-delete", GridRows = 2, GridCols = 2,
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+            CanvasSize = new PixelSize(400, 400),
+            ColWeights = GridCanvas.UniformWeights(2), RowWeights = GridCanvas.UniformWeights(2),
+        };
+        (await _fx.GridRepository.AddAsync(grid)).IsError.Should().BeFalse();
+        var place = new PlaceImageCopyUseCase(_fx.GridRepository, _fx.CopyRepository, _fx.PlacementRepository);
+        for (var i = 0; i < placementCount; i++)
+            (await place.ExecuteAsync(grid.Id, copy.Id, new CellPosition(i % 2, i / 2))).IsError.Should().BeFalse();
+        return grid;
     }
 
     [Fact]
@@ -322,7 +379,7 @@ public sealed class GridCanvasListViewModelTests : IAsyncLifetime
         using var vm = new GridCanvasListViewModel(
             _fx.GridRepository, new CreateGridCanvasUseCase(_fx.GridRepository),
             new DeleteGridCanvasUseCase(_fx.GridRepository), new RenameGridCanvasUseCase(_fx.GridRepository),
-            new UpdateGridCanvasSizeUseCase(_fx.GridRepository), _fx.AppSettings, history,
+            new UpdateGridCanvasSizeUseCase(_fx.GridRepository), _fx.PlacementRepository, _confirm, _fx.AppSettings, history,
             new NullLocalizationService(), NullLogger<GridCanvasListViewModel>.Instance);
         var target = new GridCanvasItemViewModel(new GridCanvas
         {
