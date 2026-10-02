@@ -35,6 +35,12 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     private CopyItemViewModel? _source;
     private bool _suppressDirty;
 
+    /// <summary>
+    /// 編集 (ユーザーの入力・領域の追加削除) と編集対象の切替 (<see cref="Attach"/>) のたびに進む世代番号。
+    /// <see cref="TrySaveAsync"/> が、 保存の最中に追加の編集が入ったかを判定するのに使う。
+    /// </summary>
+    private int _editGeneration;
+
     /// <summary>テスト専用: 現在 attach されている source を覗くためのアクセサ。
     /// プロダクションコードからは使わない（<see cref="HasCopy"/> や個別プロパティで判定する）。</summary>
     internal CopyItemViewModel? AttachedSourceForTests => _source;
@@ -524,6 +530,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
     /// <summary>編集対象を差し替える。null で無効状態。</summary>
     public void Attach(CopyItemViewModel? source)
     {
+        Interlocked.Increment(ref _editGeneration);
         _source = source;
         _suppressDirty = true;
         try
@@ -662,6 +669,9 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
 
         var before = BuildBeforeSnapshot(source);
         var after = BuildAfterSnapshot();
+        // 保存の最中 (下の await 中) に入力された編集を、 保存済みとして扱わないための目印。 保存開始時点のスナップショット
+        // (after) に含まれない新しい入力・編集対象の切替があったかを、 完了後に世代番号の変化で判定する。
+        var generation = Volatile.Read(ref _editGeneration);
 
         // Description は Save 時点での名前を表示用に使う（リネーム結果の追跡は UpdateImageCopyCommand
         // のリネーム経路が別に表示するため、こちらは固定の「特性編集: 「{name}」」だけで良い）。
@@ -678,7 +688,17 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
         }
 
         ApplyAfterToSource(source, after);
-        ResetDirtyAndShowSavedMessage();
+        // 保存したのは開始時点のスナップショット。 保存の最中に追加の編集が入っていたら、 画面の値は保存済みの値と
+        // 食い違うので未保存のまま残す (消すと、 選択変更や再読込で新しい入力が黙って失われ、 後続の保存も何もしなくなる)。
+        // 残した編集は、 編集時に予約された自動保存・手動の保存で次の保存になる。
+        // 編集対象が切り替わっていた (別バリアントを attach 済み) ときは、 新しい対象の状態に触れない。
+        if (ReferenceEquals(_source, source))
+        {
+            if (generation == Volatile.Read(ref _editGeneration))
+                ResetDirtyAndShowSavedMessage();
+            else
+                StatusMessage = _loc["Status_Saved"]; // 保存は完了した (追加の編集だけが未保存のまま残る)
+        }
 
         _messenger.Send(new CopyLibraryChangedMessage());
         LogSaved(_logger, source.CopyId);
@@ -1158,6 +1178,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
 
     private void MarkRegionsDirty()
     {
+        Interlocked.Increment(ref _editGeneration);
         if (!IsDirty) IsDirty = true;
         SaveCommand.NotifyCanExecuteChanged();
         RevertCommand.NotifyCanExecuteChanged();
@@ -1198,6 +1219,7 @@ public sealed partial class CopyPropertiesViewModel : ViewModelBase, IDisposable
             or nameof(SelectedRegion))
             return;
 
+        Interlocked.Increment(ref _editGeneration);
         if (!IsDirty)
             IsDirty = true;
 

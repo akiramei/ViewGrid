@@ -125,6 +125,16 @@ public sealed partial class VariantManagerViewModel : ViewModelBase
         var source = Context.SelectedCandidate;
         if (source is null || Context.IsBusy) return;
 
+        // 複製は保存済みの値から作る。 画面の未保存の編集 (自動保存の待機中・手動保存の draft) を先に解決する。
+        // 確認ダイアログの回答待ちの間は busy にしない。
+        if (!await Context.PrepareToDuplicateAsync(source.CopyId, ct))
+        {
+            Context.StatusMessage = _loc["Status_DuplicateAbortedUnsaved"];
+            return;
+        }
+        // 確認・保存の間に選択や処理状態が変わっていたら、 確認した対象と違うものを複製しないよう中止する。
+        if (!ReferenceEquals(Context.SelectedCandidate, source) || Context.IsBusy) return;
+
         try
         {
             Context.IsBusy = true;
@@ -425,4 +435,13 @@ public interface IVariantManagerContext
 
     /// <summary>候補リストを DB から再ロードする (CommitCreateVariantAsync 後に呼ぶ)。</summary>
     Task LoadCandidatesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// バリアントを複製する前に、 複製元 (<paramref name="copyId"/>) の未保存の編集を解決する。 複製は DB の保存済みの値から
+    /// 作るので、 画面で変えた回転・crop などを引き継ぐには、 先に保存を終えるか、 破棄を確定しておく必要がある。
+    /// 自動保存 ON: 保留中・保存中の編集を完了まで待つ (保存に失敗して残れば <c>false</c>)。
+    /// 手動保存: 複製元に未保存の編集があれば 保存 / 破棄 / 戻る を確認する (「戻る」 や保存失敗なら <c>false</c>)。
+    /// <c>false</c> のときは複製を作らない。
+    /// </summary>
+    Task<bool> PrepareToDuplicateAsync(Guid copyId, CancellationToken ct = default);
 }

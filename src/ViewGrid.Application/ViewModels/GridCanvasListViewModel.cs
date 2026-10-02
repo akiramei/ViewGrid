@@ -168,9 +168,17 @@ public sealed partial class GridCanvasListViewModel : ViewModelBase, IDisposable
     public Task WaitPendingSelectedGridFlushAsync() => _pendingSelectedGridFlushTask;
 
     /// <summary>
-    /// 保留中の auto-save を即実行 + その完了を待つ。 アプリ終了時の <c>FlushAllAutoSavesAsync</c> から呼ばれる。
+    /// 保留中の auto-save を即実行 + その完了を待つ。 アプリ終了時の <c>FlushAllAutoSavesAsync</c> や、 出力・履歴操作の
+    /// 直前の「保留中の編集をすべて確定」 から呼ばれる。 保存に失敗して未保存の編集 (グリッド名の空欄など) が
+    /// 残ったときは <c>false</c> を返す (呼び出し側は古い値のまま出力や履歴操作を進めない)。
     /// </summary>
-    public Task FlushAutoSaveAsync(CancellationToken ct = default) => _autoSave.FlushAsync(ct);
+    public async Task<bool> FlushAutoSaveAsync(CancellationToken ct = default)
+    {
+        await _autoSave.FlushAsync(ct);
+        // 保存の成否は FlushAsync からは分からない (失敗後は同じ内容の再保存が抑止され、 FlushAsync は何もしない)。
+        // 未保存の編集が残っているかで判断する。
+        return SelectedGrid is not { IsDirty: true };
+    }
 
     /// <summary>
     /// 監視中アイテムの編集系プロパティ (Editing*) や IsDirty が変化したら、 dirty 状態のアイテムを

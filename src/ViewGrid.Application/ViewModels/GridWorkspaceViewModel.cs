@@ -532,10 +532,13 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// (グリッド一覧のグリッド名・キャンバスサイズ編集など、 本 VM の外にある auto-save)。
     /// <see cref="MainWindowViewModel"/> が登録する。
     /// </summary>
-    private Func<CancellationToken, Task>? _externalFlush;
+    private Func<CancellationToken, Task<bool>>? _externalFlush;
 
-    /// <summary>外部の保留保存 (グリッド一覧側など) を <see cref="FlushAllPendingEditsAsync"/> に参加させる。</summary>
-    public void RegisterExternalFlush(Func<CancellationToken, Task> flush) => _externalFlush = flush;
+    /// <summary>
+    /// 外部の保留保存 (グリッド一覧側など) を <see cref="FlushAllPendingEditsAsync"/> に参加させる。
+    /// <paramref name="flush"/> は保存を完了まで待ち、 未保存の編集が残った (保存に失敗した) とき <c>false</c> を返す。
+    /// </summary>
+    public void RegisterExternalFlush(Func<CancellationToken, Task<bool>> flush) => _externalFlush = flush;
 
     /// <summary>
     /// 配置選択に伴う候補同期 (<see cref="SyncCandidateToPlacement"/>) 実行中フラグ。
@@ -1630,13 +1633,33 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         try { await _pendingInspectorTask; } catch { }
         try { await Inspector.FlushAutoSaveAsync(ct); } catch { }
         try { await FlushVariantAutoSaveAsync(ct); } catch { }
+        // 外部 (グリッド一覧のグリッド名・キャンバスサイズ) の保存失敗も結果へ反映する。 反映しないと、
+        // グリッドの保存に失敗していても出力前チェックが成功を返し、 保存済みの古い値で出力が進む。
+        var externalOk = true;
         if (_externalFlush is { } external)
         {
-            try { await external(ct); } catch { }
+            try { externalOk = await external(ct); }
+            catch { externalOk = false; }
         }
 
         if (!_appSettings.Current.EnableAutoSave) return true;
-        return !Inspector.IsAnyDirty && !VariantProperties.IsDirty;
+        return externalOk && !Inspector.IsAnyDirty && !VariantProperties.IsDirty;
+    }
+
+    /// <summary><see cref="IVariantManagerContext.PrepareToDuplicateAsync"/> の実装。</summary>
+    public async Task<bool> PrepareToDuplicateAsync(Guid copyId, CancellationToken ct = default)
+    {
+        // 自動保存 ON: 保留中 (デバウンス待ち) と保存中の編集を完了させる。 手動保存 OFF のときは何も保存せず true。
+        if (!await FlushAllPendingEditsAsync(ct)) return false;
+
+        // 手動保存: 複製元の未保存の編集が残っているときだけ、 保存 / 破棄 / 戻る を確認する。
+        var sourceHasDraft =
+            (Inspector.CopyProperties.HasCopy && Inspector.CopyProperties.IsDirty
+                && Inspector.CopyProperties.AttachedCopyId == copyId)
+            || (VariantProperties.HasCopy && VariantProperties.IsDirty
+                && VariantProperties.AttachedCopyId == copyId);
+        if (!IsManualSaveMode || !sourceHasDraft) return true;
+        return await ResolvePendingManualEditsAsync(ct: ct);
     }
 
     /// <summary>

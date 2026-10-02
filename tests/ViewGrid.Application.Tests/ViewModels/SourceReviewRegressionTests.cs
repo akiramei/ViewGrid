@@ -194,6 +194,234 @@ public sealed class SourceReviewRegressionTests : IAsyncLifetime
         (await _h.Fx.GridRepository.FindByIdAsync(grid.Id))!.Name.Should().Be("after");
     }
 
+    // ─── R05: 編集直後の複製が古い保存値を引き継ぐ ──────────────────────────────────
+
+    /// <summary>候補リストから A を選び (配置の A はそのまま)、 「複製」 を実行して、 複製されたバリアントを返す。</summary>
+    private async Task<ImageCopy?> DuplicateSelectedAsync(Guid sourceCopyId, bool waitForPrompt = false,
+        UnsavedChoice? answer = null)
+    {
+        await Vm.LoadCandidatesAsync();
+        Vm.SelectedCandidate = Vm.Candidates.Single(c => c.CopyId == sourceCopyId);
+        var before = (await _h.Fx.CopyRepository.FindAllAsync()).Select(c => c.Id).ToHashSet();
+
+        var duplicating = Vm.Variants.DuplicateSelectedCandidateAsync();
+        if (waitForPrompt)
+        {
+            await _confirm.WaitForUnsavedRequestAsync();
+            _confirm.Answer(answer!.Value);
+        }
+        await duplicating;
+
+        var after = await _h.Fx.CopyRepository.FindAllAsync();
+        return after.SingleOrDefault(c => !before.Contains(c.Id));
+    }
+
+    [Fact]
+    public async Task R05_Duplicate_Right_After_An_Edit_Carries_The_Edit_With_AutoSave()
+    {
+        var (a, _) = await SeedAndEditAsync(autoSave: true);
+        (await FlipXStoredAsync(a.Id)).Should().BeFalse("デバウンス内で、 まだ保存されていない");
+
+        var duplicate = await DuplicateSelectedAsync(a.Id);
+
+        duplicate.Should().NotBeNull();
+        duplicate!.Transform.FlipX.Should().BeTrue("画面で変えた設定を引き継ぐ (保存済みの古い値ではない)");
+        (await FlipXStoredAsync(a.Id)).Should().BeTrue("元の案にも保存される (後から元だけが保存されて食い違わない)");
+    }
+
+    [Fact]
+    public async Task R05_Duplicate_With_A_Manual_Edit_Save_Carries_The_Edit()
+    {
+        var (a, _) = await SeedAndEditAsync(autoSave: false);
+
+        var duplicate = await DuplicateSelectedAsync(a.Id, waitForPrompt: true, UnsavedChoice.Save);
+
+        duplicate.Should().NotBeNull();
+        duplicate!.Transform.FlipX.Should().BeTrue();
+        (await FlipXStoredAsync(a.Id)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task R05_Duplicate_With_A_Manual_Edit_Discard_Copies_The_Saved_Values()
+    {
+        var (a, _) = await SeedAndEditAsync(autoSave: false);
+
+        var duplicate = await DuplicateSelectedAsync(a.Id, waitForPrompt: true, UnsavedChoice.Discard);
+
+        duplicate.Should().NotBeNull();
+        duplicate!.Transform.FlipX.Should().BeFalse("破棄した編集は引き継がない");
+        (await FlipXStoredAsync(a.Id)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task R05_Duplicate_With_A_Manual_Edit_Back_Creates_Nothing_And_Keeps_The_Edit()
+    {
+        var (a, _) = await SeedAndEditAsync(autoSave: false);
+
+        var duplicate = await DuplicateSelectedAsync(a.Id, waitForPrompt: true, UnsavedChoice.Cancel);
+
+        duplicate.Should().BeNull("「戻る」 なら複製しない");
+        Vm.Inspector.CopyProperties.FlipX.Should().BeTrue();
+        Vm.Inspector.CopyProperties.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task R05_Duplicate_Of_A_Standalone_Variant_Edit_Carries_The_Edit()
+    {
+        await _h.SetAutoSaveAsync(true);
+        var asset = await _h.Fx.SeedAssetAsync();
+        var copy = await _h.Fx.SeedCopyAsync(asset.Id, "solo");
+        await Vm.LoadCandidatesAsync();
+        Vm.SelectedCandidate = Vm.Candidates.Single(c => c.CopyId == copy.Id);
+        await Vm.WaitPendingVariantAttachAsync();
+        Vm.VariantProperties.FlipX = true; // 候補単体編集 (配置なし)
+
+        var duplicate = await DuplicateSelectedAsync(copy.Id);
+
+        duplicate.Should().NotBeNull();
+        duplicate!.Transform.FlipX.Should().BeTrue();
+    }
+
+    // ─── R07: 保存待ち中の追加編集まで保存済みにしてしまう ─────────────────────────
+
+    [Fact]
+    public async Task R07_An_Edit_Made_While_A_Save_Is_In_Flight_Stays_Unsaved_And_Is_Saved_Next()
+    {
+        await SeedAndEditAsync(autoSave: false); // FlipX=true の未保存編集 (手動保存)
+        var cp = Vm.Inspector.CopyProperties;
+        var copyId = cp.AttachedCopyId!.Value;
+        _h.History.Block();
+
+        var saving = cp.TrySaveAsync();        // FlipX=true の保存を開始 → 履歴コマンドの実行で止まる
+        await _h.History.WaitUntilBlockedAsync();
+        cp.FlipY = true;                       // 保存の最中に追加の編集
+        _h.History.Release();
+
+        (await saving).Should().BeTrue();
+        (await FlipXStoredAsync(copyId)).Should().BeTrue("保存開始時点の内容は保存された");
+        cp.IsDirty.Should().BeTrue("保存の最中に入力した FlipY はまだ保存されていない。 保存済みと見なしてはならない");
+        cp.FlipY.Should().BeTrue("画面の入力はそのまま残る");
+
+        (await cp.TrySaveAsync()).Should().BeTrue();   // 次の保存 (明示保存または自動保存) で届く
+        (await _h.Fx.CopyRepository.FindByIdAsync(copyId))!.Transform.FlipY.Should().BeTrue();
+        cp.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task R07_A_Late_Save_Completion_Does_Not_Clear_The_State_Of_The_Newly_Attached_Variant()
+    {
+        // 候補単体編集 (配置なし): バリアント A の保存の最中に候補 B へ切り替え、 B に編集を入れる。
+        await _h.SetAutoSaveAsync(false);
+        var asset = await _h.Fx.SeedAssetAsync();
+        var a = await _h.Fx.SeedCopyAsync(asset.Id, "A");
+        var b = await _h.Fx.SeedCopyAsync(asset.Id, "B");
+        await Vm.LoadCandidatesAsync();
+        Vm.SelectedCandidate = Vm.Candidates.Single(c => c.CopyId == a.Id);
+        await Vm.WaitPendingVariantAttachAsync();
+        var vp = Vm.VariantProperties;
+        vp.FlipX = true;
+        _h.History.Block();
+
+        var saving = vp.TrySaveAsync();
+        await _h.History.WaitUntilBlockedAsync();
+        Vm.SelectedCandidate = Vm.Candidates.Single(c => c.CopyId == b.Id);
+        await _confirm.WaitForUnsavedRequestAsync();
+        _confirm.Answer(UnsavedChoice.Discard);
+        await Vm.WaitPendingVariantAttachAsync();
+        vp.AttachedCopyId.Should().Be(b.Id);
+        vp.FlipY = true;
+        _h.History.Release();
+        await saving;
+
+        vp.AttachedCopyId.Should().Be(b.Id);
+        vp.IsDirty.Should().BeTrue("古い保存の完了が、 新しい対象の未保存状態を消してはならない");
+        vp.FlipY.Should().BeTrue();
+        (await FlipXStoredAsync(a.Id)).Should().BeTrue("A の保存自体は完了している");
+    }
+
+    [Fact]
+    public async Task R07_With_AutoSave_The_Edit_Made_During_A_Save_Reaches_The_Database()
+    {
+        await _h.SetAutoSaveAsync(true);
+        var (_, a, _) = await _h.SeedTwoPlacementsAsync();
+        await SelectPlacementAsync(Vm.Placements.Single(p => p.CopyId == a.Id));
+        var cp = Vm.Inspector.CopyProperties;
+        _h.History.Block();
+
+        cp.FlipX = true;                         // デバウンス後に自動保存が始まり、 履歴コマンドで止まる
+        await _h.History.WaitUntilBlockedAsync();
+        cp.FlipY = true;                         // 保存の最中の追加入力 (自動保存を再予約する)
+        _h.History.Release();
+
+        // 保存が終わる (= 未保存フラグが消える) のを、 DB を触らずに待つ。 VM の保存と同じ DbContext を
+        // テスト側が並行して読むと、 EF の「同時に 2 つの操作」 例外で VM の保存の方が失敗してしまう。
+        var until = Environment.TickCount64 + 8000;
+        while (Environment.TickCount64 < until && cp.IsDirty)
+            await Task.Delay(50);
+
+        cp.IsDirty.Should().BeFalse("最後の入力まで自動保存された");
+        var stored = (await _h.Fx.CopyRepository.FindByIdAsync(a.Id))!;
+        stored.Transform.FlipX.Should().BeTrue();
+        stored.Transform.FlipY.Should().BeTrue("最後の入力が自動保存で DB へ届く");
+    }
+
+    // ─── R06: グリッド保存失敗後も古い値で出力を進める ──────────────────────────────
+
+    private static int PngWidth(byte[] png) => (png[16] << 24) | (png[17] << 16) | (png[18] << 8) | png[19];
+
+    private async Task<GridCanvas> OpenGridThroughTheListAsync(string name)
+    {
+        await _h.SetAutoSaveAsync(true);
+        var asset = await _h.Fx.SeedAssetAsync();
+        var copy = await _h.Fx.SeedCopyAsync(asset.Id, "c");
+        var grid = await _h.SeedGridAsync(2, 2, name: name, canvas: 400);
+        await new Application.UseCases.PlaceImageCopyUseCase(_h.Fx.GridRepository, _h.Fx.CopyRepository, _h.Fx.PlacementRepository)
+            .ExecuteAsync(grid.Id, copy.Id, new CellPosition(0, 0));
+        await _h.GridList.LoadAsync();
+        var until = Environment.TickCount64 + 5000;
+        while (Vm.CurrentGrid is null && Environment.TickCount64 < until) await Task.Delay(20);
+        Vm.CurrentGrid.Should().NotBeNull();
+        await Vm.WaitPendingInspectorAttachAsync();
+        return grid;
+    }
+
+    [Fact]
+    public async Task R06_Preview_Is_Aborted_When_The_Grid_Edit_Cannot_Be_Saved_And_Resumes_After_Correction()
+    {
+        await OpenGridThroughTheListAsync("grid");
+        var item = _h.GridList.SelectedGrid!;
+        item.EditingName = "";          // 名前エラー (保存できない)
+        item.EditingCanvasWidth = 800;  // 未保存のまま残る入力
+
+        var aborted = await Vm.Output.RequestPreviewAsync();
+
+        aborted.Should().BeNull("グリッドの保存に失敗しているのに、 保存済みの古い値 (400px) で出力を進めてはならない");
+        Vm.StatusMessage.Should().Be("Status_OutputAbortedSaveFailed");
+        Vm.IsBusy.Should().BeFalse();
+
+        item.EditingName = "fixed"; // 訂正して再保存
+        var resumed = await Vm.Output.RequestPreviewAsync();
+
+        resumed.Should().NotBeNull();
+        PngWidth(resumed!).Should().Be(800, "訂正・再保存後は 800px で出力する");
+    }
+
+    [Fact]
+    public async Task R06_Pre_Output_Check_Reports_A_Grid_Save_Failure_To_Every_Caller()
+    {
+        await OpenGridThroughTheListAsync("grid");
+        var item = _h.GridList.SelectedGrid!;
+        item.EditingName = "";
+        item.EditingCanvasWidth = 800;
+
+        // PNG 出力・Undo / Redo の前処理も同じ「保留中の編集をすべて確定」 を使う。 グリッドの保存失敗が false で伝わる。
+        (await Vm.FlushAllPendingEditsAsync()).Should().BeFalse();
+
+        item.EditingName = "fixed";
+        (await Vm.FlushAllPendingEditsAsync()).Should().BeTrue("訂正して保存できれば成功に戻る");
+        (await _h.Fx.GridRepository.FindByIdAsync(item.GridId))!.CanvasSize.Width.Should().Be(800);
+    }
+
     // ─── R03: ワークスペース切替が自動保存完了を待たない ───────────────────────────
 
     [Fact]
