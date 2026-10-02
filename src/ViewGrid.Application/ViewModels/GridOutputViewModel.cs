@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using ViewGrid.Application.Localization;
+using ViewGrid.Application.Preview;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Core.Entities;
 using ViewGrid.Core.Interfaces;
@@ -27,7 +28,9 @@ public sealed partial class GridOutputViewModel : ViewModelBase
     private readonly IFilePickerService _filePicker;
     private readonly ILocalizationService _loc;
     private readonly ILogger<GridOutputViewModel> _logger;
+    private readonly IIsolatedGridRenderer _isolatedRenderer;
     private IGridOutputContext? _context;
+    private LivePreviewRefresher? _livePreview;
 
     /// <summary>
     /// <see cref="AttachContext"/> で attach されたコンテキストへのアクセサ。
@@ -113,13 +116,66 @@ public sealed partial class GridOutputViewModel : ViewModelBase
         ExportGridUseCase exportUseCase,
         IFilePickerService filePicker,
         ILocalizationService loc,
-        ILogger<GridOutputViewModel> logger)
+        ILogger<GridOutputViewModel> logger,
+        IIsolatedGridRenderer isolatedRenderer)
     {
         _renderUseCase = renderUseCase;
         _exportUseCase = exportUseCase;
         _filePicker = filePicker;
         _loc = loc;
         _logger = logger;
+        _isolatedRenderer = isolatedRenderer;
+    }
+
+    /// <summary>自動更新で、 最後の変化から再描画を始めるまでの静止時間 (テストが短縮する)。</summary>
+    internal TimeSpan LivePreviewDebounce { get; set; } = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>
+    /// 開きっぱなしのプレビューの自動更新を始める。 以後、 <b>保存済み</b>の内容 (確定した編集・Undo / Redo・
+    /// グリッドや候補の変更) と、 この VM の出力オプションが変わるたびに、 静止後に最新の 1 回だけ再描画して
+    /// <paramref name="onUpdated"/> へ渡す (表示できるグリッドがない・描画に失敗したときは <c>null</c>)。
+    /// 通知はスレッドプールから届くので、 UI へ反映する側がスレッドを切り替える。
+    /// <para>
+    /// 未保存の draft は含めない (出力は保存済みの値 = D-OUTPUT-PENDING)。 保存前の編集を強制保存して履歴を
+    /// 積んだり、 <see cref="IGridOutputContext.IsBusy"/> を立てて画面を止めたりもしない。
+    /// 同時に動かせる自動更新は 1 本で、 新しく始めると前のものは停止する。 不要になったら返り値を破棄する。
+    /// </para>
+    /// </summary>
+    public IDisposable StartLivePreview(Action<byte[]?> onUpdated)
+    {
+        ArgumentNullException.ThrowIfNull(onUpdated);
+        var live = new LivePreviewRefresher(LivePreviewDebounce, RenderForLiveAsync, onUpdated);
+        _livePreview?.Dispose();
+        _livePreview = live;
+        return live;
+    }
+
+    /// <summary>
+    /// 保存済みの内容が変わったことを知らせる (自動更新中なら再描画を要求する。 開いていなければ何もしない)。
+    /// 親 (<see cref="GridWorkspaceViewModel"/>) が、 履歴の変化・候補ライブラリの変更・表示グリッドの切替で呼ぶ。
+    /// </summary>
+    public void NotifySavedStateChanged() => _livePreview?.Request();
+
+    /// <summary>自動更新用の描画。 フラッシュも busy も立てず、 専用スコープで確定済みの値だけを読む。</summary>
+    private async Task<byte[]?> RenderForLiveAsync(CancellationToken ct)
+    {
+        var grid = Context.CurrentGrid;
+        if (grid is null) return null;
+
+        var options = BuildRenderOptions();
+        try
+        {
+            // 共有 DbContext の RenderGridUseCase (_renderUseCase) へは退避しない: 編集中の保存・再読込と並行に走ると壊れる。
+            var result = await _isolatedRenderer.RenderAsync(grid.GridId, options, ct).ConfigureAwait(false);
+            if (!result.IsError) return result.Value;
+            LogLivePreviewFailed(_logger, string.Join(", ", result.Errors.Select(e => e.Code)));
+            return null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogLivePreviewFailed(_logger, ex.Message);
+            return null;
+        }
     }
 
     /// <summary>
@@ -147,8 +203,18 @@ public sealed partial class GridOutputViewModel : ViewModelBase
     /// 同じ intensity でも見え方が大きく変わる。 「スタイルを選んだ直後はそのスタイルの基準値で
     /// 見える」 状態に揃えることで、 比較の起点が明確になる UX 契約。
     /// </summary>
-    partial void OnSelectedPhotoBoardStyleChanged(PhotoBoardStyle value) =>
+    partial void OnSelectedPhotoBoardStyleChanged(PhotoBoardStyle value)
+    {
         SelectedPhotoBoardIntensity = 0.5;
+        NotifySavedStateChanged();
+    }
+
+    // 出力オプションの変更も、 開いているプレビューの見た目を変える。
+    partial void OnSelectedOutputModeChanged(OutputMode value) => NotifySavedStateChanged();
+
+    partial void OnSelectedTrimModeChanged(TrimMode value) => NotifySavedStateChanged();
+
+    partial void OnSelectedPhotoBoardIntensityChanged(double value) => NotifySavedStateChanged();
 
     [RelayCommand]
     private void SelectOutputModeNormal() => SelectedOutputMode = OutputMode.Normal;
@@ -301,6 +367,9 @@ public sealed partial class GridOutputViewModel : ViewModelBase
 
     [LoggerMessage(EventId = 5008, Level = LogLevel.Information, Message = "プレビュー生成: trim={TrimMode} output={OutputMode} elapsed={ElapsedMs}ms bytes={Bytes}")]
     private static partial void LogPreviewRendered(ILogger logger, TrimMode trimMode, OutputMode outputMode, long elapsedMs, int bytes);
+
+    [LoggerMessage(EventId = 5011, Level = LogLevel.Warning, Message = "プレビューの自動更新に失敗: {Reason}")]
+    private static partial void LogLivePreviewFailed(ILogger logger, string reason);
 
     [LoggerMessage(EventId = 5009, Level = LogLevel.Information, Message = "PNG 出力: trim={TrimMode} output={OutputMode} elapsed={ElapsedMs}ms bytes={Bytes}")]
     private static partial void LogPngExported(ILogger logger, TrimMode trimMode, OutputMode outputMode, long elapsedMs, long bytes);

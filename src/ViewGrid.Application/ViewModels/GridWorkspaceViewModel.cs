@@ -261,8 +261,13 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         VariantProperties.DraftReverted += OnVariantPropertiesDraftReverted;
         Inspector.CopyProperties.DraftReverted += OnInspectorCopyPropertiesDraftReverted;
 
+        // 開きっぱなしのプレビューの自動更新: 確定した編集・Undo/Redo は履歴の変化として届く。
+        _history.StateChanged += OnHistoryStateChanged;
+
         _messenger.Register(this);
     }
+
+    private void OnHistoryStateChanged() => Output.NotifySavedStateChanged();
 
     /// <summary>
     /// VariantProperties の編集系プロパティ変化を auto-save coordinator に通知 + ライブプレビュー push。
@@ -776,6 +781,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     partial void OnCurrentGridChanged(GridCanvasItemViewModel? value)
     {
         NotifySelectionChanged();
+        Output.NotifySavedStateChanged(); // 開いているプレビューは新しいグリッドへ追随する
     }
 
     private void NotifySelectionChanged()
@@ -794,6 +800,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
     /// </summary>
     public void Receive(CopyLibraryChangedMessage message)
     {
+        Output.NotifySavedStateChanged(); // 保存済みのバリアント・画像が変わった (プレビューの自動更新)
         _ = ReloadFromMessageAsync();
     }
 
@@ -1729,6 +1736,7 @@ public sealed partial class GridWorkspaceViewModel : ViewModelBase, IRecipient<C
         Inspector.CopyProperties.PropertyChanged -= OnInspectorCopyPropertiesChanged;
         Inspector.CopyProperties.DraftReverted -= OnInspectorCopyPropertiesDraftReverted;
         _appSettings.Changed -= OnAppSettingsChangedForVariant;
+        _history.StateChanged -= OnHistoryStateChanged;
         _variantAutoSave.Dispose();
         _messenger.UnregisterAll(this);
         Inspector.Dispose();

@@ -100,7 +100,7 @@ public sealed class MainWindowViewModelTests : IAsyncLifetime
         // Phase 5: 子 VM 3 つを構築して Workspace VM に渡す。
         var output = new GridOutputViewModel(
             render, export, picker, new NullLocalizationService(),
-            NullLogger<GridOutputViewModel>.Instance);
+            NullLogger<GridOutputViewModel>.Instance, new StubIsolatedRenderer());
         var variants = new VariantManagerViewModel(
             createCopy, updateCopy, deleteAsset, new DuplicateImageCopyUseCase(_fx.CopyRepository), _fx.CopyRepository, _fx.PlacementRepository, new AutoConfirmationService(),
             sharedHistory, _messenger, new NullLocalizationService(),

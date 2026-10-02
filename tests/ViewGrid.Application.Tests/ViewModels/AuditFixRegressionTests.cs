@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using ViewGrid.Application.History;
 using ViewGrid.Application.Localization;
+using ViewGrid.Application.Preview;
 using ViewGrid.Application.Tests.TestSupport;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
@@ -29,6 +30,7 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
     private UndoRedoService _history = null!;
     private GridWorkspaceViewModel _vm = null!;
     private readonly CaptureRenderer _capture = new();
+    private readonly StubIsolatedRenderer _isolated = new();
     private readonly AutoConfirmationService _confirm = new();
     private readonly IFilePickerService _picker = Substitute.For<IFilePickerService>();
 
@@ -72,7 +74,8 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
 
         var output = new GridOutputViewModel(
             render, export, _picker, new NullLocalizationService(),
-            NullLogger<GridOutputViewModel>.Instance);
+            NullLogger<GridOutputViewModel>.Instance, _isolated);
+        output.LivePreviewDebounce = TimeSpan.FromMilliseconds(30);
         var variants = new VariantManagerViewModel(
             createCopy, updateCopy, deleteAsset, new DuplicateImageCopyUseCase(_fx.CopyRepository), _fx.CopyRepository, _fx.PlacementRepository, _confirm,
             _history, _messenger, new NullLocalizationService(),
@@ -964,5 +967,114 @@ public sealed class AuditFixRegressionTests : IAsyncLifetime
 
         _vm.StatusMessage.Should().Be("Status_GridRowsAtLimitFmt(20)", "上限であることを利用者へ伝える");
         _history.History.Should().BeEmpty();
+    }
+
+    // ─── 開きっぱなしプレビューの自動更新 (ユーザビリティ評価: 見本を見ながら調整する) ─────────────────
+
+    /// <summary>自動更新を始め、 起動直後に残っている非同期の通知 (選択の再読込など) を流し切ってから返す。</summary>
+    private async Task<(IDisposable Handle, List<byte[]?> Received)> StartLiveAsync()
+    {
+        var received = new List<byte[]?>();
+        var handle = _vm.Output.StartLivePreview(b => { lock (received) received.Add(b); });
+        await Task.Delay(300);
+        _isolated.Calls.Clear();
+        lock (received) received.Clear();
+        return (handle, received);
+    }
+
+    private static async Task<bool> WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)
+    {
+        var until = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < until)
+        {
+            if (condition()) return true;
+            await Task.Delay(20);
+        }
+        return condition();
+    }
+
+    [Fact]
+    public async Task Live_Preview_Refreshes_After_A_Committed_Edit_But_Not_For_An_Unsaved_Draft()
+    {
+        await SeedSelectedPlacementAsync(autoSave: false);
+        var (handle, received) = await StartLiveAsync();
+        using var live = handle;
+        var cp = _vm.Inspector.CopyProperties;
+
+        SetManualCrop(cp, 10, 10, 80, 50);
+        await Task.Delay(400);
+        _isolated.Count.Should().Be(0, "手動保存の draft は保存済みの値ではないので、 プレビューを更新しない");
+
+        (await cp.TrySaveAsync()).Should().BeTrue();
+
+        (await WaitUntilAsync(() => _isolated.Count >= 1)).Should().BeTrue("保存で履歴が積まれたらプレビューを作り直す");
+        (await WaitUntilAsync(() => { lock (received) return received.Count >= 1; })).Should().BeTrue();
+        lock (received) received[^1].Should().Equal(1, 2, 3);
+    }
+
+    [Fact]
+    public async Task Live_Preview_Does_Not_Flush_Pending_Edits_Or_Hold_Busy()
+    {
+        var (_, copy, _) = await SeedSelectedPlacementAsync(autoSave: false);
+        var (handle, _) = await StartLiveAsync();
+        using var live = handle;
+        var cp = _vm.Inspector.CopyProperties;
+        SetManualCrop(cp, 10, 10, 80, 50);
+
+        _vm.Output.SelectedTrimMode = TrimMode.OccupiedCells; // 出力オプションの変更で再描画を要求する
+
+        (await WaitUntilAsync(() => _isolated.Count >= 1)).Should().BeTrue();
+        cp.IsDirty.Should().BeTrue("自動更新は未保存の編集を勝手に保存しない (履歴を積まない)");
+        (await _fx.CopyRepository.FindByIdAsync(copy.Id))!.ManualCrop.Should().BeNull();
+        _vm.IsBusy.Should().BeFalse("画面を止めない");
+        _history.History.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Live_Preview_Follows_Output_Options_And_Coalesces_A_Burst_Into_One_Render()
+    {
+        await SeedSelectedPlacementAsync(autoSave: false);
+        var (handle, _) = await StartLiveAsync();
+        using var live = handle;
+
+        _vm.Output.SelectedOutputMode = OutputMode.PhotoBoard;
+        _vm.Output.SelectedPhotoBoardIntensity = 0.7;
+        _vm.Output.SelectedPhotoBoardIntensity = 0.8;
+        _vm.Output.SelectedTrimMode = TrimMode.DrawnPixels;
+
+        (await WaitUntilAsync(() => _isolated.Count >= 1)).Should().BeTrue();
+        await Task.Delay(300);
+        _isolated.Count.Should().Be(1, "連続した変更は静止後の 1 回にまとまる");
+        var last = _isolated.Calls[^1].Options;
+        last.OutputMode.Should().Be(OutputMode.PhotoBoard);
+        last.TrimMode.Should().Be(TrimMode.DrawnPixels);
+    }
+
+    [Fact]
+    public async Task Live_Preview_Follows_The_Displayed_Grid()
+    {
+        await SeedSelectedPlacementAsync(autoSave: false);
+        var (handle, _) = await StartLiveAsync();
+        using var live = handle;
+        var other = await SeedGridAsync(3, 3);
+
+        await _vm.LoadGridAsync(new GridCanvasItemViewModel(other));
+
+        (await WaitUntilAsync(() => _isolated.Count >= 1)).Should().BeTrue();
+        _isolated.Calls[^1].GridId.Should().Be(other.Id, "開いているプレビューは表示中のグリッドへ追随する");
+    }
+
+    [Fact]
+    public async Task Live_Preview_Stops_After_It_Is_Disposed()
+    {
+        await SeedSelectedPlacementAsync(autoSave: false);
+        var (handle, received) = await StartLiveAsync();
+
+        handle.Dispose();
+        _vm.Output.SelectedTrimMode = TrimMode.OccupiedCells;
+        await Task.Delay(400);
+
+        _isolated.Count.Should().Be(0);
+        lock (received) received.Should().BeEmpty("閉じたプレビューへは通知しない");
     }
 }

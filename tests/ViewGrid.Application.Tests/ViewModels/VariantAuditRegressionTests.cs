@@ -80,7 +80,7 @@ public sealed class VariantAuditRegressionTests : IAsyncLifetime
         // Workspace は 2-phase init (AttachContext) で this を子に注入するため、 子はここでは未 attach。
         var output = new GridOutputViewModel(
             render, export, picker, new NullLocalizationService(),
-            NullLogger<GridOutputViewModel>.Instance);
+            NullLogger<GridOutputViewModel>.Instance, new StubIsolatedRenderer());
         var variants = new VariantManagerViewModel(
             createCopy, updateCopy, deleteAsset, new DuplicateImageCopyUseCase(_fx.CopyRepository), _fx.CopyRepository, _fx.PlacementRepository, new AutoConfirmationService(),
             _history, _messenger, new NullLocalizationService(),

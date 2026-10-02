@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using ViewGrid.Application.History;
+using ViewGrid.Application.Preview;
 using ViewGrid.Application.Services;
 using ViewGrid.Application.UseCases;
 using ViewGrid.Application.ViewModels;
@@ -20,6 +21,9 @@ public static class DependencyInjection
 
         // ImageCrop 優先順位 Resolver（ManualCrop > AutoCrop > null）
         services.AddSingleton<IImageCropResolver, ImageCropResolver>();
+
+        // 開きっぱなしプレビューの自動更新用 (専用スコープ = 専用 DbContext で描画する)
+        services.AddSingleton<IIsolatedGridRenderer, ScopedGridRenderer>();
 
         // UseCases
         services.AddScoped<ImportImageUseCase>();
