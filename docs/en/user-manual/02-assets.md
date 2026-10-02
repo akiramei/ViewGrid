@@ -14,7 +14,7 @@ PNG / JPEG / GIF / WebP / BMP. Transparency (RGBA) is handled correctly only for
 Select multiple files in Explorer and drop them onto the main window.
 
 **Method B: Menu / button**
-**File → Add Images...**, or the **+ Add Images** button at the top of the right pane (`Ctrl+O`). The OS-native file picker opens.
+**File → Add Images...**, or the **+ Add Images** button at the top of the left pane (`Ctrl+O`). The OS-native file picker opens.
 
 ![Importing images (file picker)](../images/um/um-02-04-add-images-picker.png)
 

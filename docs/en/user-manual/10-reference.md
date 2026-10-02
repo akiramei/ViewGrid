@@ -9,7 +9,7 @@ Keyboard shortcuts, menu list, file locations, troubleshooting, and Glossary.
 | Operation | Shortcut |
 |---|---|
 | Add images | `Ctrl + O` |
-| Create new Grid | `Ctrl + N` |
+| Create new Variant (with a candidate selected) | `Ctrl + N` |
 | Export as PNG | `Ctrl + E` |
 | Open Settings | (from the menu) |
 
@@ -67,7 +67,7 @@ Keyboard shortcuts, menu list, file locations, troubleshooting, and Glossary.
 | Switch workspace... | [§7.21 Workspace management](07-workspaces.md) |
 | Settings... | [§9.26 Settings dialog](09-settings.md) |
 | Output (Export PNG) | [§6.19 Exporting PNG](06-output.md) |
-| Exit | Quit the app (unsaved edits are flushed) |
+| Exit | Quit the app (with unsaved edits in manual-save mode, a Save / Discard / Go back prompt appears) |
 
 ### 10.29.2 Edit
 
@@ -121,7 +121,7 @@ The wording of candidate list ItemVMs (such as Variant display names) is **appli
 
 ### 10.31.5 An edit disappeared / reverted
 
-Edits in the placement Inspector are not persisted until you press the **Save button**. If you close the app or switch Grids while the **● Unsaved changes** badge is shown in the status bar, the edits are normally flushed automatically, but in rare cases this can fail (a restart is needed). Turning on auto-save in Settings can mitigate this (experimental).
+Edits in the placement Inspector are not persisted until you press the **Save button**. If you close the app, switch Grids, or select another Placement while the **● Unsaved changes** badge is shown in the status bar, a **Save / Discard / Go back** prompt appears. Choosing "Discard" loses the edits. If saving fails, the app does not move on and the edits and the reason for the failure are kept. Turning on auto-save in Settings saves automatically without a prompt.
 
 ### 10.31.6 Checking the logs
 

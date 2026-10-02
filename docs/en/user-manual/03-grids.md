@@ -6,7 +6,7 @@ This section explains how to create, edit, and switch between Grids (NxM canvase
 
 ### 3.6.1 Creating a New Grid
 
-The **+ New** button at the top of the left pane (`Ctrl+N`) opens the creation flyout.
+The **+ New** button in the grid selection bar at the top of the window opens the creation flyout (`Ctrl+N` creates a new Variant).
 
 | Field | Description | Default |
 |---|---|---|
@@ -89,19 +89,19 @@ Boundary lines adjacent to a locked cell turn **orange** to indicate that they c
 - **Protect an even layout**: Lock Placements arranged at the same size so a stray boundary drag doesn't disrupt them
 - **Keep just one side flexible**: Leave only the center column unlocked and lock the left and right, so "only the center column's width can be adjusted"
 
-## 3.8 The Grid List (Left Pane)
+## 3.8 The Grid Selection Bar (Top of the Window)
 
 ### 3.8.1 Switching
 
-Click an item in the list to switch. Any unsaved edits are automatically flushed when you switch.
+Choose a grid from the drop-down to switch. With auto-save ON, unsaved edits are saved automatically when you switch. With auto-save OFF, a **Save / Discard / Go back** prompt appears if there are unsaved edits ([§9.26.3](09-settings.md)).
 
 ### 3.8.2 Renaming
 
-Double-click a Grid name for inline renaming. Alternatively, edit it from Grid Settings in the right pane.
+With the grid selected, edit its name under **Grid Settings** in the right pane (draft edit, then **Save**).
 
 ### 3.8.3 Deleting
 
-Use the menu to the right of a list item → Delete. Because Placements are also removed by cascade, a confirmation dialog appears. The operation history is cleared entirely (deletion cannot be undone).
+Use the **Delete** button in the top bar. Because Placements are also removed by cascade, a confirmation dialog that shows the number of Placements appears. The operation history is cleared entirely (deletion cannot be undone).
 
 ### 3.8.4 Restoration on Startup
 

@@ -49,7 +49,7 @@ What you will make in this section: **arrange 4 images on a 2×2 grid and turn t
 
 ### 3-1. Import images
 
-Drag and drop images onto the right pane of the main window, or import them via **File → Add images...** in the menu.
+Drag and drop images onto the main window, use the **+ Add images** button at the top of the left pane, or import them via **File → Add images...** in the menu.
 
 ![Importing images by drag and drop](images/qs/qs-03-01-drag-drop-images.png)
 
@@ -66,11 +66,11 @@ caption: Importing images from Explorer by drag and drop
 note: A composition showing the semi-transparent icon during the drag + the Copy cursor. ViewGrid does not currently highlight the whole panel (the drop is indicated only by the OS cursor change).
 -->
 
-Imported images appear in the **candidate list** (right pane) as **Variants** (logical copies of the image).
+Imported images appear in the **candidate list** (left pane) as **Variants** (logical copies of the image).
 
 ### 3-2. Create a Grid
 
-Click the **"+ New"** button at the top of the left pane. Input fields for the name / number of columns / number of rows / canvas size appear.
+Click the **"+ New"** button in the grid selection bar at the top of the window. Input fields for the name / number of columns / number of rows / canvas size appear.
 
 ![New Grid creation flyout](images/qs/qs-03-02-create-grid-flyout.png)
 
@@ -91,7 +91,7 @@ Once you have entered the values, press the **Create** button. A 2×2 grid appea
 
 ### 3-3. Drag images onto cells to place them
 
-From the candidate list in the right pane, drag and drop image thumbnails onto the grid cells. Place the 4 images in the order top-left → top-right → bottom-left → bottom-right.
+From the candidate list in the left pane, drag and drop image thumbnails onto the grid cells. You can also select a candidate and press `Enter` to place it in the first empty cell automatically. Place the 4 images in the order top-left → top-right → bottom-left → bottom-right.
 
 ![Dragging from the candidate list onto a cell](images/qs/qs-03-03-drag-to-cell.png)
 
@@ -157,7 +157,7 @@ Here are the frequently used operations summarized on a single page.
 | Operation | Shortcut |
 |---|---|
 | Add images | `Ctrl+O` |
-| Create new Grid | `Ctrl+N` |
+| Create new Variant (with a candidate selected) | `Ctrl+N` |
 | Export as PNG | `Ctrl+E` |
 | Undo | `Ctrl+Z` |
 | Redo | `Ctrl+Y` |

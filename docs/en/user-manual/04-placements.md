@@ -27,7 +27,7 @@ caption: Hovering over a valid drop target (green highlight)
 
 - **Move**: Grab a placed cell and drag it to an empty cell. The offset between the mouse position and the cell boundary is preserved
 - **Swap**: Dropping it onto another placed cell swaps the positions of the two
-- **Keyboard placement**: Select a candidate and press `Enter` to automatically place it in the first empty cell
+- **Keyboard placement**: Select a candidate in the candidate list and press `Enter` to automatically place it in the first empty cell (not while renaming)
 
 ### 4.9.3 Selecting / Deselecting a Placement
 
@@ -36,7 +36,7 @@ caption: Hovering over a valid drop target (green highlight)
 
 ### 4.9.4 Deleting a Placement
 
-Delete the selected Placement with the **Delete Placement** button at the top of the Inspector. The `Delete` key also works. It is pushed onto the history, so it can be undone.
+Delete the selected Placement with the **Delete Placement** button at the top of the Inspector. The `Delete` key also works while a Placement is selected on the canvas (not while typing in a text field or while a protected region is selected). It is pushed onto the history, so it can be undone.
 
 ## 4.10 Placement-Specific Properties (Inspector)
 
@@ -93,7 +93,7 @@ A **Save** button and a **Delete Placement** button are pinned at the very top o
 - At the moment you enter a number, nothing is written to the database; the value is held only within the Inspector
 - A **bullet Unsaved changes** badge is shown (in the status bar)
 - The Save button persists the change and pushes it onto the history
-- Selecting another Placement, switching Grids, or exiting the app triggers an **automatic flush** (the change is saved internally)
+- When you select another Placement, switch Grids, or exit the app, the edit is saved automatically if auto-save is ON; if it is OFF, a **Save / Discard / Go back** prompt appears ([§9.26.3](09-settings.md))
 - The Esc key or the Reset button discards the draft
 
 Drag-based operations (Shift+drag / Ctrl+arrow), by contrast, are **persisted immediately** (they do not go through a draft). This is so that the on-screen movement and the save timing match.

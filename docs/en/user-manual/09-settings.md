@@ -64,7 +64,7 @@ You can change the initial values used when creating a new Variant or AutoCrop. 
 
 #### Default scaling
 
-This is the initial scaling mode for the "default Variant" that is created automatically when a new Asset is imported. Choose from six modes (see [§5.11.1](05-shared-properties.md)).
+This is the initial scaling mode for the "default Variant" that is created automatically when a new Asset is imported, and for **newly created Variants**. Choose from six modes (see [§5.11.1](05-shared-properties.md)).
 
 | Situation | Recommended default |
 |---|---|
@@ -82,7 +82,19 @@ If you mostly work with scanned images choose White, if you mostly work with tra
 
 #### Default behavior (OFF)
 
-Draft edits in the Inspector or in the property editing tabs are flushed automatically when you **press the Save button** or **switch to another item**. In a normal workflow, even if you forget to press Save, the edit is recovered when you switch.
+Draft edits in the Inspector or in the property editing tabs are not saved until you press the **Save button**. If you try to move to another target while there are unsaved edits, a **Save / Discard / Go back** prompt appears so that edits are not lost silently.
+
+| Action | When the prompt appears |
+|---|---|
+| Select another Placement or Variant, or deselect (`Esc`) | The Placement or Variant being edited has unsaved edits |
+| Switch Grids | A Placement, Variant, or the Grid name / canvas size has unsaved edits |
+| Close the app (including the restart for a workspace switch) | Anything has unsaved edits |
+
+- **Save**: saves the edits and moves on (or quits). If saving fails, the app does not move on, and the edits and the reason are kept.
+- **Discard**: throws the edits away and moves on (or quits). The canvas also returns to the saved values.
+- **Go back** (`Esc`): cancels the move and returns you to the original target to keep editing. Closing the prompt also counts as "Go back".
+
+With auto-save ON, no prompt appears and edits are saved automatically when you move. Undo / Redo and PNG output / preview are not covered by this prompt (Undo / Redo discards unsaved edits on reload, and output is built from the saved values).
 
 #### When turned ON
 

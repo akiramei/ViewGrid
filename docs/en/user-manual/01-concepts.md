@@ -45,7 +45,7 @@ Grid G2              ←── Placement P2 belongs to it
 | Grid name / canvas size change | The Grid's appearance | ✅ |
 | Workspace operations | Involves a process restart | ❌ |
 
-Actions marked "clears all history" clear the entire Undo / Redo history immediately after they run, in order to prevent history inconsistencies caused by cascades. If you want to be able to recover an action, export it as a PNG before running it.
+Actions marked "clears all history" clear the entire Undo / Redo history immediately after they run, in order to prevent history inconsistencies caused by cascades. If you want to be able to recover, take a workspace backup (ZIP export, [§7.22](07-workspaces.md)) or duplicate the workspace before running it. A PNG keeps only the composited appearance, so the grids, placements, Variants, crop and other settings cannot be restored from a PNG.
 
 ## 1.2 Shared Properties and Placement-Specific Properties
 
@@ -84,13 +84,14 @@ state:
   - 3 placements (sample-01 top-left / sample-02 center / sample-03 bottom-right), with the center sample-02 selected (DodgerBlue selection border + translucent blue fill)
   - The right-pane Inspector shows the properties of the selected placement
   - Language: English
-caption: Three-pane layout of the main window (left: grid list, center: canvas, right: Inspector / candidates)
+caption: Layout of the main window (top: grid selection bar, left: add images and candidate list, center: canvas, right: Inspector / shared properties / grid settings)
 note: A composition that clearly shows the pane borders and label positions
 -->
 
-- **Left pane: grid list** — lists all grids in the workspace. Switch / create / rename / delete
+- **Top: grid selection bar** — switches between the grids in the workspace. **+ New** creates a grid and **Delete** deletes it (rename it from Grid Settings in the right pane)
+- **Left pane: add images and candidate list** — the **+ Add Images** button and the candidate list, which lists Variants under each Asset. Place / new Variant / delete
 - **Center: canvas area** — displays the current grid at true-scale proportions. Placement / moving / column and row handles
-- **Right pane: context-switching** — shows the candidate list when nothing is selected, the Inspector when a placement is selected, and so on
+- **Right pane: context-switching** — shows the Inspector when a placement is selected, the shared-property editor when only a candidate Variant is selected, and Grid Settings (name / canvas size) when only a grid is selected. The output (preview / PNG) settings are at the bottom
 
 ### 1.3.1 Header
 
@@ -126,6 +127,6 @@ Settings (theme / language) are **shared across workspaces**. Assets / placement
 ViewGrid basically **persists edits to the DB immediately** (drag-and-drop placement, renaming, deletion, and so on). However, on screens where **multiple items are edited together**, such as the right-pane Inspector / property-editing tab, changes are not applied until you press the **Save** button (a draft-editing model).
 
 - When the **● Unsaved changes** badge appears in the status bar, there are changes waiting to be saved
-- Changes are flushed automatically when the app exits
+- With auto-save ON, edits are saved automatically when you move to another item, switch Grids, or close the app. With auto-save OFF and unsaved edits (including a restart for a workspace switch), a **Save / Discard / Go back** prompt appears ([§9.26.3](09-settings.md))
 
 → §4.10 [The Inspector Save Button](04-placements.md) / §9.24 [Auto-Save Settings](09-settings.md)

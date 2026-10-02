@@ -74,7 +74,7 @@ The **Switch** button on another workspace card → confirmation dialog → the 
 
 #### Behavior When Switching
 
-1. **Flush of unsaved edits**: completes all drafts and saves in progress
+1. **Check for unsaved edits**: with auto-save ON, completes any saves in progress. With auto-save OFF and unsaved edits, a **Save / Discard / Go back** prompt appears ("Go back" cancels the switch). This happens before `active.json` is rewritten
 2. **Rewrite `active.json`**: updates the active workspace name
 3. **Launch a new process**: starts ViewGrid afresh with the target workspace
 4. **Exit the current process**: terminates the current process gracefully

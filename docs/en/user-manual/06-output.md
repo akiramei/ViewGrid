@@ -145,7 +145,7 @@ caption: Layout of the preview window
 
 ### 6.18.2 Regeneration
 
-Previews are cached. They are regenerated automatically right after you change a placement or a setting (about 0.5 to 1 second).
+A preview is a **snapshot of the content at the moment it was opened**; it is not updated automatically while it stays open. After changing a placement or a setting, close the preview and press the **Preview** button again.
 
 ## 6.19 PNG Export
 
