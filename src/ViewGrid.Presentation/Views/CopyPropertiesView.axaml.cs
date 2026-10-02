@@ -471,11 +471,12 @@ public partial class CopyPropertiesView : UserControl
         var m = GetThumbnailDisplayMetrics();
         if (m is null) return null;
         var (_, _, _, _, scale, padX, padY) = m.Value;
-        // null（入力中で空欄）は 0 として扱う (int? → double 暗黙昇格)
-        double mx = _vm.ManualCropPixelX ?? 0;
-        double my = _vm.ManualCropPixelY ?? 0;
-        double mw = _vm.ManualCropPixelWidth ?? 0;
-        double mh = _vm.ManualCropPixelHeight ?? 0;
+        // 空欄 (入力し直し中) の項目は直前の有効値で描く (0 扱いにすると矩形が消えて見える)。
+        var (mxi, myi, mwi, mhi) = _vm.GetManualCropRect();
+        double mx = mxi;
+        double my = myi;
+        double mw = mwi;
+        double mh = mhi;
         var x = padX + mx * scale;
         var y = padY + my * scale;
         var w = mw * scale;
@@ -641,8 +642,7 @@ public partial class CopyPropertiesView : UserControl
 
         _isDragging = true;
         _dragStartPoint = pos;
-        _dragStartRect = (_vm.ManualCropPixelX ?? 0, _vm.ManualCropPixelY ?? 0,
-                          _vm.ManualCropPixelWidth ?? 0, _vm.ManualCropPixelHeight ?? 0);
+        _dragStartRect = _vm.GetManualCropRect();
         e.Pointer.Capture(ManualCropOverlay);
         e.Handled = true;
     }
@@ -678,13 +678,13 @@ public partial class CopyPropertiesView : UserControl
         if (TopLevel.GetTopLevel(this) is not Window owner) return;
 
         var window = new ManualCropEditorWindow();
+        var (rectX, rectY, rectW, rectH) = _vm.GetManualCropRect();
         try
         {
             window.Initialize(
                 _vm.SourceImagePath,
                 _vm.SourceWidth, _vm.SourceHeight,
-                _vm.ManualCropPixelX ?? 0, _vm.ManualCropPixelY ?? 0,
-                _vm.ManualCropPixelWidth ?? 0, _vm.ManualCropPixelHeight ?? 0);
+                rectX, rectY, rectW, rectH);
         }
         catch
         {
@@ -737,8 +737,9 @@ public partial class CopyPropertiesView : UserControl
             {
                 var dx = srcCurrent.Value.SrcX - srcStart.Value.SrcX;
                 var dy = srcCurrent.Value.SrcY - srcStart.Value.SrcY;
-                var newX = Math.Clamp(_dragStartRect.X + dx, 0, sw - _dragStartRect.W);
-                var newY = Math.Clamp(_dragStartRect.Y + dy, 0, sh - _dragStartRect.H);
+                // 上限が負 (矩形が画像より大きい) だと Math.Clamp が ArgumentException を投げる。 0 を下限に守る。
+                var newX = Math.Clamp(_dragStartRect.X + dx, 0, Math.Max(0, sw - _dragStartRect.W));
+                var newY = Math.Clamp(_dragStartRect.Y + dy, 0, Math.Max(0, sh - _dragStartRect.H));
                 _vm.ManualCropPixelX = (int)Math.Round(newX);
                 _vm.ManualCropPixelY = (int)Math.Round(newY);
                 break;

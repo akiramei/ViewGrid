@@ -247,17 +247,20 @@
                                 two-way バインドする。 未チェック側へグループ排他が書き戻す false は
                                 コンバータが握りつぶすため、 DataContext 切替時に AutoCrop/ManualCrop が
                                 誤って OFF 化されて保存で消えるデータ消失が起きない。
+                                GroupName は付けない: CopyPropertiesView は Inspector 内と候補単体の 2 か所に
+                                同時に存在し、 同名 GroupName だと非表示側の更新が表示側のラジオ選択を外してしまう。
+                                グループ化は GroupName 無しなら親パネル単位になるので、 各 View で独立して排他になる。
                             -->
                             <StackPanel Classes="FormSection">
                                 <TextBlock Classes="FieldLabel" Text="{loc:Tr CopyProps_TrimMode}" />
                                 <StackPanel Spacing="4">
-                                    <RadioButton GroupName="CropMode"
+                                    <RadioButton
                                                  Content="{loc:Tr CopyProps_TrimMode_Off}"
                                                  IsChecked="{Binding CropMode, Converter={StaticResource EnumBool}, ConverterParameter=Off}" />
-                                    <RadioButton GroupName="CropMode"
+                                    <RadioButton
                                                  Content="{loc:Tr CopyProps_TrimMode_Auto}"
                                                  IsChecked="{Binding CropMode, Converter={StaticResource EnumBool}, ConverterParameter=Auto}" />
-                                    <RadioButton GroupName="CropMode"
+                                    <RadioButton
                                                  Content="{loc:Tr CopyProps_TrimMode_Manual}"
                                                  IsChecked="{Binding CropMode, Converter={StaticResource EnumBool}, ConverterParameter=Manual}" />
                                 </StackPanel>
@@ -377,14 +380,14 @@
                                         <NumericUpDown Value="{Binding ManualCropPixelX}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}" />
+                                                       IsEnabled="{Binding IsManualCropInputEnabled}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Classes="FieldLabel" Text="{loc:Tr CopyProps_ManualCrop_Y}" />
                                         <NumericUpDown Value="{Binding ManualCropPixelY}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}" />
+                                                       IsEnabled="{Binding IsManualCropInputEnabled}" />
                                     </StackPanel>
                                 </Grid>
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
@@ -393,14 +396,14 @@
                                         <NumericUpDown Value="{Binding ManualCropPixelWidth}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}" />
+                                                       IsEnabled="{Binding IsManualCropInputEnabled}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Classes="FieldLabel" Text="{loc:Tr CopyProps_ManualCrop_H}" />
                                         <NumericUpDown Value="{Binding ManualCropPixelHeight}"
                                                        Minimum="0"
                                                        FormatString="0"
-                                                       IsEnabled="{Binding IsManualCropDefined}" />
+                                                       IsEnabled="{Binding IsManualCropInputEnabled}" />
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>

@@ -220,15 +220,17 @@
                 <!--
                     バリアント候補リストを Asset でグループ化。各 Asset がグループヘッダ、
                     その配下に CopyCandidateViewModel が並ぶ 2 階層 TreeView。
-                    SelectedItem は CopyCandidateViewModel のみ受け付ける（Group ヘッダクリック時は
-                    型不一致で SelectedCandidate は変更されない）。
+                    SelectedItem は見出し (CandidateGroupViewModel) と候補 (CopyCandidateViewModel) の
+                    どちらも取りうるので object 型の SelectedCandidateNode にバインドする。
+                    見出しを選ぶと VM 側で SelectedCandidate が null になり、 削除・配置・複製などの
+                    候補向けコマンドは無効になる (以前は型不一致で前の候補が残り、 見た目と違う候補に作用した)。
                     既存の D&D / インラインリネーム / F2 / DoubleTapped は CodeBehind が
                     TreeViewItem.DataContext の型を見て CopyCandidateViewModel のときだけ反応する。
                 -->
                 <TreeView x:Name="CandidateTree"
                           Grid.Row="1"
                           ItemsSource="{Binding CandidateGroups}"
-                          SelectedItem="{Binding SelectedCandidate}"
+                          SelectedItem="{Binding SelectedCandidateNode}"
                           DoubleTapped="OnCandidateListDoubleTapped"
                           KeyDown="OnCandidateListKeyDown"
                           Background="Transparent">

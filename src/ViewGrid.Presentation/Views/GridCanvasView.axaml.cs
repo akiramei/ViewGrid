@@ -102,7 +102,7 @@ public partial class GridCanvasView : UserControl
     // ---------- 焼き込み済みサムネ Bitmap キャッシュ（LoadAndPreRotateBitmap） ----------
     // Rebuild の都度 disk read + Skia decode/encode が走るのを避けるため、
     // (ThumbnailPath, Rotation, FlipX, FlipY, Crop) でキャッシュ。LRU 上限 64 件、
-    // evict 時に Bitmap.Dispose() で確実にメモリ解放する。
+    // evict 時に Bitmap.Dispose() でメモリ解放する (画面表示中のものは切り離されるまで保留)。
     private const int BitmapCacheCapacity = 64;
 
     private readonly LinkedList<KeyValuePair<BitmapCacheKey, Bitmap>> _bitmapCacheLru = new();
@@ -140,15 +140,50 @@ public partial class GridCanvasView : UserControl
         var newNode = _bitmapCacheLru.AddLast(new KeyValuePair<BitmapCacheKey, Bitmap>(key, bitmap));
         _bitmapCacheIndex[key] = newNode;
 
-        // 上限超え分は最古を evict + Dispose
+        // 上限超え分は最古を evict する。 ただし Avalonia の Image は Source を複製せず同一 Bitmap を保持して
+        // 描画・計測のたびに参照するため、 画面に表示中の Bitmap を Dispose すると、 65 種類以上の画像/変換
+        // (9×8 グリッドや保護領域つき画像など) を同時に表示したとき、 先に作った画像が表示されたまま
+        // 破棄され描画で例外/空白になる。 表示中のものは破棄を保留し、 Rebuild 完了後に切り離されたものから破棄する。
         while (_bitmapCacheLru.Count > BitmapCacheCapacity)
         {
             var oldest = _bitmapCacheLru.First!;
             _bitmapCacheLru.RemoveFirst();
             _bitmapCacheIndex.Remove(oldest.Value.Key);
-            oldest.Value.Value.Dispose();
+            if (IsBitmapDisplayed(oldest.Value.Value))
+                _evictedButDisplayedBitmaps.Add(oldest.Value.Value);
+            else
+                oldest.Value.Value.Dispose();
         }
         return bitmap;
+    }
+
+    /// <summary>キャッシュから追い出されたが、 追い出し時点で画面の Image が使っていたため破棄を保留している Bitmap。</summary>
+    private readonly List<Bitmap> _evictedButDisplayedBitmaps = new();
+
+    /// <summary>配置ビジュアル (Border → Image) のいずれかが <paramref name="bitmap"/> を Source にしているか。</summary>
+    private bool IsBitmapDisplayed(Bitmap bitmap)
+    {
+        foreach (var child in CanvasGrid.Children)
+        {
+            if (child is Border { Child: Image { Source: { } source } } && ReferenceEquals(source, bitmap))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 破棄を保留していた Bitmap のうち、 画面から切り離されたものを破棄する。 Rebuild で配置ビジュアルを
+    /// 作り直した後 (= 古い Image が全て取り除かれた後) に呼ぶ。
+    /// </summary>
+    private void DisposeDetachedEvictedBitmaps()
+    {
+        for (var i = _evictedButDisplayedBitmaps.Count - 1; i >= 0; i--)
+        {
+            var bitmap = _evictedButDisplayedBitmaps[i];
+            if (IsBitmapDisplayed(bitmap)) continue;
+            _evictedButDisplayedBitmaps.RemoveAt(i);
+            bitmap.Dispose();
+        }
     }
 
     public GridCanvasView()
@@ -642,48 +677,23 @@ public partial class GridCanvasView : UserControl
             pixelOffsetX: 0, pixelOffsetY: 0);
         if (cellRect.Width <= 0 || cellRect.Height <= 0) return (0, 0, 0, 0, cellRect);
 
-        // 2. 回転で source 軸が swap されるか
-        var rotateSwap = placement.Rotation is Rotation.Cw90 or Rotation.Cw270;
+        // 2-4. 親の cell 内表示サイズ (ScalingMode 別) と、 crop 後・回転後 (transformed) の寸法。
+        //   crop 比率は元画像座標のものなので、 renderer と同じく「元画像で整数 crop 矩形を確定してから
+        //   回転で幅・高さを入れ替える」 順序で計算する (RegionGeometry に集約)。 以前は寸法を先に入れ替えて
+        //   から未入れ替えの crop 比率を掛けていたため、 非正方形 crop + 90°/270° 回転で軸が食い違い、
+        //   保護領域の表示倍率が出力とずれていた。
         int srcW = placement.SourceWidth;
         int srcH = placement.SourceHeight;
-        double transW = rotateSwap ? srcH : srcW;
-        double transH = rotateSwap ? srcW : srcH;
+        var parentTransform = new ImageTransform(placement.Rotation, placement.FlipX, placement.FlipY);
+        var (dispW, dispH) = RegionGeometry.ComputeParentDrawSize(
+            cellRect.Width, cellRect.Height, parentTransform, placement.ScalingMode,
+            placement.EffectiveCropFraction, srcW, srcH);
+        var (cropTransW, cropTransH) = RegionGeometry.ComputeTransformedCropSize(
+            placement.EffectiveCropFraction, parentTransform, srcW, srcH);
 
-        // 3. Crop 適用後の transformed source 寸法 (parent の表示で実際に使われるサイズ)
-        var crop = placement.EffectiveCropFraction;
-        double cropTransW = crop is { } c1 ? Math.Max(1.0, c1.Width * transW) : transW;
-        double cropTransH = crop is { } c2 ? Math.Max(1.0, c2.Height * transH) : transH;
-
-        // 4. ScalingMode に従って parent の表示サイズを cell 内で計算
-        double dispW, dispH;
-        if (placement.ScalingMode == ScalingMode.Fill)
-        {
-            dispW = cellRect.Width;
-            dispH = cellRect.Height;
-        }
-        else
-        {
-            var fitContain = Math.Min(cellRect.Width / cropTransW, cellRect.Height / cropTransH);
-            var fitCover = Math.Max(cellRect.Width / cropTransW, cellRect.Height / cropTransH);
-            var scale = placement.ScalingMode switch
-            {
-                ScalingMode.None => 1.0,
-                ScalingMode.UniformContain => fitContain,
-                ScalingMode.UniformContainShrinkOnly => Math.Min(1.0, fitContain),
-                ScalingMode.UniformContainEnlargeOnly => Math.Max(1.0, fitContain),
-                ScalingMode.UniformCover => fitCover,
-                _ => 1.0,
-            };
-            dispW = cropTransW * scale;
-            dispH = cropTransH * scale;
-        }
-
-        // 5. transformed 軸での source→cell スケール
-        var sxTr = cropTransW > 0 ? dispW / cropTransW : 0;
-        var syTr = cropTransH > 0 ? dispH / cropTransH : 0;
-
-        // 6. source 軸へ swap (Cw90 / Cw270 で X ↔ Y)
-        var (sxSrc, sySrc) = rotateSwap ? (syTr, sxTr) : (sxTr, syTr);
+        // 5-6. source 軸ごとの source→cell スケール (Cw90 / Cw270 では X ↔ Y を入れ替えて返る)。
+        var (sxSrc, sySrc) = RegionGeometry.ComputeSourceToCellScale(
+            parentTransform, cropTransW, cropTransH, dispW, dispH);
 
         // 7. 回転前 cell-local pixel サイズ (region 自身の rotation 未適用)
         var origW = region.Rect.Width * srcW * sxSrc;
@@ -1084,6 +1094,10 @@ public partial class GridCanvasView : UserControl
             placement.PropertyChanged += OnPlacementItemPropertyChanged;
             ApplyPixelOffsetTransform(visual, placement);
         }
+
+        // 配置ビジュアルを作り直したので、 キャッシュから追い出されて破棄を保留していた Bitmap のうち
+        // もう表示されていないものをここで破棄する。
+        DisposeDetachedEvictedBitmaps();
 
         // Layer 3: 境界ドラッグハンドル（A2: 列・行比率の動的調整）
         BuildBoundaryHandles(grid);
@@ -1538,8 +1552,6 @@ public partial class GridCanvasView : UserControl
                 Bitmap bitmap = GetOrCreatePreRotatedBitmap(
                     placement.ThumbnailPath, placement.Rotation, placement.FlipX, placement.FlipY,
                     placement.EffectiveCropFraction);
-                var cropFractionW = placement.EffectiveCropFraction?.Width ?? 1.0;
-                var cropFractionH = placement.EffectiveCropFraction?.Height ?? 1.0;
 
                 var (stretch, direction) = MapScalingMode(placement.ScalingMode);
                 // 全 ScalingMode で Alignment を使う（旧版は ScalingMode.None で TrimmingAnchor、
@@ -1576,24 +1588,44 @@ public partial class GridCanvasView : UserControl
                 // の二律背反だった。explicit W/H + thumbnail bitmap でこの問題を解消する。
                 // プレビュー品質は thumbnail 解像度に依存するため、ソースが thumbnail 上限
                 // (1024px) を超える場合は upscale で若干ぼやけるが、PNG 出力には影響しない。
-                if (placement.ScalingMode == ViewGrid.Core.Entities.ScalingMode.None
+                // 縮小のみ / 拡大のみ (UniformContain{Shrink,Enlarge}Only) も同じ理由で明示サイズにする。
+                // Avalonia の StretchDirection (DownOnly / UpOnly) は「サムネ Bitmap の DIP 寸法」 を基準に
+                // 縮小・拡大を判定するが、 出力 (renderer) は「元画像ピクセル」 を基準にする。 サムネが元画像より
+                // 小さい (> 1024px の画像) と、 例えば 400px の画像 (サムネも 400px) を 1000px セルへ縮小のみで
+                // 置いて 600 DIP で表示したとき、 出力は 400px (= 240 DIP) なのに画面は 400 DIP になる。
+                // 出力と同じ計算 (RegionGeometry.ComputeParentDrawSize) で描画サイズを求め、 Bitmap は画素の
+                // 供給元に徹させる。
+                if (placement.ScalingMode is ViewGrid.Core.Entities.ScalingMode.None
+                        or ViewGrid.Core.Entities.ScalingMode.UniformContainShrinkOnly
+                        or ViewGrid.Core.Entities.ScalingMode.UniformContainEnlargeOnly
                     && placement.SourceWidth > 0 && placement.SourceHeight > 0
                     && grid is not null)
                 {
-                    var rotateSwap = placement.Rotation
-                        is ViewGrid.Core.Entities.Rotation.Cw90
-                        or ViewGrid.Core.Entities.Rotation.Cw270;
-                    // AutoCrop 適用後の論理画像サイズ（原画像座標系、回転前）。
-                    // fraction は LoadAndPreRotateBitmap がサムネ走査で算出した「回転前の原画像
-                    // 座標系での比率」で、原画像の実寸に乗算するだけで AutoCrop 後の論理サイズを得る。
-                    var croppedSourceW = (int)Math.Max(1.0, Math.Round(placement.SourceWidth * cropFractionW));
-                    var croppedSourceH = (int)Math.Max(1.0, Math.Round(placement.SourceHeight * cropFractionH));
-                    var sourceW = rotateSwap ? croppedSourceH : croppedSourceW;
-                    var sourceH = rotateSwap ? croppedSourceW : croppedSourceH;
-                    var displayScale = ComputeDisplayScale(grid);
-                    image.Stretch = Stretch.Uniform; // explicit W/H へ uniform リサンプリング
-                    image.Width = Math.Max(1.0, sourceW * displayScale);
-                    image.Height = Math.Max(1.0, sourceH * displayScale);
+                    var cellRect = PlacementGeometry.ComputeDestRect(
+                        new ViewGrid.Core.Entities.PixelSize(grid.CanvasWidth, grid.CanvasHeight),
+                        grid.Cols, grid.Rows,
+                        grid.ColWeights, grid.RowWeights,
+                        placement.Position, placement.OccupySize,
+                        pixelOffsetX: 0, pixelOffsetY: 0);
+                    // crop (EffectiveCropFraction は元画像座標の比率) → 回転の順で、 描画サイズを canvas 座標で求める。
+                    var (drawW, drawH) = RegionGeometry.ComputeParentDrawSize(
+                        cellRect.Width, cellRect.Height,
+                        new ViewGrid.Core.Entities.ImageTransform(
+                            placement.Rotation, placement.FlipX, placement.FlipY),
+                        placement.ScalingMode,
+                        placement.EffectiveCropFraction,
+                        placement.SourceWidth, placement.SourceHeight);
+                    if (drawW > 0 && drawH > 0)
+                    {
+                        var displayScale = ComputeDisplayScale(grid);
+                        image.Stretch = Stretch.Uniform; // explicit W/H へ uniform リサンプリング
+                        // 縮小のみ / 拡大のみ の MapScalingMode は StretchDirection を DownOnly / UpOnly にするが、
+                        // 明示サイズを使う以上、 方向の制限が残ると明示サイズへの拡縮自体が拒否される
+                        // (サムネより明示サイズが大きい/小さい場合に、 サムネ寸法のまま描かれてしまう)。
+                        image.StretchDirection = StretchDirection.Both;
+                        image.Width = Math.Max(1.0, drawW * displayScale);
+                        image.Height = Math.Max(1.0, drawH * displayScale);
+                    }
                 }
                 content = image;
             }
@@ -1736,20 +1768,41 @@ public partial class GridCanvasView : UserControl
         SKBitmap source, ViewGrid.Core.Entities.CropFraction fraction)
     {
         if (source.Width <= 0 || source.Height <= 0) return null;
-        var (x, y, w, h) = fraction.ToPixelBbox(source.Width, source.Height);
-        if (w <= 0 || h <= 0) return null;
-        if (x == 0 && y == 0 && w == source.Width && h == source.Height) return null;
 
-        var dst = new SKBitmap(w, h, source.ColorType, source.AlphaType);
+        // 通常の crop は従来どおり整数 bbox で切り出す。 ただし整数 bbox は、 低解像度のサムネで極細の crop
+        // (例: 幅 4000 の画像の 1px 幅 → 幅 1024 のサムネでは 0px) を 0 に丸めてしまい、 呼び出し側が
+        // 「crop なし」 と同じに扱って画像全体を表示する (元解像度の出力は crop が効くのに画面だけ全体表示)。
+        // その場合は分数座標のまま切り出し、 出力サイズを最低 1px にする。
+        SKRect srcRect;
+        int dstW, dstH;
+        var (x, y, w, h) = fraction.ToPixelBbox(source.Width, source.Height);
+        if (w > 0 && h > 0)
+        {
+            if (x == 0 && y == 0 && w == source.Width && h == source.Height) return null;
+            srcRect = new SKRect(x, y, x + w, y + h);
+            dstW = w;
+            dstH = h;
+        }
+        else if (fraction.ToSampleRect(source.Width, source.Height) is { } s)
+        {
+            srcRect = new SKRect(
+                (float)s.SrcX, (float)s.SrcY,
+                (float)(s.SrcX + s.SrcWidth), (float)(s.SrcY + s.SrcHeight));
+            dstW = s.DstWidth;
+            dstH = s.DstHeight;
+        }
+        else
+        {
+            return null;
+        }
+
+        var dst = new SKBitmap(dstW, dstH, source.ColorType, source.AlphaType);
         try
         {
             using var canvas = new SKCanvas(dst);
             canvas.Clear(SKColors.Transparent);
             using var srcImage = SKImage.FromBitmap(source);
-            canvas.DrawImage(
-                srcImage,
-                new SKRect(x, y, x + w, y + h),
-                new SKRect(0, 0, w, h));
+            canvas.DrawImage(srcImage, srcRect, new SKRect(0, 0, dstW, dstH));
             return dst;
         }
         catch
@@ -1866,7 +1919,7 @@ public partial class GridCanvasView : UserControl
 
         // 掴んだセルのオフセットを計算（NxM 配置の右下端を掴んでドラッグした場合、
         // ドロップ位置から (-W+1, -H+1) ずれた位置が新左上になる）。
-        var (ox, oy) = ComputeGrabOffset(border, trigger, item);
+        var (ox, oy) = ComputeGrabOffset(border, trigger, item, _vm?.CurrentGrid);
 
         var transfer = new DataTransfer();
         transfer.Add(DataTransferItem.CreateText($"{PlacementPrefix}{item.PlacementId}:{ox},{oy}"));
@@ -1948,7 +2001,8 @@ public partial class GridCanvasView : UserControl
     }
 
     private static (int Ox, int Oy) ComputeGrabOffset(
-        Border? border, PointerPressedEventArgs? trigger, PlacementItemViewModel item)
+        Border? border, PointerPressedEventArgs? trigger, PlacementItemViewModel item,
+        GridCanvasItemViewModel? grid)
     {
         if (border is null || trigger is null) return (0, 0);
         var w = Math.Max(1, item.OccupyWidth);
@@ -1960,11 +2014,21 @@ public partial class GridCanvasView : UserControl
         var bh = border.Bounds.Height;
         if (bw <= 0 || bh <= 0) return (0, 0);
 
-        var cellW = bw / w;
-        var cellH = bh / h;
-        var ox = Math.Clamp((int)(local.X / cellW), 0, w - 1);
-        var oy = Math.Clamp((int)(local.Y / cellH), 0, h - 1);
+        // 配置が占める列・行の重みで判定する (重み付きグリッドでは各セルの幅・高さが等しくない)。
+        var ox = PlacementGeometry.ResolveWeightedIndex(
+            SliceWeights(grid?.ColWeights, item.GridX, w), w, local.X, bw);
+        var oy = PlacementGeometry.ResolveWeightedIndex(
+            SliceWeights(grid?.RowWeights, item.GridY, h), h, local.Y, bh);
         return (ox, oy);
+    }
+
+    /// <summary>重み配列の <paramref name="start"/> から <paramref name="count"/> 個。 範囲外・未設定なら <c>null</c> (均等扱い)。</summary>
+    private static int[]? SliceWeights(
+        System.Collections.Immutable.ImmutableArray<int>? weights, int start, int count)
+    {
+        if (weights is not { IsDefaultOrEmpty: false } all) return null;
+        if (start < 0 || start + count > all.Length) return null;
+        return all.AsSpan(start, count).ToArray();
     }
 
     // ---------- ハイライトブラシ ----------
@@ -2131,10 +2195,9 @@ public partial class GridCanvasView : UserControl
         if (width <= 0 || height <= 0) return null;
         if (local.X < 0 || local.Y < 0 || local.X >= width || local.Y >= height) return null;
 
-        var cellWidth = width / grid.Cols;
-        var cellHeight = height / grid.Rows;
-        var col = Math.Clamp((int)(local.X / cellWidth), 0, grid.Cols - 1);
-        var row = Math.Clamp((int)(local.Y / cellHeight), 0, grid.Rows - 1);
+        // 表示は列・行を Star 重みで割り付けているので、 全幅 ÷ 列数の均等割りではなく重みで判定する。
+        var col = PlacementGeometry.ResolveWeightedIndex(grid.ColWeights, grid.Cols, local.X, width);
+        var row = PlacementGeometry.ResolveWeightedIndex(grid.RowWeights, grid.Rows, local.Y, height);
         return new CellPosition(col, row);
     }
 

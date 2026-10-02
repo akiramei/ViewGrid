@@ -235,10 +235,31 @@ public partial class ManualCropEditorWindow : Window
     {
         if (_suppressNumericSync) return;
         // NumericUpDown.Value は decimal? なので int に丸めて取り込む (FormatString="0" で表示も整数)
-        _x = Math.Clamp((int)(XInput.Value ?? 0m), 0, _sourceWidth);
-        _y = Math.Clamp((int)(YInput.Value ?? 0m), 0, _sourceHeight);
-        _w = Math.Clamp((int)(WInput.Value ?? 0m), 0, _sourceWidth - _x);
-        _h = Math.Clamp((int)(HInput.Value ?? 0m), 0, _sourceHeight - _y);
+        var rawX = XInput.Value;
+        var rawY = YInput.Value;
+        var rawW = WInput.Value;
+        var rawH = HInput.Value;
+        _x = Math.Clamp((int)(rawX ?? 0m), 0, _sourceWidth);
+        _y = Math.Clamp((int)(rawY ?? 0m), 0, _sourceHeight);
+        _w = Math.Clamp((int)(rawW ?? 0m), 0, _sourceWidth - _x);
+        _h = Math.Clamp((int)(rawH ?? 0m), 0, _sourceHeight - _y);
+
+        // 正規化 (範囲クランプ / 原点移動に伴う幅・高さの切り詰め) の結果を入力欄へ書き戻す。
+        // 戻さないと、 例えば X=0,W=40 から X=80 にしたとき内部の W は 20 に切り詰められるのに、 W 欄は
+        // 40 のまま表示され、 OK で確定される値 (20) と食い違い、 次の入力で古い表示値 (40) が復活する。
+        // 空欄 (null) の項目は入力し直しの最中なので書き戻さない。
+        _suppressNumericSync = true;
+        try
+        {
+            if (rawX is { } vx && vx != _x) XInput.Value = _x;
+            if (rawY is { } vy && vy != _y) YInput.Value = _y;
+            if (rawW is { } vw && vw != _w) WInput.Value = _w;
+            if (rawH is { } vh && vh != _h) HInput.Value = _h;
+        }
+        finally
+        {
+            _suppressNumericSync = false;
+        }
         UpdateOverlay();
     }
 
