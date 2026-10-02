@@ -292,12 +292,22 @@ public partial class ManualCropEditorWindow : Window
         var displayH = _sourceHeight * _zoom;
         var r = PixelToOverlayRect();
 
-        // マット 4 領域（矩形外側を半透明黒で覆う）
+        // マット（矩形の外側を半透明黒で覆う）。 画像全体の矩形から選択矩形をくり抜いた 1 つの図形として塗る。
+        // 以前は上下左右の 4 枚の矩形に分けて塗っていたが、 ズーム倍率 (例: 105%) や表示倍率で境界が小数座標になると、
+        // 隣り合う矩形の境界が画素へ丸められて重なる / 隙間になり、 選択矩形の上下の縁に沿って画像の全幅に
+        // 濃い線 / 明るい線が走る (幅 1・高さ 6 の矩形では見え、 高さ 7 では消える、 といった見え方をする)。
+        // 1 つの図形なら塗りの境界は選択矩形の縁だけで、 継ぎ目が生じない。
         var mattBrush = new SolidColorBrush(Color.FromArgb(0x80, 0x00, 0x00, 0x00));
-        AddMatt(0, 0, displayW, r.Y, mattBrush);                          // 上
-        AddMatt(0, r.Y + r.H, displayW, displayH - (r.Y + r.H), mattBrush); // 下
-        AddMatt(0, r.Y, r.X, r.H, mattBrush);                             // 左
-        AddMatt(r.X + r.W, r.Y, displayW - (r.X + r.W), r.H, mattBrush);  // 右
+        var matt = new Avalonia.Controls.Shapes.Path
+        {
+            Data = new CombinedGeometry(
+                GeometryCombineMode.Exclude,
+                new RectangleGeometry(new Rect(0, 0, displayW, displayH)),
+                new RectangleGeometry(new Rect(r.X, r.Y, r.W, r.H))),
+            Fill = mattBrush,
+            IsHitTestVisible = false,
+        };
+        EditorOverlay.Children.Add(matt);
 
         // 矩形枠
         var border = new Rectangle
@@ -322,18 +332,6 @@ public partial class ManualCropEditorWindow : Window
         AddHandle(r.X + r.W / 2, r.Y + r.H);
         AddHandle(r.X, r.Y + r.H / 2);
         AddHandle(r.X + r.W, r.Y + r.H / 2);
-    }
-
-    private void AddMatt(double x, double y, double w, double h, IBrush brush)
-    {
-        if (w <= 0 || h <= 0) return;
-        var rect = new Rectangle
-        {
-            Width = w, Height = h, Fill = brush, IsHitTestVisible = false,
-        };
-        Canvas.SetLeft(rect, x);
-        Canvas.SetTop(rect, y);
-        EditorOverlay.Children.Add(rect);
     }
 
     private void AddHandle(double cx, double cy)
